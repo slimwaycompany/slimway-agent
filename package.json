@@ -10,7 +10,7 @@
     "import:trial-state": "tsx scripts/importTrialState.ts"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
