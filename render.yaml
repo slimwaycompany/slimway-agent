@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: slimway-agent
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: FITBASE_TOKEN
+        sync: false
+      - key: FITBASE_CLUB
+        value: slimway
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: AGENT_USER_ID
+        value: "40"
+      - key: TASK_RESPONSIBLE_IDS
+        value: "33,39,35"
+      - key: TRIAL_AGENT_DRY_RUN
+        value: "true"
+      - key: ALERT_EMAIL
+        value: sergey.revnivcev@gmail.com
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
