@@ -59,27 +59,31 @@ app.post('/run/:job', handleRun);
 // ── Job runner ───────────────────────────────────────────────────────────────
 
 async function executeJob(jobName: string, handler: () => Promise<unknown>): Promise<void> {
-  const runId    = await startRun(jobName);
-  const started  = Date.now();
+  const started = Date.now();
+  let runId = 0;
   try {
+    runId = await startRun(jobName);
     const stats = await handler();
     await finishRun(runId, 'ok', Date.now() - started, stats as Record<string, unknown> | null, null);
   } catch (e) {
     const msg = (e as Error).message;
     console.error(`[${jobName}] FATAL: ${msg}`);
-    await finishRun(runId, 'error', Date.now() - started, null, msg);
+    if (runId) await finishRun(runId, 'error', Date.now() - started, null, msg);
   } finally {
     await releaseLock(jobName);
   }
 }
 
 async function startRun(job: string): Promise<number> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('job_runs')
     .insert({ job, started_at: new Date().toISOString(), status: 'running' })
     .select('id')
     .single();
-  return data?.id ?? 0;
+  if (error) throw new Error(`[startRun] insert failed (job=${job}): ${error.message}`);
+  if (!data?.id) throw new Error(`[startRun] no id returned (job=${job})`);
+  console.log(`[${job}] run started, runId=${data.id}`);
+  return data.id as number;
 }
 
 async function finishRun(
@@ -89,13 +93,15 @@ async function finishRun(
   stats: Record<string, unknown> | null,
   error: string | null,
 ): Promise<void> {
-  await supabase.from('job_runs').update({
+  const { error: updateErr } = await supabase.from('job_runs').update({
     finished_at: new Date().toISOString(),
     duration_ms: durationMs,
     status,
-    stats:  stats ?? null,
-    error:  error ?? null,
+    stats: stats ?? null,
+    error: error ?? null,
   }).eq('id', id);
+  if (updateErr) console.error(`[finishRun] update failed (id=${id}): ${updateErr.message}`);
+  else console.log(`[finishRun] id=${id} status=${status} duration=${durationMs}ms`);
 }
 
 async function insertRun(
