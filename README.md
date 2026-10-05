@@ -18,17 +18,7 @@ npm start
 
 ---
 
-## 1. Supabase — выполнить схему
-
-В Supabase → SQL Editor → New query вставьте содержимое `supabase/schema.sql` и нажмите Run.
-
-После выполнения:
-- Включите Realtime для таблицы `agent_events`:
-  **Supabase → Database → Replication → Tables → agent_events → Enable**.
-
----
-
-## 2. Переменные окружения
+## 1. Переменные окружения
 
 | Переменная | Описание |
 |---|---|
@@ -46,7 +36,7 @@ npm start
 
 ---
 
-## 3. Расписание cron-job.org
+## 2. Расписание cron-job.org
 
 Все запросы используют заголовок `X-Cron-Secret: <CRON_SECRET>` или параметр `?key=<CRON_SECRET>`.
 
@@ -64,7 +54,7 @@ npm start
 
 ---
 
-## 4. API
+## 3. API
 
 ```
 GET  /health              — проверка живости: { ok: true, time: "..." }
@@ -81,7 +71,7 @@ POST /run/:job            — то же, POST-вариант
 
 ---
 
-## 5. Перенос памяти агента
+## 4. Перенос памяти агента
 
 1. Из Google Таблицы экспортировать лист `trial_state` как CSV.
 2. Положить файл в `./import/trial_state.csv` (папка в `.gitignore`).
@@ -95,7 +85,7 @@ npm run import:trial-state
 
 ---
 
-## 6. DRY-режим и сравнение решений
+## 5. DRY-режим и сравнение решений
 
 В DRY-режиме (`TRIAL_AGENT_DRY_RUN=true`) сервер:
 - **Не пишет** в Fitbase (нет переходов, задач, комментариев)
@@ -107,7 +97,7 @@ npm run import:trial-state
 
 ---
 
-## 7. Переключение на боевой режим
+## 6. Переключение на боевой режим
 
 **Шаг 1 — Отключить Apps Script:**
 ```javascript
@@ -122,14 +112,9 @@ TRIAL_AGENT_DRY_RUN=false   # в Render → Environment
 
 ---
 
-## 8. Деплой на Render
+## 7. Деплой на Render
 
 ```bash
-git init
-git add .
-git commit -m "Stage 1A: server skeleton, Supabase, trial agent (DRY), event log"
-git branch -M main
-git remote add origin https://github.com/slimwaycompany/slimway-agent.git
 git push -u origin main
 ```
 

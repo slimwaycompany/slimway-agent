@@ -2,29 +2,27 @@ import nodemailer from 'nodemailer';
 import { env } from '../config';
 import { supabase } from '../db/supabase';
 
-const COOLDOWN_MS  = 2 * 3600 * 1000; // 1 alert per error-key per 2 hours
-const META_PREFIX  = 'mail_sent_';
+const COOLDOWN_MS = 2 * 3600 * 1000; // max 1 alert per type per 2 hours
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
 });
 
-async function canSend(key: string): Promise<boolean> {
+async function canSend(alertType: string): Promise<boolean> {
   const { data } = await supabase
-    .from('agent_meta')
-    .select('value')
-    .eq('key', META_PREFIX + key)
+    .from('alert_throttle')
+    .select('last_sent_at')
+    .eq('alert_type', alertType)
     .maybeSingle();
   if (!data) return true;
-  return Date.now() - new Date(data.value as string).getTime() > COOLDOWN_MS;
+  return Date.now() - new Date(data.last_sent_at as string).getTime() > COOLDOWN_MS;
 }
 
-async function markSent(key: string): Promise<void> {
-  const now = new Date().toISOString();
-  await supabase.from('agent_meta').upsert(
-    { key: META_PREFIX + key, value: now, updated_at: now },
-    { onConflict: 'key' },
+async function markSent(alertType: string): Promise<void> {
+  await supabase.from('alert_throttle').upsert(
+    { alert_type: alertType, last_sent_at: new Date().toISOString() },
+    { onConflict: 'alert_type' },
   );
 }
 

@@ -6,7 +6,6 @@ import { acquireLock, releaseLock } from './core/lock';
 import { supabase }      from './db/supabase';
 import { runTrial,        JOB_NAME as TRIAL_JOB }   from './jobs/trial';
 import { runDailySummary, JOB_NAME as SUMMARY_JOB }  from './jobs/dailySummary';
-import type { RunStats } from './jobs/trial';
 
 const app = express();
 
@@ -77,7 +76,7 @@ async function executeJob(jobName: string, handler: () => Promise<unknown>): Pro
 async function startRun(job: string): Promise<number> {
   const { data } = await supabase
     .from('job_runs')
-    .insert({ job, started_at: new Date().toISOString(), status: 'ok' })
+    .insert({ job, started_at: new Date().toISOString(), status: 'running' })
     .select('id')
     .single();
   return data?.id ?? 0;
@@ -85,7 +84,7 @@ async function startRun(job: string): Promise<number> {
 
 async function finishRun(
   id: number,
-  status: 'ok' | 'error' | 'skipped',
+  status: 'ok' | 'error',
   durationMs: number,
   stats: Record<string, unknown> | null,
   error: string | null,
@@ -101,7 +100,7 @@ async function finishRun(
 
 async function insertRun(
   job: string,
-  status: 'ok' | 'error' | 'skipped',
+  status: 'skipped',
   durationMs: number,
   stats: Record<string, unknown> | null,
   error: string | null,
