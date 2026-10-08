@@ -138,7 +138,7 @@ interface PlanRow {
   last_visit_at:         string | null;
   days_since_last_visit: number | null;
   task_planned:          string | null;
-  flags:                 string | null;
+  flags:                 string[];
 }
 
 // ── Core: classify one lead ───────────────────────────────────────────────────
@@ -183,7 +183,7 @@ async function processLead(
     purchase_days: null, active_count: null,
     visits_total: null, visits_left: null, left_pct: null,
     last_visit_at: null, days_since_last_visit: null,
-    task_planned: null, flags: null,
+    task_planned: null, flags: [],
   };
 
   // Unsorted (step 0) in funnels 2/3/4 — agent does not touch these
@@ -252,7 +252,7 @@ async function processLead(
   if (purchases.length > 0 && countable.length === 0) {
     return {
       ...base,
-      flags: hasUnlimited ? 'UNLIMITED' : null,
+      flags: hasUnlimited ? ['UNLIMITED'] : [],
       action: 'review', reason: 'UNLIMITED_ONLY',
       target_funnel: currentFunnel, target_stage: currentStage,
     };
@@ -305,7 +305,7 @@ async function processLead(
   }
   if (hasUnlimited)      flags.push('UNLIMITED');
   if (hasVisitsComputed) flags.push('VISITS_COMPUTED');
-  const flagStr = () => flags.length > 0 ? [...new Set(flags)].join(',') : null;
+  const flagArr = () => [...new Set(flags)];
 
   const partial: PlanRow = {
     ...base,
@@ -319,7 +319,7 @@ async function processLead(
   if (purchaseDays === 0) {
     if (currentFunnel === 2 || currentFunnel === 3) {
       return {
-        ...partial, flags: flagStr(),
+        ...partial, flags: flagArr(),
         action: 'review', reason: 'NO_PURCHASE_IN_LIFECYCLE',
         target_funnel: currentFunnel, target_stage: currentStage,
       };
@@ -328,7 +328,7 @@ async function processLead(
     const since = daysSinceVisit ?? daysSince(String(lead.created_at || ''));
     const rt     = reactTarget(since, funnelSteps[4]);
     const action = (currentFunnel === rt.target_funnel && currentStage === rt.target_stage) ? 'stay' : 'move';
-    return { ...partial, flags: flagStr(), ...rt, action };
+    return { ...partial, flags: flagArr(), ...rt, action };
   }
 
   if (active.length > 0) {
@@ -352,7 +352,7 @@ async function processLead(
     const sid = ts[stepName];
     if (!sid) throw new Error(`[${JOB}] Step not found: "${stepName}" in funnel ${tf}`);
     const action = (currentFunnel === tf && currentStage === sid) ? 'stay' : 'move';
-    return { ...partial, flags: flagStr(), action, target_funnel: tf, target_stage: sid, task_planned: taskPlanned };
+    return { ...partial, flags: flagArr(), action, target_funnel: tf, target_stage: sid, task_planned: taskPlanned };
   }
 
   // No active contracts, but had purchases
@@ -365,7 +365,7 @@ async function processLead(
     if (!sid) throw new Error(`[${JOB}] Step "Отстойник" not found in funnel ${tf}`);
     const action = (currentFunnel === tf && currentStage === sid) ? 'stay' : 'move';
     return {
-      ...partial, flags: flagStr(),
+      ...partial, flags: flagArr(),
       action, target_funnel: tf, target_stage: sid,
       task_planned: 'Абонемент закончился — всем троим',
     };
@@ -373,7 +373,7 @@ async function processLead(
 
   const rt     = reactTarget(since, funnelSteps[4]);
   const action = (currentFunnel === rt.target_funnel && currentStage === rt.target_stage) ? 'stay' : 'move';
-  return { ...partial, flags: flagStr(), ...rt, action };
+  return { ...partial, flags: flagArr(), ...rt, action };
 }
 
 // ── Public entry: accepts runId from index.ts executeJob chain ────────────────
@@ -434,7 +434,7 @@ export async function runLifecyclePlan(runId: number): Promise<Record<string, un
         purchase_days: null, active_count: null,
         visits_total: null, visits_left: null, left_pct: null,
         last_visit_at: null, days_since_last_visit: null,
-        task_planned: null, flags: null,
+        task_planned: null, flags: [],
       });
     }
     if ((i + 1) % 20 === 0 || i + 1 === leads.length) {
@@ -452,9 +452,7 @@ export async function runLifecyclePlan(runId: number): Promise<Record<string, un
   }
   for (const row of rows) {
     if (row.client_id && (clientFunnelCount.get(row.client_id) ?? 0) > 1) {
-      const existing = row.flags ? row.flags.split(',') : [];
-      if (!existing.includes('DUPLICATE_CLIENT')) existing.push('DUPLICATE_CLIENT');
-      row.flags  = existing.join(',');
+      if (!row.flags.includes('DUPLICATE_CLIENT')) row.flags = [...row.flags, 'DUPLICATE_CLIENT'];
       row.action = 'review';
     }
   }
