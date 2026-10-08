@@ -15,6 +15,7 @@
 import { isDry, env }          from '../config';
 import { logEvent }             from '../core/events';
 import { shortName }            from '../core/names';
+import { alertError }           from '../core/mail';
 import {
   rawGet, unwrapItem, paginateGet, patchLeadBudget,
 }                               from '../http/fitbase';
@@ -49,7 +50,7 @@ function getStepId(lead: Record<string, unknown>): number {
   return Number(step?.id ?? 0);
 }
 
-export async function runBudget(): Promise<void> {
+export async function runBudget(): Promise<Record<string, unknown>> {
   const dryRun = isDry('budget');
 
   const defaultChanges: Record<number, BudgetChange[]> = { 1: [], 4: [] };
@@ -59,10 +60,12 @@ export async function runBudget(): Promise<void> {
 
   let allLeads: Record<string, unknown>[];
   try {
-    allLeads = await paginateGet('/lead', { page_size: 500 });
+    allLeads = await paginateGet('/lead', { page_size: 100 }, 'budget');
   } catch (e) {
-    await logEvent({ job: 'budget', type: 'error', text: `Не удалось получить лиды: ${String(e)}`, dry: dryRun });
-    return;
+    const msg = String(e);
+    await logEvent({ job: 'budget', type: 'error', text: `Не удалось получить лиды: ${msg}`, dry: dryRun });
+    try { await alertError('budget_leads_fetch', msg); } catch { /* silent */ }
+    throw e; // mark job_run as error
   }
 
   for (const lead of allLeads) {
@@ -118,6 +121,10 @@ export async function runBudget(): Promise<void> {
     }
   }
 
+  // ── Console log for Render ───────────────────────────────────────────────
+  const countsLog = [1, 2, 3, 4].map(f => `${f}:${funnelCounts[f]}`).join(' ');
+  console.log(`[budget] leads=${allLeads.length} funnels: ${countsLog} dry=${dryRun}`);
+
   // ── Emit summary events ───────────────────────────────────────────────────
   const defaultAll = [...defaultChanges[1], ...defaultChanges[4]];
   const ltvAll     = [...ltvChanges[2], ...ltvChanges[3]];
@@ -127,6 +134,15 @@ export async function runBudget(): Promise<void> {
     .map(([id, n]) => `воронка ${id}: ${n}`)
     .join(', ');
 
+  const stats: Record<string, unknown> = {
+    total_leads:     allLeads.length,
+    funnel_counts:   funnelCounts,
+    default_updated: defaultAll.length,
+    ltv_updated:     ltvAll.length,
+    errors:          ltvErrors.length,
+    dry:             dryRun,
+  };
+
   if (defaultAll.length === 0 && ltvAll.length === 0 && ltvErrors.length === 0) {
     await logEvent({
       job: 'budget', type: 'run_finished',
@@ -134,7 +150,7 @@ export async function runBudget(): Promise<void> {
       dry: dryRun,
       meta: { funnel_counts: funnelCounts },
     });
-    return;
+    return stats;
   }
 
   if (defaultAll.length > 0) {
@@ -167,4 +183,6 @@ export async function runBudget(): Promise<void> {
       meta: { changes: ltvAll, errors: ltvErrors, funnel_counts: funnelCounts },
     });
   }
+
+  return stats;
 }

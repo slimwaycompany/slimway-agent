@@ -98,9 +98,10 @@ async function request(
     }
   }
 
-  throw new Error(
-    `[Fitbase] failed after retries: ${method} ${path} — last: ${JSON.stringify(lastError)}`,
-  );
+  const lastStr = lastError instanceof Error
+    ? lastError.message
+    : JSON.stringify(lastError, Object.getOwnPropertyNames(lastError));
+  throw new Error(`[Fitbase] failed after retries: ${method} ${path} — last: ${lastStr}`);
 }
 
 // Mirrors Fitbase.js unwrapItem: returns resp.item if present, else resp itself
@@ -192,9 +193,11 @@ export async function addClientNote(clientId: number, note: string): Promise<voi
 }
 
 // Fetch all pages of a paginated GET endpoint, returning merged items array.
+// Pass label to emit a console.log summary on completion.
 export async function paginateGet(
   path: string,
   params: Record<string, string | number> = {},
+  label?: string,
 ): Promise<Record<string, unknown>[]> {
   const all: Record<string, unknown>[] = [];
   let page = 1;
@@ -202,7 +205,7 @@ export async function paginateGet(
     const qs = new URLSearchParams(
       Object.entries({ ...params, page: String(page) }).map(([k, v]) => [k, String(v)]),
     ).toString();
-    const resp = await rawGet(`${path}?${qs}`);
+    const resp  = await rawGet(`${path}?${qs}`);
     const items = (resp.items || []) as Record<string, unknown>[];
     all.push(...items);
     const total   = Number(resp.total_count ?? resp.total ?? 0);
@@ -211,6 +214,7 @@ export async function paginateGet(
     page++;
     if (page > Math.ceil(total / perPage) + 2) break; // safety
   }
+  if (label) console.log(`[${label}] paginateGet ${path}: ${page} page(s), ${all.length} items`);
   return all;
 }
 
