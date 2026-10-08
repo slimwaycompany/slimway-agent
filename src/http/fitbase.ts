@@ -190,3 +190,46 @@ export async function addClientNote(clientId: number, note: string): Promise<voi
     pinned:     0,
   });
 }
+
+// Fetch all pages of a paginated GET endpoint, returning merged items array.
+export async function paginateGet(
+  path: string,
+  params: Record<string, string | number> = {},
+): Promise<Record<string, unknown>[]> {
+  const all: Record<string, unknown>[] = [];
+  let page = 1;
+  while (true) {
+    const qs = new URLSearchParams(
+      Object.entries({ ...params, page: String(page) }).map(([k, v]) => [k, String(v)]),
+    ).toString();
+    const resp = await rawGet(`${path}?${qs}`);
+    const items = (resp.items || []) as Record<string, unknown>[];
+    all.push(...items);
+    const total    = Number(resp.total    ?? 0);
+    const perPage  = Number(resp.per_page ?? (items.length || 1));
+    if (all.length >= total || items.length === 0) break;
+    page++;
+    if (page > Math.ceil(total / perPage) + 1) break; // safety
+  }
+  return all;
+}
+
+export async function getClient(clientId: number): Promise<Record<string, unknown>> {
+  const resp = await rawGet(`/client/${clientId}`);
+  return unwrapItem(resp);
+}
+
+export async function patchLeadBudget(leadId: number, budget: number): Promise<void> {
+  await rawPatch(`/lead/${leadId}`, { budget });
+}
+
+// Returns purchases array for a client (GET /client/{id}/purchase_amount)
+export async function getClientPurchases(clientId: number): Promise<Record<string, unknown>[]> {
+  const resp = await rawGet(`/client/${clientId}/purchase_amount`);
+  return ((resp as Record<string, unknown>).items || []) as Record<string, unknown>[];
+}
+
+// Returns till order steps for a client (GET /till/order/step?client_id=X, all pages)
+export async function getClientTillSteps(clientId: number): Promise<Record<string, unknown>[]> {
+  return paginateGet('/till/order/step', { client_id: clientId });
+}

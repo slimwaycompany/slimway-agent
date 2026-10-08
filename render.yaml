@@ -26,6 +26,12 @@ services:
         value: "33,39,35"
       - key: TRIAL_AGENT_DRY_RUN
         value: "true"
+      - key: BUDGET_DRY_RUN
+        value: "true"
+      - key: BUDGET_DEFAULT
+        value: "69000"
+      - key: LTV_SOURCE
+        value: "purchase_amount"
       - key: ALERT_EMAIL
         value: sergey.revnivcev@gmail.com
       - key: SMTP_USER

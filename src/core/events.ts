@@ -8,7 +8,9 @@ export type EventType =
   | 'skipped_duplicate_task'
   | 'error'
   | 'run_started'
-  | 'run_finished';
+  | 'run_finished'
+  | 'probe'
+  | 'budget_updated';
 
 export interface EventPayload {
   job: string;

@@ -12,6 +12,9 @@ const envSchema = z.object({
   TASK_RESPONSIBLE_IDS: z.string().default('33,39,35'),
   // "true" or any non-"false" string → dry run on
   TRIAL_AGENT_DRY_RUN: z.string().transform(v => v !== 'false').default('true'),
+  BUDGET_DRY_RUN:      z.string().transform(v => v !== 'false').default('true'),
+  BUDGET_DEFAULT:      z.coerce.number().default(69000),
+  LTV_SOURCE:          z.enum(['purchase_amount', 'till_steps']).default('purchase_amount'),
   ALERT_EMAIL: z.string().default('sergey.revnivcev@gmail.com'),
   SMTP_USER: z.string().min(1),
   SMTP_PASS: z.string().min(1),
@@ -27,6 +30,15 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+type Module = 'trial' | 'budget';
+const DRY_FLAGS: Record<Module, boolean> = {
+  trial:  env.TRIAL_AGENT_DRY_RUN,
+  budget: env.BUDGET_DRY_RUN,
+};
+export function isDry(module: Module): boolean {
+  return DRY_FLAGS[module];
+}
 
 // ── Funnel & stage constants (from Apps Script Config.js defaults) ──────────
 export const AGENT_FUNNEL_ID = 1;

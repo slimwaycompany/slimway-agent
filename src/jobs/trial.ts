@@ -4,7 +4,7 @@ import { logEvent, computeFingerprint }       from '../core/events';
 import { shortName }                          from '../core/names';
 import { alertError, alertAuthError }         from '../core/mail';
 import {
-  env,
+  isDry,
   AGENT_TASK_DUE_HOURS,
   STAGE_BOOKED, STAGE_CONFIRMED, STAGE_DECISION, STAGE_NOSHOW,
   TRIAL_TRAINING_ID, TRIAL_CHECK_HOURS,
@@ -586,7 +586,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
 // ── Public entry point ────────────────────────────────────────────────────────
 
 export async function runTrial(): Promise<RunStats> {
-  const dryRun = env.TRIAL_AGENT_DRY_RUN;
+  const dryRun = isDry('trial');
   const stats: RunStats = { leads: 0, moved: 0, tasks: 0, skipped: 0, errors: 0 };
 
   await logEvent({ job: JOB_NAME, type: 'run_started',

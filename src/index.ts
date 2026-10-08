@@ -6,12 +6,23 @@ import { acquireLock, releaseLock } from './core/lock';
 import { supabase }      from './db/supabase';
 import { runTrial,        JOB_NAME as TRIAL_JOB }   from './jobs/trial';
 import { runDailySummary, JOB_NAME as SUMMARY_JOB }  from './jobs/dailySummary';
+import { runBudget }                                  from './jobs/budget';
+import { runProbeLtv }                                from './jobs/probeLtv';
 
 const app = express();
 
 const JOBS: Record<string, () => Promise<unknown>> = {
   [TRIAL_JOB]:   runTrial,
   [SUMMARY_JOB]: runDailySummary,
+  budget:        runBudget,
+};
+
+// Probe jobs bypass work-window check and lock
+const PROBE_JOBS: Record<string, (params: Record<string, string>) => Promise<unknown>> = {
+  'probe-ltv': (q) => runProbeLtv({
+    funnelId: q.funnel_id ? Number(q.funnel_id) : undefined,
+    limit:    q.limit     ? Number(q.limit)     : undefined,
+  }),
 };
 
 function checkSecret(req: express.Request): boolean {
@@ -55,6 +66,26 @@ async function handleRun(req: express.Request, res: express.Response): Promise<v
 
 app.get('/run/:job',  handleRun);
 app.post('/run/:job', handleRun);
+
+async function handleProbe(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  const jobName = req.params.job;
+  const handler = PROBE_JOBS[jobName];
+  if (!handler) {
+    res.status(404).json({ error: `Unknown probe: ${jobName}` }); return;
+  }
+  res.status(202).json({ status: 'accepted', job: jobName });
+  try {
+    await handler(req.query as Record<string, string>);
+  } catch (e) {
+    console.error(`[probe/${jobName}] FATAL: ${(e as Error).message}`);
+  }
+}
+
+app.get('/probe/:job',  handleProbe);
+app.post('/probe/:job', handleProbe);
 
 // ── Job runner ───────────────────────────────────────────────────────────────
 
