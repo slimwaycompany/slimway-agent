@@ -1,6 +1,11 @@
 import assert from 'assert';
 import { shortName } from './names';
 
+// Returns true when string has no lone (unpaired) surrogates
+function isWellFormed(s: string): boolean {
+  return !/[\uD800-\uDFFF]/.test(s.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ''));
+}
+
 const cases: [Parameters<typeof shortName>, string, string][] = [
   [[{ name: 'инст 07.10' }],                                          'инст',         '"инст 07.10" → первое слово'],
   [[{ name: 'тт заявка 06.10' }],                                     'тт заявка',    '"тт заявка 06.10" → два слова до даты'],
@@ -10,6 +15,10 @@ const cases: [Parameters<typeof shortName>, string, string][] = [
   [[{ id: 100 }],                                                      'Клиент #100',  'нет name/title/client → запасной вариант'],
   [[{ name: 'Жанель' }, { name: 'Жанель', surname: 'Абенова' }],      'Жанель А.',    'клиент с фамилией всегда первый источник'],
   [[{ name: 'Асель' }],                                                'Асель',        'одно слово → без изменений'],
+  // Emoji — surrogate pairs must not be split → result must be well-formed
+  [[{ name: '🌷🌸' }],                                                 '🌷🌸',         'два эмодзи без пробела → одно слово, без изменений'],
+  [[{ name: 'salta 🦋' }],                                             'salta 🦋',     'слово + эмодзи: эмодзи = 1 символ Unicode → не сокращается'],
+  [[{ name: '🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋' }],                   '🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋🦋', '14 эмодзи → одно слово, без изменений'],
 ];
 
 let passed = 0;
@@ -17,13 +26,17 @@ let failed = 0;
 
 for (const [args, expected, desc] of cases) {
   const actual = shortName(...args);
-  if (actual === expected) {
+  const wf     = isWellFormed(actual);
+  if (actual === expected && wf) {
     console.log(`  ✓ ${desc}`);
     passed++;
   } else {
     console.error(`  ✗ ${desc}`);
-    console.error(`    ожидалось: "${expected}"`);
-    console.error(`    получилось: "${actual}"`);
+    if (actual !== expected) {
+      console.error(`    ожидалось:  "${expected}"`);
+      console.error(`    получилось: "${actual}"`);
+    }
+    if (!wf) console.error(`    НЕПАРНЫЙ СУРРОГАТ в результате`);
     failed++;
   }
 }

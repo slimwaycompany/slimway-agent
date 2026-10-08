@@ -18,10 +18,11 @@ function toShortName(raw: string): string {
   // All parts are letters
   if (parts.length === 1) return parts[0];
 
-  // 2+ all-letter parts → «Имя Ф.»; skip abbreviation if second word is 1 char
-  const second = parts[1];
-  if (second.length <= 1) return `${parts[0]} ${second}`;
-  return `${parts[0]} ${second.charAt(0).toUpperCase()}.`;
+  // 2+ all-letter parts → «Имя Ф.»; use Array.from so emoji count as 1 char each
+  const second      = parts[1];
+  const secondChars = Array.from(second);
+  if (secondChars.length <= 1) return `${parts[0]} ${second}`;
+  return `${parts[0]} ${secondChars[0].toUpperCase()}.`;
 }
 
 // True when the value consists only of phone/digit characters — skip as a name source.
