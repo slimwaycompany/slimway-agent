@@ -223,7 +223,9 @@ export async function patchLeadBudget(leadId: number, budget: number): Promise<v
   await rawPatch(`/lead/${leadId}`, { budget });
 }
 
-// Returns till order steps for a client (GET /till/order/step?client_id=X, all pages)
-export async function getClientTillSteps(clientId: number): Promise<Record<string, unknown>[]> {
-  return paginateGet('/till/order/step', { client_id: clientId });
+// Returns till-order-steps for a client or with arbitrary filter params (all pages).
+export async function getTillOrderSteps(
+  params: Record<string, string | number>,
+): Promise<Record<string, unknown>[]> {
+  return paginateGet('/till-order-steps', { page_size: 100, ...params });
 }

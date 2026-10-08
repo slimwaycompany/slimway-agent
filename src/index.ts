@@ -36,9 +36,9 @@ async function handleProbeLtv(req: express.Request, res: express.Response): Prom
     res.status(401).json({ error: 'Unauthorized' }); return;
   }
   try {
-    const limit = req.query.limit ? Number(req.query.limit) : 15;
-    const rows  = await runProbeLtv({ limit });
-    res.json({ ok: true, count: rows.length, rows });
+    const limit  = req.query.limit ? Number(req.query.limit) : 15;
+    const result = await runProbeLtv({ limit });
+    res.json({ ok: true, ...result });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
