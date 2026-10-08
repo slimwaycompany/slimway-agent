@@ -8,6 +8,8 @@ import { runTrial,        JOB_NAME as TRIAL_JOB }   from './jobs/trial';
 import { runDailySummary, JOB_NAME as SUMMARY_JOB }  from './jobs/dailySummary';
 import { runBudget }                                  from './jobs/budget';
 import { runProbeLtv }                                from './jobs/probeLtv';
+import { runProbeContracts }                          from './jobs/probeContracts';
+import { runLifecyclePlan }                           from './jobs/lifecyclePlan';
 
 const app = express();
 
@@ -48,6 +50,40 @@ async function handleProbeLtv(req: express.Request, res: express.Response): Prom
 app.get('/run/probe-ltv',  handleProbeLtv);
 app.post('/run/probe-ltv', handleProbeLtv);
 
+// probe-contracts: synchronous, returns JSON directly
+async function handleProbeContracts(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  try {
+    const result = await runProbeContracts();
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+
+app.get('/run/probe-contracts',  handleProbeContracts);
+app.post('/run/probe-contracts', handleProbeContracts);
+
+// lifecycle-plan: fire-and-forget, 30-min lock, manages its own job_runs entry via runId
+async function handleLifecyclePlan(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+
+  const locked = await acquireLock('lifecycle-plan', 30 * 60);
+  if (!locked) {
+    res.json({ status: 'already_running' }); return;
+  }
+
+  res.status(202).json({ status: 'accepted', job: 'lifecycle-plan' });
+  executeLifecyclePlan(); // fire-and-forget
+}
+
+app.get('/run/lifecycle-plan',  handleLifecyclePlan);
+app.post('/run/lifecycle-plan', handleLifecyclePlan);
+
 async function handleRun(req: express.Request, res: express.Response): Promise<void> {
   if (!checkSecret(req)) {
     res.status(401).json({ error: 'Unauthorized' }); return;
@@ -76,6 +112,24 @@ async function handleRun(req: express.Request, res: express.Response): Promise<v
 
 app.get('/run/:job',  handleRun);
 app.post('/run/:job', handleRun);
+
+// ── Lifecycle-plan runner (separate from JOBS map — uses runId) ──────────────
+
+async function executeLifecyclePlan(): Promise<void> {
+  const started = Date.now();
+  let runId     = 0;
+  try {
+    runId = await startRun('lifecycle-plan');
+    const stats = await runLifecyclePlan(runId);
+    await finishRun(runId, 'ok', Date.now() - started, stats as Record<string, unknown>, null);
+  } catch (e) {
+    const msg = (e as Error).message;
+    console.error(`[lifecycle-plan] FATAL: ${msg}`);
+    if (runId) await finishRun(runId, 'error', Date.now() - started, null, msg);
+  } finally {
+    await releaseLock('lifecycle-plan');
+  }
+}
 
 // ── Job runner ───────────────────────────────────────────────────────────────
 
