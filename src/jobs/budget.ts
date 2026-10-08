@@ -1,122 +1,140 @@
 /**
- * Budget module — sets lead.budget for every active lead in funnels 1,2,3,4.
+ * Budget module — sets lead.budget for active leads in funnels 1,2,3,4.
  *
- * Funnels 1 & 4 (Новые заявки / Реактивация): fixed BUDGET_DEFAULT.
- * Funnels 2 & 3 (Новички / Постоянные):        LTV from Fitbase (purchase_amount or till_steps).
+ * Funnels 1 & 4: BUDGET_DEFAULT — only if budget is currently empty/null/0.
+ *                Never overwrites a manually set value.
+ * Funnels 2 & 3: LTV = client.purchase_amount from GET /client/{id}.
+ *                Skips lead if purchase_amount is absent or zero.
  *
- * Skips leads already at system stages -1 (Успешно реализована) or -2 (Отказ).
- * Skips leads whose budget already matches the computed value (idempotent).
+ * Emits at most 2 aggregate events (one per funnel group), or a single
+ * run_finished if nothing changed.
  */
 
-import { isDry, env }                                         from '../config';
-import { logEvent }                                            from '../core/events';
+import { isDry, env }          from '../config';
+import { logEvent }             from '../core/events';
+import { shortName }            from '../core/names';
 import {
-  paginateGet,
-  patchLeadBudget,
-  getClientPurchases,
-  getClientTillSteps,
-}                                                              from '../http/fitbase';
+  rawGet, unwrapItem, paginateGet, patchLeadBudget,
+}                               from '../http/fitbase';
 
-const BUDGET_FUNNELS      = [1, 2, 3, 4];
-const LTV_FUNNELS         = new Set([2, 3]);
-const SKIP_STAGES         = new Set([-1, -2]);
-const DEPOSIT_ITEM_IDS    = new Set<number>(); // extend if known deposit SKU IDs
+const BUDGET_FUNNELS = [1, 2, 3, 4];
+const LTV_FUNNELS    = new Set([2, 3]);
+const SKIP_STAGES    = new Set([-1, -2]);
 
-function calcLtvTillSteps(steps: Record<string, unknown>[]): number {
-  let sum = 0;
-  for (const s of steps) {
-    const price      = Number(s.price      ?? 0);
-    const priceBonus = Number(s.price_bonus ?? 0);
-    const count      = Number(s.count      ?? 1);
-    const itemId     = Number(s.item_id    ?? 0);
-    const isRefund   = String(s.type || '') === 'refund';
-    if (DEPOSIT_ITEM_IDS.has(itemId)) continue;
-    const amount = (price - priceBonus) * count;
-    sum += isRefund ? -amount : amount;
-  }
-  return sum;
-}
+const FUNNEL_NAME: Record<number, string> = {
+  1: 'Новые заявки', 2: 'Новички', 3: 'Постоянные клиенты', 4: 'Реактивация',
+};
 
-async function computeLtv(clientId: number): Promise<number> {
-  if (env.LTV_SOURCE === 'till_steps') {
-    const steps = await getClientTillSteps(clientId);
-    return Math.max(0, calcLtvTillSteps(steps));
-  }
-  // purchase_amount (default)
-  const purchases = await getClientPurchases(clientId);
-  return purchases.reduce((acc, p) => acc + Number(p.amount ?? 0), 0);
+interface BudgetChange {
+  lead_id:    number;
+  short_name: string;
+  old:        number | null;
+  new:        number;
 }
 
 export async function runBudget(): Promise<void> {
   const dryRun = isDry('budget');
-  await logEvent({ job: 'budget', type: 'run_started', text: `dry=${dryRun}`, dry: dryRun });
 
-  let updated = 0;
-  let skipped = 0;
-  let errors  = 0;
+  const defaultChanges: Record<number, BudgetChange[]> = { 1: [], 4: [] };
+  const ltvChanges: Record<number, BudgetChange[]>     = { 2: [], 3: [] };
+  const ltvErrors: string[] = [];
 
   for (const funnelId of BUDGET_FUNNELS) {
     let leads: Record<string, unknown>[];
     try {
       leads = await paginateGet('/lead', { funnel_id: funnelId, per_page: 100 });
     } catch (e) {
-      await logEvent({ job: 'budget', type: 'error', text: `funnel ${funnelId} fetch failed: ${e}`, dry: dryRun });
-      errors++;
+      ltvErrors.push(`funnel ${funnelId} fetch failed: ${String(e)}`);
       continue;
     }
 
     for (const lead of leads) {
       const leadId  = Number(lead.id);
       const stageId = Number(lead.funnels_step_id ?? 0);
-      if (SKIP_STAGES.has(stageId)) { skipped++; continue; }
+      if (SKIP_STAGES.has(stageId)) continue;
 
-      let budget: number;
+      // Normalize current budget — treat null/undefined/empty-string as null
+      const rawBudget     = lead.budget;
+      const currentBudget = (rawBudget === null || rawBudget === undefined || rawBudget === '')
+        ? null
+        : Number(rawBudget);
+
       if (LTV_FUNNELS.has(funnelId)) {
+        // ── Funnels 2, 3 — LTV via GET /client ─────────────────────────────
         const clientId = Number(lead.client_id ?? 0);
-        if (!clientId) { skipped++; continue; }
+        if (!clientId) continue;
+
+        let client: Record<string, unknown>;
+        let ltv: number;
         try {
-          budget = await computeLtv(clientId);
+          client = unwrapItem(await rawGet(`/client/${clientId}`));
+          const pa = client.purchase_amount;
+          if (pa === null || pa === undefined || pa === '' || Number(pa) === 0) continue;
+          ltv = Number(pa);
         } catch (e) {
-          await logEvent({ job: 'budget', type: 'error', lead_id: leadId, text: `LTV fetch failed: ${e}`, dry: dryRun });
-          errors++;
+          ltvErrors.push(`lead=${leadId} client=${clientId}: ${String(e)}`);
           continue;
         }
-        if (budget === 0) budget = env.BUDGET_DEFAULT;
-      } else {
-        budget = env.BUDGET_DEFAULT;
-      }
 
-      const currentBudget = Number(lead.budget ?? null);
-      if (currentBudget === budget) { skipped++; continue; }
-
-      await logEvent({
-        job:     'budget',
-        type:    'budget_updated',
-        lead_id: leadId,
-        text:    `funnel=${funnelId} budget ${currentBudget}→${budget}`,
-        dry:     dryRun,
-        meta:    { funnel_id: funnelId, from: currentBudget, to: budget },
-      });
-
-      if (!dryRun) {
-        try {
-          await patchLeadBudget(leadId, budget);
-          updated++;
-        } catch (e) {
-          await logEvent({ job: 'budget', type: 'error', lead_id: leadId, text: `PATCH failed: ${e}`, dry: dryRun });
-          errors++;
+        if (currentBudget === ltv) continue;
+        const name = shortName(lead, client);
+        ltvChanges[funnelId].push({ lead_id: leadId, short_name: name, old: currentBudget, new: ltv });
+        if (!dryRun) {
+          try { await patchLeadBudget(leadId, ltv); }
+          catch (e) { ltvErrors.push(`PATCH lead=${leadId}: ${String(e)}`); }
         }
       } else {
-        updated++; // count dry-run updates too
+        // ── Funnels 1, 4 — fixed default, only when budget is empty/zero ───
+        if (currentBudget !== null && currentBudget > 0) continue;
+
+        const budget = env.BUDGET_DEFAULT;
+        const name   = shortName(lead);
+        defaultChanges[funnelId].push({ lead_id: leadId, short_name: name, old: currentBudget, new: budget });
+        if (!dryRun) {
+          try { await patchLeadBudget(leadId, budget); }
+          catch (e) { ltvErrors.push(`PATCH lead=${leadId}: ${String(e)}`); }
+        }
       }
     }
   }
 
-  await logEvent({
-    job:  'budget',
-    type: 'run_finished',
-    text: `updated=${updated} skipped=${skipped} errors=${errors} dry=${dryRun}`,
-    dry:  dryRun,
-    meta: { updated, skipped, errors },
-  });
+  // ── Emit summary events ───────────────────────────────────────────────────
+  const defaultAll = [...defaultChanges[1], ...defaultChanges[4]];
+  const ltvAll     = [...ltvChanges[2], ...ltvChanges[3]];
+
+  if (defaultAll.length === 0 && ltvAll.length === 0 && ltvErrors.length === 0) {
+    await logEvent({ job: 'budget', type: 'run_finished', text: 'Бюджет: изменений нет', dry: dryRun });
+    return;
+  }
+
+  if (defaultAll.length > 0) {
+    const parts = ([1, 4] as const)
+      .filter(id => defaultChanges[id].length > 0)
+      .map(id => `${FUNNEL_NAME[id]}: ${defaultChanges[id].length}`)
+      .join(', ');
+    const verb = dryRun ? '[DRY] Проставил бы' : 'Проставил';
+    await logEvent({
+      job:  'budget',
+      type: 'budget_updated',
+      text: `${verb} бюджет ${env.BUDGET_DEFAULT} в ${defaultAll.length} карточках (${parts})`,
+      dry:  dryRun,
+      meta: { changes: defaultAll },
+    });
+  }
+
+  if (ltvAll.length > 0 || ltvErrors.length > 0) {
+    const parts = ([2, 3] as const)
+      .filter(id => ltvChanges[id].length > 0)
+      .map(id => `${FUNNEL_NAME[id]}: ${ltvChanges[id].length}`)
+      .join(', ');
+    const errPart = ltvErrors.length > 0 ? `, ошибок: ${ltvErrors.length}` : '';
+    const verb = dryRun ? '[DRY] Обновил бы' : 'Обновил';
+    await logEvent({
+      job:  'budget',
+      type: 'budget_updated',
+      text: `${verb} LTV в ${ltvAll.length} карточках${parts ? ` (${parts})` : ''}${errPart}`,
+      dry:  dryRun,
+      meta: { changes: ltvAll, errors: ltvErrors },
+    });
+  }
 }

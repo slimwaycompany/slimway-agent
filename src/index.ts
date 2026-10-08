@@ -17,14 +17,6 @@ const JOBS: Record<string, () => Promise<unknown>> = {
   budget:        runBudget,
 };
 
-// Probe jobs bypass work-window check and lock
-const PROBE_JOBS: Record<string, (params: Record<string, string>) => Promise<unknown>> = {
-  'probe-ltv': (q) => runProbeLtv({
-    funnelId: q.funnel_id ? Number(q.funnel_id) : undefined,
-    limit:    q.limit     ? Number(q.limit)     : undefined,
-  }),
-};
-
 function checkSecret(req: express.Request): boolean {
   return (
     req.headers['x-cron-secret'] === env.CRON_SECRET ||
@@ -37,6 +29,24 @@ function checkSecret(req: express.Request): boolean {
 app.get('/health', (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
+
+// probe-ltv: synchronous, returns JSON directly (bypasses work-window + lock)
+async function handleProbeLtv(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  try {
+    const limit = req.query.limit ? Number(req.query.limit) : 15;
+    const rows  = await runProbeLtv({ limit });
+    res.json({ ok: true, count: rows.length, rows });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+
+// Must be registered before the generic /run/:job route
+app.get('/run/probe-ltv',  handleProbeLtv);
+app.post('/run/probe-ltv', handleProbeLtv);
 
 async function handleRun(req: express.Request, res: express.Response): Promise<void> {
   if (!checkSecret(req)) {
@@ -66,26 +76,6 @@ async function handleRun(req: express.Request, res: express.Response): Promise<v
 
 app.get('/run/:job',  handleRun);
 app.post('/run/:job', handleRun);
-
-async function handleProbe(req: express.Request, res: express.Response): Promise<void> {
-  if (!checkSecret(req)) {
-    res.status(401).json({ error: 'Unauthorized' }); return;
-  }
-  const jobName = req.params.job;
-  const handler = PROBE_JOBS[jobName];
-  if (!handler) {
-    res.status(404).json({ error: `Unknown probe: ${jobName}` }); return;
-  }
-  res.status(202).json({ status: 'accepted', job: jobName });
-  try {
-    await handler(req.query as Record<string, string>);
-  } catch (e) {
-    console.error(`[probe/${jobName}] FATAL: ${(e as Error).message}`);
-  }
-}
-
-app.get('/probe/:job',  handleProbe);
-app.post('/probe/:job', handleProbe);
 
 // ── Job runner ───────────────────────────────────────────────────────────────
 

@@ -223,12 +223,6 @@ export async function patchLeadBudget(leadId: number, budget: number): Promise<v
   await rawPatch(`/lead/${leadId}`, { budget });
 }
 
-// Returns purchases array for a client (GET /client/{id}/purchase_amount)
-export async function getClientPurchases(clientId: number): Promise<Record<string, unknown>[]> {
-  const resp = await rawGet(`/client/${clientId}/purchase_amount`);
-  return ((resp as Record<string, unknown>).items || []) as Record<string, unknown>[];
-}
-
 // Returns till order steps for a client (GET /till/order/step?client_id=X, all pages)
 export async function getClientTillSteps(clientId: number): Promise<Record<string, unknown>[]> {
   return paginateGet('/till/order/step', { client_id: clientId });

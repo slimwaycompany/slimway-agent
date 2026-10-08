@@ -1,9 +1,8 @@
-import { logEvent }                            from '../core/events';
-import { paginateGet, getClientPurchases, getClientTillSteps, unwrapItem, rawGet } from '../http/fitbase';
+import { rawGet, unwrapItem, paginateGet, getClientTillSteps } from '../http/fitbase';
 
 const DEPOSIT_ITEM_IDS = new Set<number>(); // extend if known deposit SKU IDs
 
-function calcLtvTillSteps(steps: Record<string, unknown>[]): number {
+function calcTillSum(steps: Record<string, unknown>[]): number {
   let sum = 0;
   for (const s of steps) {
     const price      = Number(s.price      ?? 0);
@@ -18,62 +17,65 @@ function calcLtvTillSteps(steps: Record<string, unknown>[]): number {
   return sum;
 }
 
-function calcLtvPurchases(purchases: Record<string, unknown>[]): number {
-  return purchases.reduce((acc, p) => acc + Number(p.amount ?? 0), 0);
+export interface ProbeLtvRow {
+  lead_id:         unknown;
+  client_id:       number;
+  funnel_id:       number;
+  name:            string;
+  purchase_amount: number;
+  till_steps_sum:  number;
+  diff:            number;
+  till_steps_n:    number;
+  error?:          string;
 }
 
-export async function runProbeLtv(params: {
-  funnelId?: number;
-  limit?: number;
-}): Promise<void> {
-  const funnelId = params.funnelId ?? 2;
-  const limit    = params.limit    ?? 20;
+export async function runProbeLtv(params: { limit?: number } = {}): Promise<ProbeLtvRow[]> {
+  const limit = params.limit ?? 15;
+  const half  = Math.ceil(limit / 2);
 
-  await logEvent({ job: 'probe-ltv', type: 'run_started', text: `probe funnelId=${funnelId} limit=${limit}`, dry: false });
+  const [f2leads, f3leads] = await Promise.all([
+    paginateGet('/lead', { funnel_id: 2, per_page: 100 }),
+    paginateGet('/lead', { funnel_id: 3, per_page: 100 }),
+  ]);
 
-  const leads = await paginateGet('/lead', { funnel_id: funnelId, per_page: 100 });
-  const sample = leads.slice(0, limit);
+  const sample: Array<{ lead: Record<string, unknown>; funnelId: number }> = [
+    ...f2leads.slice(0, half).map(l => ({ lead: l, funnelId: 2 })),
+    ...f3leads.slice(0, limit - half).map(l => ({ lead: l, funnelId: 3 })),
+  ];
 
-  const rows: Record<string, unknown>[] = [];
-  for (const lead of sample) {
+  const rows: ProbeLtvRow[] = [];
+  for (const { lead, funnelId } of sample) {
     const clientId = Number(lead.client_id ?? 0);
     if (!clientId) continue;
     try {
-      const clientResp = await rawGet(`/client/${clientId}`);
-      const client     = unwrapItem(clientResp);
-      const [purchases, tillSteps] = await Promise.all([
-        getClientPurchases(clientId),
-        getClientTillSteps(clientId),
-      ]);
-      const ltvPurchase = calcLtvPurchases(purchases);
-      const ltvTill     = calcLtvTillSteps(tillSteps);
+      const client         = unwrapItem(await rawGet(`/client/${clientId}`));
+      const purchaseAmount = Number(client.purchase_amount ?? 0);
+      const tillSteps      = await getClientTillSteps(clientId);
+      const tillSum        = calcTillSum(tillSteps);
       rows.push({
-        lead_id:      lead.id,
-        client_id:    clientId,
-        name:         String(client.name ?? ''),
-        ltv_purchase: ltvPurchase,
-        ltv_till:     ltvTill,
-        purchases_n:  purchases.length,
-        till_steps_n: tillSteps.length,
-      });
-      await logEvent({
-        job:     'probe-ltv',
-        type:    'probe',
-        lead_id: Number(lead.id),
-        text:    `ltv_purchase=${ltvPurchase} ltv_till=${ltvTill} purchases_n=${purchases.length} till_n=${tillSteps.length}`,
-        dry:     false,
-        meta:    { ltv_purchase: ltvPurchase, ltv_till: ltvTill },
+        lead_id:         lead.id,
+        client_id:       clientId,
+        funnel_id:       funnelId,
+        name:            String(client.name ?? ''),
+        purchase_amount: purchaseAmount,
+        till_steps_sum:  tillSum,
+        diff:            purchaseAmount - tillSum,
+        till_steps_n:    tillSteps.length,
       });
     } catch (e) {
-      await logEvent({ job: 'probe-ltv', type: 'error', lead_id: Number(lead.id), text: String(e), dry: false });
+      rows.push({
+        lead_id:         lead.id,
+        client_id:       clientId,
+        funnel_id:       funnelId,
+        name:            '',
+        purchase_amount: 0,
+        till_steps_sum:  0,
+        diff:            0,
+        till_steps_n:    0,
+        error:           String(e),
+      });
     }
   }
 
-  await logEvent({
-    job:  'probe-ltv',
-    type: 'run_finished',
-    text: `sampled ${rows.length}/${sample.length} leads in funnel ${funnelId}`,
-    dry:  false,
-    meta: { rows },
-  });
+  return rows;
 }
