@@ -1,5 +1,5 @@
 import { supabase }                           from '../db/supabase';
-import { rawGet, unwrapItem, moveLead, createTask, addClientNote, FitbaseAuthError } from '../http/fitbase';
+import { rawGet, unwrapItem, moveLead, createTask, addClientNote, hasDuplicateTask, FitbaseAuthError } from '../http/fitbase';
 import { logEvent, computeFingerprint }       from '../core/events';
 import { shortName }                          from '../core/names';
 import { alertError, alertAuthError }         from '../core/mail';
@@ -192,9 +192,10 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
     return (ev?.training as Record<string, unknown> | undefined)?.id === TRIAL_TRAINING_ID;
   });
 
-  // Resolve display name from client if lead has none
+  // Fetch client when lead name is absent or phone-only (client name is source #1)
   let clientData: Record<string, unknown> | null = null;
-  if (!lead.name && !lead.title) {
+  const leadNameStr = String(lead.name || '').trim();
+  if (!leadNameStr || !/[а-яёА-ЯЁa-zA-Z]/u.test(leadNameStr)) {
     try { clientData = unwrapItem(await rawGet(`/client/${clientId}`)); } catch { /* silent */ }
   }
   const name = shortName(lead, clientData ?? undefined);
@@ -205,22 +206,34 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
   if (!reg) {
     const taskKey = 'NO_REGISTRATION';
     if (!state.open_task_types.includes(taskKey)) {
-      const desc = `[АГЕНТ] Карточка на этапе «${stageName(stepId)}», но актуальной записи на пробное в расписании нет. Проверить запись клиента.`;
-      if (!dryRun) {
-        try { await createTask({ lead_id: leadId, description: desc, client_id: clientId,
-          available_to: adjustForQuietHours(Math.floor(Date.now() / 1000) + AGENT_TASK_DUE_HOURS * 3600),
-        }, 'NO_REGISTRATION'); } catch { /* silent */ }
-        state.open_task_types.push(taskKey);
-        await saveState(state);
+      const desc = `[АГЕНТ] Карточка на этапе «${stageName(stepId)}» — нет записи на пробное. Проверить запись клиента.`;
+      const dupDesc = await hasDuplicateTask(leadId, 'NO_REGISTRATION');
+      if (dupDesc !== null) {
+        if (!dryRun) { state.open_task_types.push(taskKey); await saveState(state); }
+        await logIfChanged(state, { action: 'SKIP_DUPLICATE_TASK', stage_from: stepId }, async () => {
+          const text = dryRun
+            ? `[DRY] Не поставил бы задачу — уже есть открытая: ${dupDesc.substring(0, 60)}`
+            : `Не создал задачу — уже есть открытая: ${dupDesc.substring(0, 60)}`;
+          await logEvent({ job: JOB_NAME, type: 'skipped_duplicate_task', lead_id: leadId, short_name: name,
+            text, meta: { task_type: taskKey, stage: stepId }, dry: dryRun });
+        });
+      } else {
+        if (!dryRun) {
+          try { await createTask({ lead_id: leadId, description: desc, client_id: clientId,
+            available_to: adjustForQuietHours(Math.floor(Date.now() / 1000) + AGENT_TASK_DUE_HOURS * 3600),
+          }, 'NO_REGISTRATION'); } catch { /* silent */ }
+          state.open_task_types.push(taskKey);
+          await saveState(state);
+        }
+        await logIfChanged(state, { action: dryRun ? 'DRY' : 'TASK_CREATED', stage_from: stepId }, async () => {
+          const text = dryRun
+            ? `[DRY] Поставил бы задачу (Задание): ${name} — нет записи на пробное`
+            : `Поставил задачу (Задание): ${name} — нет записи на пробное`;
+          await logEvent({ job: JOB_NAME, type: 'task_created', lead_id: leadId, short_name: name,
+            text, meta: { task_type: taskKey, stage: stepId }, dry: dryRun });
+          stats.tasks++;
+        });
       }
-      await logIfChanged(state, { action: dryRun ? 'DRY' : 'TASK_CREATED', stage_from: stepId }, async () => {
-        const text = dryRun
-          ? `[DRY] Поставил бы задачу (Задание): ${name} — нет записи на пробное`
-          : `Поставил задачу (Задание): ${name} — нет записи на пробное`;
-        await logEvent({ job: JOB_NAME, type: 'task_created', lead_id: leadId, short_name: name,
-          text, meta: { task_type: taskKey, stage: stepId }, dry: dryRun });
-        stats.tasks++;
-      });
     }
     return;
   }
@@ -234,20 +247,32 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
     if (eventStart < new Date(new Date(state.first_seen_at).getTime() - 24 * 3600 * 1000)) {
       const taskKey = 'NO_REGISTRATION';
       if (!state.open_task_types.includes(taskKey)) {
-        const desc = `[АГЕНТ] Карточка на этапе «${stageName(stepId)}», но актуальной записи на пробное в расписании нет. Проверить запись клиента.`;
-        if (!dryRun) {
-          try { await createTask({ lead_id: leadId, description: desc, client_id: clientId }, 'NO_REGISTRATION'); } catch { /* silent */ }
-          state.open_task_types.push(taskKey);
-          await saveState(state);
+        const desc = `[АГЕНТ] Карточка на этапе «${stageName(stepId)}» — нет записи на пробное. Проверить запись клиента.`;
+        const dupDesc = await hasDuplicateTask(leadId, 'NO_REGISTRATION');
+        if (dupDesc !== null) {
+          if (!dryRun) { state.open_task_types.push(taskKey); await saveState(state); }
+          await logIfChanged(state, { action: 'SKIP_DUPLICATE_TASK', stage_from: stepId, registration_id: regId }, async () => {
+            const text = dryRun
+              ? `[DRY] Не поставил бы задачу — уже есть открытая: ${dupDesc.substring(0, 60)}`
+              : `Не создал задачу — уже есть открытая: ${dupDesc.substring(0, 60)}`;
+            await logEvent({ job: JOB_NAME, type: 'skipped_duplicate_task', lead_id: leadId, short_name: name,
+              text, meta: { task_type: taskKey, stage: stepId }, dry: dryRun });
+          });
+        } else {
+          if (!dryRun) {
+            try { await createTask({ lead_id: leadId, description: desc, client_id: clientId }, 'NO_REGISTRATION'); } catch { /* silent */ }
+            state.open_task_types.push(taskKey);
+            await saveState(state);
+          }
+          await logIfChanged(state, { action: dryRun ? 'DRY' : 'TASK_CREATED', stage_from: stepId, registration_id: regId }, async () => {
+            const text = dryRun
+              ? `[DRY] Поставил бы задачу (Задание): ${name} — старая история`
+              : `Поставил задачу (Задание): ${name} — старая история`;
+            await logEvent({ job: JOB_NAME, type: 'task_created', lead_id: leadId, short_name: name,
+              text, meta: { task_type: taskKey, stage: stepId, detail: 'старая история' }, dry: dryRun });
+            stats.tasks++;
+          });
         }
-        await logIfChanged(state, { action: dryRun ? 'DRY' : 'TASK_CREATED', stage_from: stepId, registration_id: regId }, async () => {
-          const text = dryRun
-            ? `[DRY] Поставил бы задачу (Задание): ${name} — старая история`
-            : `Поставил задачу (Задание): ${name} — старая история`;
-          await logEvent({ job: JOB_NAME, type: 'task_created', lead_id: leadId, short_name: name,
-            text, meta: { task_type: taskKey, stage: stepId, detail: 'старая история' }, dry: dryRun });
-          stats.tasks++;
-        });
       } else {
         await logIfChanged(state, { action: 'SKIP_OLD_HISTORY', stage_from: stepId, registration_id: regId }, async () => {});
       }
@@ -266,21 +291,33 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
     const taskKey = `CANCELLED_${regId}`;
     if (!state.open_task_types.includes(taskKey)) {
       const desc = `[АГЕНТ] Клиент отменил запись на пробное (${evStr}). Связаться и перезаписать.`;
-      if (!dryRun) {
-        try { await createTask({ lead_id: leadId, description: desc, client_id: clientId,
-          available_to: adjustForQuietHours(Math.floor(Date.now() / 1000) + AGENT_TASK_DUE_HOURS * 3600),
-        }, 'CANCELLED'); } catch { /* silent */ }
-        state.open_task_types.push(taskKey);
-        await saveState(state);
+      const dupDesc = await hasDuplicateTask(leadId, 'CANCELLED');
+      if (dupDesc !== null) {
+        if (!dryRun) { state.open_task_types.push(taskKey); await saveState(state); }
+        await logIfChanged(state, { action: 'SKIP_DUPLICATE_TASK', stage_from: stepId, registration_id: regId, reg_status: regSt }, async () => {
+          const text = dryRun
+            ? `[DRY] Не поставил бы задачу — уже есть открытая: ${dupDesc.substring(0, 60)}`
+            : `Не создал задачу — уже есть открытая: ${dupDesc.substring(0, 60)}`;
+          await logEvent({ job: JOB_NAME, type: 'skipped_duplicate_task', lead_id: leadId, short_name: name,
+            text, meta: { task_type: 'CANCELLED', stage: stepId, reg_id: regId }, dry: dryRun });
+        });
+      } else {
+        if (!dryRun) {
+          try { await createTask({ lead_id: leadId, description: desc, client_id: clientId,
+            available_to: adjustForQuietHours(Math.floor(Date.now() / 1000) + AGENT_TASK_DUE_HOURS * 3600),
+          }, 'CANCELLED'); } catch { /* silent */ }
+          state.open_task_types.push(taskKey);
+          await saveState(state);
+        }
+        await logIfChanged(state, { action: dryRun ? 'DRY' : 'TASK_CREATED', stage_from: stepId, registration_id: regId, reg_status: regSt }, async () => {
+          const text = dryRun
+            ? `[DRY] Поставил бы задачу (Звонок): ${name} отменил(а) запись на пробное`
+            : `Поставил задачу (Звонок): ${name} отменил(а) запись на пробное`;
+          await logEvent({ job: JOB_NAME, type: 'task_created', lead_id: leadId, short_name: name,
+            text, meta: { task_type: 'CANCELLED', stage: stepId, reg_id: regId }, dry: dryRun });
+          stats.tasks++;
+        });
       }
-      await logIfChanged(state, { action: dryRun ? 'DRY' : 'TASK_CREATED', stage_from: stepId, registration_id: regId, reg_status: regSt }, async () => {
-        const text = dryRun
-          ? `[DRY] Поставил бы задачу (Звонок): ${name} отменил(а) запись на пробное`
-          : `Поставил задачу (Звонок): ${name} отменил(а) запись на пробное`;
-        await logEvent({ job: JOB_NAME, type: 'task_created', lead_id: leadId, short_name: name,
-          text, meta: { task_type: 'CANCELLED', stage: stepId, reg_id: regId }, dry: dryRun });
-        stats.tasks++;
-      });
     }
     return;
   }
@@ -333,6 +370,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
       const reason  = `Администратор отметил неявку (занятие ${evStr})`;
       const comment = `[АГЕНТ ${fmtFull(now)}] ${stageName(STAGE_BOOKED)} → ${stageName(STAGE_NOSHOW)}. ${reason}.`;
       const taskDesc = `[АГЕНТ] Клиент не пришёл на пробное (${evStr}${evPlace ? ', ' + evPlace : ''}). ${reason}. Узнать причину неявки и перезаписать. Итог отписать в результат задачи.`;
+      const dupTaskDesc = await hasDuplicateTask(leadId, 'NO_SHOW');
       if (!dryRun) {
         const fresh = unwrapItem(await rawGet(`/lead/${leadId}`));
         if ((fresh.funnel_step as Record<string, unknown>)?.id !== STAGE_BOOKED) {
@@ -340,9 +378,20 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         }
         await moveLead(leadId, STAGE_NOSHOW);
         try { await addClientNote(clientId, comment); } catch { /* silent */ }
-        try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+        if (!dupTaskDesc) {
+          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+        }
         await markActed(leadId, regId, eventStart, 'MOVED_NOSHOW');
         await saveState(state);
+      }
+      if (dupTaskDesc) {
+        await logIfChanged(state, { action: 'SKIP_DUPLICATE_TASK', stage_from: stepId, registration_id: regId, reg_status: regSt }, async () => {
+          const text = dryRun
+            ? `[DRY] Не поставил бы задачу NO_SHOW — уже есть открытая: ${dupTaskDesc.substring(0, 60)}`
+            : `Не создал задачу NO_SHOW — уже есть открытая: ${dupTaskDesc.substring(0, 60)}`;
+          await logEvent({ job: JOB_NAME, type: 'skipped_duplicate_task', lead_id: leadId, short_name: name,
+            text, meta: { task_type: 'NO_SHOW', stage: stepId, reg_id: regId }, dry: dryRun });
+        });
       }
       await logIfChanged(state, { action: dryRun ? 'DRY' : 'MOVED', stage_from: stepId, registration_id: regId, event_start: evStr, reg_status: regSt }, async () => {
         const text = dryRun ? `[DRY] Перевёл бы ${name} в «Не пришел» — неявка отмечена` : `Перевёл ${name} в «Не пришел» — неявка отмечена`;
@@ -355,7 +404,14 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
 
     // Confirmed (not yet check-time) → Визит подтвержден
     if (isConfirmed(reg) && !checkReached) {
-      const confirmedAt = reg.updated_at ? new Date(String(reg.updated_at)) : now;
+      // Fitbase updated_at is Unix seconds — multiply by 1000 for JS Date
+      const tsNum = Number(reg.updated_at);
+      const confirmedAt = reg.updated_at && !isNaN(tsNum) ? new Date(tsNum * 1000) : now;
+      if (confirmedAt.getFullYear() < 2020) {
+        await logEvent({ job: JOB_NAME, type: 'error', lead_id: leadId,
+          text: `Дата confirmed_at выглядит неверной: ${confirmedAt.toISOString()} (updated_at=${reg.updated_at})`,
+          meta: { updated_at: String(reg.updated_at) }, dry: dryRun });
+      }
       const comment = `[АГЕНТ ${fmtFull(confirmedAt)}] ${stageName(STAGE_BOOKED)} → ${stageName(STAGE_CONFIRMED)}. Запись подтверждена ${evStr}.`;
       if (!dryRun) {
         const fresh = unwrapItem(await rawGet(`/lead/${leadId}`));
@@ -381,6 +437,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
       const reason  = `Визит не отмечен через ${TRIAL_CHECK_HOURS} ч от начала занятия (${evStr}). Если клиент приходил — отметь визит в расписании и переведи карточку в Дожим`;
       const comment = `[АГЕНТ ${fmtFull(now)}] ${stageName(STAGE_BOOKED)} → ${stageName(STAGE_NOSHOW)}. ${reason}.`;
       const taskDesc = `[АГЕНТ] Клиент не пришёл на пробное (${evStr}${evPlace ? ', ' + evPlace : ''}). ${reason}. Узнать причину неявки и перезаписать. Итог отписать в результат задачи.`;
+      const dupTaskDesc = await hasDuplicateTask(leadId, 'NO_SHOW');
       if (!dryRun) {
         const fresh = unwrapItem(await rawGet(`/lead/${leadId}`));
         if ((fresh.funnel_step as Record<string, unknown>)?.id !== STAGE_BOOKED) {
@@ -388,9 +445,20 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         }
         await moveLead(leadId, STAGE_NOSHOW);
         try { await addClientNote(clientId, comment); } catch { /* silent */ }
-        try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+        if (!dupTaskDesc) {
+          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+        }
         await markActed(leadId, regId, eventStart, 'MOVED_NOSHOW');
         await saveState(state);
+      }
+      if (dupTaskDesc) {
+        await logIfChanged(state, { action: 'SKIP_DUPLICATE_TASK', stage_from: stepId, registration_id: regId, reg_status: regSt }, async () => {
+          const text = dryRun
+            ? `[DRY] Не поставил бы задачу NO_SHOW — уже есть открытая: ${dupTaskDesc.substring(0, 60)}`
+            : `Не создал задачу NO_SHOW — уже есть открытая: ${dupTaskDesc.substring(0, 60)}`;
+          await logEvent({ job: JOB_NAME, type: 'skipped_duplicate_task', lead_id: leadId, short_name: name,
+            text, meta: { task_type: 'NO_SHOW', stage: stepId, reg_id: regId }, dry: dryRun });
+        });
       }
       await logIfChanged(state, { action: dryRun ? 'DRY' : 'MOVED', stage_from: stepId, registration_id: regId, event_start: evStr, reg_status: regSt }, async () => {
         const text = dryRun
@@ -440,6 +508,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
       const reason  = `Администратор отметил неявку (занятие ${evStr})`;
       const comment = `[АГЕНТ ${fmtFull(now)}] ${stageName(STAGE_CONFIRMED)} → ${stageName(STAGE_NOSHOW)}. ${reason}.`;
       const taskDesc = `[АГЕНТ] Клиент не пришёл на пробное (${evStr}${evPlace ? ', ' + evPlace : ''}). ${reason}. Узнать причину неявки и перезаписать. Итог отписать в результат задачи.`;
+      const dupTaskDesc = await hasDuplicateTask(leadId, 'NO_SHOW');
       if (!dryRun) {
         const fresh = unwrapItem(await rawGet(`/lead/${leadId}`));
         if ((fresh.funnel_step as Record<string, unknown>)?.id !== STAGE_CONFIRMED) {
@@ -447,9 +516,20 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         }
         await moveLead(leadId, STAGE_NOSHOW);
         try { await addClientNote(clientId, comment); } catch { /* silent */ }
-        try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+        if (!dupTaskDesc) {
+          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+        }
         await markActed(leadId, regId, eventStart, 'MOVED_NOSHOW');
         await saveState(state);
+      }
+      if (dupTaskDesc) {
+        await logIfChanged(state, { action: 'SKIP_DUPLICATE_TASK', stage_from: stepId, registration_id: regId, reg_status: regSt }, async () => {
+          const text = dryRun
+            ? `[DRY] Не поставил бы задачу NO_SHOW — уже есть открытая: ${dupTaskDesc.substring(0, 60)}`
+            : `Не создал задачу NO_SHOW — уже есть открытая: ${dupTaskDesc.substring(0, 60)}`;
+          await logEvent({ job: JOB_NAME, type: 'skipped_duplicate_task', lead_id: leadId, short_name: name,
+            text, meta: { task_type: 'NO_SHOW', stage: stepId, reg_id: regId }, dry: dryRun });
+        });
       }
       await logIfChanged(state, { action: dryRun ? 'DRY' : 'MOVED', stage_from: stepId, registration_id: regId, event_start: evStr, reg_status: regSt }, async () => {
         const text = dryRun ? `[DRY] Перевёл бы ${name} в «Не пришел» — неявка отмечена` : `Перевёл ${name} в «Не пришел» — неявка отмечена`;
@@ -465,6 +545,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
       const reason  = `Визит не отмечен через ${TRIAL_CHECK_HOURS} ч от начала занятия (${evStr}). Если клиент приходил — отметь визит в расписании и переведи карточку в Дожим`;
       const comment = `[АГЕНТ ${fmtFull(now)}] ${stageName(STAGE_CONFIRMED)} → ${stageName(STAGE_NOSHOW)}. ${reason}.`;
       const taskDesc = `[АГЕНТ] Клиент не пришёл на пробное (${evStr}${evPlace ? ', ' + evPlace : ''}). ${reason}. Узнать причину неявки и перезаписать. Итог отписать в результат задачи.`;
+      const dupTaskDesc = await hasDuplicateTask(leadId, 'NO_SHOW');
       if (!dryRun) {
         const fresh = unwrapItem(await rawGet(`/lead/${leadId}`));
         if ((fresh.funnel_step as Record<string, unknown>)?.id !== STAGE_CONFIRMED) {
@@ -472,9 +553,20 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         }
         await moveLead(leadId, STAGE_NOSHOW);
         try { await addClientNote(clientId, comment); } catch { /* silent */ }
-        try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+        if (!dupTaskDesc) {
+          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+        }
         await markActed(leadId, regId, eventStart, 'MOVED_NOSHOW');
         await saveState(state);
+      }
+      if (dupTaskDesc) {
+        await logIfChanged(state, { action: 'SKIP_DUPLICATE_TASK', stage_from: stepId, registration_id: regId, reg_status: regSt }, async () => {
+          const text = dryRun
+            ? `[DRY] Не поставил бы задачу NO_SHOW — уже есть открытая: ${dupTaskDesc.substring(0, 60)}`
+            : `Не создал задачу NO_SHOW — уже есть открытая: ${dupTaskDesc.substring(0, 60)}`;
+          await logEvent({ job: JOB_NAME, type: 'skipped_duplicate_task', lead_id: leadId, short_name: name,
+            text, meta: { task_type: 'NO_SHOW', stage: stepId, reg_id: regId }, dry: dryRun });
+        });
       }
       await logIfChanged(state, { action: dryRun ? 'DRY' : 'MOVED', stage_from: stepId, registration_id: regId, event_start: evStr, reg_status: regSt }, async () => {
         const text = dryRun

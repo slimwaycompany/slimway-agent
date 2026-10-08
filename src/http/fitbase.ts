@@ -158,6 +158,30 @@ export async function createTask(
   await rawPost('/task', data);
 }
 
+const TASK_DUP_KEYWORDS: Record<TaskType, string> = {
+  NO_SHOW:          'не пришёл',
+  CANCELLED:        'отменил',
+  NO_REGISTRATION:  'нет записи',
+};
+
+// Returns the description of an existing open [АГЕНТ] task of the same type, or null.
+// Used to prevent duplicate task creation when agent restarts with stale in-memory state.
+export async function hasDuplicateTask(leadId: number, type: TaskType): Promise<string | null> {
+  try {
+    const resp = await rawGet(`/task?lead_id=${leadId}`);
+    const tasks = (resp.items || []) as Record<string, unknown>[];
+    const keyword = TASK_DUP_KEYWORDS[type];
+    const found = tasks.find(t => {
+      if (String(t.status || '') !== TASK_STATUS_OPEN) return false;
+      const desc = String(t.description || '');
+      return desc.startsWith('[АГЕНТ]') && desc.includes(keyword);
+    });
+    return found ? String(found.description || '').substring(0, 100) : null;
+  } catch {
+    return null; // on API error don't block task creation
+  }
+}
+
 export async function addClientNote(clientId: number, note: string): Promise<void> {
   await rawPost('/note', {
     client_id:  clientId,

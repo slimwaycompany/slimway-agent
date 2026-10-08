@@ -5,6 +5,7 @@ export type EventType =
   | 'task_created'
   | 'comment_added'
   | 'skipped_no_client'
+  | 'skipped_duplicate_task'
   | 'error'
   | 'run_started'
   | 'run_finished';
