@@ -2,6 +2,7 @@ import { supabase }                        from '../db/supabase';
 import { rawGet, paginateGet, unwrapItem } from '../http/fitbase';
 import { logEvent }                        from '../core/events';
 import { shortName }                       from '../core/names';
+import { lookupVisitsOverride }            from '../config';
 
 const JOB = 'lifecycle-plan';
 
@@ -12,7 +13,7 @@ const SKIP_STEP_IDS = new Set([-1, -2]);
 
 // ── Funnel step name constants ────────────────────────────────────────────────
 
-const STEP_SUCCESS = 'Успешно реализовано';
+const STEP_SUCCESS = 'Успех';
 
 const STEPS_NEWCOMERS = [
   'Неразобранные', 'Купил первый абонемент', 'Выполнен сервис 1', 'Ожидание продления', 'Отстойник',
@@ -105,6 +106,14 @@ function reactTarget(
   return { target_funnel: 4, target_stage: id };
 }
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface ContractEntry {
+  contract:    Record<string, unknown>;
+  visitsTotal: number;
+  visitsLeft:  number;
+}
+
 // ── PlanRow ───────────────────────────────────────────────────────────────────
 
 interface PlanRow {
@@ -190,50 +199,79 @@ async function processLead(
     Number(c.price_full ?? 0) >= MIN_PRICE && !String(c.deleted_at ?? '').trim(),
   );
 
-  const countable = purchases.filter(c => {
-    const v = (c.ticket as Record<string, unknown> | null)?.visits;
-    return v !== null && v !== undefined && Number(v) > 0;
-  });
-
-  if (purchases.length > 0 && countable.length === 0) {
-    return { ...base, action: 'skip', reason: 'UNLIMITED_ONLY' };
-  }
-
-  const work = countable;
-
-  // purchase_days: unique Almaty dates of payment_date (or created_at)
-  const daySet = new Set<string>();
-  for (const c of work) {
-    const d = toAlmatyDate(String(c.payment_date || c.created_at || ''));
-    if (d) daySet.add(d);
-  }
-  const purchaseDays = daySet.size;
-
-  // Active: not closed + visits_left > 0
-  const active = work.filter(c => !c.closed && Number(c.visits_left ?? 0) > 0);
-
-  let visitsTotal: number | null = null;
-  let visitsLeft:  number | null = null;
-  let leftPct:     number | null = null;
-  if (active.length > 0) {
-    let tot = 0, lft = 0;
-    for (const c of active) {
-      tot += Number((c.ticket as Record<string, unknown> | null)?.visits ?? 0);
-      lft += Number(c.visits_left ?? 0);
-    }
-    visitsTotal = tot;
-    visitsLeft  = lft;
-    leftPct     = tot > 0 ? Math.round((lft / tot) * 100) : null;
-  }
-
-  // ── Last visit (status=3) ──────────────────────────────────────────────────
+  // Load schedule registrations here — needed for override visit counting + last_visit_at
   if (!visitCache.has(clientId)) {
     try {
       const resp = await rawGet(`/schedule-registration?client_id=${clientId}`);
       visitCache.set(clientId, (resp.items || []) as Record<string, unknown>[]);
     } catch { visitCache.set(clientId, []); }
   }
-  const regs    = visitCache.get(clientId)!;
+  const regs = visitCache.get(clientId)!;
+
+  // Categorize: countable (visits>0), VISITS_OVERRIDES (visits=null + known name), unlimited (visits=null)
+  const countable: ContractEntry[] = [];
+  let hasUnlimited      = false;
+  let hasVisitsComputed = false;
+
+  for (const c of purchases) {
+    const ticket    = c.ticket as Record<string, unknown> | null;
+    const rawVisits = ticket?.visits;
+    const itemName  = String((ticket?.contract_item as Record<string, unknown> | null)?.name ?? '');
+
+    if (rawVisits !== null && rawVisits !== undefined && Number(rawVisits) > 0) {
+      countable.push({ contract: c, visitsTotal: Number(rawVisits), visitsLeft: Number(c.visits_left ?? 0) });
+    } else if (rawVisits === null) {
+      const override = lookupVisitsOverride(itemName);
+      if (override !== null) {
+        // visits_used = schedule registrations with status=3 linked to this specific contract
+        const contractId = Number(c.id);
+        const used = regs.filter(r => {
+          if (String(r.status) !== '3') return false;
+          const cref = r.contract as Record<string, unknown> | null | undefined;
+          return Number(cref?.id ?? r.contract_id ?? -1) === contractId;
+        }).length;
+        countable.push({ contract: c, visitsTotal: override, visitsLeft: Math.max(0, override - used) });
+        hasVisitsComputed = true;
+      } else {
+        hasUnlimited = true;
+      }
+    }
+    // visits === 0 or undefined: edge case, skip for metrics
+  }
+
+  // All purchases exist but none are countable → show for review (not silent skip)
+  if (purchases.length > 0 && countable.length === 0) {
+    return {
+      ...base,
+      flags: hasUnlimited ? 'UNLIMITED' : null,
+      action: 'review', reason: 'UNLIMITED_ONLY',
+      target_funnel: currentFunnel, target_stage: currentStage,
+    };
+  }
+
+  // purchase_days: unique Almaty dates by created_at (countable contracts only)
+  const daySet = new Set<string>();
+  for (const { contract: c } of countable) {
+    const d = toAlmatyDate(String(c.created_at || ''));
+    if (d) daySet.add(d);
+  }
+  const purchaseDays = daySet.size;
+
+  // Active: closed falsy AND visits_left > 0
+  const active = countable.filter(e => !e.contract.closed && e.visitsLeft > 0);
+
+  let visitsTotal: number | null = null;
+  let visitsLeft:  number | null = null;
+  let leftPct:     number | null = null;
+  if (active.length > 0) {
+    let tot = 0, lft = 0;
+    for (const e of active) { tot += e.visitsTotal; lft += e.visitsLeft; }
+    visitsTotal = tot;
+    visitsLeft  = lft;
+    leftPct     = tot > 0 ? Math.round((lft / tot) * 100) : null;
+  }
+
+  // ── Last visit (status=3) — regs already loaded ────────────────────────────
   const visited = regs.filter(r => String(r.status) === '3');
 
   let lastVisitAt: string | null = null;
@@ -247,15 +285,17 @@ async function processLead(
   }
   const daysSinceVisit = daysSince(lastVisitAt);
 
-  // ── STRANGE_DATES flag ─────────────────────────────────────────────────────
+  // ── Flags ──────────────────────────────────────────────────────────────────
   const flags: string[] = [];
   const today = todayAlmaty();
   const isStrange = (d: string | null) => !!d && (d > today || d < EARLIEST_DATE);
   if (isStrange(lastVisitAt)) flags.push('STRANGE_DATES');
-  for (const c of work) {
-    const d = toAlmatyDate(String(c.payment_date || c.created_at || ''));
+  for (const { contract: c } of countable) {
+    const d = toAlmatyDate(String(c.created_at || ''));
     if (isStrange(d)) { flags.push('STRANGE_DATES'); break; }
   }
+  if (hasUnlimited)      flags.push('UNLIMITED');
+  if (hasVisitsComputed) flags.push('VISITS_COMPUTED');
   const flagStr = () => flags.length > 0 ? [...new Set(flags)].join(',') : null;
 
   const partial: PlanRow = {

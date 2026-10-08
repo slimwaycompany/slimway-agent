@@ -65,3 +65,13 @@ export const REG_STATUS_NOSHOW    = ['4'];
 export function getResponsibleIds(): string[] {
   return env.TASK_RESPONSIBLE_IDS.split(',').map(s => s.trim()).filter(Boolean);
 }
+
+// Contracts where Fitbase has visits=null by mistake; key = normalized name (lower, single space)
+export const VISITS_OVERRIDES: Record<string, number> = {
+  'акция 12+12 — vacu activ + rollshape': 24,
+};
+
+export function lookupVisitsOverride(contractItemName: string): number | null {
+  const key = contractItemName.toLowerCase().replace(/\s+/g, ' ').trim();
+  return VISITS_OVERRIDES[key] ?? null;
+}
