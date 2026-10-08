@@ -1,7 +1,11 @@
 // Truncate at the first part containing a digit (handles dates like «07.10», phone fragments).
 // If all parts are letters: apply «Имя Ф.» for 2+ parts, return single part as-is.
 function toShortName(raw: string): string {
-  const parts = raw.trim().split(/\s+/).filter(Boolean);
+  // First, cut at comma, opening parenthesis, or period (handles "Имя, пояснение", "Имя (уточнение)")
+  const cutIdx = raw.search(/[,.(]/);
+  const base   = (cutIdx !== -1 ? raw.slice(0, cutIdx) : raw).trim();
+
+  const parts = base.split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '';
 
   const digitIdx = parts.findIndex(p => /\d/.test(p));

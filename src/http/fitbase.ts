@@ -205,11 +205,11 @@ export async function paginateGet(
     const resp = await rawGet(`${path}?${qs}`);
     const items = (resp.items || []) as Record<string, unknown>[];
     all.push(...items);
-    const total    = Number(resp.total    ?? 0);
-    const perPage  = Number(resp.per_page ?? (items.length || 1));
-    if (all.length >= total || items.length === 0) break;
+    const total   = Number(resp.total_count ?? resp.total ?? 0);
+    const perPage = Number(resp.page_size   ?? resp.per_page ?? (items.length || 1));
+    if (items.length === 0 || (total > 0 && all.length >= total)) break;
     page++;
-    if (page > Math.ceil(total / perPage) + 1) break; // safety
+    if (page > Math.ceil(total / perPage) + 2) break; // safety
   }
   return all;
 }

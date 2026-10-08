@@ -59,7 +59,7 @@ export async function runBudget(): Promise<void> {
 
   let allLeads: Record<string, unknown>[];
   try {
-    allLeads = await paginateGet('/lead', { per_page: 100 });
+    allLeads = await paginateGet('/lead', { page_size: 500 });
   } catch (e) {
     await logEvent({ job: 'budget', type: 'error', text: `Не удалось получить лиды: ${String(e)}`, dry: dryRun });
     return;
