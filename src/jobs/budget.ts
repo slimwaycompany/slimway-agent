@@ -1,8 +1,8 @@
 /**
  * Budget module — sets lead.budget for active leads in funnels 1,2,3,4.
  *
- * Funnel is read from lead.funnel_step.purchase_funnel.id — NOT from query param.
- * Leads with funnel_step.id = -1/-2 or purchase_funnel = null are skipped.
+ * Funnel resolved via getLeadFunnel(): purchase_funnel.id for normal stages,
+ * UNSORTED_DEFAULT_FUNNEL (1) for system step 0 (new unassigned leads), null for -1/-2.
  *
  * Funnels 1 & 4: BUDGET_DEFAULT — only if budget is currently empty/null/0.
  *                Never overwrites a manually set value.
@@ -16,14 +16,14 @@ import { isDry, env }          from '../config';
 import { logEvent }             from '../core/events';
 import { shortName }            from '../core/names';
 import { alertError }           from '../core/mail';
+import { getLeadFunnel }        from '../core/funnel';
 import {
   rawGet, unwrapItem, paginateGet, patchLeadBudget,
 }                               from '../http/fitbase';
 
-const LTV_FUNNELS    = new Set([2, 3]);
-const DEFAULT_FUNNELS = new Set([1, 4]);
-const BUDGET_FUNNELS  = new Set([1, 2, 3, 4]);
-const SKIP_STAGE_IDS  = new Set([-1, -2]);
+const LTV_FUNNELS     = new Set([2, 3]);
+const DEFAULT_FUNNELS  = new Set([1, 4]);
+const BUDGET_FUNNELS   = new Set([1, 2, 3, 4]);
 
 const FUNNEL_NAME: Record<number, string> = {
   1: 'Новые заявки', 2: 'Новички', 3: 'Постоянные клиенты', 4: 'Реактивация',
@@ -34,15 +34,6 @@ interface BudgetChange {
   short_name: string;
   old:        number | null;
   new:        number;
-}
-
-function getFunnelId(lead: Record<string, unknown>): number | null {
-  const step = lead.funnel_step as Record<string, unknown> | undefined;
-  if (!step) return null;
-  const pf = step.purchase_funnel as Record<string, unknown> | null | undefined;
-  if (!pf) return null;
-  const id = Number(pf.id ?? 0);
-  return id || null;
 }
 
 function getStepId(lead: Record<string, unknown>): number {
@@ -57,6 +48,7 @@ export async function runBudget(): Promise<Record<string, unknown>> {
   const ltvChanges: Record<number, BudgetChange[]>     = { 2: [], 3: [] };
   const ltvErrors: string[] = [];
   const funnelCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  let funnel1Unsorted = 0;
 
   let allLeads: Record<string, unknown>[];
   try {
@@ -69,13 +61,15 @@ export async function runBudget(): Promise<Record<string, unknown>> {
   }
 
   for (const lead of allLeads) {
-    const stepId   = getStepId(lead);
-    const funnelId = getFunnelId(lead);
+    if (String(lead.title || '').startsWith('ТЕСТ')) continue;
 
-    if (SKIP_STAGE_IDS.has(stepId)) continue;
+    const stepId   = getStepId(lead);
+    const funnelId = getLeadFunnel(lead);
+
     if (!funnelId || !BUDGET_FUNNELS.has(funnelId)) continue;
 
     funnelCounts[funnelId] = (funnelCounts[funnelId] || 0) + 1;
+    if (funnelId === 1 && stepId === 0) funnel1Unsorted++;
 
     const leadId    = Number(lead.id);
     const rawBudget = lead.budget;
@@ -135,9 +129,10 @@ export async function runBudget(): Promise<Record<string, unknown>> {
     .join(', ');
 
   const stats: Record<string, unknown> = {
-    total_leads:     allLeads.length,
-    funnel_counts:   funnelCounts,
-    default_updated: defaultAll.length,
+    total_leads:      allLeads.length,
+    funnel_counts:    funnelCounts,
+    funnel1_unsorted: funnel1Unsorted,
+    default_updated:  defaultAll.length,
     ltv_updated:     ltvAll.length,
     errors:          ltvErrors.length,
     dry:             dryRun,

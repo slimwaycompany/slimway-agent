@@ -9,6 +9,7 @@ import { runDailySummary, JOB_NAME as SUMMARY_JOB }  from './jobs/dailySummary';
 import { runBudget }                                  from './jobs/budget';
 import { runProbeLtv }                                from './jobs/probeLtv';
 import { runProbeContracts }                          from './jobs/probeContracts';
+import { runProbeUnsorted }                           from './jobs/probeUnsorted';
 import { runLifecyclePlan }                           from './jobs/lifecyclePlan';
 
 const app = express();
@@ -65,6 +66,22 @@ async function handleProbeContracts(req: express.Request, res: express.Response)
 
 app.get('/run/probe-contracts',  handleProbeContracts);
 app.post('/run/probe-contracts', handleProbeContracts);
+
+// probe-unsorted: synchronous, returns JSON directly
+async function handleProbeUnsorted(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  try {
+    const result = await runProbeUnsorted();
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+
+app.get('/run/probe-unsorted',  handleProbeUnsorted);
+app.post('/run/probe-unsorted', handleProbeUnsorted);
 
 // lifecycle-plan: fire-and-forget, 30-min lock, manages its own job_runs entry via runId
 async function handleLifecyclePlan(req: express.Request, res: express.Response): Promise<void> {

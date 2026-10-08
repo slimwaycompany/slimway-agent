@@ -3,28 +3,28 @@ import { rawGet, paginateGet, unwrapItem } from '../http/fitbase';
 import { logEvent }                        from '../core/events';
 import { shortName }                       from '../core/names';
 import { lookupVisitsOverride }            from '../config';
+import { getLeadFunnel }                   from '../core/funnel';
 
 const JOB = 'lifecycle-plan';
 
-const ALMATY_MS    = 5 * 3600 * 1000; // UTC+5, no DST
-const MIN_PRICE    = 40000;
+const ALMATY_MS     = 5 * 3600 * 1000; // UTC+5, no DST
+const MIN_PRICE     = 40000;
 const EARLIEST_DATE = '2026-06-01';
-const SKIP_STEP_IDS = new Set([-1, -2]);
 
 // ── Funnel step name constants ────────────────────────────────────────────────
 
 const STEP_SUCCESS = 'Успех';
 
 const STEPS_NEWCOMERS = [
-  'Неразобранные', 'Купил первый абонемент', 'Выполнен сервис 1', 'Ожидание продления', 'Отстойник',
+  'Купил первый абонемент', 'Выполнен сервис 1', 'Ожидание продления', 'Отстойник',
 ] as const;
 
 const STEPS_REGULAR = [
-  'Неразобранные', 'Только купил абонемент', 'Выполнен сервис 2', 'Ожидание продления', 'Отстойник',
+  'Только купил абонемент', 'Выполнен сервис 2', 'Ожидание продления', 'Отстойник',
 ] as const;
 
 const STEPS_REACTIVATION = [
-  'Неразобранные', 'До 30 дней', 'От 31д до 90д', 'От 91д до 180д', 'От 181д до года', 'Вечность',
+  'До 30 дней', 'От 31д до 90д', 'От 91д до 180д', 'От 181д до года', 'Вечность',
 ] as const;
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -48,13 +48,6 @@ function daysSince(dateStr: string | null | undefined): number | null {
 
 // ── Lead field helpers ────────────────────────────────────────────────────────
 
-function getFunnelId(lead: Record<string, unknown>): number | null {
-  const step = lead.funnel_step as Record<string, unknown> | undefined;
-  const pf   = step?.purchase_funnel as Record<string, unknown> | null | undefined;
-  const id   = Number(pf?.id ?? 0);
-  return id > 0 ? id : null;
-}
-
 function getStepId(lead: Record<string, unknown>): number {
   const step = lead.funnel_step as Record<string, unknown> | undefined;
   return Number(step?.id ?? 0);
@@ -69,22 +62,31 @@ function getManager(lead: Record<string, unknown>): string | null {
 
 // ── Funnel step loader ────────────────────────────────────────────────────────
 
-async function loadSteps(funnelId: number): Promise<Record<string, number>> {
-  const items  = await paginateGet('/purchase-funnel-step', { funnel_id: funnelId, page_size: 100 });
-  const result: Record<string, number> = {};
+interface FunnelData {
+  byName:   Record<string, number>;
+  archived: Set<number>;
+}
+
+async function loadSteps(funnelId: number): Promise<FunnelData> {
+  const items   = await paginateGet('/purchase-funnel-step', { funnel_id: funnelId, page_size: 100 });
+  const byName: Record<string, number> = {};
+  const archived = new Set<number>();
   for (const item of items) {
     const name = String(item.name || '');
     const id   = Number(item.id);
-    if (name && id) result[name] = id;
+    if (name && id) {
+      byName[name] = id;
+      if (item.archived || item.is_archived) archived.add(id);
+    }
   }
-  return result;
+  return { byName, archived };
 }
 
-function requireSteps(funnelId: number, steps: Record<string, number>, names: readonly string[]): void {
-  const missing = names.filter(n => !(n in steps));
+function requireSteps(funnelId: number, byName: Record<string, number>, names: readonly string[]): void {
+  const missing = names.filter(n => !(n in byName));
   if (missing.length) {
     throw new Error(
-      `[${JOB}] Funnel ${funnelId}: steps not found: ${missing.join(', ')}. Found: ${Object.keys(steps).join(', ')}`,
+      `[${JOB}] Funnel ${funnelId}: steps not found: ${missing.join(', ')}. Found: ${Object.keys(byName).join(', ')}`,
     );
   }
 }
@@ -142,17 +144,19 @@ interface PlanRow {
 // ── Core: classify one lead ───────────────────────────────────────────────────
 
 async function processLead(
-  lead:          Record<string, unknown>,
-  runId:         number,
-  funnelSteps:   Record<number, Record<string, number>>,
-  clientCache:   Map<number, Record<string, unknown>>,
-  contractCache: Map<number, Record<string, unknown>[]>,
-  visitCache:    Map<number, Record<string, unknown>[]>,
+  lead:            Record<string, unknown>,
+  runId:           number,
+  funnelSteps:     Record<number, Record<string, number>>,
+  clientCache:     Map<number, Record<string, unknown>>,
+  contractCache:   Map<number, Record<string, unknown>[]>,
+  visitCache:      Map<number, Record<string, unknown>[]>,
+  archivedStepIds: Set<number>,
 ): Promise<PlanRow> {
   const leadId        = Number(lead.id);
   const clientId      = Number(lead.client_id ?? 0) || null;
-  const currentFunnel = getFunnelId(lead);
-  const currentStage  = getStepId(lead) || null;
+  const rawStepId     = getStepId(lead);
+  const currentFunnel = getLeadFunnel(lead);
+  const currentStage  = rawStepId || null;
   const manager       = getManager(lead);
 
   let client: Record<string, unknown> | null = null;
@@ -181,6 +185,11 @@ async function processLead(
     last_visit_at: null, days_since_last_visit: null,
     task_planned: null, flags: null,
   };
+
+  // Unsorted (step 0) in funnels 2/3/4 — agent does not touch these
+  if (rawStepId === 0 && currentFunnel !== 1) return { ...base, action: 'skip', reason: 'UNSORTED_IGNORED' };
+  // Archived stage — skip silently
+  if (currentStage !== null && archivedStepIds.has(currentStage)) return { ...base, action: 'skip', reason: 'ARCHIVED_STAGE' };
 
   if (!clientId)              return { ...base, action: 'skip', reason: 'NO_CLIENT' };
   if (!client)                return { ...base, action: 'skip', reason: 'CLIENT_FETCH_ERROR' };
@@ -373,25 +382,30 @@ export async function runLifecyclePlan(runId: number): Promise<Record<string, un
   console.log(`[${JOB}] runId=${runId} — loading funnel steps...`);
 
   // 1. Load and validate all funnel steps
-  const [steps1, steps2, steps3, steps4] = await Promise.all([
+  const [fd1, fd2, fd3, fd4] = await Promise.all([
     loadSteps(1), loadSteps(2), loadSteps(3), loadSteps(4),
   ]);
-  requireSteps(1, steps1, [STEP_SUCCESS]);
-  requireSteps(2, steps2, STEPS_NEWCOMERS);
-  requireSteps(3, steps3, STEPS_REGULAR);
-  requireSteps(4, steps4, STEPS_REACTIVATION);
+  requireSteps(1, fd1.byName, [STEP_SUCCESS]);
+  requireSteps(2, fd2.byName, STEPS_NEWCOMERS);
+  requireSteps(3, fd3.byName, STEPS_REGULAR);
+  requireSteps(4, fd4.byName, STEPS_REACTIVATION);
 
-  const funnelSteps: Record<number, Record<string, number>> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4 };
-  const successStepId = steps1[STEP_SUCCESS];
+  const funnelSteps: Record<number, Record<string, number>> = {
+    1: fd1.byName, 2: fd2.byName, 3: fd3.byName, 4: fd4.byName,
+  };
+  const archivedStepIds = new Set<number>([
+    ...fd1.archived, ...fd2.archived, ...fd3.archived, ...fd4.archived,
+  ]);
+  const successStepId = fd1.byName[STEP_SUCCESS];
   console.log(`[${JOB}] steps loaded. successStepId=${successStepId}`);
 
   // 2. Fetch all leads, keep only target ones
   const allLeads = await paginateGet('/lead', { page_size: 100 }, JOB);
   const leads    = allLeads.filter(l => {
-    const fi = getFunnelId(l);
-    const si = getStepId(l);
-    if (!fi || SKIP_STEP_IDS.has(si)) return false;
-    if (fi === 1) return si === successStepId;
+    if (String(l.title || '').startsWith('ТЕСТ')) return false;
+    const fi = getLeadFunnel(l);
+    if (!fi) return false; // null = terminal (-1/-2) or unsupported
+    if (fi === 1) return getStepId(l) === successStepId;
     return fi === 2 || fi === 3 || fi === 4;
   });
   console.log(`[${JOB}] ${leads.length} leads to process (total fetched: ${allLeads.length})`);
@@ -405,7 +419,7 @@ export async function runLifecyclePlan(runId: number): Promise<Record<string, un
   for (let i = 0; i < leads.length; i++) {
     const lead = leads[i];
     try {
-      const row = await processLead(lead, runId, funnelSteps, clientCache, contractCache, visitCache);
+      const row = await processLead(lead, runId, funnelSteps, clientCache, contractCache, visitCache, archivedStepIds);
       rows.push(row);
     } catch (e) {
       const msg = String(e).substring(0, 150);
@@ -414,7 +428,7 @@ export async function runLifecyclePlan(runId: number): Promise<Record<string, un
         run_id: runId, lead_id: Number(lead.id),
         client_id: Number(lead.client_id ?? 0) || null,
         short_name: String(lead.name || lead.id || ''), manager: null,
-        current_funnel: getFunnelId(lead), current_stage: getStepId(lead) || null,
+        current_funnel: getLeadFunnel(lead), current_stage: getStepId(lead) || null,
         target_funnel: null, target_stage: null,
         action: 'skip', reason: `ERROR: ${msg}`,
         purchase_days: null, active_count: null,
