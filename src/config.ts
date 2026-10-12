@@ -22,7 +22,11 @@ const envSchema = z.object({
   WINDOW_PASSWORD: z.string().default(''),
   WINDOW_SECRET:   z.string().optional(),
   WATCH_REG_SCOPE: z.enum(['all', 'trial']).default('all'),
-  WATCH_RULES:     z.string().default('NEW_LEAD,NO_SHOW,CONTRACT_ENDING,CONTRACT_ENDED'),
+  WATCH_RULES:                    z.string().default('NEW_LEAD,NO_SHOW,CONTRACT_ENDING,CONTRACT_ENDED'),
+  WATCH_NO_SHOW_EXCLUDE_TRAININGS: z.string().default('Аренда'),
+  WATCH_EXCLUDE_CLIENT_IDS:        z.string().default('294'),
+  CONTRACT_ENDED_DAYS:             z.coerce.number().default(14),
+  WATCH_MAX_NEW_PER_RULE:          z.coerce.number().default(20),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -38,6 +42,12 @@ export const env = parsed.data;
 
 export const WATCH_RULES = new Set(
   env.WATCH_RULES.split(',').map(s => s.trim()).filter(Boolean),
+);
+export const WATCH_NO_SHOW_EXCLUDE = new Set(
+  env.WATCH_NO_SHOW_EXCLUDE_TRAININGS.split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+);
+export const WATCH_EXCLUDE_CLIENT_IDS_SET = new Set(
+  env.WATCH_EXCLUDE_CLIENT_IDS.split(',').map(s => Number(s.trim())).filter(n => n > 0),
 );
 
 type Module = 'trial' | 'budget';
