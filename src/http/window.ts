@@ -473,13 +473,19 @@ export function mountWindowRoutes(app: express.Application): void {
       if (e1) throw e1;
 
       // Closed alerts: acked or resolved in last 24h
-      const { data: closed, error: e4 } = await supabase
+      const { data: closedRaw, error: e4 } = await supabase
         .from('watch_alerts')
         .select('id, rule, level, short_name, title, acked_at, resolved_at, meta, created_at')
         .or(`resolved_at.gt.${cutoff24h},acked_at.gt.${cutoff24h}`)
         .order('created_at', { ascending: false })
         .limit(50);
       if (e4) throw e4;
+      // Sort by close time (acked_at if user acked, else resolved_at), newest first
+      const closed = (closedRaw ?? []).sort((a, b) => {
+        const ta = new Date(a.acked_at || a.resolved_at || a.created_at).getTime();
+        const tb = new Date(b.acked_at || b.resolved_at || b.created_at).getTime();
+        return tb - ta;
+      });
 
       // New alerts for notifications (include body)
       const { data: newAlerts, error: e2 } = sinceId > 0
@@ -522,7 +528,7 @@ export function mountWindowRoutes(app: express.Application): void {
 
       res.json({
         alerts:        alerts ?? [],
-        closed:        closed ?? [],
+        closed:        closed,
         new_alerts:    newAlerts ?? [],
         feed,
         server_time:   new Date().toISOString(),

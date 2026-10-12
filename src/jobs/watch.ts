@@ -43,14 +43,15 @@ interface Task {
 }
 
 interface DbAlert {
-  id:          number;
-  alert_key:   string;
-  rule:        string;
-  lead_id:     number | null;
-  client_id:   number | null;
-  created_at:  string;
-  acked_at:    string | null;
-  body:        string;
+  id:              number;
+  alert_key:       string;
+  rule:            string;
+  lead_id:         number | null;
+  client_id:       number | null;
+  registration_id: number | null;
+  created_at:      string;
+  acked_at:        string | null;
+  body:            string;
 }
 
 interface AlertRow {
@@ -278,7 +279,7 @@ function pluralVisits(n: number): string {
 async function loadOpenAlerts(): Promise<DbAlert[]> {
   const { data, error } = await supabase
     .from('watch_alerts')
-    .select('id, alert_key, rule, lead_id, client_id, created_at, acked_at, body')
+    .select('id, alert_key, rule, lead_id, client_id, registration_id, created_at, acked_at, body')
     .is('resolved_at', null);
   if (error) console.error('[watch] loadOpenAlerts:', error.message);
   return (data ?? []) as DbAlert[];
@@ -734,6 +735,55 @@ async function processContractRules(
   }
 }
 
+// ── Resolve reason inference ──────────────────────────────────────────────────
+// Called only for the !activeKeys.has(key) case (condition cleared).
+
+function inferResolveReason(
+  alert:       DbAlert,
+  nowMs:       number,
+  regByRegId:  Map<number, Record<string, unknown>>,
+  leadById:    Map<number, Record<string, unknown>>,
+  tasksByLead: Map<number, Task[]>,
+  nowSec:      number,
+): string {
+  const { rule, registration_id, lead_id } = alert;
+
+  if (registration_id) {
+    const reg    = regByRegId.get(registration_id);
+    const status = String(reg?.status ?? '');
+    if (rule === 'UNCONFIRMED_3H') {
+      if (!reg || getRegStartMs(reg) <= nowMs) return 'Занятие началось';
+      return ['1', '3'].includes(status) ? 'Запись подтверждена' : 'Неактуально';
+    }
+    if (rule === 'NO_SHOW_UNCONFIRMED' || rule === 'NO_SHOW_NO_MARK') {
+      if (status === '3') return 'Визит отмечен';
+      if (status === '4') return 'Отмечена неявка';
+      if (status === '1') return 'Запись подтверждена';
+    }
+    if (rule === 'NO_SHOW_MARKED' && status === '3') return 'Визит отмечен';
+    return 'Неактуально';
+  }
+
+  if (rule === 'CONTRACT_ENDING' || rule === 'CONTRACT_ENDED') return 'Куплен абонемент';
+
+  if (lead_id) {
+    if (rule === 'NEW_LEAD' || rule === 'NEW_LEAD_NO_TASK' || rule === 'NO_TASK') {
+      if (analyzeLeadTasks(tasksByLead.get(lead_id) ?? [], nowSec).openTasks.length > 0)
+        return 'Задача поставлена';
+    }
+    if (rule === 'TASK_OVERDUE' || rule === 'TASK_TOO_FAR' || rule === 'CARD_FREE')
+      return 'Задача поставлена';
+    const lead     = leadById.get(lead_id);
+    if (!lead) return 'Карточка закрыта';
+    const step     = lead.funnel_step as Record<string, unknown> | undefined;
+    const stepName = String(step?.name || '');
+    if (stepName) return `Карточка переведена в «${stepName}»`;
+    return 'Карточка закрыта';
+  }
+
+  return 'Неактуально';
+}
+
 // ── Main entry point ──────────────────────────────────────────────────────────
 
 export async function runWatch(): Promise<Record<string, unknown>> {
@@ -894,40 +944,64 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   }
 
   // 10. Resolve stale alerts
-  const toResolve: string[] = [];
+  const regByRegId = new Map(allRegs.map(r => [Number(r.id), r]));
+  const leadById   = new Map(rawLeads.map(l => [Number(l.id), l]));
+  const toResolve: Array<{ key: string; reason: string }> = [];
+
   for (const [key, alert] of openByKey) {
     const ageMs = nowMs - new Date(alert.created_at).getTime();
     const rule  = alert.rule as string;
 
-    if (rule !== 'SYSTEM' && !WATCH_RULES.has(rule)) { toResolve.push(key); continue; }
-
-    if (rule === 'PURCHASE'  && ageMs > PURCHASE_TTL_MS)  { toResolve.push(key); continue; }
-    if (rule === 'CANCELLED' && ageMs > CANCELLED_TTL_MS) { toResolve.push(key); continue; }
-
+    if (rule !== 'SYSTEM' && !WATCH_RULES.has(rule)) { toResolve.push({ key, reason: 'Неактуально' }); continue; }
+    if (rule === 'PURCHASE'  && ageMs > PURCHASE_TTL_MS)  { toResolve.push({ key, reason: 'Неактуально' }); continue; }
+    if (rule === 'CANCELLED' && ageMs > CANCELLED_TTL_MS) { toResolve.push({ key, reason: 'Неактуально' }); continue; }
     if (rule === 'BRIEF') {
       const h = new Date(nowMs + ALMATY_MS).getUTCHours();
-      if (h >= 23) { toResolve.push(key); continue; }
+      if (h >= 23) { toResolve.push({ key, reason: 'Неактуально' }); continue; }
     }
-
     if (rule === 'NO_SHOW_MARKED' && alert.acked_at) {
-      if (nowMs - new Date(alert.acked_at).getTime() > 24 * 3600_000) { toResolve.push(key); continue; }
+      if (nowMs - new Date(alert.acked_at).getTime() > 24 * 3600_000) { toResolve.push({ key, reason: 'Неактуально' }); continue; }
     }
-
-    if (!activeKeys.has(key)) toResolve.push(key);
+    if (!activeKeys.has(key)) {
+      toResolve.push({ key, reason: inferResolveReason(alert, nowMs, regByRegId, leadById, tasksByLead, nowSec) });
+    }
   }
 
-  const uniqueToResolve = [...new Set(toResolve)];
+  const seen = new Set<string>();
+  const uniqueToResolve = toResolve.filter(({ key }) => !seen.has(key) && !!seen.add(key));
+
   if (uniqueToResolve.length > 0) {
-    const { error } = await supabase
-      .from('watch_alerts')
-      .update({ resolved_at: nowIso })
-      .in('alert_key', uniqueToResolve)
-      .is('resolved_at', null);
-    if (error) console.error('[watch] resolve error:', error.message);
+    // Alerts already acked keep their meta (reason = 'Принято вручную'); others get reason set.
+    const ackedKeys: string[] = [];
+    const byReason = new Map<string, string[]>();
+    for (const { key, reason } of uniqueToResolve) {
+      if (openByKey.get(key)?.acked_at) {
+        ackedKeys.push(key);
+      } else {
+        if (!byReason.has(reason)) byReason.set(reason, []);
+        byReason.get(reason)!.push(key);
+      }
+    }
+    if (ackedKeys.length > 0) {
+      const { error } = await supabase
+        .from('watch_alerts')
+        .update({ resolved_at: nowIso })
+        .in('alert_key', ackedKeys)
+        .is('resolved_at', null);
+      if (error) console.error('[watch] resolve error (acked):', error.message);
+    }
+    for (const [reason, keys] of byReason) {
+      const { error } = await supabase
+        .from('watch_alerts')
+        .update({ resolved_at: nowIso, meta: { resolve_reason: reason } })
+        .in('alert_key', keys)
+        .is('resolved_at', null);
+      if (error) console.error('[watch] resolve error:', error.message);
+    }
   }
 
   // 10a. Update body of existing alerts where an agent task appeared after alert was created
-  const resolveSet    = new Set(uniqueToResolve);
+  const resolveSet    = new Set(uniqueToResolve.map(r => r.key));
   const toUpdateBody: { id: number; body: string }[] = [];
   for (const [key, alert] of openByKey) {
     if (resolveSet.has(key)) continue;
@@ -954,7 +1028,7 @@ export async function runWatch(): Promise<Record<string, unknown>> {
     ruleStats[row.rule].found++;
     if (!openByKey.has(row.alert_key)) ruleStats[row.rule].created++;
   }
-  for (const key of uniqueToResolve) {
+  for (const { key } of uniqueToResolve) {
     const a = openByKey.get(key);
     if (a && a.rule !== 'SYSTEM') {
       if (!ruleStats[a.rule]) ruleStats[a.rule] = { found: 0, created: 0, closed: 0 };
