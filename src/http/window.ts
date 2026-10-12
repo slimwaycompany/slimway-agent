@@ -300,8 +300,7 @@ a{color:inherit}
     }
     list.innerHTML = sorted.map(a => {
       const cls    = a.level + (a.acked_at ? ' acked' : '');
-      const hint   = a.action_hint ? '→ ' + a.action_hint : '';
-      const detail = [a.body, hint].filter(Boolean).join(' · ');
+      const detail = a.body || '';
       return \`<div class="alert-card \${cls}" data-id="\${a.id}">
         <div class="alert-top">
           <div class="alert-title">\${esc(a.title)}</div>
@@ -351,7 +350,7 @@ a{color:inherit}
         since_id = Math.max(since_id, a.id);
         if (['urgent','important'].includes(a.level)){
           if (notifGranted){
-            new Notification(a.title, {body: (a.short_name||'') + (a.action_hint ? ' — '+a.action_hint : '')});
+            new Notification(a.title, {body: String(a.body||'').substring(0, 120)});
           }
           if (a.level === 'urgent') playBeep();
         }

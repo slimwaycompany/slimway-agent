@@ -3,9 +3,11 @@ import { paginateGet, rawGet }  from '../http/fitbase';
 import { shortName }            from '../core/names';
 import { getLeadFunnel }        from '../core/funnel';
 import { alertError }           from '../core/mail';
+import { getTitle, pickBody, appendAgentTask, hasAgentTaskNote } from '../core/alertTexts';
 import {
   env,
   TRIAL_TRAINING_ID,
+  TASK_CATEGORY_CALL_ID,
   WATCH_RULES,
   WATCH_NO_SHOW_EXCLUDE,
   WATCH_EXCLUDE_CLIENT_IDS_SET,
@@ -36,14 +38,19 @@ interface Task {
   available_to: number;
   lead_id?:     number;
   client_id?:   number;
+  description?: string;
+  category_id?: number;
 }
 
 interface DbAlert {
-  id:         number;
-  alert_key:  string;
-  rule:       string;
-  created_at: string;
-  acked_at:   string | null;
+  id:          number;
+  alert_key:   string;
+  rule:        string;
+  lead_id:     number | null;
+  client_id:   number | null;
+  created_at:  string;
+  acked_at:    string | null;
+  body:        string;
 }
 
 interface AlertRow {
@@ -187,6 +194,8 @@ function groupTasksByLead(tasks: Record<string, unknown>[]): Map<number, Task[]>
       available_to: Number(t.available_to ?? 0),
       lead_id:      lid,
       client_id:    Number(t.client_id ?? 0) || undefined,
+      description:  String(t.description || ''),
+      category_id:  Number(t.category_id  ?? 0) || undefined,
     });
   }
   return map;
@@ -269,7 +278,7 @@ function pluralVisits(n: number): string {
 async function loadOpenAlerts(): Promise<DbAlert[]> {
   const { data, error } = await supabase
     .from('watch_alerts')
-    .select('id, alert_key, rule, created_at, acked_at')
+    .select('id, alert_key, rule, lead_id, client_id, created_at, acked_at, body')
     .is('resolved_at', null);
   if (error) console.error('[watch] loadOpenAlerts:', error.message);
   return (data ?? []) as DbAlert[];
@@ -341,37 +350,32 @@ function processLeadRules(
   if (isEnabled('NEW_LEAD') && created > 0) {
     const ageMs = nowMs - created;
     if (ageMs < NEW_LEAD_GRACE_MS && ta.openTasks.length === 0) {
-      const source     = getSource(lead);
-      const stepObj    = lead.funnel_step as Record<string, unknown> | undefined;
-      const stage      = String(stepObj?.name || '').trim();
-      const infoParts  = [
-        source && `источник: ${source}`,
-        stage  && `этап: ${stage}`,
-      ].filter(Boolean) as string[];
-      const key = `NEW_LEAD:lead:${leadId}`;
+      const source = getSource(lead);
+      const key    = `NEW_LEAD:lead:${leadId}`;
       activeKeys.add(key);
       toUpsert.push({
         alert_key: key, rule: 'NEW_LEAD', level: 'urgent',
         lead_id: leadId, client_id: clientId, registration_id: null,
         manager_name: manager, short_name: sname,
-        title: 'Новая заявка',
-        body: infoParts.length ? `${sname}, ${infoParts.join(', ')}` : sname,
-        action_hint: 'Возьми в работу',
+        title: getTitle('NEW_LEAD'),
+        body: pickBody('NEW_LEAD', key, { name: sname, source: source || 'неизвестен' }),
+        action_hint: null,
         link: null, meta: null,
       });
     }
   }
 
   if (isEnabled('NEW_LEAD_NO_TASK') && created > 0 && nowMs - created > NEW_LEAD_TASK_MIN && ta.futureWithin7d.length === 0) {
-    const key = `NEW_LEAD_NO_TASK:lead:${leadId}`;
+    const source = getSource(lead);
+    const key    = `NEW_LEAD_NO_TASK:lead:${leadId}`;
     activeKeys.add(key);
     toUpsert.push({
       alert_key: key, rule: 'NEW_LEAD_NO_TASK', level: 'urgent',
       lead_id: leadId, client_id: clientId, registration_id: null,
       manager_name: manager, short_name: sname,
-      title: 'Новый лид без задачи',
-      body: sname,
-      action_hint: 'Возьми лид в работу и поставь задачу',
+      title: getTitle('NEW_LEAD_NO_TASK'),
+      body: pickBody('NEW_LEAD_NO_TASK', key, { name: sname, source: source || 'неизвестен' }),
+      action_hint: null,
       link: null, meta: null,
     });
   }
@@ -486,41 +490,72 @@ async function processRegRules(
   // Shared fallback name (may be empty for NO_SHOW — we'll fetch below)
   const sname = getRegShortName(reg);
 
-  // UNCONFIRMED_3H (disabled by default)
-  if (isEnabled('UNCONFIRMED_3H') && status === '0' && startMs > nowMs && startMs - nowMs < 3 * 3600_000) {
-    const key = `UNCONFIRMED_3H:reg:${regId}`;
+  // UNCONFIRMED_3H: only for trial training (id=16), status 0, start within 3h
+  if (isEnabled('UNCONFIRMED_3H') && getTrainingId(reg) === TRIAL_TRAINING_ID
+      && status === '0' && startMs > nowMs && startMs - nowMs < 3 * 3600_000) {
+    const key   = `UNCONFIRMED_3H:reg:${regId}`;
+    const uname = sname || (clientId ? (await fetchClientInfo(clientId)).sname : `Запись #${regId}`);
     activeKeys.add(key);
     toUpsert.push({
       alert_key: key, rule: 'UNCONFIRMED_3H', level: 'important',
       lead_id: leadId, client_id: clientId, registration_id: regId,
-      manager_name: null, short_name: sname || null,
-      title: 'Не подтверждено',
-      body: `${fmtTime(startMs)} — ${sname || `Запись #${regId}`}, ${training || 'занятие'}`,
-      action_hint: 'Позвони и подтверди запись',
+      manager_name: null, short_name: uname || null,
+      title: getTitle('UNCONFIRMED_3H'),
+      body: pickBody('UNCONFIRMED_3H', key, { name: uname || `Запись #${regId}`, time: fmtTime(startMs) }),
+      action_hint: null,
       link: null, meta: null,
     });
   }
 
-  // NO_SHOW: today only, client_id required, excluded training types skipped
-  if (isEnabled('NO_SHOW') && clientId && isToday) {
-    if (!WATCH_NO_SHOW_EXCLUDE.has(training.toLowerCase())) {
-      const isNoShow01 = (status === '0' || status === '1') && startMs < nowMs && nowMs - startMs > 30 * 60_000;
-      const isNoShow4  = status === '4' && startMs < nowMs;
-      if (isNoShow01 || isNoShow4) {
-        // Prefer inline name; fetch from API only when not available
-        const noShowSname = sname || (await fetchClientInfo(clientId)).sname;
-        const key = `NO_SHOW:reg:${regId}`;
-        activeKeys.add(key);
-        toUpsert.push({
-          alert_key: key, rule: 'NO_SHOW', level: 'urgent',
-          lead_id: leadId, client_id: clientId, registration_id: regId,
-          manager_name: null, short_name: noShowSname,
-          title: 'Не пришёл на занятие',
-          body: `${noShowSname} не пришёл(ла) на ${training || 'занятие'} в ${fmtTime(startMs)}`,
-          action_hint: 'Позвони, узнай причину, отметь в расписании',
-          link: null, meta: null,
-        });
-      }
+  // NO_SHOW_* rules: today only, client_id required, excluded training types skipped
+  if (clientId && isToday && !WATCH_NO_SHOW_EXCLUDE.has(training.toLowerCase())) {
+    const pastStart = startMs < nowMs;
+    const past30min = pastStart && nowMs - startMs > 30 * 60_000;
+    const needsName = (isEnabled('NO_SHOW_UNCONFIRMED') && status === '0' && past30min)
+                   || (isEnabled('NO_SHOW_NO_MARK')     && status === '1' && past30min)
+                   || (isEnabled('NO_SHOW_MARKED')       && status === '4' && pastStart);
+    const ns = needsName ? (sname || (await fetchClientInfo(clientId)).sname) : '';
+
+    if (isEnabled('NO_SHOW_UNCONFIRMED') && status === '0' && past30min) {
+      const key = `NO_SHOW_UNCONFIRMED:reg:${regId}`;
+      activeKeys.add(key);
+      toUpsert.push({
+        alert_key: key, rule: 'NO_SHOW_UNCONFIRMED', level: 'urgent',
+        lead_id: leadId, client_id: clientId, registration_id: regId,
+        manager_name: null, short_name: ns,
+        title: getTitle('NO_SHOW_UNCONFIRMED'),
+        body: pickBody('NO_SHOW_UNCONFIRMED', key, { name: ns, time: fmtTime(startMs) }),
+        action_hint: null,
+        link: null, meta: null,
+      });
+    }
+
+    if (isEnabled('NO_SHOW_NO_MARK') && status === '1' && past30min) {
+      const key = `NO_SHOW_NO_MARK:reg:${regId}`;
+      activeKeys.add(key);
+      toUpsert.push({
+        alert_key: key, rule: 'NO_SHOW_NO_MARK', level: 'urgent',
+        lead_id: leadId, client_id: clientId, registration_id: regId,
+        manager_name: null, short_name: ns,
+        title: getTitle('NO_SHOW_NO_MARK'),
+        body: pickBody('NO_SHOW_NO_MARK', key, { name: ns, time: fmtTime(startMs) }),
+        action_hint: null,
+        link: null, meta: null,
+      });
+    }
+
+    if (isEnabled('NO_SHOW_MARKED') && status === '4' && pastStart) {
+      const key = `NO_SHOW_MARKED:reg:${regId}`;
+      activeKeys.add(key);
+      toUpsert.push({
+        alert_key: key, rule: 'NO_SHOW_MARKED', level: 'urgent',
+        lead_id: leadId, client_id: clientId, registration_id: regId,
+        manager_name: null, short_name: ns,
+        title: getTitle('NO_SHOW_MARKED'),
+        body: pickBody('NO_SHOW_MARKED', key, { name: ns, time: fmtTime(startMs) }),
+        action_hint: null,
+        link: null, meta: null,
+      });
     }
   }
 
@@ -719,9 +754,9 @@ async function processContractRules(
         alert_key: key, rule: 'CONTRACT_ENDING', level: 'important',
         lead_id: null, client_id: clientId, registration_id: null,
         manager_name: manager, short_name: sname,
-        title: 'Заканчивается абонемент',
-        body: `У ${sname} осталось ${totalVisitsLeft} ${pluralVisits(totalVisitsLeft)}`,
-        action_hint: 'Предложи продление',
+        title: getTitle('CONTRACT_ENDING'),
+        body: pickBody('CONTRACT_ENDING', key, { name: sname, left: totalVisitsLeft, visits: pluralVisits(totalVisitsLeft) }),
+        action_hint: null,
         link: null, meta: null,
       });
     } else if (isEnabled('CONTRACT_ENDED') && entries.length > 0 && active.length === 0) {
@@ -736,9 +771,9 @@ async function processContractRules(
         alert_key: key, rule: 'CONTRACT_ENDED', level: 'urgent',
         lead_id: null, client_id: clientId, registration_id: null,
         manager_name: manager, short_name: sname,
-        title: 'Абонемент закончился',
-        body: `У ${sname} закончился абонемент`,
-        action_hint: 'Свяжись, предложи продление',
+        title: getTitle('CONTRACT_ENDED'),
+        body: pickBody('CONTRACT_ENDED', key, { name: sname }),
+        action_hint: null,
         link: null, meta: null,
       });
     }
@@ -779,6 +814,20 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   // 3. Open tasks
   const rawTasks    = await paginateGet('/task', { status: 'O', page_size: 100 });
   const tasksByLead = groupTasksByLead(rawTasks);
+
+  // Agent task maps — open tasks created by the agent ([АГЕНТ] prefix), loaded once
+  const agentTaskByLead   = new Map<number, { category: string }>();
+  const agentTaskByClient = new Map<number, { category: string }>();
+  for (const t of rawTasks) {
+    const desc = String(t.description ?? '');
+    if (!desc.startsWith('[АГЕНТ]')) continue;
+    const catId    = Number(t.category_id ?? 0);
+    const category = catId === TASK_CATEGORY_CALL_ID ? 'Звонок' : 'Задание';
+    const lid = Number(t.lead_id   ?? 0);
+    const cid = Number(t.client_id ?? 0);
+    if (lid && !agentTaskByLead.has(lid))     agentTaskByLead.set(lid, { category });
+    if (cid && !agentTaskByClient.has(cid))   agentTaskByClient.set(cid, { category });
+  }
 
   // 4. Schedule registrations — load with date param, ALSO filter client-side
   const tomorrow = almatyDate(nowMs + 86400_000);
@@ -831,6 +880,16 @@ export async function runWatch(): Promise<Record<string, unknown>> {
 
   await processSystemRules(nowMs, activeKeys, toUpsert);
   await processContractRules(nowMs, activeKeys, toUpsert, nameByClientId, managerByClientId);
+
+  // 8a. Apply agent task notes to NEW alerts (post-processing; existing alerts keep their DB body)
+  for (const row of toUpsert) {
+    if (row.rule === 'SYSTEM') continue;
+    if (openByKey.has(row.alert_key)) continue;
+    const agentTask =
+      (row.lead_id   ? agentTaskByLead.get(row.lead_id)    : undefined) ||
+      (row.client_id ? agentTaskByClient.get(row.client_id) : undefined);
+    if (agentTask) row.body = appendAgentTask(row.body, agentTask.category);
+  }
 
   // 8. Flood guard: block rules that want to create too many NEW alerts
   const maxNewPerRule = env.WATCH_MAX_NEW_PER_RULE;
@@ -896,7 +955,7 @@ export async function runWatch(): Promise<Record<string, unknown>> {
       if (h >= 23) { toResolve.push(key); continue; }
     }
 
-    if (rule === 'NO_SHOW' && alert.acked_at) {
+    if (rule === 'NO_SHOW_MARKED' && alert.acked_at) {
       if (nowMs - new Date(alert.acked_at).getTime() > 24 * 3600_000) { toResolve.push(key); continue; }
     }
 
@@ -911,6 +970,26 @@ export async function runWatch(): Promise<Record<string, unknown>> {
       .in('alert_key', uniqueToResolve)
       .is('resolved_at', null);
     if (error) console.error('[watch] resolve error:', error.message);
+  }
+
+  // 10a. Update body of existing alerts where an agent task appeared after alert was created
+  const resolveSet    = new Set(uniqueToResolve);
+  const toUpdateBody: { id: number; body: string }[] = [];
+  for (const [key, alert] of openByKey) {
+    if (resolveSet.has(key)) continue;
+    if (hasAgentTaskNote(alert.body)) continue;
+    const agentTask =
+      (alert.lead_id   ? agentTaskByLead.get(alert.lead_id)    : undefined) ||
+      (alert.client_id ? agentTaskByClient.get(alert.client_id) : undefined);
+    if (!agentTask) continue;
+    toUpdateBody.push({ id: alert.id, body: appendAgentTask(alert.body, agentTask.category) });
+  }
+  for (const upd of toUpdateBody) {
+    const { error } = await supabase
+      .from('watch_alerts')
+      .update({ body: upd.body })
+      .eq('id', upd.id);
+    if (error) console.error('[watch] body-update error id=' + upd.id + ':', error.message);
   }
 
   // 11. Per-rule stats
