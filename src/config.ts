@@ -22,6 +22,7 @@ const envSchema = z.object({
   WINDOW_PASSWORD: z.string().default(''),
   WINDOW_SECRET:   z.string().optional(),
   WATCH_REG_SCOPE: z.enum(['all', 'trial']).default('all'),
+  WATCH_RULES:     z.string().default('NEW_LEAD,NO_SHOW,CONTRACT_ENDING,CONTRACT_ENDED'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -34,6 +35,10 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+export const WATCH_RULES = new Set(
+  env.WATCH_RULES.split(',').map(s => s.trim()).filter(Boolean),
+);
 
 type Module = 'trial' | 'budget';
 const DRY_FLAGS: Record<Module, boolean> = {

@@ -1,9 +1,7 @@
 import crypto                    from 'crypto';
 import express                   from 'express';
 import { supabase }              from '../db/supabase';
-import { paginateGet }           from '../http/fitbase';
-import { shortName }             from '../core/names';
-import { env, TRIAL_TRAINING_ID } from '../config';
+import { env }                   from '../config';
 
 const ALMATY_MS    = 5 * 3600 * 1000;
 const COOKIE_NAME  = 'swtoken';
@@ -51,68 +49,6 @@ function requireAuth(req: express.Request, res: express.Response): boolean {
   return false;
 }
 
-// ── Plan cache (1 min) ────────────────────────────────────────────────────────
-
-interface PlanItem {
-  registration_id: number;
-  time:            string;
-  short_name:      string;
-  training_name:   string;
-  status:          number;
-  status_label:    string;
-  lead_id:         number | null;
-}
-
-const REG_STATUS_LABELS: Record<string, string> = {
-  '0': 'Записан', '1': 'Подтверждено', '2': 'Отменено', '3': 'Пришёл', '4': 'Не пришёл',
-};
-
-let planCache: { date: string; items: PlanItem[]; at: number } | null = null;
-
-function almatyDate(): string {
-  return new Date(Date.now() + ALMATY_MS).toISOString().slice(0, 10);
-}
-
-function regStartHHMM(reg: Record<string, unknown>): string {
-  const ev = reg.event as Record<string, unknown> | undefined;
-  return String(ev?.time_start || '00:00').slice(0, 5);
-}
-
-function regShortName(reg: Record<string, unknown>): string {
-  const client = reg.client as Record<string, unknown> | undefined;
-  const lead   = reg.lead   as Record<string, unknown> | undefined;
-  const cn = String(client?.name    || '').trim();
-  const cs = String(client?.surname || '').trim();
-  if (cn) return shortName({ name: cn + (cs ? ' ' + cs : '') });
-  if (lead) return shortName(lead, client);
-  return String(reg.client_name || reg.lead_title || '').trim() || `#${reg.id}`;
-}
-
-async function getTodayPlan(): Promise<PlanItem[]> {
-  const today = almatyDate();
-  if (planCache?.date === today && Date.now() - planCache.at < 60_000) return planCache.items;
-
-  const regs  = await paginateGet('/schedule-registration', { date: today, page_size: 100 });
-  const items: PlanItem[] = regs
-    .map(reg => ({
-      registration_id: Number(reg.id),
-      time:            regStartHHMM(reg),
-      short_name:      regShortName(reg),
-      training_name:   (() => {
-        const ev       = reg.event as Record<string, unknown> | undefined;
-        const training = ev?.training as Record<string, unknown> | undefined;
-        return String(training?.name || '');
-      })(),
-      status:          Number(reg.status ?? 0),
-      status_label:    REG_STATUS_LABELS[String(reg.status ?? '0')] || String(reg.status),
-      lead_id:         Number(reg.lead_id ?? 0) || null,
-    }))
-    .sort((a, b) => a.time.localeCompare(b.time));
-
-  planCache = { date: today, items, at: Date.now() };
-  return items;
-}
-
 // ── Feed helpers ──────────────────────────────────────────────────────────────
 
 const PHONE_RE = /\+?[78]?\s*[\(\-]?\d{3}[\)\-\s]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/g;
@@ -142,7 +78,7 @@ const HTML = `<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--c-bg);color:var(--c-text);font-size:14px}
 a{color:inherit}
-.page{max-width:1100px;margin:0 auto;padding:12px}
+.page{max-width:860px;margin:0 auto;padding:12px}
 /* Login */
 #login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh}
 .login-box{background:var(--c-card);border:1px solid var(--c-border);border-radius:12px;padding:32px;width:320px;text-align:center}
@@ -153,18 +89,19 @@ a{color:inherit}
 .btn-sm{background:var(--c-card);border:1px solid var(--c-border);color:var(--c-text);padding:6px 12px;font-size:12px}
 .btn-sm:hover{background:var(--c-border)}
 /* Header */
-.hdr{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.hdr{display:flex;align-items:center;gap:12px;margin-bottom:4px;flex-wrap:wrap}
 .hdr h1{font-size:18px;font-weight:700;flex:1}
 .hdr-actions{display:flex;gap:8px;align-items:center}
+/* Status bar */
+.status-bar{font-size:12px;color:var(--c-muted);margin-bottom:8px}
+/* Stale banner */
+.stale-banner{background:#fef9c3;border:1px solid #fde047;color:#713f12;padding:8px 14px;border-radius:8px;margin-bottom:10px;font-size:13px}
 /* Error banner */
 #err-banner{display:none;background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;padding:8px 14px;border-radius:8px;margin-bottom:12px;font-size:13px}
 #err-banner.show{display:block}
-/* Grid */
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:680px){.grid{grid-template-columns:1fr}}
-.section{background:var(--c-card);border:1px solid var(--c-border);border-radius:10px;padding:14px}
+/* Sections */
+.section{background:var(--c-card);border:1px solid var(--c-border);border-radius:10px;padding:14px;margin-bottom:12px}
 .section h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--c-muted);margin-bottom:10px}
-.section-alerts{grid-column:1/-1}
 /* Alert cards */
 .alert-card{border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid}
 .alert-card:last-child{margin-bottom:0}
@@ -179,17 +116,20 @@ a{color:inherit}
 .alert-body{font-size:13px;margin-top:4px}
 .alert-hint{font-size:12px;color:var(--c-muted);margin-top:3px;font-style:italic}
 .alert-footer{display:flex;justify-content:flex-end;margin-top:8px}
-/* Plan table */
-.plan-table{width:100%;border-collapse:collapse;font-size:13px}
-.plan-table td{padding:5px 6px;border-bottom:1px solid var(--c-border)}
-.plan-table tr:last-child td{border-bottom:none}
-.status-0{color:var(--c-muted)}.status-1{color:var(--c-ok)}.status-2{color:var(--c-urgent)}
-.status-3{color:var(--c-ok)}.status-4{color:var(--c-imp)}
 /* Feed */
 .feed-item{padding:6px 0;border-bottom:1px solid var(--c-border);font-size:12px}
 .feed-item:last-child{border-bottom:none}
 .feed-time{color:var(--c-muted);font-size:11px}
 .empty{color:var(--c-muted);font-size:13px;text-align:center;padding:20px}
+/* Help modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:100}
+.modal-box{background:var(--c-card);border:1px solid var(--c-border);border-radius:12px;padding:24px;max-width:480px;width:90%;max-height:90vh;overflow-y:auto}
+.modal-box h3{font-size:16px;margin-bottom:14px}
+.modal-rule{display:flex;gap:10px;margin-bottom:10px;font-size:13px;line-height:1.45}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:3px;flex-shrink:0}
+.dot-urgent{background:var(--c-urgent)}.dot-imp{background:var(--c-imp)}
+.modal-note{font-size:12px;color:var(--c-muted);margin-bottom:8px}
+.modal-close{margin-top:16px;width:100%}
 #app{display:none}
 </style>
 </head>
@@ -210,23 +150,37 @@ a{color:inherit}
       <div class="hdr-actions">
         <button class="btn btn-sm" id="notif-btn">Уведомления</button>
         <button class="btn btn-sm" id="sound-btn">Звук: вкл</button>
+        <button class="btn btn-sm" id="help-btn">?</button>
       </div>
     </div>
+    <div class="status-bar" id="status-bar">Последняя проверка: — · Связь: —</div>
+    <div class="stale-banner" id="stale-banner" style="display:none">⚠ Агент не запускался более 10 минут</div>
     <div id="err-banner"></div>
-    <div class="grid">
-      <div class="section section-alerts">
-        <h2>Сейчас важно <span id="alert-count" style="font-weight:400"></span></h2>
-        <div id="alerts-list"></div>
-      </div>
-      <div class="section">
-        <h2>План на сегодня</h2>
-        <table class="plan-table" id="plan-table"><tbody></tbody></table>
-      </div>
-      <div class="section">
-        <h2>Лента</h2>
-        <div id="feed-list"></div>
-      </div>
+
+    <div class="section">
+      <h2>Сейчас важно <span id="alert-count" style="font-weight:400"></span></h2>
+      <div id="alerts-list"></div>
     </div>
+
+    <div class="section">
+      <h2>Лента</h2>
+      <div id="feed-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Help modal -->
+<div class="modal-overlay" id="help-modal" style="display:none">
+  <div class="modal-box">
+    <h3>Как пользоваться окном</h3>
+    <div class="modal-rule"><div class="dot dot-urgent"></div><div><b>Новая заявка</b> — в воронку «Новые заявки» попал лид. Возьми в работу в течение 2 часов.</div></div>
+    <div class="modal-rule"><div class="dot dot-urgent"></div><div><b>Не пришёл на занятие</b> — клиент не отметился через 30 мин после начала. Позвони и отметь в расписании.</div></div>
+    <div class="modal-rule"><div class="dot dot-urgent"></div><div><b>Абонемент закончился</b> — у клиента нет ни одного активного абонемента. Свяжись и предложи продление.</div></div>
+    <div class="modal-rule"><div class="dot dot-imp"></div><div><b>Заканчивается абонемент</b> — осталось 2 посещения или меньше. Предложи продление заблаговременно.</div></div>
+    <p class="modal-note">Красный цвет — срочно, жёлтый — важно.</p>
+    <p class="modal-note">«Принято» убирает тревогу из активных. Тревога «Не пришёл» закрывается автоматически через 24 ч после нажатия «Принято».</p>
+    <p class="modal-note">Кнопка «Уведомления» в шапке — разреши браузеру показывать всплывающие уведомления для новых тревог.</p>
+    <button class="btn btn-sm modal-close" id="help-close">Закрыть</button>
   </div>
 </div>
 
@@ -272,6 +226,11 @@ a{color:inherit}
   };
   if (notifGranted) $('notif-btn').textContent = 'Уведомления вкл';
 
+  // ── Help modal ───────────────────────────────────────────────────────────────
+  $('help-btn').onclick  = () => { $('help-modal').style.display = 'flex'; };
+  $('help-close').onclick = () => { $('help-modal').style.display = 'none'; };
+  $('help-modal').onclick = e => { if (e.target === $('help-modal')) $('help-modal').style.display = 'none'; };
+
   // ── Login ────────────────────────────────────────────────────────────────────
   async function login(){
     const pw = $('pw-input').value;
@@ -300,8 +259,29 @@ a{color:inherit}
     return Math.floor(h/24)+'д';
   }
   function feedTime(iso){
-    const d = new Date(iso);
-    return d.toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+    const d = new Date(new Date(iso).getTime() + 5*3600_000);
+    return d.toISOString().slice(11,16);
+  }
+  function fmtHHMM(iso){
+    const d = new Date(new Date(iso).getTime() + 5*3600_000);
+    return d.toISOString().slice(11,16);
+  }
+  function isWorkHourAlmaty(iso){
+    const h = new Date(new Date(iso).getTime() + 5*3600_000).getUTCHours();
+    return h >= 8 && h < 23;
+  }
+
+  // ── Status bar ───────────────────────────────────────────────────────────────
+  function updateStatus(data, ok){
+    if (!ok){ $('status-bar').textContent = 'Последняя проверка: — · Связь: нет'; return; }
+    const last = data.last_watch_at;
+    const srv  = data.server_time;
+    const t    = last ? fmtHHMM(last) : '—';
+    $('status-bar').textContent = 'Последняя проверка: ' + t + ' · Связь: есть';
+    if (last && srv) {
+      const stale = (new Date(srv) - new Date(last)) > 10*60_000 && isWorkHourAlmaty(srv);
+      $('stale-banner').style.display = stale ? 'block' : 'none';
+    }
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -316,7 +296,10 @@ a{color:inherit}
     const active = sorted.filter(a => !a.acked_at);
     $('alert-count').textContent = active.length ? '('+active.length+')' : '';
     document.title = (active.length ? '('+active.length+') ' : '') + 'SlimWay — помощник';
-    if (sorted.length === 0){ list.innerHTML = '<div class="empty">Тревог нет</div>'; return; }
+    if (sorted.length === 0){
+      list.innerHTML = '<div class="empty">Всё под контролем — тревог нет</div>';
+      return;
+    }
     list.innerHTML = sorted.map(a => {
       const cls = a.level + (a.acked_at ? ' acked' : '');
       const mgr = a.manager_name ? '<span> · '+esc(a.manager_name)+'</span>' : '';
@@ -335,27 +318,14 @@ a{color:inherit}
     }).join('');
   }
 
-  const STATUS_CLS = ['status-0','status-1','status-2','status-3','status-4'];
-  function renderPlan(plan){
-    const tbody = $('plan-table').querySelector('tbody');
-    if (!plan.length){ tbody.innerHTML = '<tr><td class="empty" colspan="3">Занятий нет</td></tr>'; return; }
-    tbody.innerHTML = plan.map(p =>
-      \`<tr>
-        <td style="width:40px;font-weight:600">\${esc(p.time)}</td>
-        <td>\${esc(p.short_name)}<br><span style="font-size:11px;color:var(--c-muted)">\${esc(p.training_name)}</span></td>
-        <td class="\${STATUS_CLS[p.status]||''}" style="white-space:nowrap">\${esc(p.status_label)}</td>
-      </tr>\`
-    ).join('');
-  }
-
   function renderFeed(feed){
     const el = $('feed-list');
-    if (!feed.length){ el.innerHTML = '<div class="empty">Событий нет</div>'; return; }
+    if (!feed.length){ el.innerHTML = '<div class="empty">Действий нет</div>'; return; }
     el.innerHTML = feed.map(f =>
       \`<div class="feed-item">
         <span class="feed-time">\${feedTime(f.created_at)}</span>
         \${f.short_name ? ' <b>'+esc(f.short_name)+'</b>' : ''}
-        \${f.text ? ' '+esc(f.text) : ''}
+        \${f.text ? ' — '+esc(f.text) : ''}
       </div>\`
     ).join('');
   }
@@ -374,13 +344,12 @@ a{color:inherit}
     try {
       const res = await fetch('/window/api/state?since_id='+since_id);
       if (res.status === 401){ $('app').style.display='none'; $('login-screen').style.display='flex'; return; }
-      if (!res.ok){ showError('Ошибка сервера ('+res.status+')'); return; }
+      if (!res.ok){ showError('Ошибка сервера ('+res.status+')'); updateStatus(null,false); return; }
       hideError();
       const data = await res.json();
+      updateStatus(data, true);
       renderAlerts(data.alerts||[]);
-      renderPlan(data.plan||[]);
       renderFeed(data.feed||[]);
-      // Notifications for new alerts
       for (const a of (data.new_alerts||[])){
         since_id = Math.max(since_id, a.id);
         if (['urgent','important'].includes(a.level)){
@@ -392,6 +361,7 @@ a{color:inherit}
       }
     } catch(e){
       showError('Нет связи с сервером');
+      updateStatus(null, false);
     }
   }
 
@@ -401,8 +371,8 @@ a{color:inherit}
       $('login-screen').style.display = 'none';
       $('app').style.display = 'block';
       r.json().then(data => {
+        updateStatus(data, true);
         renderAlerts(data.alerts||[]);
-        renderPlan(data.plan||[]);
         renderFeed(data.feed||[]);
         if (data.alerts) since_id = Math.max(...(data.alerts.map(a=>a.id||0)), 0);
       });
@@ -420,13 +390,11 @@ a{color:inherit}
 export function mountWindowRoutes(app: express.Application): void {
   app.use(express.json());
 
-  // Serve the window page
   app.get('/window', (_req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(HTML);
   });
 
-  // Login
   app.post('/window/login', (req, res) => {
     const pw = (req.body as Record<string, unknown>)?.password;
     if (!env.WINDOW_PASSWORD || String(pw) !== env.WINDOW_PASSWORD) {
@@ -439,7 +407,6 @@ export function mountWindowRoutes(app: express.Application): void {
     res.json({ ok: true });
   });
 
-  // State endpoint
   app.get('/window/api/state', async (req, res) => {
     if (!requireAuth(req, res)) return;
     try {
@@ -464,14 +431,22 @@ export function mountWindowRoutes(app: express.Application): void {
         : { data: [], error: null };
       if (e2) throw e2;
 
-      // Today's plan (from Fitbase, cached 1 min)
-      const plan = await getTodayPlan();
+      // Last successful watch run (for status bar)
+      const { data: lastRun } = await supabase
+        .from('job_runs')
+        .select('finished_at')
+        .eq('job', 'watch')
+        .eq('status', 'ok')
+        .order('finished_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      // Feed: last 50 agent_events today, phones stripped
+      // Feed: last 50 agent actions today (lead_moved, task_created, budget_updated)
       const { data: feedRaw, error: e3 } = await supabase
         .from('agent_events')
         .select('id, created_at, short_name, text, type')
         .gte('created_at', today + 'T00:00:00+05:00')
+        .in('type', ['lead_moved', 'task_created', 'budget_updated'])
         .order('created_at', { ascending: false })
         .limit(50);
       if (e3) throw e3;
@@ -485,11 +460,11 @@ export function mountWindowRoutes(app: express.Application): void {
       }));
 
       res.json({
-        alerts:     alerts ?? [],
-        new_alerts: newAlerts ?? [],
-        plan,
+        alerts:        alerts ?? [],
+        new_alerts:    newAlerts ?? [],
         feed,
-        server_time: new Date().toISOString(),
+        server_time:   new Date().toISOString(),
+        last_watch_at: lastRun?.finished_at ?? null,
       });
     } catch (e) {
       console.error('[window] state error:', (e as Error).message);
@@ -497,7 +472,6 @@ export function mountWindowRoutes(app: express.Application): void {
     }
   });
 
-  // Ack an alert
   app.post('/window/api/ack/:id', async (req, res) => {
     if (!requireAuth(req, res)) return;
     const id = Number(req.params.id);

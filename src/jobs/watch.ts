@@ -1,8 +1,8 @@
-import { supabase }                        from '../db/supabase';
-import { paginateGet, rawGet }             from '../http/fitbase';
-import { shortName }                       from '../core/names';
-import { getLeadFunnel }                   from '../core/funnel';
-import { env, TRIAL_TRAINING_ID }          from '../config';
+import { supabase }                              from '../db/supabase';
+import { paginateGet, rawGet }                   from '../http/fitbase';
+import { shortName }                             from '../core/names';
+import { getLeadFunnel }                         from '../core/funnel';
+import { env, TRIAL_TRAINING_ID, WATCH_RULES, lookupVisitsOverride } from '../config';
 
 export const JOB_NAME = 'watch';
 
@@ -12,11 +12,12 @@ const ALMATY_MS         = 5 * 3600 * 1000;
 const SEVEN_DAYS_SEC    = 7 * 86400;
 const CARD_FREE_SEC     = 24 * 3600;
 const PURCHASE_MIN      = 40_000;
-const NEW_LEAD_GRACE_MS = 30 * 60_000;
+const NEW_LEAD_GRACE_MS = 2 * 3600_000;   // 2 h window for new-lead alert
 const NEW_LEAD_TASK_MIN = 5 * 60_000;
 const PURCHASE_TTL_MS   = 12 * 3600_000;
 const CANCELLED_TTL_MS  = 24 * 3600_000;
 const SYSTEM_GAP_MS     = 30 * 60_000;
+const CONTRACT_TTL_MS   = 30 * 60_000;    // re-check contracts every 30 min
 
 const EXCLUDED_MANAGER_STEPS = new Set(['Ангелина', 'Вера', 'Назерке']);
 
@@ -53,9 +54,17 @@ interface AlertRow {
   meta:            Record<string, unknown> | null;
 }
 
-// ── In-memory comment cache (30 min) ─────────────────────────────────────────
+// ── Rule gate ─────────────────────────────────────────────────────────────────
 
-const commentCache = new Map<number, { items: Record<string, unknown>[]; ts: number }>();
+function isEnabled(rule: string): boolean {
+  return rule === 'SYSTEM' || WATCH_RULES.has(rule);
+}
+
+// ── In-memory caches ──────────────────────────────────────────────────────────
+
+const commentCache  = new Map<number, { items: Record<string, unknown>[]; ts: number }>();
+const watchRegCache = new Map<number, { items: Record<string, unknown>[]; ts: number }>();
+let contractBulkCache: { items: Record<string, unknown>[]; ts: number } | null = null;
 
 async function getClientComments(clientId: number): Promise<Record<string, unknown>[]> {
   const cached = commentCache.get(clientId);
@@ -63,6 +72,24 @@ async function getClientComments(clientId: number): Promise<Record<string, unkno
   const resp  = await rawGet(`/note?client_id=${clientId}`);
   const items = ((resp.items || []) as Record<string, unknown>[]);
   commentCache.set(clientId, { items, ts: Date.now() });
+  return items;
+}
+
+async function getClientRegs(clientId: number): Promise<Record<string, unknown>[]> {
+  const cached = watchRegCache.get(clientId);
+  if (cached && Date.now() - cached.ts < CONTRACT_TTL_MS) return cached.items;
+  const resp  = await rawGet(`/schedule-registration?client_id=${clientId}`);
+  const items = ((resp.items || []) as Record<string, unknown>[]);
+  watchRegCache.set(clientId, { items, ts: Date.now() });
+  return items;
+}
+
+async function loadAllContracts(): Promise<Record<string, unknown>[]> {
+  if (contractBulkCache && Date.now() - contractBulkCache.ts < CONTRACT_TTL_MS) {
+    return contractBulkCache.items;
+  }
+  const items = await paginateGet('/client-contract', { page_size: 100 });
+  contractBulkCache = { items, ts: Date.now() };
   return items;
 }
 
@@ -143,10 +170,10 @@ function groupTasksByLead(tasks: Record<string, unknown>[]): Map<number, Task[]>
 
 interface TaskAnalysis {
   openTasks:          Task[];
-  overdueOpen:        Task[];   // past deadline
-  futureAll:          Task[];   // future deadline (any distance)
-  futureWithin7d:     Task[];   // future deadline ≤ 7 days
-  earliestOverdueSec: number;   // 0 if none
+  overdueOpen:        Task[];
+  futureAll:          Task[];
+  futureWithin7d:     Task[];
+  earliestOverdueSec: number;
 }
 
 function analyzeLeadTasks(tasks: Task[], nowSec: number): TaskAnalysis {
@@ -173,7 +200,6 @@ function getRegStartMs(reg: Record<string, unknown>): number {
   if (!ds || ds.length < 8) return 0;
   const [y, mo, d] = ds.split('-').map(Number);
   const [h, mi]    = ts.split(':').map(Number);
-  // Fitbase stores Almaty time (UTC+5) → convert to UTC
   return new Date(Date.UTC(y, mo - 1, d, h - 5, mi, 0)).getTime();
 }
 
@@ -202,6 +228,16 @@ function getTrainingId(reg: Record<string, unknown>): number {
 function fmtTime(ms: number): string {
   const d = new Date(ms + ALMATY_MS);
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+// ── Plural helper ─────────────────────────────────────────────────────────────
+
+function pluralVisits(n: number): string {
+  const m = n % 10, c = n % 100;
+  if (c >= 11 && c <= 19) return 'посещений';
+  if (m === 1) return 'посещение';
+  if (m >= 2 && m <= 4) return 'посещения';
+  return 'посещений';
 }
 
 // ── Supabase helpers ──────────────────────────────────────────────────────────
@@ -267,7 +303,6 @@ function processLeadRules(
   tasksByLead: Map<number, Task[]>,
   nowMs:       number,
   nowSec:      number,
-  lastRunAt:   number,
   activeKeys:  Set<string>,
   toUpsert:    AlertRow[],
 ): void {
@@ -279,31 +314,27 @@ function processLeadRules(
   const tasks    = tasksByLead.get(leadId) ?? [];
   const ta       = analyzeLeadTasks(tasks, nowSec);
 
-  // ── NEW_LEAD (first 30 min after creation, created after last run) ────────
-  if (created > lastRunAt && created > 0) {
+  // ── NEW_LEAD: 2 h window; close when lead gets any open task ─────────────
+  if (isEnabled('NEW_LEAD') && created > 0) {
     const ageMs = nowMs - created;
-    if (ageMs < NEW_LEAD_GRACE_MS) {
-      const stepName = getStepName(lead);
-      const source   = getSource(lead);
-      const key      = `NEW_LEAD:lead:${leadId}`;
+    if (ageMs < NEW_LEAD_GRACE_MS && ta.openTasks.length === 0) {
+      const source = getSource(lead);
+      const key    = `NEW_LEAD:lead:${leadId}`;
       activeKeys.add(key);
-      const bodyParts = [sname];
-      if (source)   bodyParts.push(source);
-      if (stepName) bodyParts.push(`этап: ${stepName}`);
       toUpsert.push({
         alert_key: key, rule: 'NEW_LEAD', level: 'urgent',
         lead_id: leadId, client_id: clientId, registration_id: null,
         manager_name: manager, short_name: sname,
-        title: 'Новый лид',
-        body: bodyParts.join(', '),
-        action_hint: 'Возьми лид в работу',
+        title: 'Новая заявка',
+        body: source ? `${sname}, источник: ${source}` : sname,
+        action_hint: 'Возьми в работу',
         link: null, meta: null,
       });
     }
   }
 
-  // ── NEW_LEAD_NO_TASK (> 5 min, no task со сроком within 7 days) ──────────
-  if (created > 0 && nowMs - created > NEW_LEAD_TASK_MIN && ta.futureWithin7d.length === 0) {
+  // ── NEW_LEAD_NO_TASK (disabled by default) ────────────────────────────────
+  if (isEnabled('NEW_LEAD_NO_TASK') && created > 0 && nowMs - created > NEW_LEAD_TASK_MIN && ta.futureWithin7d.length === 0) {
     const key = `NEW_LEAD_NO_TASK:lead:${leadId}`;
     activeKeys.add(key);
     toUpsert.push({
@@ -317,48 +348,54 @@ function processLeadRules(
     });
   }
 
-  // ── Task rules: priority system to avoid noise ─────────────────────────────
-  if (ta.overdueOpen.length > 0) {
-    // TASK_OVERDUE
-    const key = `TASK_OVERDUE:lead:${leadId}`;
-    activeKeys.add(key);
-    toUpsert.push({
-      alert_key: key, rule: 'TASK_OVERDUE', level: 'important',
-      lead_id: leadId, client_id: clientId, registration_id: null,
-      manager_name: manager, short_name: sname,
-      title: 'Просроченная задача',
-      body: sname,
-      action_hint: 'Закрой или перенеси задачу с комментарием',
-      link: null, meta: null,
-    });
-  } else if (ta.futureWithin7d.length > 0) {
-    // OK — has a valid task
-  } else if (ta.futureAll.length > 0) {
-    // TASK_TOO_FAR — has future tasks but all > 7 days
-    const key = `TASK_TOO_FAR:lead:${leadId}`;
-    activeKeys.add(key);
-    toUpsert.push({
-      alert_key: key, rule: 'TASK_TOO_FAR', level: 'important',
-      lead_id: leadId, client_id: clientId, registration_id: null,
-      manager_name: manager, short_name: sname,
-      title: 'Задача слишком далеко',
-      body: sname,
-      action_hint: 'Перенеси задачу — максимум 7 дней вперёд',
-      link: null, meta: null,
-    });
-  } else {
-    // NO_TASK — no open task with any future deadline
-    const key = `NO_TASK:lead:${leadId}`;
-    activeKeys.add(key);
-    toUpsert.push({
-      alert_key: key, rule: 'NO_TASK', level: 'important',
-      lead_id: leadId, client_id: clientId, registration_id: null,
-      manager_name: manager, short_name: sname,
-      title: 'Нет задачи',
-      body: sname,
-      action_hint: 'Поставь задачу (максимум на 7 дней вперёд)',
-      link: null, meta: null,
-    });
+  // ── Task rules (disabled by default): priority system ────────────────────
+  const anyTaskRule = isEnabled('TASK_OVERDUE') || isEnabled('TASK_TOO_FAR') || isEnabled('NO_TASK');
+  if (anyTaskRule) {
+    if (ta.overdueOpen.length > 0) {
+      if (isEnabled('TASK_OVERDUE')) {
+        const key = `TASK_OVERDUE:lead:${leadId}`;
+        activeKeys.add(key);
+        toUpsert.push({
+          alert_key: key, rule: 'TASK_OVERDUE', level: 'important',
+          lead_id: leadId, client_id: clientId, registration_id: null,
+          manager_name: manager, short_name: sname,
+          title: 'Просроченная задача',
+          body: sname,
+          action_hint: 'Закрой или перенеси задачу с комментарием',
+          link: null, meta: null,
+        });
+      }
+    } else if (ta.futureWithin7d.length > 0) {
+      // OK — has a valid task
+    } else if (ta.futureAll.length > 0) {
+      if (isEnabled('TASK_TOO_FAR')) {
+        const key = `TASK_TOO_FAR:lead:${leadId}`;
+        activeKeys.add(key);
+        toUpsert.push({
+          alert_key: key, rule: 'TASK_TOO_FAR', level: 'important',
+          lead_id: leadId, client_id: clientId, registration_id: null,
+          manager_name: manager, short_name: sname,
+          title: 'Задача слишком далеко',
+          body: sname,
+          action_hint: 'Перенеси задачу — максимум 7 дней вперёд',
+          link: null, meta: null,
+        });
+      }
+    } else {
+      if (isEnabled('NO_TASK')) {
+        const key = `NO_TASK:lead:${leadId}`;
+        activeKeys.add(key);
+        toUpsert.push({
+          alert_key: key, rule: 'NO_TASK', level: 'important',
+          lead_id: leadId, client_id: clientId, registration_id: null,
+          manager_name: manager, short_name: sname,
+          title: 'Нет задачи',
+          body: sname,
+          action_hint: 'Поставь задачу (максимум на 7 дней вперёд)',
+          link: null, meta: null,
+        });
+      }
+    }
   }
 }
 
@@ -369,6 +406,8 @@ async function processCardFreeRule(
   activeKeys:  Set<string>,
   toUpsert:    AlertRow[],
 ): Promise<void> {
+  if (!isEnabled('CARD_FREE')) return;
+
   const leadId  = Number(lead.id);
   const clientId = Number(lead.client_id ?? 0);
   if (!clientId) return;
@@ -406,13 +445,13 @@ function processRegRules(
   activeKeys: Set<string>,
   toUpsert:   AlertRow[],
 ): void {
-  const regId       = Number(reg.id);
-  const status      = String(reg.status ?? '');
-  const startMs     = getRegStartMs(reg);
-  const sname       = getRegShortName(reg);
-  const training    = getTrainingName(reg);
-  const leadId      = Number(reg.lead_id ?? 0) || null;
-  const clientId    = Number(reg.client_id ?? 0) || null;
+  const regId    = Number(reg.id);
+  const status   = String(reg.status ?? '');
+  const startMs  = getRegStartMs(reg);
+  const sname    = getRegShortName(reg);
+  const training = getTrainingName(reg);
+  const leadId   = Number(reg.lead_id ?? 0) || null;
+  const clientId = Number(reg.client_id ?? 0) || null;
 
   if (startMs === 0) return;
 
@@ -420,8 +459,8 @@ function processRegRules(
   const evDate  = String(ev?.date || '');
   const isToday = evDate === today;
 
-  // UNCONFIRMED_3H: < 3h to start, status 0, hasn't started yet
-  if (status === '0' && startMs > nowMs && startMs - nowMs < 3 * 3600_000) {
+  // UNCONFIRMED_3H (disabled by default)
+  if (isEnabled('UNCONFIRMED_3H') && status === '0' && startMs > nowMs && startMs - nowMs < 3 * 3600_000) {
     const key = `UNCONFIRMED_3H:reg:${regId}`;
     activeKeys.add(key);
     toUpsert.push({
@@ -435,23 +474,27 @@ function processRegRules(
     });
   }
 
-  // NO_CHECKIN_30M: 30+ min after start, status 0 or 1
-  if ((status === '0' || status === '1') && nowMs - startMs > 30 * 60_000 && startMs < nowMs) {
-    const key = `NO_CHECKIN_30M:reg:${regId}`;
-    activeKeys.add(key);
-    toUpsert.push({
-      alert_key: key, rule: 'NO_CHECKIN_30M', level: 'urgent',
-      lead_id: leadId, client_id: clientId, registration_id: regId,
-      manager_name: null, short_name: sname,
-      title: 'Нет отметки о визите',
-      body: `${sname}, ${training || 'занятие'} в ${fmtTime(startMs)}`,
-      action_hint: 'Отметь визит в расписании',
-      link: null, meta: null,
-    });
+  // NO_SHOW: 30+ min after start with status 0/1, or already status 4; requires client_id
+  if (isEnabled('NO_SHOW') && clientId) {
+    const isNoShow01 = (status === '0' || status === '1') && startMs < nowMs && nowMs - startMs > 30 * 60_000;
+    const isNoShow4  = status === '4' && startMs < nowMs;
+    if (isNoShow01 || isNoShow4) {
+      const key = `NO_SHOW:reg:${regId}`;
+      activeKeys.add(key);
+      toUpsert.push({
+        alert_key: key, rule: 'NO_SHOW', level: 'urgent',
+        lead_id: leadId, client_id: clientId, registration_id: regId,
+        manager_name: null, short_name: sname,
+        title: 'Не пришёл на занятие',
+        body: `${sname} не пришёл(ла) на ${training || 'занятие'} в ${fmtTime(startMs)}`,
+        action_hint: 'Позвони, узнай причину, отметь в расписании',
+        link: null, meta: null,
+      });
+    }
   }
 
-  // CANCELLED: status 2 (today or tomorrow) — time-based expiry in resolution step
-  if (status === '2' && isToday) {
+  // CANCELLED (disabled by default)
+  if (isEnabled('CANCELLED') && status === '2' && isToday) {
     const key = `CANCELLED:reg:${regId}`;
     activeKeys.add(key);
     toUpsert.push({
@@ -465,12 +508,12 @@ function processRegRules(
     });
   }
 
-  // TRIAL_SOON (info): 60 min before trial, close after start
-  if (getTrainingId(reg) === TRIAL_TRAINING_ID) {
+  // TRIAL_SOON (disabled by default)
+  if (isEnabled('TRIAL_SOON') && getTrainingId(reg) === TRIAL_TRAINING_ID) {
     const minsToStart = (startMs - nowMs) / 60_000;
     if (minsToStart > 0 && minsToStart <= 60) {
-      const confirmed   = ['1', '3'].includes(status);
-      const key         = `TRIAL_SOON:reg:${regId}`;
+      const confirmed = ['1', '3'].includes(status);
+      const key       = `TRIAL_SOON:reg:${regId}`;
       activeKeys.add(key);
       toUpsert.push({
         alert_key: key, rule: 'TRIAL_SOON', level: 'info',
@@ -482,7 +525,6 @@ function processRegRules(
         link: null, meta: null,
       });
     }
-    // TRIAL_SOON active only until start; when startMs < nowMs → not in activeKeys → resolved
   }
 }
 
@@ -493,11 +535,12 @@ function processPurchaseRule(
   toUpsert:   AlertRow[],
   openByKey:  Map<string, DbAlert>,
 ): void {
+  if (!isEnabled('PURCHASE')) return;
+
   const orderId  = Number(purchase.id ?? purchase.order_id ?? 0);
   if (!orderId) return;
   const key = `PURCHASE:order:${orderId}`;
 
-  // Check existing alert age — if > 12h already in DB, skip adding to activeKeys
   const existing = openByKey.get(key);
   if (existing && nowMs - new Date(existing.created_at).getTime() > PURCHASE_TTL_MS) return;
 
@@ -527,10 +570,9 @@ async function processSystemRules(
   activeKeys: Set<string>,
   toUpsert:   AlertRow[],
 ): Promise<void> {
-  // Check last successful run gap
-  const lastOkMs     = await getLastWatchRunAt();
-  const noRunKey     = 'SYSTEM:watch:no_run';
-  const errorKey     = 'SYSTEM:watch:fitbase_error';
+  const lastOkMs = await getLastWatchRunAt();
+  const noRunKey = 'SYSTEM:watch:no_run';
+  const errorKey = 'SYSTEM:watch:fitbase_error';
 
   if (lastOkMs > 0 && nowMs - lastOkMs > SYSTEM_GAP_MS) {
     activeKeys.add(noRunKey);
@@ -543,11 +585,8 @@ async function processSystemRules(
       action_hint: 'Проверь cron-job.org и логи сервера',
       link: null, meta: { last_ok_at: new Date(lastOkMs).toISOString() },
     });
-  } else if (lastOkMs === 0) {
-    // Never ran — no alert
   }
 
-  // 3+ consecutive errors
   const statuses = await getLastRunStatuses(3);
   if (statuses.length >= 3 && statuses.every(s => s === 'error')) {
     activeKeys.add(errorKey);
@@ -563,6 +602,100 @@ async function processSystemRules(
   }
 }
 
+// CONTRACT_ENDING / CONTRACT_ENDED
+// shortcut: one alert per client lifetime (key reuse blocked after resolve); add episode suffix when needed
+async function processContractRules(
+  nowMs:            number,
+  activeKeys:       Set<string>,
+  toUpsert:         AlertRow[],
+  nameByClientId:   Map<number, string>,
+  managerByClient:  Map<number, string>,
+): Promise<void> {
+  if (!isEnabled('CONTRACT_ENDING') && !isEnabled('CONTRACT_ENDED')) return;
+
+  let allContracts: Record<string, unknown>[];
+  try {
+    allContracts = await loadAllContracts();
+  } catch (e) {
+    console.error('[watch] loadAllContracts error:', (e as Error).message);
+    return;
+  }
+
+  // Group by client_id — only qualifying contracts (price >= 40k, not deleted)
+  const byClient = new Map<number, Record<string, unknown>[]>();
+  for (const c of allContracts) {
+    if (Number(c.price_full ?? 0) < PURCHASE_MIN) continue;
+    if (String(c.deleted_at ?? '').trim()) continue;
+    const clientId = Number(c.client_id ?? (c.client as Record<string, unknown>)?.id ?? 0);
+    if (!clientId) continue;
+    if (!byClient.has(clientId)) byClient.set(clientId, []);
+    byClient.get(clientId)!.push(c);
+  }
+
+  for (const [clientId, clientContracts] of byClient) {
+    const sname   = nameByClientId.get(clientId) || `Клиент #${clientId}`;
+    const manager = managerByClient.get(clientId) || null;
+
+    // Compute visitsLeft per contract
+    interface Entry { closed: boolean; visitsLeft: number; }
+    const entries: Entry[] = [];
+
+    for (const c of clientContracts) {
+      const ticket    = c.ticket as Record<string, unknown> | null;
+      const rawVisits = ticket?.visits;
+      const itemName  = String((ticket?.contract_item as Record<string, unknown> | null)?.name ?? '');
+      const isClosed  = Boolean(c.closed);
+
+      if (rawVisits !== null && rawVisits !== undefined && Number(rawVisits) > 0) {
+        entries.push({ closed: isClosed, visitsLeft: Number(c.visits_left ?? 0) });
+      } else if (rawVisits === null) {
+        const override = lookupVisitsOverride(itemName);
+        if (override !== null) {
+          // Per-client reg fetch only for override contracts
+          const regs       = await getClientRegs(clientId);
+          const contractId = Number(c.id);
+          const used = regs.filter(r => {
+            if (String(r.status) !== '3') return false;
+            const cref = r.contract as Record<string, unknown> | null | undefined;
+            return Number(cref?.id ?? r.contract_id ?? -1) === contractId;
+          }).length;
+          entries.push({ closed: isClosed, visitsLeft: Math.max(0, override - used) });
+        }
+        // unlimited with no override: skip
+      }
+    }
+
+    const active          = entries.filter(e => !e.closed && e.visitsLeft > 0);
+    const totalVisitsLeft = active.reduce((s, e) => s + e.visitsLeft, 0);
+
+    if (isEnabled('CONTRACT_ENDING') && active.length > 0 && totalVisitsLeft <= 2) {
+      const key = `CONTRACT_ENDING:client:${clientId}`;
+      activeKeys.add(key);
+      toUpsert.push({
+        alert_key: key, rule: 'CONTRACT_ENDING', level: 'important',
+        lead_id: null, client_id: clientId, registration_id: null,
+        manager_name: manager, short_name: sname,
+        title: 'Заканчивается абонемент',
+        body: `У ${sname} осталось ${totalVisitsLeft} ${pluralVisits(totalVisitsLeft)}`,
+        action_hint: 'Предложи продление',
+        link: null, meta: null,
+      });
+    } else if (isEnabled('CONTRACT_ENDED') && entries.length > 0 && active.length === 0) {
+      const key = `CONTRACT_ENDED:client:${clientId}`;
+      activeKeys.add(key);
+      toUpsert.push({
+        alert_key: key, rule: 'CONTRACT_ENDED', level: 'urgent',
+        lead_id: null, client_id: clientId, registration_id: null,
+        manager_name: manager, short_name: sname,
+        title: 'Абонемент закончился',
+        body: `У ${sname} закончился абонемент`,
+        action_hint: 'Свяжись, предложи продление',
+        link: null, meta: null,
+      });
+    }
+  }
+}
+
 // ── Main entry point ──────────────────────────────────────────────────────────
 
 export async function runWatch(): Promise<Record<string, unknown>> {
@@ -572,15 +705,31 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   const today  = almatyDate(nowMs);
 
   // 1. Load funnel 1 steps → build excluded ID set
-  const stepItems = await paginateGet('/purchase-funnel-step', { funnel_id: 1, page_size: 100 });
+  const stepItems       = await paginateGet('/purchase-funnel-step', { funnel_id: 1, page_size: 100 });
   const excludedStepIds = buildExcludedStepIds(stepItems);
 
-  // 2. Load all leads, filter to funnel 1 active
+  // 2. Load all leads
   const rawLeads = await paginateGet('/lead', { page_size: 100 });
   const leads    = rawLeads.filter(l => isActiveFunnel1Lead(l, excludedStepIds));
 
+  // Build name/manager maps from ALL leads for contract rule enrichment
+  const nameByClientId    = new Map<number, string>();
+  const managerByClientId = new Map<number, string>();
+  for (const lead of rawLeads) {
+    const cid = Number(lead.client_id ?? 0);
+    if (!cid) continue;
+    if (!nameByClientId.has(cid)) {
+      const sn = shortName(lead);
+      if (sn) nameByClientId.set(cid, sn);
+    }
+    if (!managerByClientId.has(cid)) {
+      const mgr = getManager(lead);
+      if (mgr) managerByClientId.set(cid, mgr);
+    }
+  }
+
   // 3. Load all open tasks grouped by lead
-  const rawTasks   = await paginateGet('/task', { status: 'O', page_size: 100 });
+  const rawTasks    = await paginateGet('/task', { status: 'O', page_size: 100 });
   const tasksByLead = groupTasksByLead(rawTasks);
 
   // 4. Load schedule for today and tomorrow
@@ -589,10 +738,10 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   const tomorrowRegs = await paginateGet('/schedule-registration', { date: tomorrow, page_size: 100 });
   const allRegs      = [...todayRegs, ...tomorrowRegs];
 
-  // 5. Last successful run (for NEW_LEAD detection and purchase since-date)
+  // 5. Last successful run
   const lastRunAt = await getLastWatchRunAt();
 
-  // 6. New purchases since last run
+  // 6. New purchases since last run (for PURCHASE rule)
   const purchases = await loadNewPurchases(lastRunAt);
 
   // 7. Load existing open alerts from DB
@@ -600,35 +749,31 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   const openByKey  = new Map(openAlerts.map(a => [a.alert_key, a]));
 
   // 8. Compute active conditions
-  const activeKeys: Set<string>  = new Set();
-  const toUpsert:   AlertRow[]   = [];
+  const activeKeys: Set<string> = new Set();
+  const toUpsert:   AlertRow[]  = [];
 
-  // Lead-level rules
   for (const lead of leads) {
-    processLeadRules(lead, tasksByLead, nowMs, nowSec, lastRunAt, activeKeys, toUpsert);
+    processLeadRules(lead, tasksByLead, nowMs, nowSec, activeKeys, toUpsert);
   }
 
-  // CARD_FREE (requires comment fetch — only for overdue > 24h leads)
   for (const lead of leads) {
     await processCardFreeRule(lead, tasksByLead, nowSec, activeKeys, toUpsert);
   }
 
-  // Registration rules
   const scope = env.WATCH_REG_SCOPE;
   for (const reg of allRegs) {
     if (scope === 'trial' && getTrainingId(reg) !== TRIAL_TRAINING_ID) continue;
     processRegRules(reg, nowMs, nowSec, today, activeKeys, toUpsert);
   }
 
-  // Purchase rule
   for (const p of purchases) {
     processPurchaseRule(p, nowMs, activeKeys, toUpsert, openByKey);
   }
 
-  // System health rule
   await processSystemRules(nowMs, activeKeys, toUpsert);
+  await processContractRules(nowMs, activeKeys, toUpsert, nameByClientId, managerByClientId);
 
-  // 9. Upsert new alerts (ignoreDuplicates: same key never overwrites existing)
+  // 9. Upsert new alerts
   let upsertCount = 0;
   if (toUpsert.length > 0) {
     const { error } = await supabase
@@ -644,7 +789,10 @@ export async function runWatch(): Promise<Record<string, unknown>> {
     const ageMs = nowMs - new Date(alert.created_at).getTime();
     const rule  = alert.rule as string;
 
-    // Time-based expiry (takes priority over activeKeys)
+    // Disabled rules: close their existing alerts
+    if (rule !== 'SYSTEM' && !WATCH_RULES.has(rule)) { toResolve.push(key); continue; }
+
+    // Time-based expiry
     if (rule === 'PURCHASE'  && ageMs > PURCHASE_TTL_MS)  { toResolve.push(key); continue; }
     if (rule === 'CANCELLED' && ageMs > CANCELLED_TTL_MS) { toResolve.push(key); continue; }
 
@@ -652,6 +800,11 @@ export async function runWatch(): Promise<Record<string, unknown>> {
     if (rule === 'BRIEF') {
       const h = new Date(nowMs + ALMATY_MS).getUTCHours();
       if (h >= 23) { toResolve.push(key); continue; }
+    }
+
+    // NO_SHOW: auto-close 24 h after «Принято»
+    if (rule === 'NO_SHOW' && alert.acked_at) {
+      if (nowMs - new Date(alert.acked_at).getTime() > 24 * 3600_000) { toResolve.push(key); continue; }
     }
 
     // Condition no longer met
