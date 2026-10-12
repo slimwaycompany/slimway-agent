@@ -19,6 +19,9 @@ const envSchema = z.object({
   ALERT_EMAIL: z.string().default('sergey.revnivcev@gmail.com'),
   SMTP_USER: z.string().min(1),
   SMTP_PASS: z.string().min(1),
+  WINDOW_PASSWORD: z.string().default(''),
+  WINDOW_SECRET:   z.string().optional(),
+  WATCH_REG_SCOPE: z.enum(['all', 'trial']).default('all'),
 });
 
 const parsed = envSchema.safeParse(process.env);

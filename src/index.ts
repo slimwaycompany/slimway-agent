@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { env }           from './config';
-import { isInWorkWindow } from './core/window';
+import { isInWorkWindow, isInWatchWindow } from './core/window';
 import { acquireLock, releaseLock } from './core/lock';
 import { supabase }      from './db/supabase';
 import { runTrial,        JOB_NAME as TRIAL_JOB }   from './jobs/trial';
@@ -11,6 +11,9 @@ import { runProbeLtv }                                from './jobs/probeLtv';
 import { runProbeContracts }                          from './jobs/probeContracts';
 import { runProbeUnsorted }                           from './jobs/probeUnsorted';
 import { runLifecyclePlan }                           from './jobs/lifecyclePlan';
+import { runWatch,      JOB_NAME as WATCH_JOB }      from './jobs/watch';
+import { runWatchBrief, JOB_NAME as BRIEF_JOB }      from './jobs/watchBrief';
+import { mountWindowRoutes }                          from './http/window';
 
 const app = express();
 
@@ -82,6 +85,42 @@ async function handleProbeUnsorted(req: express.Request, res: express.Response):
 
 app.get('/run/probe-unsorted',  handleProbeUnsorted);
 app.post('/run/probe-unsorted', handleProbeUnsorted);
+
+// watch: checks work window (08:00-22:30 / 08:00-21:00), fire-and-forget with lock
+async function handleWatch(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  if (!isInWatchWindow()) {
+    await insertRun(WATCH_JOB, 'skipped', 0, null, null);
+    res.json({ status: 'skipped', reason: 'outside watch window' }); return;
+  }
+  const locked = await acquireLock(WATCH_JOB, 4 * 60);
+  if (!locked) {
+    res.json({ status: 'already_running' }); return;
+  }
+  res.status(202).json({ status: 'accepted', job: WATCH_JOB });
+  executeJob(WATCH_JOB, runWatch);
+}
+
+app.get('/run/watch',  handleWatch);
+app.post('/run/watch', handleWatch);
+
+// watch-brief: single run per day at 08:00
+async function handleWatchBrief(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  const locked = await acquireLock(BRIEF_JOB, 5 * 60);
+  if (!locked) {
+    res.json({ status: 'already_running' }); return;
+  }
+  res.status(202).json({ status: 'accepted', job: BRIEF_JOB });
+  executeJob(BRIEF_JOB, runWatchBrief);
+}
+
+app.get('/run/watch-brief',  handleWatchBrief);
+app.post('/run/watch-brief', handleWatchBrief);
 
 // lifecycle-plan: fire-and-forget, 30-min lock, manages its own job_runs entry via runId
 async function handleLifecyclePlan(req: express.Request, res: express.Response): Promise<void> {
@@ -209,6 +248,10 @@ async function insertRun(
     status, stats: stats ?? null, error: error ?? null,
   });
 }
+
+// ── Window page ───────────────────────────────────────────────────────────────
+
+mountWindowRoutes(app);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
