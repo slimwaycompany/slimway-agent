@@ -4,6 +4,7 @@ import { logEvent }                        from '../core/events';
 import { shortName }                       from '../core/names';
 import { lookupVisitsOverride }            from '../config';
 import { getLeadFunnel }                   from '../core/funnel';
+import { countClientVisits }              from '../core/contracts';
 
 const JOB = 'lifecycle-plan';
 
@@ -332,10 +333,11 @@ async function processLead(
   }
 
   if (active.length > 0) {
-    const tf  = purchaseDays === 1 ? 2 : 3;
-    const ts  = funnelSteps[tf];
-    const vl  = visitsLeft ?? 0;
-    const lp  = leftPct    ?? 100;
+    const tf    = purchaseDays === 1 ? 2 : 3;
+    const ts    = funnelSteps[tf];
+    const allVr = await countClientVisits(allContracts, () => Promise.resolve(regs));
+    const vl    = allVr.totalLeft;
+    const lp    = allVr.totalVisits > 0 ? Math.round((allVr.totalLeft / allVr.totalVisits) * 100) : 100;
 
     let stepName: string;
     let taskPlanned: string | null = null;

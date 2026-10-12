@@ -11,8 +11,8 @@ import {
   WATCH_RULES,
   WATCH_NO_SHOW_EXCLUDE,
   WATCH_EXCLUDE_CLIENT_IDS_SET,
-  lookupVisitsOverride,
 } from '../config';
+import { countClientVisits } from '../core/contracts';
 
 export const JOB_NAME = 'watch';
 
@@ -688,10 +688,9 @@ async function processContractRules(
     return;
   }
 
-  // Group by client_id — only qualifying contracts (price >= 40k, not deleted)
+  // Group by client_id — all non-deleted contracts (trial/unlimited filtered in helper)
   const byClient = new Map<number, Record<string, unknown>[]>();
   for (const c of allContracts) {
-    if (Number(c.price_full ?? 0) < PURCHASE_MIN) continue;
     if (String(c.deleted_at ?? '').trim()) continue;
     const clientId = Number(c.client_id ?? (c.client as Record<string, unknown>)?.id ?? 0);
     if (!clientId) continue;
@@ -715,39 +714,10 @@ async function processContractRules(
 
     const manager = managerByClient.get(clientId) || null;
 
-    // Compute visitsLeft per contract
-    interface Entry { closed: boolean; visitsLeft: number; endDateMs: number; }
-    const entries: Entry[] = [];
+    const vr = await countClientVisits(clientContracts, () => getClientRegs(clientId));
 
-    for (const c of clientContracts) {
-      const ticket    = c.ticket as Record<string, unknown> | null;
-      const rawVisits = ticket?.visits;
-      const itemName  = String((ticket?.contract_item as Record<string, unknown> | null)?.name ?? '');
-      const isClosed  = Boolean(c.closed);
-      const endDateMs = parseToMs(c.end_date);
-
-      if (rawVisits !== null && rawVisits !== undefined && Number(rawVisits) > 0) {
-        entries.push({ closed: isClosed, visitsLeft: Number(c.visits_left ?? 0), endDateMs });
-      } else if (rawVisits === null) {
-        const override = lookupVisitsOverride(itemName);
-        if (override !== null) {
-          const regs       = await getClientRegs(clientId);
-          const contractId = Number(c.id);
-          const used = regs.filter(r => {
-            if (String(r.status) !== '3') return false;
-            const cref = r.contract as Record<string, unknown> | null | undefined;
-            return Number(cref?.id ?? r.contract_id ?? -1) === contractId;
-          }).length;
-          entries.push({ closed: isClosed, visitsLeft: Math.max(0, override - used), endDateMs });
-        }
-        // unlimited with no override: skip
-      }
-    }
-
-    const active          = entries.filter(e => !e.closed && e.visitsLeft > 0);
-    const totalVisitsLeft = active.reduce((s, e) => s + e.visitsLeft, 0);
-
-    if (isEnabled('CONTRACT_ENDING') && active.length > 0 && totalVisitsLeft <= 2) {
+    if (isEnabled('CONTRACT_ENDING') && vr.activeCount > 0 && vr.totalLeft <= 2) {
+      const ruleKey = vr.freeOnly ? 'CONTRACT_ENDING_FREE' : 'CONTRACT_ENDING';
       const key = `CONTRACT_ENDING:client:${clientId}`;
       activeKeys.add(key);
       toUpsert.push({
@@ -755,16 +725,15 @@ async function processContractRules(
         lead_id: null, client_id: clientId, registration_id: null,
         manager_name: manager, short_name: sname,
         title: getTitle('CONTRACT_ENDING'),
-        body: pickBody('CONTRACT_ENDING', key, { name: sname, left: totalVisitsLeft, visits: pluralVisits(totalVisitsLeft) }),
+        body: pickBody(ruleKey, key, { name: sname, left: vr.totalLeft, visits: pluralVisits(vr.totalLeft) }),
         action_hint: null,
         link: null, meta: null,
       });
-    } else if (isEnabled('CONTRACT_ENDED') && entries.length > 0 && active.length === 0) {
-      // Recency check: most recent end_date must be within CONTRACT_ENDED_DAYS
-      const maxEndDateMs = entries.reduce((m, e) => e.endDateMs > m ? e.endDateMs : m, 0);
-      const daysAgo = maxEndDateMs > 0 ? (nowMs - maxEndDateMs) / 86_400_000 : Infinity;
+    } else if (isEnabled('CONTRACT_ENDED') && vr.anyCountable && vr.activeCount === 0) {
+      const daysAgo = vr.maxEndDateMs > 0 ? (nowMs - vr.maxEndDateMs) / 86_400_000 : Infinity;
       if (daysAgo > env.CONTRACT_ENDED_DAYS) continue;
 
+      const ruleKey = vr.allFree ? 'CONTRACT_ENDED_FREE' : 'CONTRACT_ENDED';
       const key = `CONTRACT_ENDED:client:${clientId}`;
       activeKeys.add(key);
       toUpsert.push({
@@ -772,7 +741,7 @@ async function processContractRules(
         lead_id: null, client_id: clientId, registration_id: null,
         manager_name: manager, short_name: sname,
         title: getTitle('CONTRACT_ENDED'),
-        body: pickBody('CONTRACT_ENDED', key, { name: sname }),
+        body: pickBody(ruleKey, key, { name: sname }),
         action_hint: null,
         link: null, meta: null,
       });
