@@ -600,7 +600,7 @@ export async function runTrial(): Promise<RunStats> {
   const leads = [
     ...((bookedResp.items   || []) as Lead[]),
     ...((confirmedResp.items || []) as Lead[]),
-  ].filter(l => !String(l.title || '').startsWith('ТЕСТ'));
+  ].filter(l => !/^тест/i.test(String(l.title || '')));
 
   stats.leads = leads.length;
   console.log(`[trial] ${leads.length} leads, dry=${dryRun}`);

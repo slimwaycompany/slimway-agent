@@ -402,7 +402,7 @@ export async function runLifecyclePlan(runId: number): Promise<Record<string, un
   // 2. Fetch all leads, keep only target ones
   const allLeads = await paginateGet('/lead', { page_size: 100 }, JOB);
   const leads    = allLeads.filter(l => {
-    if (String(l.title || '').startsWith('ТЕСТ')) return false;
+    if (/^тест/i.test(String(l.title || ''))) return false;
     const fi = getLeadFunnel(l);
     if (!fi) return false; // null = terminal (-1/-2) or unsupported
     if (fi === 1) return getStepId(l) === successStepId;

@@ -103,19 +103,17 @@ a{color:inherit}
 .section{background:var(--c-card);border:1px solid var(--c-border);border-radius:10px;padding:14px;margin-bottom:12px}
 .section h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--c-muted);margin-bottom:10px}
 /* Alert cards */
-.alert-card{border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid}
+.alert-card{border-radius:8px;padding:10px 12px;margin-bottom:6px;border-left:3px solid}
 .alert-card:last-child{margin-bottom:0}
 .alert-card.urgent{background:var(--c-urgent-bg);border-color:var(--c-urgent)}
 .alert-card.important{background:var(--c-imp-bg);border-color:var(--c-imp)}
 .alert-card.info{background:var(--c-info-bg);border-color:var(--c-info)}
 .alert-card.acked{opacity:.5}
-.alert-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-.alert-title{font-weight:600;font-size:13px}
+.alert-top{display:flex;align-items:center;gap:8px}
+.alert-title{font-weight:600;font-size:13px;flex:1}
+.alert-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .alert-meta{font-size:11px;color:var(--c-muted);white-space:nowrap}
-.alert-name{font-size:12px;color:var(--c-muted);margin-top:2px}
-.alert-body{font-size:13px;margin-top:4px}
-.alert-hint{font-size:12px;color:var(--c-muted);margin-top:3px;font-style:italic}
-.alert-footer{display:flex;justify-content:flex-end;margin-top:8px}
+.alert-detail{font-size:12px;color:var(--c-muted);margin-top:3px}
 /* Feed */
 .feed-item{padding:6px 0;border-bottom:1px solid var(--c-border);font-size:12px}
 .feed-item:last-child{border-bottom:none}
@@ -289,7 +287,7 @@ a{color:inherit}
   function renderAlerts(alerts){
     const list = $('alerts-list');
     const sorted = [...alerts].sort((a,b)=>{
-      const lo = (LEVEL_ORDER[a.level]||2) - (LEVEL_ORDER[b.level]||2);
+      const lo = (LEVEL_ORDER[a.level] ?? 2) - (LEVEL_ORDER[b.level] ?? 2);
       if (lo !== 0) return lo;
       return new Date(b.created_at) - new Date(a.created_at);
     });
@@ -301,19 +299,18 @@ a{color:inherit}
       return;
     }
     list.innerHTML = sorted.map(a => {
-      const cls = a.level + (a.acked_at ? ' acked' : '');
-      const mgr = a.manager_name ? '<span> · '+esc(a.manager_name)+'</span>' : '';
+      const cls    = a.level + (a.acked_at ? ' acked' : '');
+      const hint   = a.action_hint ? '→ ' + a.action_hint : '';
+      const detail = [a.body, hint].filter(Boolean).join(' · ');
       return \`<div class="alert-card \${cls}" data-id="\${a.id}">
         <div class="alert-top">
-          <div>
-            <div class="alert-title">\${esc(a.title)}</div>
-            <div class="alert-name">\${esc(a.short_name||'')+mgr}</div>
+          <div class="alert-title">\${esc(a.title)}</div>
+          <div class="alert-right">
+            <span class="alert-meta">\${timeAgo(a.created_at)}</span>
+            \${!a.acked_at ? '<button class="btn btn-sm" onclick="ack('+a.id+')">Принято</button>' : ''}
           </div>
-          <div class="alert-meta">\${timeAgo(a.created_at)}</div>
         </div>
-        <div class="alert-body">\${esc(a.body)}</div>
-        \${a.action_hint ? '<div class="alert-hint">→ '+esc(a.action_hint)+'</div>' : ''}
-        \${!a.acked_at ? '<div class="alert-footer"><button class="btn btn-sm" onclick="ack('+a.id+')">Принято</button></div>' : ''}
+        \${detail ? '<div class="alert-detail">'+esc(detail)+'</div>' : ''}
       </div>\`;
     }).join('');
   }

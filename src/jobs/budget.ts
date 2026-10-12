@@ -61,7 +61,7 @@ export async function runBudget(): Promise<Record<string, unknown>> {
   }
 
   for (const lead of allLeads) {
-    if (String(lead.title || '').startsWith('ТЕСТ')) continue;
+    if (/^тест/i.test(String(lead.title || ''))) continue;
 
     const stepId   = getStepId(lead);
     const funnelId = getLeadFunnel(lead);
