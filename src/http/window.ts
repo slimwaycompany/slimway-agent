@@ -114,6 +114,16 @@ a{color:inherit}
 .alert-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .alert-meta{font-size:11px;color:var(--c-muted);white-space:nowrap}
 .alert-detail{font-size:12px;color:var(--c-muted);margin-top:3px}
+/* Closed section */
+.section-hdr{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.section-hdr h2{flex:1;margin-bottom:0}
+.section-chevron{font-size:11px;color:var(--c-muted)}
+.closed-card{border-radius:8px;padding:8px 12px;margin-bottom:6px;border-left:3px solid var(--c-border);opacity:.75}
+.closed-card:last-child{margin-bottom:0}
+.closed-top{display:flex;align-items:center;gap:8px}
+.closed-title{font-size:13px;font-weight:500;flex:1}
+.closed-time{font-size:11px;color:var(--c-muted);white-space:nowrap}
+.closed-reason{font-size:11px;color:var(--c-muted);margin-top:2px}
 /* Feed */
 .feed-item{padding:6px 0;border-bottom:1px solid var(--c-border);font-size:12px}
 .feed-item:last-child{border-bottom:none}
@@ -160,6 +170,14 @@ a{color:inherit}
       <div id="alerts-list"></div>
     </div>
 
+    <div class="section" id="closed-section">
+      <div class="section-hdr" onclick="toggleClosed()">
+        <h2>Завершённые за 24 часа <span id="closed-count" style="font-weight:400">(0)</span></h2>
+        <span class="section-chevron" id="closed-chevron">▶</span>
+      </div>
+      <div id="closed-list" style="display:none;margin-top:8px"></div>
+    </div>
+
     <div class="section">
       <h2>Лента</h2>
       <div id="feed-list"></div>
@@ -188,6 +206,7 @@ a{color:inherit}
 (function(){
   const $ = id => document.getElementById(id);
   let since_id = 0;
+  const notifiedIds = new Set();
   let soundOn = localStorage.getItem('sw_sound') !== 'false';
   let notifGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
   let audioCtx = null;
@@ -291,28 +310,55 @@ a{color:inherit}
       if (lo !== 0) return lo;
       return new Date(b.created_at) - new Date(a.created_at);
     });
-    const active = sorted.filter(a => !a.acked_at);
-    $('alert-count').textContent = active.length ? '('+active.length+')' : '';
-    document.title = (active.length ? '('+active.length+') ' : '') + 'SlimWay — помощник';
+    $('alert-count').textContent = sorted.length ? '('+sorted.length+')' : '';
+    document.title = (sorted.length ? '('+sorted.length+') ' : '') + 'SlimWay — помощник';
     if (sorted.length === 0){
       list.innerHTML = '<div class="empty">Всё под контролем — тревог нет</div>';
       return;
     }
     list.innerHTML = sorted.map(a => {
-      const cls    = a.level + (a.acked_at ? ' acked' : '');
       const detail = a.body || '';
-      return \`<div class="alert-card \${cls}" data-id="\${a.id}">
+      return \`<div class="alert-card \${a.level}" data-id="\${a.id}">
         <div class="alert-top">
           <div class="alert-title">\${esc(a.title)}</div>
           <div class="alert-right">
             <span class="alert-meta">\${timeAgo(a.created_at)}</span>
-            \${!a.acked_at ? '<button class="btn btn-sm" onclick="ack('+a.id+')">Принято</button>' : ''}
+            <button class="btn btn-sm" onclick="ack(\${a.id})">Принято</button>
           </div>
         </div>
         \${detail ? '<div class="alert-detail">'+esc(detail)+'</div>' : ''}
       </div>\`;
     }).join('');
   }
+
+  function renderClosed(closed){
+    const el = $('closed-list');
+    const cnt = closed ? closed.length : 0;
+    $('closed-count').textContent = '(' + cnt + ')';
+    if (!cnt){ el.innerHTML = '<div class="empty">Нет завершённых за 24 часа</div>'; return; }
+    el.innerHTML = closed.map(a => {
+      const closeTime = a.acked_at || a.resolved_at;
+      const reason = (a.meta && a.meta.resolve_reason) ? a.meta.resolve_reason
+                     : a.acked_at ? 'Принято вручную'
+                     : 'Закрыто автоматически';
+      const canUnack = a.acked_at && !a.resolved_at;
+      return \`<div class="closed-card">
+        <div class="closed-top">
+          <div class="closed-title">\${esc(a.title)}\${a.short_name ? ' — '+esc(a.short_name) : ''}</div>
+          <span class="closed-time">\${closeTime ? fmtHHMM(closeTime) : ''}</span>
+          \${canUnack ? '<button class="btn btn-sm" onclick="unack('+a.id+')">Вернуть</button>' : ''}
+        </div>
+        <div class="closed-reason">\${esc(reason)}</div>
+      </div>\`;
+    }).join('');
+  }
+
+  window.toggleClosed = function(){
+    const list = $('closed-list');
+    const chev = $('closed-chevron');
+    if (list.style.display === 'none'){ list.style.display='block'; chev.textContent='▼'; }
+    else { list.style.display='none'; chev.textContent='▶'; }
+  };
 
   function renderFeed(feed){
     const el = $('feed-list');
@@ -326,9 +372,13 @@ a{color:inherit}
     ).join('');
   }
 
-  // ── Ack ──────────────────────────────────────────────────────────────────────
+  // ── Ack / Unack ──────────────────────────────────────────────────────────────
   window.ack = async function(id){
     await fetch('/window/api/ack/'+id, {method:'POST'});
+    fetchState();
+  };
+  window.unack = async function(id){
+    await fetch('/window/api/unack/'+id, {method:'POST'});
     fetchState();
   };
 
@@ -345,9 +395,12 @@ a{color:inherit}
       const data = await res.json();
       updateStatus(data, true);
       renderAlerts(data.alerts||[]);
+      renderClosed(data.closed||[]);
       renderFeed(data.feed||[]);
       for (const a of (data.new_alerts||[])){
         since_id = Math.max(since_id, a.id);
+        if (notifiedIds.has(a.id)) continue;
+        notifiedIds.add(a.id);
         if (['urgent','important'].includes(a.level)){
           if (notifGranted){
             new Notification(a.title, {body: String(a.body||'').substring(0, 120)});
@@ -369,13 +422,14 @@ a{color:inherit}
       r.json().then(data => {
         updateStatus(data, true);
         renderAlerts(data.alerts||[]);
+        renderClosed(data.closed||[]);
         renderFeed(data.feed||[]);
         if (data.alerts) since_id = Math.max(...(data.alerts.map(a=>a.id||0)), 0);
       });
     }
   }).catch(()=>{});
 
-  setInterval(fetchState, 20000);
+  setInterval(fetchState, 10000);
 })();
 </script>
 </body>
@@ -406,24 +460,35 @@ export function mountWindowRoutes(app: express.Application): void {
   app.get('/window/api/state', async (req, res) => {
     if (!requireAuth(req, res)) return;
     try {
-      const sinceId = Number(req.query.since_id) || 0;
-      const today   = new Date(Date.now() + ALMATY_MS).toISOString().slice(0, 10);
+      const sinceId   = Number(req.query.since_id) || 0;
+      const cutoff24h = new Date(Date.now() - 86400_000).toISOString();
 
-      // Active alerts (unresolved)
+      // Active alerts: unresolved AND unacked
       const { data: alerts, error: e1 } = await supabase
         .from('watch_alerts')
         .select('id, alert_key, rule, level, lead_id, client_id, registration_id, manager_name, short_name, title, body, action_hint, created_at, acked_at')
         .is('resolved_at', null)
+        .is('acked_at', null)
         .order('created_at', { ascending: false });
       if (e1) throw e1;
 
-      // New alerts (for notifications)
+      // Closed alerts: acked or resolved in last 24h
+      const { data: closed, error: e4 } = await supabase
+        .from('watch_alerts')
+        .select('id, rule, level, short_name, title, acked_at, resolved_at, meta, created_at')
+        .or(`resolved_at.gt.${cutoff24h},acked_at.gt.${cutoff24h}`)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (e4) throw e4;
+
+      // New alerts for notifications (include body)
       const { data: newAlerts, error: e2 } = sinceId > 0
         ? await supabase
             .from('watch_alerts')
-            .select('id, alert_key, rule, level, short_name, title, action_hint')
+            .select('id, alert_key, rule, level, short_name, title, body')
             .gt('id', sinceId)
             .is('resolved_at', null)
+            .is('acked_at', null)
         : { data: [], error: null };
       if (e2) throw e2;
 
@@ -437,14 +502,14 @@ export function mountWindowRoutes(app: express.Application): void {
         .limit(1)
         .maybeSingle();
 
-      // Feed: last 50 agent actions today (lead_moved, task_created, budget_updated)
+      // Feed: last 24h of agent actions
       const { data: feedRaw, error: e3 } = await supabase
         .from('agent_events')
         .select('id, created_at, short_name, text, type')
-        .gte('created_at', today + 'T00:00:00+05:00')
+        .gte('created_at', cutoff24h)
         .in('type', ['lead_moved', 'task_created', 'budget_updated'])
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
       if (e3) throw e3;
 
       const feed = (feedRaw ?? []).map(f => ({
@@ -457,6 +522,7 @@ export function mountWindowRoutes(app: express.Application): void {
 
       res.json({
         alerts:        alerts ?? [],
+        closed:        closed ?? [],
         new_alerts:    newAlerts ?? [],
         feed,
         server_time:   new Date().toISOString(),
@@ -474,9 +540,23 @@ export function mountWindowRoutes(app: express.Application): void {
     if (!id) { res.status(400).json({ error: 'bad id' }); return; }
     const { error } = await supabase
       .from('watch_alerts')
-      .update({ acked_at: new Date().toISOString() })
+      .update({ acked_at: new Date().toISOString(), meta: { resolve_reason: 'Принято вручную' } })
       .eq('id', id)
       .is('acked_at', null);
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    res.json({ ok: true });
+  });
+
+  app.post('/window/api/unack/:id', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const id = Number(req.params.id);
+    if (!id) { res.status(400).json({ error: 'bad id' }); return; }
+    const { error } = await supabase
+      .from('watch_alerts')
+      .update({ acked_at: null, meta: null })
+      .eq('id', id)
+      .is('resolved_at', null)
+      .not('acked_at', 'is', null);
     if (error) { res.status(500).json({ error: error.message }); return; }
     res.json({ ok: true });
   });

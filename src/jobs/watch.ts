@@ -347,37 +347,22 @@ function processLeadRules(
   const tasks    = tasksByLead.get(leadId) ?? [];
   const ta       = analyzeLeadTasks(tasks, nowSec);
 
+  // NEW_LEAD / NEW_LEAD_NO_TASK: creation is handled by /run/new-leads (runs every minute).
+  // Watch still tracks activeKeys so the resolve pass closes stale alerts correctly.
   if (isEnabled('NEW_LEAD') && created > 0) {
     const ageMs = nowMs - created;
     if (ageMs < NEW_LEAD_GRACE_MS && ta.openTasks.length === 0) {
-      const source = getSource(lead);
-      const key    = `NEW_LEAD:lead:${leadId}`;
-      activeKeys.add(key);
-      toUpsert.push({
-        alert_key: key, rule: 'NEW_LEAD', level: 'urgent',
-        lead_id: leadId, client_id: clientId, registration_id: null,
-        manager_name: manager, short_name: sname,
-        title: getTitle('NEW_LEAD'),
-        body: pickBody('NEW_LEAD', key, { name: sname, source: source || 'неизвестен' }),
-        action_hint: null,
-        link: null, meta: null,
-      });
+      activeKeys.add(`NEW_LEAD:lead:${leadId}`);
     }
   }
 
-  if (isEnabled('NEW_LEAD_NO_TASK') && created > 0 && nowMs - created > NEW_LEAD_TASK_MIN && ta.futureWithin7d.length === 0) {
-    const source = getSource(lead);
-    const key    = `NEW_LEAD_NO_TASK:lead:${leadId}`;
-    activeKeys.add(key);
-    toUpsert.push({
-      alert_key: key, rule: 'NEW_LEAD_NO_TASK', level: 'urgent',
-      lead_id: leadId, client_id: clientId, registration_id: null,
-      manager_name: manager, short_name: sname,
-      title: getTitle('NEW_LEAD_NO_TASK'),
-      body: pickBody('NEW_LEAD_NO_TASK', key, { name: sname, source: source || 'неизвестен' }),
-      action_hint: null,
-      link: null, meta: null,
-    });
+  if (isEnabled('NEW_LEAD_NO_TASK') && created > 0) {
+    const ageMs = nowMs - created;
+    const todayAlmaty    = new Date(nowMs + ALMATY_MS).toISOString().slice(0, 10);
+    const workStartToday = new Date(todayAlmaty + 'T03:00:00Z').getTime(); // 08:00 Almaty
+    if (ageMs > NEW_LEAD_TASK_MIN && ageMs < NEW_LEAD_GRACE_MS && created >= workStartToday && ta.openTasks.length === 0) {
+      activeKeys.add(`NEW_LEAD_NO_TASK:lead:${leadId}`);
+    }
   }
 
   const anyTaskRule = isEnabled('TASK_OVERDUE') || isEnabled('TASK_TOO_FAR') || isEnabled('NO_TASK');

@@ -12,8 +12,11 @@ import { runProbeContracts }                          from './jobs/probeContract
 import { runProbeUnsorted }                           from './jobs/probeUnsorted';
 import { runLifecyclePlan }                           from './jobs/lifecyclePlan';
 import { runWatch,      JOB_NAME as WATCH_JOB }      from './jobs/watch';
+import { runNewLeads,  JOB_NAME as NEW_LEADS_JOB }   from './jobs/newLeads';
 import { runWatchBrief, JOB_NAME as BRIEF_JOB }      from './jobs/watchBrief';
 import { mountWindowRoutes }                          from './http/window';
+
+const PROCESS_STARTED_AT = new Date().toISOString();
 
 const app = express();
 
@@ -105,6 +108,26 @@ async function handleWatch(req: express.Request, res: express.Response): Promise
 
 app.get('/run/watch',  handleWatch);
 app.post('/run/watch', handleWatch);
+
+// new-leads: lightweight job every minute — fast NEW_LEAD / NEW_LEAD_NO_TASK intake
+async function handleNewLeads(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  if (!isInWatchWindow()) {
+    await insertRun(NEW_LEADS_JOB, 'skipped', 0, null, null);
+    res.json({ status: 'skipped', reason: 'outside watch window' }); return;
+  }
+  const locked = await acquireLock(NEW_LEADS_JOB, 2 * 60); // 2-min TTL
+  if (!locked) {
+    res.json({ status: 'already_running' }); return;
+  }
+  res.status(202).json({ status: 'accepted', job: NEW_LEADS_JOB });
+  executeJob(NEW_LEADS_JOB, runNewLeads);
+}
+
+app.get('/run/new-leads',  handleNewLeads);
+app.post('/run/new-leads', handleNewLeads);
 
 // watch-brief: single run per day at 08:00
 async function handleWatchBrief(req: express.Request, res: express.Response): Promise<void> {
@@ -253,7 +276,31 @@ async function insertRun(
 
 mountWindowRoutes(app);
 
+// ── Startup: clear stale locks and orphaned running job_runs ──────────────────
+
+async function clearStaleLocks(): Promise<void> {
+  try {
+    const { count: lockCount } = await supabase
+      .from('job_locks')
+      .delete({ count: 'exact' })
+      .neq('job', '');
+
+    const { count: runCount } = await supabase
+      .from('job_runs')
+      .update(
+        { status: 'error', error: 'прервано перезапуском сервера', finished_at: PROCESS_STARTED_AT },
+        { count: 'exact' },
+      )
+      .eq('status', 'running')
+      .lt('started_at', PROCESS_STARTED_AT);
+
+    console.log(`[startup] cleared ${lockCount ?? 0} locks, closed ${runCount ?? 0} stale runs`);
+  } catch (e) {
+    console.error('[startup] clearStaleLocks error:', (e as Error).message);
+  }
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-const PORT = env.PORT;
-app.listen(PORT, () => console.log(`[server] port ${PORT}`));
+clearStaleLocks().catch(() => {/* already logged inside */});
+app.listen(env.PORT, () => console.log(`[server] port ${env.PORT}`));
