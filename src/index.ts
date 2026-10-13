@@ -14,6 +14,8 @@ import { runLifecyclePlan }                           from './jobs/lifecyclePlan
 import { runWatch,      JOB_NAME as WATCH_JOB }      from './jobs/watch';
 import { runNewLeads,  JOB_NAME as NEW_LEADS_JOB }   from './jobs/newLeads';
 import { runWatchBrief, JOB_NAME as BRIEF_JOB }      from './jobs/watchBrief';
+import { runProbeTasks }                              from './jobs/probeTasks';
+import { runInactive,  JOB_NAME as INACTIVE_JOB }    from './jobs/inactive';
 import { mountWindowRoutes }                          from './http/window';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
@@ -144,6 +146,42 @@ async function handleWatchBrief(req: express.Request, res: express.Response): Pr
 
 app.get('/run/watch-brief',  handleWatchBrief);
 app.post('/run/watch-brief', handleWatchBrief);
+
+// probe-tasks: synchronous, returns JSON directly
+async function handleProbeTasks(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  try {
+    const result = await runProbeTasks();
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+
+app.get('/run/probe-tasks',  handleProbeTasks);
+app.post('/run/probe-tasks', handleProbeTasks);
+
+// inactive: once per day at 09:00, fire-and-forget with lock
+async function handleInactive(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  if (!isInWorkWindow()) {
+    await insertRun(INACTIVE_JOB, 'skipped', 0, null, null);
+    res.json({ status: 'skipped', reason: 'outside work window' }); return;
+  }
+  const locked = await acquireLock(INACTIVE_JOB, 10 * 60);
+  if (!locked) {
+    res.json({ status: 'already_running' }); return;
+  }
+  res.status(202).json({ status: 'accepted', job: INACTIVE_JOB });
+  executeJob(INACTIVE_JOB, runInactive);
+}
+
+app.get('/run/inactive',  handleInactive);
+app.post('/run/inactive', handleInactive);
 
 // lifecycle-plan: fire-and-forget, 30-min lock, manages its own job_runs entry via runId
 async function handleLifecyclePlan(req: express.Request, res: express.Response): Promise<void> {

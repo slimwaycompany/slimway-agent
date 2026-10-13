@@ -11,8 +11,13 @@ const envSchema = z.object({
   AGENT_USER_ID: z.coerce.number().default(40),
   TASK_RESPONSIBLE_IDS: z.string().default('33,39,35'),
   // "true" or any non-"false" string → dry run on
-  TRIAL_AGENT_DRY_RUN: z.string().transform(v => v !== 'false').default('true'),
-  BUDGET_DRY_RUN:      z.string().transform(v => v !== 'false').default('true'),
+  TRIAL_AGENT_DRY_RUN:    z.string().transform(v => v !== 'false').default('true'),
+  BUDGET_DRY_RUN:         z.string().transform(v => v !== 'false').default('true'),
+  INACTIVE_DRY_RUN:       z.string().transform(v => v !== 'false').default('true'),
+  INACTIVE_DAYS_1:        z.coerce.number().default(7),
+  INACTIVE_DAYS_2:        z.coerce.number().default(10),
+  INACTIVE_DAYS_OWNER:    z.coerce.number().default(14),
+  INACTIVE_DEADLINE_HOUR: z.coerce.number().default(20),
   BUDGET_DEFAULT:      z.coerce.number().default(69000),
   LTV_SOURCE:             z.enum(['purchase_amount', 'till_steps']).default('purchase_amount'),
   UNSORTED_DEFAULT_FUNNEL: z.coerce.number().default(1),
@@ -50,10 +55,11 @@ export const WATCH_EXCLUDE_CLIENT_IDS_SET = new Set(
   env.WATCH_EXCLUDE_CLIENT_IDS.split(',').map(s => Number(s.trim())).filter(n => n > 0),
 );
 
-type Module = 'trial' | 'budget';
+type Module = 'trial' | 'budget' | 'inactive';
 const DRY_FLAGS: Record<Module, boolean> = {
-  trial:  env.TRIAL_AGENT_DRY_RUN,
-  budget: env.BUDGET_DRY_RUN,
+  trial:    env.TRIAL_AGENT_DRY_RUN,
+  budget:   env.BUDGET_DRY_RUN,
+  inactive: env.INACTIVE_DRY_RUN,
 };
 export function isDry(module: Module): boolean {
   return DRY_FLAGS[module];

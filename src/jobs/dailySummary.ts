@@ -1,7 +1,6 @@
 import { supabase }            from '../db/supabase';
-import { isDry, env }          from '../config';
+import { isDry, env, STAGE_NOSHOW } from '../config';
 import { sendDailySummary }    from '../core/mail';
-import { STAGE_NOSHOW }        from '../config';
 import { paginateGet }         from '../http/fitbase';
 
 export const JOB_NAME = 'daily-summary';
@@ -132,6 +131,64 @@ export async function runDailySummary(): Promise<void> {
 
   body += `\n== TikTok — новые заявки сегодня: ${tiktokNew} ==\n`;
   body += `(запись за ${ddmmyyyy} по Алма-Ате)\n`;
+
+  // ── Inactive clients blocks ───────────────────────────────────────────────────
+  try {
+    const inactiveDry = isDry('inactive');
+
+    // Stage-14 open episodes
+    const { data: ep14 } = await supabase
+      .from('inactive_episodes')
+      .select('*')
+      .is('closed_at', null)
+      .not('stage14_at', 'is', null);
+
+    if (ep14 && ep14.length > 0) {
+      body += `\n== Не ходят 14+ дней (эскалация) ==\n`;
+      for (const ep of ep14 as Record<string, unknown>[]) {
+        body += `  client_id=${ep.client_id} | stage7=${ep.stage7_at ? String(ep.stage7_at).slice(0,10) : '—'} | stage10=${ep.stage10_at ? String(ep.stage10_at).slice(0,10) : '—'}\n`;
+      }
+    }
+
+    // Today's inactive events
+    const { data: inactiveEvents } = await supabase
+      .from('agent_events')
+      .select('*')
+      .gte('created_at', dayStart)
+      .lte('created_at', dayEnd)
+      .eq('job', 'inactive')
+      .eq('dry', inactiveDry);
+
+    let s7 = 0, s10 = 0, s14 = 0;
+    let returned = 0;
+    for (const ev of (inactiveEvents ?? [])) {
+      const meta = ev.meta as Record<string, unknown> | null;
+      if (ev.type === 'task_created') {
+        const stage = Number(meta?.stage ?? 0);
+        if (stage === 7)  s7++;
+        if (stage === 10) s10++;
+        if (stage === 14) s14++;
+      }
+    }
+
+    // Count returned (episode closed with Пришёл/Записался today)
+    const { count: returnCount } = await supabase
+      .from('inactive_episodes')
+      .select('id', { count: 'exact', head: true })
+      .gte('closed_at', dayStart)
+      .lte('closed_at', dayEnd)
+      .in('close_reason', ['Пришёл на занятие', 'Записался']);
+
+    returned = returnCount ?? 0;
+
+    body += `\n== Неактивные клиенты (inactive${inactiveDry ? ', DRY' : ''}) ==\n`;
+    body += `Ступень 7 (${env.INACTIVE_DAYS_1}+ дн.): ${s7}\n`;
+    body += `Ступень 10 (${env.INACTIVE_DAYS_2}+ дн.): ${s10}\n`;
+    body += `Ступень 14 (${env.INACTIVE_DAYS_OWNER}+ дн.): ${s14}\n`;
+    body += `Вернулись сегодня: ${returned}\n`;
+  } catch (e) {
+    body += `\n== Неактивные клиенты: ошибка — ${(e as Error).message} ==\n`;
+  }
 
   await sendDailySummary(subject, body);
   console.log('[daily-summary] sent:', subject);

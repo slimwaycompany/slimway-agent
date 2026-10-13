@@ -49,7 +49,7 @@ export class FitbaseAuthError extends Error {
 
 // Core HTTP helper — 250 ms rate-limit + up to 3 retries on 429/5xx
 async function request(
-  method: 'GET' | 'POST' | 'PATCH',
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   data?: Record<string, unknown>,
 ): Promise<unknown> {
@@ -65,8 +65,8 @@ async function request(
       const headers = getHeaders();
       let resp: Response;
 
-      if (method === 'GET') {
-        resp = await fetch(url, { method: 'GET', headers });
+      if (method === 'GET' || method === 'DELETE') {
+        resp = await fetch(url, { method, headers });
       } else {
         resp = await fetch(url, {
           method,
@@ -119,7 +119,11 @@ export async function rawPatch(path: string, data: Record<string, unknown>): Pro
   return request('PATCH', path, data) as Promise<Record<string, unknown>>;
 }
 
-async function rawPost(path: string, data: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function rawDelete(path: string): Promise<Record<string, unknown>> {
+  return request('DELETE', path) as Promise<Record<string, unknown>>;
+}
+
+export async function rawPost(path: string, data: Record<string, unknown>): Promise<Record<string, unknown>> {
   const result = (await request('POST', path, data)) as Record<string, unknown>;
   if (!result.success) {
     throw new Error(
@@ -232,4 +236,24 @@ export async function getTillOrderSteps(
   params: Record<string, string | number>,
 ): Promise<Record<string, unknown>[]> {
   return paginateGet('/till-order-steps', { page_size: 100, ...params });
+}
+
+// Create a task without a lead or client card. Returns the new task id (0 on failure).
+export async function createStandaloneTask(params: {
+  description: string;
+  available_to: number;
+  responsible_ids: string[];
+  is_important?: 1;
+}): Promise<number> {
+  const data: Record<string, unknown> = {
+    description:  params.description,
+    available_to: params.available_to,
+    is_allday:    0,
+    status:       TASK_STATUS_OPEN,
+    category_id:  TASK_CATEGORY_CALL_ID,
+  };
+  if (params.is_important) data.is_important = params.is_important;
+  if (params.responsible_ids.length > 0) data['responsible_id[]'] = params.responsible_ids;
+  const resp = await rawPost('/task', data);
+  return Number((resp.item as Record<string, unknown> | undefined)?.id ?? 0);
 }
