@@ -142,7 +142,8 @@ export async function runNewLeads(): Promise<Record<string, unknown>> {
         manager_name: manager, short_name: sname,
         title: getTitle('NEW_LEAD'),
         body:  pickBody('NEW_LEAD', key, { name: sname, source: source || 'неизвестен' }),
-        action_hint: null, link: null, meta: null,
+        action_hint: null, link: null,
+        meta: { phone: String((lead.phone || lead.mobile || '') as string) || null },
       });
     }
 
@@ -156,7 +157,8 @@ export async function runNewLeads(): Promise<Record<string, unknown>> {
         manager_name: manager, short_name: sname,
         title: getTitle('NEW_LEAD_NO_TASK'),
         body:  pickBody('NEW_LEAD_NO_TASK', key, { name: sname, source: source || 'неизвестен' }),
-        action_hint: null, link: null, meta: null,
+        action_hint: null, link: null,
+        meta: { phone: String((lead.phone || lead.mobile || '') as string) || null },
       });
     }
   }

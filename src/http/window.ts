@@ -80,11 +80,13 @@ async function fetchLeadSource(leadId: number): Promise<string> {
 
 // ── HTML page ─────────────────────────────────────────────────────────────────
 
-const HTML = `<!DOCTYPE html>
+const HTML_TEMPLATE = `<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#02BDB6">
+<link rel="manifest" href="/window/manifest.json">
 <title>SlimWay — помощник</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -138,7 +140,13 @@ a{color:inherit}
 .hdr-title{font-size:18px;font-weight:700;flex:1}
 .hdr-logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--brand),var(--accent));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0}
 .hdr-actions{display:flex;gap:6px;align-items:center}
-.status-bar{font-size:12px;color:var(--c-muted);margin-bottom:10px}
+.status-bar{font-size:12px;color:var(--c-muted);margin-bottom:6px}
+.stats-pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.stat-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;background:var(--card);border:1px solid var(--c-border)}
+.sp-lead{background:rgba(239,68,68,.08);color:var(--red);border-color:rgba(239,68,68,.2)}
+.sp-brand{background:rgba(2,189,182,.08);color:var(--brand);border-color:rgba(2,189,182,.2)}
+.sp-task{background:rgba(38,61,217,.08);color:var(--accent);border-color:rgba(38,61,217,.2)}
+.sp-muted{background:rgba(100,116,139,.08);color:var(--c-muted)}
 .stale-banner{background:#fef9c3;border:1px solid #fde047;color:#713f12;padding:8px 14px;border-radius:10px;margin-bottom:10px;font-size:13px}
 #err-banner{display:none;background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;padding:8px 14px;border-radius:10px;margin-bottom:10px;font-size:13px}
 #err-banner.show{display:block}
@@ -187,6 +195,31 @@ a{color:inherit}
 .card-new-lead.escalated{border-color:var(--red) !important;background:linear-gradient(rgba(255,255,255,0.92),rgba(255,255,255,0.92)) padding-box, linear-gradient(135deg,var(--red),#f97316) border-box}
 [data-theme="dark"] .card-new-lead.escalated{background:linear-gradient(rgba(20,28,44,.92),rgba(20,28,44,.92)) padding-box, linear-gradient(135deg,var(--red),#f97316) border-box}
 .source-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(2,189,182,.1);color:var(--brand)}
+
+/* Response timer */
+.timer-lbl{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px;background:rgba(2,189,182,.1);color:var(--brand);margin-top:4px}
+.timer-lbl.warn{background:rgba(234,179,8,.12);color:#b45309}
+.timer-lbl.late{background:rgba(239,68,68,.1);color:var(--red)}
+
+/* Deadline badge */
+.dl-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;margin-top:4px}
+.dl-ok{background:rgba(100,116,139,.08);color:var(--c-muted)}
+.dl-warn{background:rgba(245,158,11,.12);color:var(--orange)}
+.dl-over{background:rgba(239,68,68,.1);color:var(--red)}
+
+/* Task chip */
+.task-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(38,61,217,.1);color:var(--accent);margin-right:4px}
+
+/* Action buttons */
+.act-row{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+.btn-a{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;font-size:12px;font-weight:600;border:1.5px solid var(--c-border);background:var(--card);color:var(--c-text);cursor:pointer;text-decoration:none;line-height:1;transition:opacity .15s}
+.btn-a:hover{opacity:.75}
+.btn-a-wa{background:rgba(37,211,102,.1);color:#16a34a;border-color:rgba(37,211,102,.3)}
+.btn-a-call{background:rgba(2,189,182,.1);color:var(--brand);border-color:rgba(2,189,182,.3)}
+
+/* Clients list */
+.clients-toggle{font-size:11px;color:var(--accent);cursor:pointer;margin-top:4px;display:inline-block}
+.clients-list{font-size:11px;color:var(--c-muted);line-height:1.6;margin-top:3px;display:none}
 
 /* Closed cards */
 .closed-card{background:var(--card);border-radius:10px;padding:9px 12px;margin-bottom:6px;border:1px solid var(--c-border);opacity:.8}
@@ -276,6 +309,7 @@ a{color:inherit}
         </div>
       </div>
       <div class="status-bar" id="status-bar">Последняя проверка: — · Связь: —</div>
+      <div id="stats-pills" class="stats-pills"></div>
       <div class="stale-banner" id="stale-banner" style="display:none">⚠ Агент не запускался более 10 минут</div>
       <div id="err-banner"></div>
     </div>
@@ -320,6 +354,8 @@ a{color:inherit}
 <script>
 (function(){
   const $ = id => document.getElementById(id);
+  const LEAD_URL   = '__LEAD_URL__';
+  const CLIENT_URL = '__CLIENT_URL__';
   let since_id = 0;
   const notifiedIds = new Set();
   let soundOn = localStorage.getItem('sw_sound') !== 'false';
@@ -403,7 +439,7 @@ a{color:inherit}
   $('pw-input').addEventListener('keydown', e => { if(e.key==='Enter') login(); });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function timeAgo(iso){
     const d = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
     if (d < 1) return 'только что';
@@ -420,12 +456,23 @@ a{color:inherit}
     const d = new Date(new Date(iso).getTime() + 5*3600000);
     return d.toISOString().slice(11,16);
   }
+  function secToAlmaty(sec){
+    return new Date(sec * 1000 + 5*3600000).toISOString().slice(11,16);
+  }
   function isWorkHourAlmaty(iso){
     const h = new Date(new Date(iso).getTime() + 5*3600000).getUTCHours();
     return h >= 8 && h < 23;
   }
   function minutesAgo(iso){
     return Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  }
+  function cleanPhone(phone){
+    const d = (phone||'').replace(/[^0-9]/g, '');
+    return d.startsWith('8') && d.length === 11 ? '7' + d.slice(1) : d;
+  }
+  function timerText(totalSec){
+    const m = Math.floor(totalSec / 60), s = totalSec % 60;
+    return m + 'м ' + String(s).padStart(2,'0') + 'с';
   }
 
   // ── Icons ─────────────────────────────────────────────────────────────────
@@ -437,6 +484,7 @@ a{color:inherit}
     ticket:    '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M1 5a1 1 0 011-1h12a1 1 0 011 1v1.5a1.5 1.5 0 000 3V11a1 1 0 01-1 1H2a1 1 0 01-1-1V9.5a1.5 1.5 0 000-3V5z"/></svg>',
     check:     '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M13.5 3L6 11.5 2.5 8 1 9.5l5 5 9-10z"/></svg>',
     warning:   '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M8 1L1 14h14L8 1zm0 3l5 9H3l5-9zm-1 3v3h2V7H7zm0 4v2h2v-2H7z"/></svg>',
+    checklist: '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M13 2H3a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1V3a1 1 0 00-1-1zm-1 10H4V4h8v8zm-5-2l-2-2 1-1 1 1 3-3 1 1z"/></svg>',
     tiktok:    '<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.53V6.77a4.85 4.85 0 01-1.01-.08z"/></svg>',
     instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"/></svg>',
     whatsapp:  '<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M17.47 14.38c-.26-.13-1.52-.75-1.75-.83-.24-.09-.41-.13-.58.13s-.67.83-.82.99c-.15.17-.3.19-.56.06-.26-.13-1.1-.41-2.1-1.3-.77-.69-1.3-1.54-1.45-1.8-.15-.26-.01-.4.11-.53.12-.11.26-.29.38-.44.13-.14.17-.26.26-.43.09-.17.04-.32-.02-.44s-.58-1.4-.8-1.91c-.21-.5-.42-.43-.58-.44h-.5c-.17 0-.44.06-.67.32s-.88.86-.88 2.1.9 2.44 1.03 2.61c.13.17 1.78 2.72 4.31 3.81.6.26 1.07.42 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.48-.61 1.69-1.19.21-.58.21-1.08.15-1.19-.06-.1-.22-.16-.47-.28z"/><path d="M12 2a10 10 0 100 20A10 10 0 0012 2zm0 18a8 8 0 110-16 8 8 0 010 16z"/></svg>',
@@ -445,6 +493,7 @@ a{color:inherit}
 
   function ruleIcon(rule){
     if (rule === 'NEW_LEAD' || rule === 'NEW_LEAD_NO_TASK') return SVG.lightning;
+    if (rule === 'AGENT_TASK') return SVG.checklist;
     if (rule && rule.includes('NO_SHOW')) return SVG.calX;
     if (rule === 'UNCONFIRMED_3H') return SVG.question;
     if (rule === 'NO_TASK' || rule === 'TASK_OVERDUE' || rule === 'TASK_TOO_FAR') return SVG.clock;
@@ -470,6 +519,27 @@ a{color:inherit}
     return 'icon-info';
   }
 
+  function actionButtons(a){
+    const ph = a.phone;
+    if (!ph) return '';
+    const wa = cleanPhone(ph);
+    if (!wa) return '';
+    const fitUrl = (a.lead_id && LEAD_URL) ? LEAD_URL.replace('{id}', a.lead_id)
+                 : (a.client_id && CLIENT_URL) ? CLIENT_URL.replace('{id}', a.client_id) : '';
+    return '<div class="act-row">'
+      + '<a class="btn-a btn-a-call" href="tel:+' + wa + '">📞 Позвонить</a>'
+      + '<a class="btn-a btn-a-wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">💬 WhatsApp</a>'
+      + (fitUrl ? '<a class="btn-a" href="' + esc(fitUrl) + '" target="_blank" rel="noopener">🔗 Fitbase</a>' : '')
+      + '</div>';
+  }
+
+  window.toggleClientList = function(el){
+    const list = el.nextElementSibling;
+    const open = list.style.display === 'block';
+    list.style.display = open ? 'none' : 'block';
+    el.textContent = (open ? '▸' : '▾') + el.textContent.slice(1);
+  };
+
   // ── Status bar ────────────────────────────────────────────────────────────
   function updateStatus(data, ok){
     if (!ok){ $('status-bar').textContent = 'Последняя проверка: — · Связь: нет'; return; }
@@ -480,6 +550,35 @@ a{color:inherit}
       $('stale-banner').style.display = stale ? 'block' : 'none';
     }
   }
+
+  // ── Stats pills ───────────────────────────────────────────────────────────
+  function renderStats(s){
+    if (!s) return;
+    const el = $('stats-pills');
+    if (!el) return;
+    const pills = [];
+    if (s.active_leads > 0)
+      pills.push('<span class="stat-pill sp-lead">⚡ ' + s.active_leads + ' заявок</span>');
+    if (s.no_shows > 0)
+      pills.push('<span class="stat-pill sp-task">✗ ' + s.no_shows + ' неявок</span>');
+    if (s.overdue_tasks > 0)
+      pills.push('<span class="stat-pill sp-lead">⚠ ' + s.overdue_tasks + ' задач просроч.</span>');
+    if (s.closed_today > 0)
+      pills.push('<span class="stat-pill sp-brand">✓ ' + s.closed_today + ' закрыто сег.</span>');
+    if (s.avg_response_min != null)
+      pills.push('<span class="stat-pill sp-muted">⏱ ср. ответ ' + s.avg_response_min + ' мин</span>');
+    el.innerHTML = pills.join('');
+  }
+
+  // ── Timer ticks (1s interval updates all live NEW_LEAD timers) ────────────
+  function updateTimers(){
+    document.querySelectorAll('.timer-lbl[data-ts]').forEach(function(el){
+      const totalSec = Math.floor((Date.now() - Number(el.dataset.ts)) / 1000);
+      el.textContent = '⏱ ' + timerText(totalSec);
+      el.className = 'timer-lbl' + (totalSec >= 300 ? ' late' : totalSec >= 120 ? ' warn' : '');
+    });
+  }
+  setInterval(updateTimers, 1000);
 
   // ── Render alerts ─────────────────────────────────────────────────────────
   const LEVEL_ORDER = {urgent:0,important:1,info:2};
@@ -494,55 +593,98 @@ a{color:inherit}
     document.title = (sorted.length ? '('+sorted.length+') ' : '') + 'SlimWay — помощник';
     if (!sorted.length){ list.innerHTML = '<div class="empty">Всё под контролем — тревог нет</div>'; return; }
     list.innerHTML = sorted.map(a => {
-      const isNewLead = a.rule === 'NEW_LEAD' || a.rule === 'NEW_LEAD_NO_TASK';
-      const ageMin    = minutesAgo(a.created_at);
-      const fresh     = ageMin < 2;
-      const escalated = a.is_escalated;
+      const isNewLead   = a.rule === 'NEW_LEAD' || a.rule === 'NEW_LEAD_NO_TASK';
+      const isAgentTask = a.rule === 'AGENT_TASK';
+      const ageMin      = minutesAgo(a.created_at);
+      const fresh       = ageMin < 2;
+      const escalated   = a.is_escalated;
+      const createdTs   = new Date(a.created_at).getTime();
 
       if (isNewLead){
         const cls = ['card','card-new-lead', fresh?'fresh':'', escalated?'escalated':''].filter(Boolean).join(' ');
         const srcHtml = a.lead_source && a.lead_source !== 'other'
-          ? \`<span class="source-chip">\${srcIcon(a.lead_source)}\${srcLabel(a.lead_source)}</span>\`
+          ? '<span class="source-chip">'+srcIcon(a.lead_source)+srcLabel(a.lead_source)+'</span>'
           : '';
         const escBadge = escalated
-          ? \`<div class="escalation-badge">\${SVG.warning} Без ответа \${a.minutes_waiting||ageMin} мин</div>\`
+          ? '<div class="escalation-badge">'+SVG.warning+' Без ответа '+(a.minutes_waiting||ageMin)+' мин</div>'
           : '';
         const hasNoTask = a.has_no_task
-          ? \`<div class="card-body" style="color:var(--red);font-weight:600">⚠ Заявка без ответа — не создана задача</div>\`
+          ? '<div class="card-body" style="color:var(--red);font-weight:600">⚠ Заявка без ответа — не создана задача</div>'
           : '';
-        return \`<div class="\${cls}" data-id="\${a.id}">
-          <div class="card-top">
-            <div class="card-icon \${iconClass(a.level)}">\${ruleIcon(a.rule)}</div>
-            <div class="card-main">
-              <div class="card-name">\${esc(a.short_name||a.title)}</div>
-              <div class="card-title">\${esc(a.title)}</div>
-              \${srcHtml}
-              \${escBadge}
-              \${hasNoTask}
-              \${a.body ? '<div class="card-body">'+esc(a.body)+'</div>' : ''}
-            </div>
-          </div>
-          <div class="card-actions">
-            <span class="card-age">\${timeAgo(a.created_at)}</span>
-            <button class="btn btn-take" onclick="ackLead(\${a.lead_id})">Взял в работу</button>
-          </div>
-        </div>\`;
+        const initSec  = Math.floor((Date.now() - createdTs) / 1000);
+        const timerCls = 'timer-lbl' + (initSec >= 300 ? ' late' : initSec >= 120 ? ' warn' : '');
+        const timerHtml = '<div><span class="' + timerCls + '" data-ts="' + createdTs + '">⏱ ' + timerText(initSec) + '</span></div>';
+        return '<div class="' + cls + '" data-id="' + a.id + '">'
+          + '<div class="card-top">'
+          +   '<div class="card-icon ' + iconClass(a.level) + '">' + ruleIcon(a.rule) + '</div>'
+          +   '<div class="card-main">'
+          +     '<div class="card-name">' + esc(a.short_name||a.title) + '</div>'
+          +     '<div class="card-title">' + esc(a.title) + '</div>'
+          +     srcHtml + escBadge + hasNoTask + timerHtml
+          +     (a.body ? '<div class="card-body">'+esc(a.body)+'</div>' : '')
+          +     actionButtons(a)
+          +   '</div>'
+          + '</div>'
+          + '<div class="card-actions">'
+          +   '<span class="card-age">' + timeAgo(a.created_at) + '</span>'
+          +   '<button class="btn btn-take" onclick="ackLead(' + a.lead_id + ',\'' + a.created_at + '\')">Взял в работу</button>'
+          + '</div>'
+          + '</div>';
       }
 
-      return \`<div class="card \${a.level}" data-id="\${a.id}">
-        <div class="card-top">
-          <div class="card-icon \${iconClass(a.level)}">\${ruleIcon(a.rule)}</div>
-          <div class="card-main">
-            <div class="card-name">\${esc(a.short_name||a.title)}</div>
-            \${a.short_name ? '<div class="card-title">'+esc(a.title)+'</div>' : ''}
-            \${a.body ? '<div class="card-body">'+esc(a.body)+'</div>' : ''}
-          </div>
-        </div>
-        <div class="card-actions">
-          <span class="card-age">\${timeAgo(a.created_at)}</span>
-          <button class="btn btn-sm btn-ack" onclick="ack(\${a.id})">Принято</button>
-        </div>
-      </div>\`;
+      if (isAgentTask){
+        const meta    = a.meta || {};
+        const dlSec   = meta.deadline_sec;
+        const nowSec  = Math.floor(Date.now() / 1000);
+        let dlHtml = '';
+        if (dlSec){
+          const over   = dlSec < nowSec;
+          const soon   = !over && (dlSec - nowSec) < 30*60;
+          const dlCls  = over ? 'dl-over' : soon ? 'dl-warn' : 'dl-ok';
+          const dlTxt  = over
+            ? 'Просрочена ' + Math.floor((nowSec - dlSec)/60) + ' мин'
+            : 'До ' + secToAlmaty(dlSec);
+          dlHtml = '<span class="dl-badge ' + dlCls + '">' + dlTxt + '</span>';
+        }
+        const names = meta.client_names;
+        const clientsHtml = (names && names.length > 0)
+          ? '<span class="clients-toggle" onclick="toggleClientList(this)">▸ ' + names.length + ' клиентов</span>'
+            + '<div class="clients-list">' + names.map(n => esc(n)).join('<br>') + '</div>'
+          : '';
+        return '<div class="card ' + a.level + '" data-id="' + a.id + '">'
+          + '<div class="card-top">'
+          +   '<div class="card-icon ' + iconClass(a.level) + '">' + ruleIcon(a.rule) + '</div>'
+          +   '<div class="card-main">'
+          +     '<div class="card-name">' + esc(a.short_name||a.title) + '</div>'
+          +     '<div class="card-title"><span class="task-chip">' + SVG.checklist + ' Задача</span>' + esc(meta.category||'') + '</div>'
+          +     dlHtml
+          +     (a.body ? '<div class="card-body">'+esc(a.body)+'</div>' : '')
+          +     clientsHtml
+          +     actionButtons(a)
+          +   '</div>'
+          + '</div>'
+          + '<div class="card-actions">'
+          +   '<span class="card-age">' + timeAgo(a.created_at) + '</span>'
+          +   '<button class="btn btn-sm btn-ack" onclick="ack(' + a.id + ')">Принято</button>'
+          + '</div>'
+          + '</div>';
+      }
+
+      return '<div class="card ' + a.level + '" data-id="' + a.id + '">'
+        + '<div class="card-top">'
+        +   '<div class="card-icon ' + iconClass(a.level) + '">' + ruleIcon(a.rule) + '</div>'
+        +   '<div class="card-main">'
+        +     '<div class="card-name">' + esc(a.short_name||a.title) + '</div>'
+        +     (a.short_name ? '<div class="card-title">'+esc(a.title)+'</div>' : '')
+        +     (a.body ? '<div class="card-body">'+esc(a.body)+'</div>' : '')
+        +     actionButtons(a)
+        +   '</div>'
+        + '</div>'
+        + '<div class="card-actions">'
+        +   '<span class="card-age">' + timeAgo(a.created_at) + '</span>'
+        +   '<button class="btn btn-sm btn-ack" onclick="ack(' + a.id + ')">Принято</button>'
+        + '</div>'
+        + '</div>';
     }).join('');
   }
 
@@ -553,7 +695,7 @@ a{color:inherit}
     const cls = reason.includes('Визит') ? 'chip-green'
               : reason.includes('Задача') ? 'chip-accent'
               : 'chip-gray';
-    return \`<span class="chip \${cls}">\${esc(reason)}</span>\`;
+    return '<span class="chip ' + cls + '">' + esc(reason) + '</span>';
   }
   function renderClosed(closed){
     const el = $('closed-list');
@@ -563,14 +705,14 @@ a{color:inherit}
       const closeTime = a.acked_at || a.resolved_at;
       const reason    = (a.meta&&a.meta.resolve_reason) ? a.meta.resolve_reason : a.acked_at ? 'Принято вручную' : 'Закрыто автоматически';
       const canUnack  = a.acked_at && !a.resolved_at;
-      return \`<div class="closed-card">
-        <div class="closed-top">
-          <div class="closed-title">\${esc(a.short_name ? a.title+' — '+a.short_name : a.title)}</div>
-          <span class="closed-time">\${closeTime?fmtHHMM(closeTime):''}</span>
-          \${canUnack?'<button class="btn btn-sm" onclick="unack('+a.id+')">Вернуть</button>':''}
-        </div>
-        <div class="closed-chips">\${reasonChip(reason, !!a.acked_at)}</div>
-      </div>\`;
+      return '<div class="closed-card">'
+        + '<div class="closed-top">'
+        +   '<div class="closed-title">' + esc(a.short_name ? a.title+' — '+a.short_name : a.title) + '</div>'
+        +   '<span class="closed-time">' + (closeTime?fmtHHMM(closeTime):'') + '</span>'
+        +   (canUnack ? '<button class="btn btn-sm" onclick="unack('+a.id+')">Вернуть</button>' : '')
+        + '</div>'
+        + '<div class="closed-chips">' + reasonChip(reason, !!a.acked_at) + '</div>'
+        + '</div>';
     }).join('');
   }
 
@@ -581,10 +723,11 @@ a{color:inherit}
     if (!feed.length){ el.innerHTML='<div class="empty">Действий нет</div>'; return; }
     const items = feed.map(f => {
       const c = FEED_DOT[f.type] || 'var(--c-muted)';
-      return \`<div class="feed-item" style="--dot-c:\${c}">
-        <span class="feed-time">\${feedTime(f.created_at)}</span>
-        \${f.short_name?'<span class="feed-name">'+esc(f.short_name)+'</span> ':''}\${f.text?'— '+esc(f.text):''}
-      </div>\`;
+      return '<div class="feed-item" style="--dot-c:' + c + '">'
+        + '<span class="feed-time">' + feedTime(f.created_at) + '</span>'
+        + (f.short_name ? '<span class="feed-name">'+esc(f.short_name)+'</span> ' : '')
+        + (f.text ? '— '+esc(f.text) : '')
+        + '</div>';
     }).join('');
     el.innerHTML = '<div class="feed-wrap">'+items+'</div>';
   }
@@ -608,8 +751,13 @@ a{color:inherit}
     await fetch('/window/api/unack/'+id, {method:'POST'});
     fetchState();
   };
-  window.ackLead = async function(leadId){
-    await fetch('/window/api/ack-lead/'+leadId, {method:'POST'});
+  window.ackLead = async function(leadId, createdAt){
+    const respSec = createdAt ? Math.round((Date.now() - new Date(createdAt).getTime()) / 1000) : null;
+    await fetch('/window/api/ack-lead/'+leadId, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ response_seconds: respSec }),
+    });
     fetchState();
   };
 
@@ -625,14 +773,25 @@ a{color:inherit}
       hideError();
       const data = await res.json();
       updateStatus(data, true);
+      renderStats(data.stats);
       renderAlerts(data.alerts||[]);
       renderClosed(data.closed||[]);
       renderFeed(data.feed||[]);
-      for (const a of (data.new_alerts||[])){
-        since_id = Math.max(since_id, a.id);
-        if (notifiedIds.has(a.id)) continue;
-        notifiedIds.add(a.id);
-        if (['urgent','important'].includes(a.level)){
+
+      // Batch notifications: NEW_LEAD always individual; 3+ others → one batch
+      const newItems = (data.new_alerts||[]).filter(a => !notifiedIds.has(a.id));
+      for (const a of newItems){ notifiedIds.add(a.id); since_id = Math.max(since_id, a.id); }
+      const newLeads = newItems.filter(a => a.rule === 'NEW_LEAD' || a.rule === 'NEW_LEAD_NO_TASK');
+      const others   = newItems.filter(a => a.rule !== 'NEW_LEAD' && a.rule !== 'NEW_LEAD_NO_TASK' && ['urgent','important'].includes(a.level));
+      for (const a of newLeads){
+        if (notifGranted) new Notification(a.title, {body: String(a.body||'').substring(0,120)});
+        playBeep();
+      }
+      if (others.length >= 3){
+        if (notifGranted) new Notification(others.length + ' новых тревог', {body: others.map(a=>a.title).join(', ').substring(0,120)});
+        if (others.some(a=>a.level==='urgent')) playBeep();
+      } else {
+        for (const a of others){
           if (notifGranted) new Notification(a.title, {body: String(a.body||'').substring(0,120)});
           if (a.level==='urgent') playBeep();
         }
@@ -650,6 +809,7 @@ a{color:inherit}
       showApp();
       r.json().then(data => {
         updateStatus(data, true);
+        renderStats(data.stats);
         renderAlerts(data.alerts||[]);
         renderClosed(data.closed||[]);
         renderFeed(data.feed||[]);
@@ -659,6 +819,11 @@ a{color:inherit}
   }).catch(()=>{});
 
   setInterval(fetchState, 10000);
+
+  // ── PWA service worker ────────────────────────────────────────────────────
+  if ('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/window/sw.js', {scope:'/window/'}).catch(()=>{});
+  }
 })();
 </script>
 </body>
@@ -670,8 +835,28 @@ export function mountWindowRoutes(app: express.Application): void {
   app.use(express.json());
 
   app.get('/window', (_req, res) => {
+    const html = HTML_TEMPLATE
+      .replace('__LEAD_URL__',   env.FITBASE_LEAD_URL_TEMPLATE   || '')
+      .replace('__CLIENT_URL__', env.FITBASE_CLIENT_URL_TEMPLATE || '');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(HTML);
+    res.send(html);
+  });
+
+  app.get('/window/manifest.json', (_req, res) => {
+    res.json({
+      name: 'SlimWay — помощник',
+      short_name: 'SlimWay',
+      start_url: '/window',
+      display: 'standalone',
+      theme_color: '#02BDB6',
+      background_color: '#eef2f7',
+      icons: [],
+    });
+  });
+
+  app.get('/window/sw.js', (_req, res) => {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.send('self.addEventListener("fetch",e=>e.respondWith(fetch(e.request)));');
   });
 
   app.post('/window/login', (req, res) => {
@@ -694,7 +879,7 @@ export function mountWindowRoutes(app: express.Application): void {
 
       const { data: alerts, error: e1 } = await supabase
         .from('watch_alerts')
-        .select('id, alert_key, rule, level, lead_id, client_id, registration_id, manager_name, short_name, title, body, action_hint, created_at, acked_at')
+        .select('id, alert_key, rule, level, lead_id, client_id, registration_id, manager_name, short_name, title, body, action_hint, created_at, acked_at, meta')
         .is('resolved_at', null)
         .is('acked_at', null)
         .order('created_at', { ascending: false });
@@ -719,17 +904,21 @@ export function mountWindowRoutes(app: express.Application): void {
         }
       }
       for (const card of newLeadMap.values()) {
-        // Escalation: any lead older than 5 min shows waiting badge
         const ageMin = Math.floor((Date.now() - new Date(card.created_at as string).getTime()) / 60_000);
         if (ageMin >= 5 || card.has_no_task) {
           card.is_escalated    = true;
           card.minutes_waiting = ageMin;
         }
-        // Enrich with lead source
         if (card.lead_id) {
           card.lead_source = await fetchLeadSource(card.lead_id as number);
         }
         merged.push(card);
+      }
+
+      // Expose meta.phone as top-level field for action buttons
+      for (const a of merged) {
+        const m = a.meta as Record<string, unknown> | null;
+        if (m?.phone) a.phone = m.phone;
       }
 
       const { data: closedRaw, error: e4 } = await supabase
@@ -781,11 +970,31 @@ export function mountWindowRoutes(app: express.Application): void {
         type:       f.type,
       }));
 
+      // Compute day stats from already-fetched data (no extra DB queries)
+      const todayAlmaty = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
+      const respTimes = (closed as Record<string, unknown>[])
+        .filter(a => a.rule === 'NEW_LEAD' && (a.meta as Record<string, unknown>)?.response_seconds)
+        .map(a => Number((a.meta as Record<string, unknown>).response_seconds))
+        .filter(n => n > 0 && n < 86400);
+      const stats = {
+        active_leads:  newLeadMap.size,
+        no_shows:      merged.filter(a => String(a.rule).includes('NO_SHOW')).length,
+        overdue_tasks: merged.filter(a => a.rule === 'AGENT_TASK' && a.level === 'urgent').length,
+        closed_today:  (closed as Record<string, unknown>[]).filter(a => {
+          const t = String(a.acked_at || a.resolved_at || '');
+          return t && new Date(new Date(t).getTime() + 5 * 3600_000).toISOString().slice(0, 10) === todayAlmaty;
+        }).length,
+        avg_response_min: respTimes.length > 0
+          ? Math.round(respTimes.reduce((a, b) => a + b, 0) / respTimes.length / 60)
+          : null,
+      };
+
       res.json({
         alerts:        merged,
         closed,
         new_alerts:    newAlerts ?? [],
         feed,
+        stats,
         server_time:   new Date().toISOString(),
         last_watch_at: lastRun?.finished_at ?? null,
       });
@@ -822,14 +1031,17 @@ export function mountWindowRoutes(app: express.Application): void {
     res.json({ ok: true });
   });
 
-  // Ack both NEW_LEAD + NEW_LEAD_NO_TASK for a given lead_id
   app.post('/window/api/ack-lead/:lead_id', async (req, res) => {
     if (!requireAuth(req, res)) return;
-    const leadId = Number(req.params.lead_id);
+    const leadId  = Number(req.params.lead_id);
     if (!leadId) { res.status(400).json({ error: 'bad lead_id' }); return; }
+    const body    = req.body as Record<string, unknown>;
+    const respSec = Number(body?.response_seconds) || null;
+    const meta: Record<string, unknown> = { resolve_reason: 'Взял в работу' };
+    if (respSec) meta.response_seconds = respSec;
     const { error } = await supabase
       .from('watch_alerts')
-      .update({ acked_at: new Date().toISOString(), meta: { resolve_reason: 'Взял в работу' } })
+      .update({ acked_at: new Date().toISOString(), meta })
       .in('rule', ['NEW_LEAD', 'NEW_LEAD_NO_TASK'])
       .eq('lead_id', leadId)
       .is('acked_at', null)

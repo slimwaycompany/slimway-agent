@@ -1,10 +1,13 @@
 export type AlertPh = {
-  name?:   string;
-  time?:   string;
-  source?: string;
-  left?:   number;
-  visits?: string;
-  task?:   string;
+  name?:     string;
+  time?:     string;
+  source?:   string;
+  left?:     number;
+  visits?:   string;
+  task?:     string;
+  deadline?: string;
+  assignee?: string;
+  count?:    number;
 };
 
 const POOL: Record<string, { title: string; bodies: string[] }> = {
@@ -136,24 +139,80 @@ const POOL: Record<string, { title: string; bodies: string[] }> = {
   },
 };
 
-const AGENT_TASK_BODIES = [
-  ' Агент уже поставил задачу «{task}».',
-  ' Задача «{task}» уже создана агентом.',
-  ' В карточке уже есть задача «{task}» от агента.',
-  ' Агент добавил задачу «{task}» — выполните её.',
-];
+// AGENT_TASK bodies by reason
+const AGENT_TASK_POOL: Record<string, string[]> = {
+  NO_REGISTRATION: [
+    '{name} — нет записи на пробное. Свяжитесь и запишите на занятие. Срок до {deadline}.',
+    'По {name} нет записи на пробное. Уточните дату и запишите. До {deadline}.',
+    '{name}: нужно записать на пробное занятие. Свяжитесь до {deadline}.',
+    'Связаться с {name} и записать на пробное. Ответственный: {assignee}. Срок до {deadline}.',
+    'Запись на пробное для {name} не создана. Позвоните и договоритесь. До {deadline}.',
+    '{name} ждёт записи на пробное. Срок до {deadline}. Ответственный: {assignee}.',
+  ],
+  NO_SHOW: [
+    '{name} — неявка. Позвоните, выясните причину и перезапишите. Срок до {deadline}.',
+    'По {name} неявка на занятие. Требуется звонок. До {deadline}.',
+    '{name} не пришёл(а). Свяжитесь и предложите новое время. Срок до {deadline}.',
+    'Звонок {name} по неявке — ответственный {assignee}. До {deadline}.',
+    '{name}: нет визита. Выясните причину, перезапишите до {deadline}.',
+    'Неявка {name}. Свяжитесь до {deadline}. Ответственный: {assignee}.',
+  ],
+  CANCELLED: [
+    '{name} отменил(а) запись. Свяжитесь и предложите альтернативное время. До {deadline}.',
+    'Отмена записи {name}. Позвоните и перезапишите до {deadline}.',
+    '{name}: запись отменена. Требуется звонок. Срок до {deadline}.',
+    'Перезаписать {name} после отмены. Ответственный: {assignee}. До {deadline}.',
+    '{name} отменил(а) занятие. Узнайте причину и перенесите запись до {deadline}.',
+    'Отмена {name} — звонок до {deadline}. Ответственный: {assignee}.',
+  ],
+  INACTIVE_7: [
+    '{count} клиентов не приходили 7+ дней. Свяжитесь, возьмите обратную связь, запишите. До {deadline}.',
+    'Список неактивных (7+ дн): {count} клиентов. Позвоните каждому до {deadline}.',
+    '{count} клиентов пропустили занятия более недели. Обзвон до {deadline}.',
+    'Неактивные 7+ дн — {count} клиентов. Ответственный: {assignee}. До {deadline}.',
+    'Сегодня связаться с {count} клиентами (7+ дн без визита). До {deadline}.',
+    '{count} клиентов отсутствуют 7+ дней. Обзвон — {assignee}. До {deadline}.',
+  ],
+  INACTIVE_10: [
+    '{count} клиентов не приходили 10+ дней. Требуется командная работа. До {deadline}.',
+    'Список неактивных (10+ дн): {count} клиентов. Подключитесь все. До {deadline}.',
+    '{count} клиентов пропустили занятия более 10 дней. Срочный обзвон до {deadline}.',
+    'Неактивные 10+ дн — {count} клиентов. Вся команда, срок до {deadline}.',
+    '{count} клиентов не были 10+ дней. Нужна реакция команды до {deadline}.',
+    'Критическое отсутствие: {count} клиентов (10+ дн). Обзвон до {deadline}.',
+  ],
+  INACTIVE_14: [
+    '{count} клиентов не приходили 14+ дней. Срочные меры по удержанию. До {deadline}.',
+    'Длительное отсутствие: {count} клиентов (14+ дн). Связаться до {deadline}.',
+    '{count} клиентов пропустили занятия более 2 недель. Обзвон до {deadline}.',
+    'Критически неактивных: {count} чел. (14+ дн). Команда — до {deadline}.',
+    '{count} клиентов исчезли на 14+ дней. Нужна реакция до {deadline}.',
+    'Удержание: {count} клиентов отсутствуют 14+ дн. Звонки до {deadline}.',
+  ],
+  OTHER: [
+    '{name} — задание от агента. Срок до {deadline}.',
+    'Агентская задача по {name}. Выполните до {deadline}.',
+    'Требуется действие по {name}. Срок до {deadline}. Ответственный: {assignee}.',
+    '{name}: задача от агента. До {deadline}.',
+    'Выполнить задачу по {name} до {deadline}. Ответственный: {assignee}.',
+    'Задача агента: {name}. Срок — {deadline}.',
+  ],
+};
 
 // Per-rule round-robin index, persists in process memory across calls
 const lastIdxByRule = new Map<string, number>();
 
 function fill(tpl: string, ph: AlertPh): string {
   return tpl
-    .replace(/\{name\}/g,   ph.name   ?? '')
-    .replace(/\{time\}/g,   ph.time   ?? '')
-    .replace(/\{source\}/g, ph.source ?? '')
-    .replace(/\{left\}/g,   ph.left   != null ? String(ph.left) : '')
-    .replace(/\{visits\}/g, ph.visits ?? '')
-    .replace(/\{task\}/g,   ph.task   ?? '');
+    .replace(/\{name\}/g,     ph.name     ?? '')
+    .replace(/\{time\}/g,     ph.time     ?? '')
+    .replace(/\{source\}/g,   ph.source   ?? '')
+    .replace(/\{left\}/g,     ph.left     != null ? String(ph.left) : '')
+    .replace(/\{visits\}/g,   ph.visits   ?? '')
+    .replace(/\{task\}/g,     ph.task     ?? '')
+    .replace(/\{deadline\}/g, ph.deadline ?? '')
+    .replace(/\{assignee\}/g, ph.assignee ?? '')
+    .replace(/\{count\}/g,    ph.count    != null ? String(ph.count) : '');
 }
 
 function simpleHash(s: string): number {
@@ -178,7 +237,24 @@ export function pickBody(rule: string, alertKey: string, ph: AlertPh): string {
   return fill(bodies[idx], ph);
 }
 
-// Append the agent-task note to an existing body string.
+// Pick a body for AGENT_TASK alerts by reason
+export function pickAgentTaskBody(reason: string, ph: AlertPh): string {
+  const bodies = AGENT_TASK_POOL[reason] ?? AGENT_TASK_POOL.OTHER;
+  const key    = 'AGENT_TASK:' + reason;
+  const last   = lastIdxByRule.get(key);
+  const idx    = last != null ? (last + 1) % bodies.length : simpleHash(reason) % bodies.length;
+  lastIdxByRule.set(key, idx);
+  return fill(bodies[idx], ph);
+}
+
+// Append the agent-task note to an existing body string (kept for backwards compat with non-AGENT_TASK rules)
+const AGENT_TASK_BODIES = [
+  ' Агент уже поставил задачу «{task}».',
+  ' Задача «{task}» уже создана агентом.',
+  ' В карточке уже есть задача «{task}» от агента.',
+  ' Агент добавил задачу «{task}» — выполните её.',
+];
+
 export function appendAgentTask(body: string, taskCategory: string): string {
   const last = lastIdxByRule.get('AGENT_TASK');
   const idx  = last != null ? (last + 1) % AGENT_TASK_BODIES.length : simpleHash(taskCategory) % AGENT_TASK_BODIES.length;

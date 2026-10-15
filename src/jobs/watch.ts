@@ -3,7 +3,7 @@ import { paginateGet, rawGet }  from '../http/fitbase';
 import { shortName }            from '../core/names';
 import { getLeadFunnel }        from '../core/funnel';
 import { alertError }           from '../core/mail';
-import { getTitle, pickBody, appendAgentTask, hasAgentTaskNote } from '../core/alertTexts';
+import { getTitle, pickBody, pickAgentTaskBody } from '../core/alertTexts';
 import {
   env,
   TRIAL_TRAINING_ID,
@@ -18,16 +18,18 @@ export const JOB_NAME = 'watch';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ALMATY_MS         = 5 * 3600 * 1000;
-const SEVEN_DAYS_SEC    = 7 * 86400;
-const CARD_FREE_SEC     = 24 * 3600;
-const PURCHASE_MIN      = 40_000;
-const NEW_LEAD_GRACE_MS = 2 * 3600_000;
-const NEW_LEAD_TASK_MIN = 5 * 60_000;
-const PURCHASE_TTL_MS   = 12 * 3600_000;
-const CANCELLED_TTL_MS  = 24 * 3600_000;
-const SYSTEM_GAP_MS     = 30 * 60_000;
-const CONTRACT_TTL_MS   = 30 * 60_000;
+const ALMATY_MS             = 5 * 3600 * 1000;
+const SEVEN_DAYS_SEC        = 7 * 86400;
+const CARD_FREE_SEC         = 24 * 3600;
+const PURCHASE_MIN          = 40_000;
+const NEW_LEAD_GRACE_MS     = 2 * 3600_000;
+const NEW_LEAD_TASK_MIN     = 5 * 60_000;
+const PURCHASE_TTL_MS       = 12 * 3600_000;
+const CANCELLED_TTL_MS      = 24 * 3600_000;
+const SYSTEM_GAP_MS         = 30 * 60_000;
+const CONTRACT_TTL_MS       = 30 * 60_000;
+const CIRCUIT_BREAKER_PAUSE = 30 * 60_000;
+const SCHEDULE_CACHE_TTL    = 15 * 60_000;
 
 const EXCLUDED_MANAGER_STEPS = new Set(['Ангелина', 'Вера', 'Назерке']);
 
@@ -46,12 +48,14 @@ interface DbAlert {
   id:              number;
   alert_key:       string;
   rule:            string;
+  level:           string;
   lead_id:         number | null;
   client_id:       number | null;
   registration_id: number | null;
   created_at:      string;
   acked_at:        string | null;
   body:            string;
+  meta:            Record<string, unknown> | null;
 }
 
 interface AlertRow {
@@ -78,10 +82,11 @@ function isEnabled(rule: string): boolean {
 
 // ── In-memory caches (process-lifetime; resets on deploy) ─────────────────────
 
-const commentCache  = new Map<number, { items: Record<string, unknown>[]; ts: number }>();
-const watchRegCache = new Map<number, { items: Record<string, unknown>[]; ts: number }>();
-const clientInfoCache = new Map<number, { sname: string; isTest: boolean; ts: number }>();
+const commentCache    = new Map<number, { items: Record<string, unknown>[]; ts: number }>();
+const watchRegCache   = new Map<number, { items: Record<string, unknown>[]; ts: number }>();
+const clientInfoCache = new Map<number, { sname: string; isTest: boolean; phone: string; ts: number }>();
 let contractBulkCache: { items: Record<string, unknown>[]; ts: number } | null = null;
+let scheduleCache:     { items: Record<string, unknown>[]; ts: number } | null = null;
 
 async function getClientComments(clientId: number): Promise<Record<string, unknown>[]> {
   const cached = commentCache.get(clientId);
@@ -101,8 +106,7 @@ async function getClientRegs(clientId: number): Promise<Record<string, unknown>[
   return items;
 }
 
-// Fetch client name + test flag; cached per run. Never returns "Запись #N".
-async function fetchClientInfo(clientId: number): Promise<{ sname: string; isTest: boolean }> {
+async function fetchClientInfo(clientId: number): Promise<{ sname: string; isTest: boolean; phone: string }> {
   const cached = clientInfoCache.get(clientId);
   if (cached && Date.now() - cached.ts < CONTRACT_TTL_MS) return cached;
   try {
@@ -110,14 +114,15 @@ async function fetchClientInfo(clientId: number): Promise<{ sname: string; isTes
     const c       = ((resp.item ?? resp) as Record<string, unknown>);
     const name    = String(c.name    ?? '').trim();
     const surname = String(c.surname ?? '').trim();
+    const phone   = String(c.phone   ?? c.mobile ?? '').trim();
     const isTest  = /тест|test/i.test(name) || /тест|test/i.test(surname);
     const full    = name + (surname ? ' ' + surname : '');
     const sname   = full.trim() ? shortName({ name: full }) : `Клиент #${clientId}`;
-    const entry   = { sname, isTest, ts: Date.now() };
+    const entry   = { sname, isTest, phone, ts: Date.now() };
     clientInfoCache.set(clientId, entry);
     return entry;
   } catch {
-    const entry = { sname: `Клиент #${clientId}`, isTest: false, ts: Date.now() };
+    const entry = { sname: `Клиент #${clientId}`, isTest: false, phone: '', ts: Date.now() };
     clientInfoCache.set(clientId, entry);
     return entry;
   }
@@ -130,6 +135,74 @@ async function loadAllContracts(): Promise<Record<string, unknown>[]> {
   const items = await paginateGet('/client-contract', { page_size: 100 });
   contractBulkCache = { items, ts: Date.now() };
   return items;
+}
+
+// ── Schedule loading (cached, single batch) ───────────────────────────────────
+
+async function loadScheduleRegistrations(
+  today:    string,
+  tomorrow: string,
+): Promise<{ todayRegs: Record<string, unknown>[]; tomorrowRegs: Record<string, unknown>[] }> {
+  if (!scheduleCache || Date.now() - scheduleCache.ts > SCHEDULE_CACHE_TTL) {
+    const t0    = Date.now();
+    // Try date-range params; Fitbase may or may not honour them
+    const items = await paginateGet('/schedule-registration', {
+      date_from: today,
+      date_to:   tomorrow,
+      page_size: 100,
+    });
+    scheduleCache = { items, ts: Date.now() };
+    console.log(`[watch] schedule loaded ${items.length} records in ${Date.now() - t0}ms`);
+  }
+  // Always filter client-side — guard against API ignoring the date params
+  const todayRegs    = scheduleCache.items.filter(r => String((r.event as Record<string, unknown> | undefined)?.date ?? '') === today);
+  const tomorrowRegs = scheduleCache.items.filter(r => String((r.event as Record<string, unknown> | undefined)?.date ?? '') === tomorrow);
+  console.log(`[watch] schedule from cache: today=${todayRegs.length} tomorrow=${tomorrowRegs.length} total=${scheduleCache.items.length}`);
+  return { todayRegs, tomorrowRegs };
+}
+
+// ── Circuit breaker ───────────────────────────────────────────────────────────
+
+async function getCircuitBreakerPauseUntil(): Promise<number> {
+  const { data } = await supabase
+    .from('alert_throttle')
+    .select('last_sent_at')
+    .eq('alert_type', 'fitbase_circuit_breaker')
+    .maybeSingle();
+  if (!data?.last_sent_at) return 0;
+  return new Date(data.last_sent_at as string).getTime();
+}
+
+async function setCircuitBreakerPause(nowMs: number): Promise<void> {
+  const pauseUntil = new Date(nowMs + CIRCUIT_BREAKER_PAUSE).toISOString();
+  await supabase.from('alert_throttle').upsert(
+    { alert_type: 'fitbase_circuit_breaker', last_sent_at: pauseUntil },
+    { onConflict: 'alert_type' },
+  );
+  const pauseStr = new Date(nowMs + CIRCUIT_BREAKER_PAUSE).toLocaleTimeString('ru', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' });
+  await alertError('fitbase_circuit_breaker', `Fitbase не отвечает — агент на паузе до ${pauseStr}. Проверьте статус API.`);
+}
+
+async function clearCircuitBreaker(): Promise<void> {
+  const { data } = await supabase
+    .from('alert_throttle')
+    .select('last_sent_at')
+    .eq('alert_type', 'fitbase_circuit_breaker')
+    .maybeSingle();
+  if (!data) return; // was not active
+  await supabase.from('alert_throttle').delete().eq('alert_type', 'fitbase_circuit_breaker');
+  await alertError('fitbase_circuit_breaker_ok', 'Fitbase снова отвечает — агент возобновил работу.');
+}
+
+// ── Business hours (Almaty) ───────────────────────────────────────────────────
+
+function isBusinessHours(nowMs: number): boolean {
+  const d   = new Date(nowMs + ALMATY_MS);
+  const dow = d.getUTCDay(); // 0=Sun, 6=Sat
+  const t   = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const isWeekend = dow === 0 || dow === 6;
+  const close     = isWeekend ? 21 * 60 : 22 * 60 + 30;
+  return t >= 8 * 60 && t < close;
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -154,11 +227,6 @@ function getManager(lead: Record<string, unknown>): string | null {
   if (!r) return null;
   const n = String(r.name || r.full_name || '').trim();
   return n || null;
-}
-
-function getSource(lead: Record<string, unknown>): string {
-  const s = lead.source || lead.channel || lead.referral_source;
-  return String(s || '');
 }
 
 function buildExcludedStepIds(steps: Record<string, unknown>[]): Set<number> {
@@ -279,7 +347,7 @@ function pluralVisits(n: number): string {
 async function loadOpenAlerts(): Promise<DbAlert[]> {
   const { data, error } = await supabase
     .from('watch_alerts')
-    .select('id, alert_key, rule, lead_id, client_id, registration_id, created_at, acked_at, body')
+    .select('id, alert_key, rule, level, lead_id, client_id, registration_id, created_at, acked_at, body, meta')
     .is('resolved_at', null);
   if (error) console.error('[watch] loadOpenAlerts:', error.message);
   return (data ?? []) as DbAlert[];
@@ -330,6 +398,39 @@ async function loadNewPurchases(lastRunAt: number): Promise<Record<string, unkno
   }
 }
 
+// ── Agent task helpers ────────────────────────────────────────────────────────
+
+function parseAgentTaskReason(desc: string): string {
+  if (/более 7 дней|не посещали.*7/i.test(desc)) return 'INACTIVE_7';
+  if (/более 10 дней|не посещают.*10/i.test(desc)) return 'INACTIVE_10';
+  if (/более 14 дней/i.test(desc)) return 'INACTIVE_14';
+  if (/нет записи на пробное/i.test(desc)) return 'NO_REGISTRATION';
+  if (/неявка|не пришёл|не пришла/i.test(desc)) return 'NO_SHOW';
+  if (/отмен/i.test(desc)) return 'CANCELLED';
+  return 'OTHER';
+}
+
+function parseResponsibleNames(task: Record<string, unknown>): string {
+  const resp = task.responsible;
+  if (!resp) return '';
+  const arr = Array.isArray(resp) ? resp : [resp];
+  return arr.map(r => {
+    if (typeof r !== 'object' || !r) return '';
+    const obj = r as Record<string, unknown>;
+    return String(obj.name || obj.full_name || '').trim();
+  }).filter(Boolean).join(', ');
+}
+
+function parseInactiveClients(desc: string): string[] {
+  return desc.split('\n')
+    .filter(line => /^\d+\./.test(line.trim()))
+    .map(line => {
+      const m = line.trim().match(/^\d+\.\s+([^—\n]+)/);
+      return m ? m[1].trim() : '';
+    })
+    .filter(Boolean);
+}
+
 // ── Rule processors ───────────────────────────────────────────────────────────
 
 function processLeadRules(
@@ -348,8 +449,6 @@ function processLeadRules(
   const tasks    = tasksByLead.get(leadId) ?? [];
   const ta       = analyzeLeadTasks(tasks, nowSec);
 
-  // NEW_LEAD / NEW_LEAD_NO_TASK: creation is handled by /run/new-leads (runs every minute).
-  // Watch still tracks activeKeys so the resolve pass closes stale alerts correctly.
   if (isEnabled('NEW_LEAD') && created > 0) {
     const ageMs = nowMs - created;
     if (ageMs < NEW_LEAD_GRACE_MS && ta.openTasks.length === 0) {
@@ -360,7 +459,7 @@ function processLeadRules(
   if (isEnabled('NEW_LEAD_NO_TASK') && created > 0) {
     const ageMs = nowMs - created;
     const todayAlmaty    = new Date(nowMs + ALMATY_MS).toISOString().slice(0, 10);
-    const workStartToday = new Date(todayAlmaty + 'T03:00:00Z').getTime(); // 08:00 Almaty
+    const workStartToday = new Date(todayAlmaty + 'T03:00:00Z').getTime();
     if (ageMs > NEW_LEAD_TASK_MIN && ageMs < NEW_LEAD_GRACE_MS && created >= workStartToday && ta.openTasks.length === 0) {
       activeKeys.add(`NEW_LEAD_NO_TASK:lead:${leadId}`);
     }
@@ -451,7 +550,6 @@ async function processCardFreeRule(
   });
 }
 
-// NO_SHOW: only today's regs with client_id; excludes certain training types.
 async function processRegRules(
   reg:        Record<string, unknown>,
   nowMs:      number,
@@ -473,14 +571,17 @@ async function processRegRules(
   const evDate  = String(ev?.date || '');
   const isToday = evDate === today;
 
-  // Shared fallback name (may be empty for NO_SHOW — we'll fetch below)
   const sname = getRegShortName(reg);
 
-  // UNCONFIRMED_3H: only for trial training (id=16), status 0, start within 3h
+  // Extract phone from client object if available
+  const client = reg.client as Record<string, unknown> | undefined;
+  const regPhone = String(client?.phone ?? client?.mobile ?? '').trim();
+
   if (isEnabled('UNCONFIRMED_3H') && getTrainingId(reg) === TRIAL_TRAINING_ID
       && status === '0' && startMs > nowMs && startMs - nowMs < 3 * 3600_000) {
     const key   = `UNCONFIRMED_3H:reg:${regId}`;
     const uname = sname || (clientId ? (await fetchClientInfo(clientId)).sname : `Запись #${regId}`);
+    const phone = regPhone || (clientId ? (await fetchClientInfo(clientId)).phone : '');
     activeKeys.add(key);
     toUpsert.push({
       alert_key: key, rule: 'UNCONFIRMED_3H', level: 'important',
@@ -489,11 +590,10 @@ async function processRegRules(
       title: getTitle('UNCONFIRMED_3H'),
       body: pickBody('UNCONFIRMED_3H', key, { name: uname || `Запись #${regId}`, time: fmtTime(startMs) }),
       action_hint: null,
-      link: null, meta: null,
+      link: null, meta: phone ? { phone } : null,
     });
   }
 
-  // NO_SHOW_* rules: today only, client_id required, excluded training types skipped
   if (clientId && isToday && !WATCH_NO_SHOW_EXCLUDE.has(training.toLowerCase())) {
     const pastStart = startMs < nowMs;
     const past30min = pastStart && nowMs - startMs > 30 * 60_000;
@@ -501,6 +601,7 @@ async function processRegRules(
                    || (isEnabled('NO_SHOW_NO_MARK')     && status === '1' && past30min)
                    || (isEnabled('NO_SHOW_MARKED')       && status === '4' && pastStart);
     const ns = needsName ? (sname || (await fetchClientInfo(clientId)).sname) : '';
+    const phone = regPhone || (needsName && clientId ? (await fetchClientInfo(clientId)).phone : '');
 
     if (isEnabled('NO_SHOW_UNCONFIRMED') && status === '0' && past30min) {
       const key = `NO_SHOW_UNCONFIRMED:reg:${regId}`;
@@ -512,7 +613,7 @@ async function processRegRules(
         title: getTitle('NO_SHOW_UNCONFIRMED'),
         body: pickBody('NO_SHOW_UNCONFIRMED', key, { name: ns, time: fmtTime(startMs) }),
         action_hint: null,
-        link: null, meta: null,
+        link: null, meta: phone ? { phone } : null,
       });
     }
 
@@ -526,7 +627,7 @@ async function processRegRules(
         title: getTitle('NO_SHOW_NO_MARK'),
         body: pickBody('NO_SHOW_NO_MARK', key, { name: ns, time: fmtTime(startMs) }),
         action_hint: null,
-        link: null, meta: null,
+        link: null, meta: phone ? { phone } : null,
       });
     }
 
@@ -540,12 +641,11 @@ async function processRegRules(
         title: getTitle('NO_SHOW_MARKED'),
         body: pickBody('NO_SHOW_MARKED', key, { name: ns, time: fmtTime(startMs) }),
         action_hint: null,
-        link: null, meta: null,
+        link: null, meta: phone ? { phone } : null,
       });
     }
   }
 
-  // CANCELLED (disabled by default)
   if (isEnabled('CANCELLED') && status === '2' && isToday) {
     const key = `CANCELLED:reg:${regId}`;
     activeKeys.add(key);
@@ -556,11 +656,10 @@ async function processRegRules(
       title: 'Запись отменена',
       body: `${sname || `Запись #${regId}`}, ${training || 'занятие'} в ${fmtTime(startMs)}`,
       action_hint: 'Свяжись и перезапиши',
-      link: null, meta: null,
+      link: null, meta: regPhone ? { phone: regPhone } : null,
     });
   }
 
-  // TRIAL_SOON (disabled by default)
   if (isEnabled('TRIAL_SOON') && getTrainingId(reg) === TRIAL_TRAINING_ID) {
     const minsToStart = (startMs - nowMs) / 60_000;
     if (minsToStart > 0 && minsToStart <= 60) {
@@ -637,6 +736,11 @@ async function processSystemRules(
       action_hint: 'Проверь cron-job.org и логи сервера',
       link: null, meta: { last_ok_at: new Date(lastOkMs).toISOString() },
     });
+    // Send watchdog email during business hours
+    if (isBusinessHours(nowMs)) {
+      const t = new Date(lastOkMs).toLocaleTimeString('ru', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' });
+      await alertError('watch_no_run', `Агент не работает с ${t}. Последний успешный запуск: ${new Date(lastOkMs).toLocaleString('ru')}.`);
+    }
   }
 
   const statuses = await getLastRunStatuses(3);
@@ -651,12 +755,11 @@ async function processSystemRules(
       action_hint: 'Проверь статус Fitbase API',
       link: null, meta: null,
     });
+    // Activate circuit breaker
+    await setCircuitBreakerPause(nowMs);
   }
 }
 
-// CONTRACT_ENDING / CONTRACT_ENDED.
-// CONTRACT_ENDED only fires if most-recent contract end_date is within CONTRACT_ENDED_DAYS.
-// shortcut: one alert per client lifetime (key blocked after first resolve); add episode suffix when needed
 async function processContractRules(
   nowMs:           number,
   activeKeys:      Set<string>,
@@ -674,7 +777,6 @@ async function processContractRules(
     return;
   }
 
-  // Group by client_id — all non-deleted contracts (trial/unlimited filtered in helper)
   const byClient = new Map<number, Record<string, unknown>[]>();
   for (const c of allContracts) {
     if (String(c.deleted_at ?? '').trim()) continue;
@@ -685,16 +787,16 @@ async function processContractRules(
   }
 
   for (const [clientId, clientContracts] of byClient) {
-    // Skip explicitly excluded IDs
     if (WATCH_EXCLUDE_CLIENT_IDS_SET.has(clientId)) continue;
 
-    // Resolve name + test flag
     let sname  = nameByClientId.get(clientId) || '';
     let isTest = sname ? /тест|test/i.test(sname) : false;
+    let phone  = '';
     if (!sname) {
       const info = await fetchClientInfo(clientId);
       sname  = info.sname;
       isTest = info.isTest;
+      phone  = info.phone;
     }
     if (isTest) continue;
 
@@ -713,7 +815,7 @@ async function processContractRules(
         title: getTitle('CONTRACT_ENDING'),
         body: pickBody(ruleKey, key, { name: sname, left: vr.totalLeft, visits: pluralVisits(vr.totalLeft) }),
         action_hint: null,
-        link: null, meta: null,
+        link: null, meta: phone ? { phone } : null,
       });
     } else if (isEnabled('CONTRACT_ENDED') && vr.anyCountable && vr.activeCount === 0) {
       const daysAgo = vr.maxEndDateMs > 0 ? (nowMs - vr.maxEndDateMs) / 86_400_000 : Infinity;
@@ -729,14 +831,95 @@ async function processContractRules(
         title: getTitle('CONTRACT_ENDED'),
         body: pickBody(ruleKey, key, { name: sname }),
         action_hint: null,
-        link: null, meta: null,
+        link: null, meta: phone ? { phone } : null,
       });
     }
   }
 }
 
+// ── AGENT_TASK rule processor ─────────────────────────────────────────────────
+
+async function processAgentTaskRules(
+  rawTasks:       Record<string, unknown>[],
+  nowMs:          number,
+  nowSec:         number,
+  activeKeys:     Set<string>,
+  toUpsert:       AlertRow[],
+  nameByClientId: Map<number, string>,
+  leadById:       Map<number, Record<string, unknown>>,
+): Promise<void> {
+  if (!isEnabled('AGENT_TASK')) return;
+
+  const agentTasks = rawTasks.filter(t => String(t.description ?? '').startsWith('[АГЕНТ]'));
+
+  for (const t of agentTasks) {
+    const taskId      = Number(t.id);
+    if (!taskId) continue;
+
+    const desc        = String(t.description ?? '');
+    const leadId      = Number(t.lead_id   ?? 0) || null;
+    const clientId    = Number(t.client_id ?? 0) || null;
+    const deadlineSec = Number(t.available_to ?? 0);
+    const isOverdue   = deadlineSec > 0 && deadlineSec < nowSec;
+    const level       = isOverdue ? ('urgent' as const) : ('important' as const);
+
+    const reason   = parseAgentTaskReason(desc);
+    const assignee = parseResponsibleNames(t);
+    const key      = `AGENT_TASK:task:${taskId}`;
+
+    activeKeys.add(key);
+
+    const isInactive  = reason === 'INACTIVE_7' || reason === 'INACTIVE_10' || reason === 'INACTIVE_14';
+    const clientNames = isInactive ? parseInactiveClients(desc) : [];
+
+    let sname = '';
+    if (leadId) {
+      const lead = leadById.get(leadId);
+      if (lead) sname = shortName(lead);
+    }
+    if (!sname && clientId) {
+      sname = nameByClientId.get(clientId) || '';
+      if (!sname) {
+        const info = await fetchClientInfo(clientId);
+        sname = info.sname;
+      }
+    }
+    if (!sname && clientNames.length > 0) sname = `${clientNames.length} клиентов`;
+
+    const deadlineStr = deadlineSec > 0 ? fmtTime(deadlineSec * 1000) : '';
+    const ph = {
+      name:     sname || `Задача #${taskId}`,
+      deadline: deadlineStr,
+      assignee: assignee || undefined,
+      count:    clientNames.length > 0 ? clientNames.length : undefined,
+    };
+
+    toUpsert.push({
+      alert_key:       key,
+      rule:            'AGENT_TASK',
+      level,
+      lead_id:         leadId,
+      client_id:       clientId,
+      registration_id: null,
+      manager_name:    assignee || null,
+      short_name:      sname || null,
+      title:           'Задача от агента',
+      body:            pickAgentTaskBody(reason, ph),
+      action_hint:     null,
+      link:            null,
+      meta: {
+        task_id:      taskId,
+        category:     Number(t.category_id) === TASK_CATEGORY_CALL_ID ? 'Звонок' : 'Задание',
+        deadline_sec: deadlineSec || null,
+        reason,
+        assignee:     assignee || null,
+        ...(clientNames.length > 0 ? { client_names: clientNames } : {}),
+      },
+    });
+  }
+}
+
 // ── Resolve reason inference ──────────────────────────────────────────────────
-// Called only for the !activeKeys.has(key) case (condition cleared).
 
 function inferResolveReason(
   alert:       DbAlert,
@@ -747,6 +930,8 @@ function inferResolveReason(
   nowSec:      number,
 ): string {
   const { rule, registration_id, lead_id } = alert;
+
+  if (rule === 'AGENT_TASK') return 'Задача выполнена';
 
   if (registration_id) {
     const reg    = regByRegId.get(registration_id);
@@ -791,6 +976,20 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   const nowSec = Math.floor(nowMs / 1000);
   const nowIso = new Date(nowMs).toISOString();
   const today  = almatyDate(nowMs);
+  const t0     = nowMs;
+
+  // Circuit breaker check (Supabase call, always safe before touching Fitbase)
+  const pauseUntil = await getCircuitBreakerPauseUntil();
+  if (pauseUntil > nowMs) {
+    const pauseStr = new Date(pauseUntil).toLocaleTimeString('ru', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' });
+    console.log(`[watch] skipped — circuit breaker active until ${pauseStr}`);
+    return { status: 'skipped', reason: 'circuit_breaker', pause_until: new Date(pauseUntil).toISOString() };
+  }
+
+  // On success after circuit-breaker was active: clear it + send recovery email
+  await clearCircuitBreaker();
+
+  const t1 = Date.now();
 
   // 1. Funnel 1 steps
   const stepItems       = await paginateGet('/purchase-funnel-step', { funnel_id: 1, page_size: 100 });
@@ -802,7 +1001,10 @@ export async function runWatch(): Promise<Record<string, unknown>> {
 
   const nameByClientId    = new Map<number, string>();
   const managerByClientId = new Map<number, string>();
+  const leadById          = new Map<number, Record<string, unknown>>();
   for (const lead of rawLeads) {
+    const lid = Number(lead.id);
+    if (lid) leadById.set(lid, lead);
     const cid = Number(lead.client_id ?? 0);
     if (!cid) continue;
     if (!nameByClientId.has(cid)) {
@@ -819,39 +1021,14 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   const rawTasks    = await paginateGet('/task', { status: 'O', page_size: 100 });
   const tasksByLead = groupTasksByLead(rawTasks);
 
-  // Agent task maps — open tasks created by the agent ([АГЕНТ] prefix), loaded once
-  const agentTaskByLead   = new Map<number, { category: string }>();
-  const agentTaskByClient = new Map<number, { category: string }>();
-  for (const t of rawTasks) {
-    const desc = String(t.description ?? '');
-    if (!desc.startsWith('[АГЕНТ]')) continue;
-    const catId    = Number(t.category_id ?? 0);
-    const category = catId === TASK_CATEGORY_CALL_ID ? 'Звонок' : 'Задание';
-    const lid = Number(t.lead_id   ?? 0);
-    const cid = Number(t.client_id ?? 0);
-    if (lid && !agentTaskByLead.has(lid))     agentTaskByLead.set(lid, { category });
-    if (cid && !agentTaskByClient.has(cid))   agentTaskByClient.set(cid, { category });
-  }
+  const t2 = Date.now();
 
-  // 4. Schedule registrations — load with date param, ALSO filter client-side
+  // 4. Schedule registrations — single cached load
   const tomorrow = almatyDate(nowMs + 86400_000);
-
-  const todayRegsRaw    = await paginateGet('/schedule-registration', { date: today,    page_size: 100 });
-  const tomorrowRegsRaw = await paginateGet('/schedule-registration', { date: tomorrow, page_size: 100 });
-
-  // Client-side filter guards against API ignoring the date param
-  const todayRegs = todayRegsRaw.filter(r => {
-    const ev = r.event as Record<string, unknown> | undefined;
-    return String(ev?.date || '') === today;
-  });
-  const tomorrowRegs = tomorrowRegsRaw.filter(r => {
-    const ev = r.event as Record<string, unknown> | undefined;
-    return String(ev?.date || '') === tomorrow;
-  });
-
-  console.log(`[watch] schedule raw today=${todayRegsRaw.length} filtered=${todayRegs.length} tomorrow_raw=${tomorrowRegsRaw.length} filtered=${tomorrowRegs.length}`);
-
+  const { todayRegs, tomorrowRegs } = await loadScheduleRegistrations(today, tomorrow);
   const allRegs = [...todayRegs, ...tomorrowRegs];
+
+  const t3 = Date.now();
 
   // 5. Last run + purchases
   const lastRunAt = await getLastWatchRunAt();
@@ -884,18 +1061,9 @@ export async function runWatch(): Promise<Record<string, unknown>> {
 
   await processSystemRules(nowMs, activeKeys, toUpsert);
   await processContractRules(nowMs, activeKeys, toUpsert, nameByClientId, managerByClientId);
+  await processAgentTaskRules(rawTasks, nowMs, nowSec, activeKeys, toUpsert, nameByClientId, leadById);
 
-  // 8a. Apply agent task notes to NEW alerts (post-processing; existing alerts keep their DB body)
-  for (const row of toUpsert) {
-    if (row.rule === 'SYSTEM') continue;
-    if (openByKey.has(row.alert_key)) continue;
-    const agentTask =
-      (row.lead_id   ? agentTaskByLead.get(row.lead_id)    : undefined) ||
-      (row.client_id ? agentTaskByClient.get(row.client_id) : undefined);
-    if (agentTask) row.body = appendAgentTask(row.body, agentTask.category);
-  }
-
-  // 8. Flood guard: block rules that want to create too many NEW alerts
+  // 8. Flood guard
   const maxNewPerRule = env.WATCH_MAX_NEW_PER_RULE;
   const newCountByRule = new Map<string, number>();
   for (const row of toUpsert) {
@@ -927,10 +1095,10 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   const toUpsertFinal = toUpsert.filter(row => {
     if (row.rule === 'SYSTEM') return true;
     if (!floodedRules.has(row.rule)) return true;
-    return openByKey.has(row.alert_key); // keep existing (already in DB) even if rule is flooded
+    return openByKey.has(row.alert_key);
   });
 
-  // 9. Upsert — throw on error so job_run is marked as 'error'
+  // 9. Upsert
   let upsertCount = 0;
   if (toUpsertFinal.length > 0) {
     const { error } = await supabase
@@ -943,9 +1111,26 @@ export async function runWatch(): Promise<Record<string, unknown>> {
     upsertCount = toUpsertFinal.length;
   }
 
+  // 9a. AGENT_TASK level upgrade: important → urgent when deadline passes (unack so user sees it)
+  const overdueUpgradeKeys = toUpsertFinal
+    .filter(r => r.rule === 'AGENT_TASK' && r.level === 'urgent')
+    .map(r => r.alert_key)
+    .filter(k => {
+      const ex = openByKey.get(k);
+      return ex && ex.level === 'important';
+    });
+  if (overdueUpgradeKeys.length > 0) {
+    const { error } = await supabase
+      .from('watch_alerts')
+      .update({ level: 'urgent', acked_at: null })
+      .in('alert_key', overdueUpgradeKeys)
+      .eq('level', 'important');
+    if (error) console.error('[watch] AGENT_TASK upgrade error:', error.message);
+    else console.log(`[watch] AGENT_TASK upgraded to urgent: ${overdueUpgradeKeys.length}`);
+  }
+
   // 10. Resolve stale alerts
   const regByRegId = new Map(allRegs.map(r => [Number(r.id), r]));
-  const leadById   = new Map(rawLeads.map(l => [Number(l.id), l]));
   const toResolve: Array<{ key: string; reason: string }> = [];
 
   for (const [key, alert] of openByKey) {
@@ -971,7 +1156,6 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   const uniqueToResolve = toResolve.filter(({ key }) => !seen.has(key) && !!seen.add(key));
 
   if (uniqueToResolve.length > 0) {
-    // Alerts already acked keep their meta (reason = 'Принято вручную'); others get reason set.
     const ackedKeys: string[] = [];
     const byReason = new Map<string, string[]>();
     for (const { key, reason } of uniqueToResolve) {
@@ -1000,26 +1184,6 @@ export async function runWatch(): Promise<Record<string, unknown>> {
     }
   }
 
-  // 10a. Update body of existing alerts where an agent task appeared after alert was created
-  const resolveSet    = new Set(uniqueToResolve.map(r => r.key));
-  const toUpdateBody: { id: number; body: string }[] = [];
-  for (const [key, alert] of openByKey) {
-    if (resolveSet.has(key)) continue;
-    if (hasAgentTaskNote(alert.body)) continue;
-    const agentTask =
-      (alert.lead_id   ? agentTaskByLead.get(alert.lead_id)    : undefined) ||
-      (alert.client_id ? agentTaskByClient.get(alert.client_id) : undefined);
-    if (!agentTask) continue;
-    toUpdateBody.push({ id: alert.id, body: appendAgentTask(alert.body, agentTask.category) });
-  }
-  for (const upd of toUpdateBody) {
-    const { error } = await supabase
-      .from('watch_alerts')
-      .update({ body: upd.body })
-      .eq('id', upd.id);
-    if (error) console.error('[watch] body-update error id=' + upd.id + ':', error.message);
-  }
-
   // 11. Per-rule stats
   const ruleStats: Record<string, { found: number; created: number; closed: number }> = {};
   for (const row of toUpsertFinal) {
@@ -1036,12 +1200,15 @@ export async function runWatch(): Promise<Record<string, unknown>> {
     }
   }
 
+  const tTotal = Date.now() - t0;
   console.log(`[watch] leads=${leads.length} upsert=${upsertCount} resolved=${uniqueToResolve.length} rules=${JSON.stringify(ruleStats)}`);
+  console.log(`[watch] timing: setup=${t1-t0}ms leads+tasks=${t2-t1}ms schedule=${t3-t2}ms total=${tTotal}ms`);
   return {
     leads:      leads.length,
     upserted:   upsertCount,
     resolved:   uniqueToResolve.length,
     active:     activeKeys.size,
     rule_stats: ruleStats,
+    timing_ms:  tTotal,
   };
 }
