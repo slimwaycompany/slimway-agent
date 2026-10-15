@@ -17,6 +17,7 @@ import { runWatchBrief, JOB_NAME as BRIEF_JOB }      from './jobs/watchBrief';
 import { runProbeTasks }                              from './jobs/probeTasks';
 import { runInactive,  JOB_NAME as INACTIVE_JOB }    from './jobs/inactive';
 import { mountWindowRoutes }                          from './http/window';
+import { mountKvizRoutes }                            from './http/kviz';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -313,6 +314,7 @@ async function insertRun(
 // ── Window page ───────────────────────────────────────────────────────────────
 
 mountWindowRoutes(app);
+mountKvizRoutes(app);
 
 // ── Startup: clear stale locks and orphaned running job_runs ──────────────────
 

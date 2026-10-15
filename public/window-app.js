@@ -272,6 +272,7 @@
           + '</div>'
           + '<div class="card-actions">'
           +   '<span class="card-age">' + timeAgo(a.created_at) + '</span>'
+          +   (a.lead_id ? '<a class="btn btn-sm" href="/kviz/new?lead_id=' + a.lead_id + (a.short_name ? '&name=' + encodeURIComponent(a.short_name) : '') + (a.phone ? '&phone=' + encodeURIComponent(a.phone) : '') + '" target="_blank" rel="noopener" style="text-decoration:none">Квалифицировать</a>' : '')
           +   '<button class="btn btn-take" onclick="ackLead(' + a.lead_id + ', this)">Взял в работу</button>'
           + '</div>'
           + '</div>';

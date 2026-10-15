@@ -4,7 +4,8 @@
   "description": "SlimWay agents server — trial, daily-summary",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc && node --check public/window-app.js",
+    "build": "tsc && node --check public/window-app.js && npm run build:kviz",
+    "build:kviz": "cd квиз/client && npm ci && npm run build",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "import:trial-state": "tsx scripts/importTrialState.ts"

@@ -29,7 +29,7 @@ function makeToken(): string {
   return `${payload}.${sig}`;
 }
 
-function verifyToken(token: string): boolean {
+export function verifyToken(token: string): boolean {
   const dot = token.lastIndexOf('.');
   if (dot <= 0) return false;
   const payload  = token.slice(0, dot);
@@ -45,7 +45,7 @@ function verifyToken(token: string): boolean {
   } catch { return false; }
 }
 
-function getToken(req: express.Request): string | null {
+export function getToken(req: express.Request): string | null {
   const header = req.headers.cookie || '';
   const part   = header.split(';').map(s => s.trim()).find(s => s.startsWith(COOKIE_NAME + '='));
   return part ? part.slice(COOKIE_NAME.length + 1) : null;
@@ -266,6 +266,7 @@ a{color:inherit}
         <div class="hdr-logo">SW</div>
         <span class="hdr-title">SlimWay — помощник</span>
         <div class="hdr-actions">
+          <a class="btn btn-sm" href="/kviz" target="_blank" rel="noopener">Квалификация</a>
           <button class="btn btn-sm" id="notif-btn">Уведомления</button>
           <button class="btn btn-sm" id="sound-btn">Звук: вкл</button>
           <button class="btn-icon" id="theme-btn" title="Тема">🌙</button>
@@ -362,7 +363,7 @@ export function mountWindowRoutes(app: express.Application): void {
     }
     const token = makeToken();
     res.setHeader('Set-Cookie',
-      `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_MAX_S}; Path=/window`,
+      `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_MAX_S}; Path=/`,
     );
     res.json({ ok: true });
   });

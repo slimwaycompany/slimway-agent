@@ -38,3 +38,7 @@ services:
         sync: false
       - key: SMTP_PASS
         sync: false
+      - key: WINDOW_PASSWORD
+        sync: false
+      - key: WINDOW_SECRET
+        sync: false
