@@ -66,6 +66,9 @@
       $('closed-list').style.display = 'block';
       $('closed-chevron').classList.add('open');
     }
+    if (window.AgentRoom && !window._agentRoom) {
+      try { window._agentRoom = new AgentRoom('agent-room-wrap'); } catch(e) {}
+    }
   }
 
   // ── Login ─────────────────────────────────────────────────────────────────

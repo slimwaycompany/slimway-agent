@@ -10,6 +10,9 @@ const ALMATY_MS    = 5 * 3600 * 1000;
 const COOKIE_NAME  = 'swtoken';
 const COOKIE_MAX_S = 30 * 86400;
 
+// Agent-state cache (15 s)
+let _agentStateCache: { data: unknown; at: number } | null = null;
+
 // Loaded once at startup; served as /window/app.js
 const WINDOW_APP_JS = fs.readFileSync(
   path.join(__dirname, '../../public/window-app.js'),
@@ -226,13 +229,28 @@ a{color:inherit}
 .btn-icon:hover{background:var(--c-border)}
 .empty{color:var(--c-muted);font-size:13px;text-align:center;padding:20px}
 #login-err{color:var(--red);font-size:12px;margin-top:8px;min-height:18px}
+/* ── Agent room ─────────────────────────────────────────────────────────── */
+#agent-room-wrap{flex-shrink:0;border-top:1px solid var(--c-border);position:relative;overflow:hidden;background:var(--card);border-radius:0 0 var(--radius-panel) var(--radius-panel)}
+#agent-room-wrap:not(.collapsed){height:clamp(180px,28vh,280px)}
+#agent-room-wrap.collapsed{height:36px}
+#agent-canvas{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
+#agent-room-strip{display:none;align-items:center;gap:8px;padding:0 12px;height:36px;font-size:12px;color:var(--c-muted);cursor:pointer;user-select:none}
+#agent-room-wrap.collapsed #agent-canvas{display:none}
+#agent-room-wrap.collapsed #agent-room-strip{display:flex}
+#agent-room-toggle{position:absolute;top:4px;right:6px;background:none;border:none;cursor:pointer;font-size:11px;color:var(--c-muted);padding:2px 6px;border-radius:4px;z-index:2;line-height:1}
+#agent-room-toggle:hover{background:var(--c-border)}
+#agent-status-popup{position:absolute;bottom:100%;left:0;right:0;background:var(--card);border:1px solid var(--c-border);border-radius:var(--radius-card);padding:12px 14px;font-size:12px;z-index:10;box-shadow:var(--shadow);display:none}
+#agent-status-popup.show{display:block}
+#agent-strip-dot{width:7px;height:7px;border-radius:50%;background:var(--brand);flex-shrink:0}
+#agent-strip-dot.err{background:var(--red)}
+#agent-strip-dot.idle{background:var(--c-muted)}
 @media(min-width:1100px){
   body{overflow:hidden}
   #app.visible{display:flex;flex-direction:column;height:100vh;overflow:hidden}
   .page{flex:1;min-height:0;display:flex;flex-direction:column;max-width:none;padding:12px 16px 0}
   .page-hdr{flex-shrink:0}
   .columns{flex:1;min-height:0;display:flex;flex-direction:row;gap:10px;padding-bottom:12px}
-  .col-feed{flex:28 28 0;order:1;overflow-y:auto;display:flex;flex-direction:column}
+  .col-feed{flex:28 28 0;order:1;overflow-y:hidden;display:flex;flex-direction:column}
   .col-alerts{flex:44 44 0;order:2;overflow-y:auto;display:flex;flex-direction:column}
   .col-closed{flex:28 28 0;order:3;overflow-y:auto;display:flex;flex-direction:column}
   .col-hdr{position:sticky;top:0;z-index:2;border-radius:var(--radius-panel) var(--radius-panel) 0 0}
@@ -281,7 +299,8 @@ a{color:inherit}
     <div class="columns">
       <div class="glass col-feed">
         <div class="col-hdr"><h2>Лента событий</h2></div>
-        <div class="col-body" id="feed-list"></div>
+        <div class="col-body" id="feed-list" style="flex:1;min-height:0;overflow-y:auto"></div>
+        <div id="agent-room-wrap"></div>
       </div>
       <div class="glass col-alerts">
         <div class="col-hdr"><h2>Сейчас важно</h2><span id="alert-count" style="font-size:12px;color:var(--c-muted)"></span></div>
@@ -314,6 +333,9 @@ a{color:inherit}
 
 <audio id="beep-audio" preload="none"></audio>
 <script>window.LEAD_URL='__LEAD_URL__';window.CLIENT_URL='__CLIENT_URL__';</script>
+<script src="/window/agent-room/sprites.js"></script>
+<script src="/window/agent-room/phrases.js"></script>
+<script src="/window/agent-room/room.js"></script>
 <script src="/window/app.js"></script>
 </body>
 </html>`;
@@ -322,6 +344,12 @@ a{color:inherit}
 
 export function mountWindowRoutes(app: express.Application): void {
   app.use(express.json());
+
+  // Serve pixel agent-room static files
+  app.use('/window/agent-room', express.static(
+    path.join(__dirname, '../../public/window/agent-room'),
+    { maxAge: 0 },
+  ));
 
   app.get('/window', (_req, res) => {
     const leadUrl   = (env.FITBASE_LEAD_URL_TEMPLATE   || '').replace(/'/g, "\\'");
@@ -544,5 +572,85 @@ export function mountWindowRoutes(app: express.Application): void {
       .is('resolved_at', null);
     if (error) { res.status(500).json({ error: error.message }); return; }
     res.json({ ok: true });
+  });
+
+  app.get('/window/api/agent-state', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const now = Date.now();
+    if (_agentStateCache && now - _agentStateCache.at < 15_000) {
+      res.json(_agentStateCache.data); return;
+    }
+    try {
+      const cut24h = new Date(now - 86400_000).toISOString();
+      // Today in Yekaterinburg (UTC+5): compute UTC start-of-day
+      const yekNow     = new Date(now + 5 * 3600_000);
+      const todayStart = new Date(yekNow.toISOString().slice(0, 10) + 'T00:00:00.000Z');
+      const todayUTC   = new Date(todayStart.getTime() - 5 * 3600_000).toISOString();
+
+      const PHONE_RE = /\+?[78]?\s*[\(\-]?\d{3}[\)\-\s]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/g;
+
+      const [lastRunQ, runningQ, errorQ, eventsQ, newLeadsQ, movedCntQ, tasksCntQ, openCntQ] = await Promise.allSettled([
+        supabase.from('job_runs').select('job,finished_at,status,error,duration_ms')
+          .in('status', ['ok', 'error']).order('finished_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('job_runs').select('job,started_at')
+          .eq('status', 'running').order('started_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('job_runs').select('finished_at,error,job')
+          .eq('status', 'error').gte('finished_at', cut24h).order('finished_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('agent_events').select('id,created_at,type,text,meta')
+          .in('type', ['lead_moved', 'task_created', 'error']).gte('created_at', cut24h)
+          .order('created_at', { ascending: false }).limit(10),
+        supabase.from('watch_alerts').select('id,created_at')
+          .eq('rule', 'NEW_LEAD').gte('created_at', todayUTC).order('created_at', { ascending: false }).limit(30),
+        supabase.from('agent_events').select('id', { count: 'exact', head: true })
+          .eq('type', 'lead_moved').gte('created_at', todayUTC),
+        supabase.from('agent_events').select('id', { count: 'exact', head: true })
+          .eq('type', 'task_created').gte('created_at', todayUTC),
+        supabase.from('watch_alerts').select('id', { count: 'exact', head: true })
+          .is('resolved_at', null).is('acked_at', null),
+      ]);
+
+      const lastRun   = lastRunQ.status  === 'fulfilled' ? lastRunQ.value.data   : null;
+      const running   = runningQ.status  === 'fulfilled' ? runningQ.value.data   : null;
+      const errRow    = errorQ.status    === 'fulfilled' ? errorQ.value.data     : null;
+      const evRaw     = eventsQ.status   === 'fulfilled' ? (eventsQ.value.data  ?? []) : [];
+      const nlRaw     = newLeadsQ.status === 'fulfilled' ? (newLeadsQ.value.data ?? []) : [];
+      const movedCnt  = movedCntQ.status === 'fulfilled' ? ((movedCntQ.value as any).count ?? 0) : 0;
+      const tasksCnt  = tasksCntQ.status === 'fulfilled' ? ((tasksCntQ.value as any).count ?? 0) : 0;
+      const openAlerts = openCntQ.status === 'fulfilled' ? ((openCntQ.value as any).count ?? 0) : 0;
+
+      type EvType = 'move' | 'task' | 'new_lead' | 'error' | 'other';
+      const TYPE_MAP: Record<string, EvType> = { lead_moved: 'move', task_created: 'task', error: 'error' };
+
+      const recentEvents = evRaw.map(e => ({
+        at:   e.created_at as string,
+        type: TYPE_MAP[e.type as string] ?? 'other' as EvType,
+        text: String(e.text || '').replace(PHONE_RE, '[тел]').slice(0, 80),
+        meta: e.meta as Record<string, unknown> | null,
+      }));
+      // Inject new_lead events from watch_alerts
+      for (const nl of nlRaw.slice(0, 5)) {
+        recentEvents.push({ at: nl.created_at as string, type: 'new_lead', text: 'Новая заявка', meta: null });
+      }
+      recentEvents.sort((a, b) => b.at.localeCompare(a.at));
+
+      const serverTime = new Date(now + 5 * 3600_000).toISOString().replace('Z', '+05:00');
+
+      const data = {
+        lastRunAt:        lastRun?.finished_at    ?? null,
+        lastRunOk:        lastRun ? lastRun.status === 'ok' : null,
+        lastRunName:      lastRun?.job            ?? null,
+        lastRunDurationMs: lastRun?.duration_ms   ?? null,
+        runningNow:       running?.job            ?? null,
+        lastError:        errRow ? { at: errRow.finished_at, message: String(errRow.error ?? '').slice(0, 120), job: errRow.job } : null,
+        recentEvents:     recentEvents.slice(0, 10),
+        today:            { moved: movedCnt, tasks: tasksCnt, newLeads: nlRaw.length, openAlerts },
+        serverTime,
+      };
+      _agentStateCache = { data, at: now };
+      res.json(data);
+    } catch (e) {
+      console.error('[window] agent-state error:', (e as Error).message);
+      res.json({ serverTime: new Date().toISOString() });
+    }
   });
 }
