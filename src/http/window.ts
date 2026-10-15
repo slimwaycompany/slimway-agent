@@ -138,7 +138,33 @@ a{color:inherit}
 .dot-urgent{background:var(--c-urgent)}.dot-imp{background:var(--c-imp)}
 .modal-note{font-size:12px;color:var(--c-muted);margin-bottom:8px}
 .modal-close{margin-top:16px;width:100%}
+/* ── Columns layout ───────────────────────────────────────────────────── */
+.columns{display:flex;flex-direction:column}
+.col-alerts{order:1}.col-closed{order:2}.col-feed{order:3}
+.col-hdr h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--c-muted);margin-bottom:0}
 #app{display:none}
+#app.visible{display:block}
+@media(min-width:1100px){
+  body{overflow:hidden}
+  #app.visible{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  .page{flex:1;min-height:0;display:flex;flex-direction:column;max-width:none;padding:12px 16px 0}
+  .page-hdr{flex-shrink:0}
+  .columns{flex:1;min-height:0;display:flex;flex-direction:row;gap:10px;padding-bottom:12px}
+  .col-feed,.col-alerts,.col-closed{overflow-y:auto;margin-bottom:0;padding:0}
+  .col-feed{flex:28 28 0;order:1}
+  .col-alerts{flex:44 44 0;order:2}
+  .col-closed{flex:28 28 0;order:3}
+  .col-hdr{position:sticky;top:0;background:var(--c-card);z-index:2;padding:10px 14px 8px;border-bottom:1px solid var(--c-border);margin-bottom:0}
+  .col-hdr h2{margin-bottom:0}
+  #alerts-list,#feed-list,#closed-list{padding:6px 14px 12px;margin-top:0!important}
+  .col-closed .section-chevron{display:none}
+  .col-closed .section-hdr{cursor:default}
+  .feed-item{overflow-wrap:break-word;word-break:break-word;padding:3px 0}
+  .closed-card{padding:5px 10px}
+  .closed-title{font-size:12px}
+  .alert-detail{font-size:11px}
+  .btn-sm.btn-unack{padding:3px 7px;font-size:11px}
+}
 </style>
 </head>
 <body>
@@ -153,34 +179,35 @@ a{color:inherit}
 
 <div id="app">
   <div class="page">
-    <div class="hdr">
-      <h1 id="page-title">SlimWay — помощник</h1>
-      <div class="hdr-actions">
-        <button class="btn btn-sm" id="notif-btn">Уведомления</button>
-        <button class="btn btn-sm" id="sound-btn">Звук: вкл</button>
-        <button class="btn btn-sm" id="help-btn">?</button>
+    <div class="page-hdr">
+      <div class="hdr">
+        <h1 id="page-title">SlimWay — помощник</h1>
+        <div class="hdr-actions">
+          <button class="btn btn-sm" id="notif-btn">Уведомления</button>
+          <button class="btn btn-sm" id="sound-btn">Звук: вкл</button>
+          <button class="btn btn-sm" id="help-btn">?</button>
+        </div>
       </div>
+      <div class="status-bar" id="status-bar">Последняя проверка: — · Связь: —</div>
+      <div class="stale-banner" id="stale-banner" style="display:none">⚠ Агент не запускался более 10 минут</div>
+      <div id="err-banner"></div>
     </div>
-    <div class="status-bar" id="status-bar">Последняя проверка: — · Связь: —</div>
-    <div class="stale-banner" id="stale-banner" style="display:none">⚠ Агент не запускался более 10 минут</div>
-    <div id="err-banner"></div>
-
-    <div class="section">
-      <h2>Сейчас важно <span id="alert-count" style="font-weight:400"></span></h2>
-      <div id="alerts-list"></div>
-    </div>
-
-    <div class="section" id="closed-section">
-      <div class="section-hdr" onclick="toggleClosed()">
-        <h2>Завершённые за 24 часа <span id="closed-count" style="font-weight:400">(0)</span></h2>
-        <span class="section-chevron" id="closed-chevron">▶</span>
+    <div class="columns">
+      <div class="section col-feed">
+        <div class="col-hdr"><h2>Лента</h2></div>
+        <div id="feed-list"></div>
       </div>
-      <div id="closed-list" style="display:none;margin-top:8px"></div>
-    </div>
-
-    <div class="section">
-      <h2>Лента</h2>
-      <div id="feed-list"></div>
+      <div class="section col-alerts">
+        <div class="col-hdr"><h2>Сейчас важно <span id="alert-count" style="font-weight:400"></span></h2></div>
+        <div id="alerts-list"></div>
+      </div>
+      <div class="section col-closed" id="closed-section">
+        <div class="col-hdr section-hdr" onclick="toggleClosed()">
+          <h2>Завершённые за 24 часа <span id="closed-count" style="font-weight:400">(0)</span></h2>
+          <span class="section-chevron" id="closed-chevron">▶</span>
+        </div>
+        <div id="closed-list" style="display:none;margin-top:8px"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -248,6 +275,15 @@ a{color:inherit}
   $('help-close').onclick = () => { $('help-modal').style.display = 'none'; };
   $('help-modal').onclick = e => { if (e.target === $('help-modal')) $('help-modal').style.display = 'none'; };
 
+  // ── App visibility ───────────────────────────────────────────────────────────
+  function showApp(){
+    $('app').classList.add('visible');
+    if (window.innerWidth >= 1100){
+      $('closed-list').style.display = 'block';
+      $('closed-chevron').textContent = '▼';
+    }
+  }
+
   // ── Login ────────────────────────────────────────────────────────────────────
   async function login(){
     const pw = $('pw-input').value;
@@ -256,7 +292,7 @@ a{color:inherit}
     });
     if (res.ok){
       $('login-screen').style.display = 'none';
-      $('app').style.display = 'block';
+      showApp();
       fetchState();
     } else {
       $('login-err').textContent = 'Неверный пароль';
@@ -354,6 +390,7 @@ a{color:inherit}
   }
 
   window.toggleClosed = function(){
+    if (window.innerWidth >= 1100) return;
     const list = $('closed-list');
     const chev = $('closed-chevron');
     if (list.style.display === 'none'){ list.style.display='block'; chev.textContent='▼'; }
@@ -389,7 +426,7 @@ a{color:inherit}
   async function fetchState(){
     try {
       const res = await fetch('/window/api/state?since_id='+since_id);
-      if (res.status === 401){ $('app').style.display='none'; $('login-screen').style.display='flex'; return; }
+      if (res.status === 401){ $('app').classList.remove('visible'); $('login-screen').style.display='flex'; return; }
       if (!res.ok){ showError('Ошибка сервера ('+res.status+')'); updateStatus(null,false); return; }
       hideError();
       const data = await res.json();
@@ -418,7 +455,7 @@ a{color:inherit}
   fetch('/window/api/state?since_id=0').then(r => {
     if (r.ok){
       $('login-screen').style.display = 'none';
-      $('app').style.display = 'block';
+      showApp();
       r.json().then(data => {
         updateStatus(data, true);
         renderAlerts(data.alerts||[]);
