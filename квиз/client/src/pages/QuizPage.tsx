@@ -19,6 +19,7 @@ import QuickReplies from '../components/QuickReplies';
 import AskPanel from '../components/AskPanel';
 import LiveResult from '../components/LiveResult';
 import ExitDialog from '../components/ExitDialog';
+import { postToParent } from '../utils/iframe';
 
 // ─── Progress bar ─────────────────────────────────────────────────────────────
 function ProgressBar({ current, maxVisited, id, readOnly }: {
@@ -786,6 +787,7 @@ export default function QuizPage() {
       setSession(s);
       setAnswers(s.answers ?? {});
       setMaxVisited(Math.max(s.current_step ?? stepNum, stepNum));
+      postToParent({ type: 'kviz:title', text: (s as { client_name?: string }).client_name ?? '' });
     });
   }, [id]);
 
@@ -889,6 +891,7 @@ export default function QuizPage() {
       recommendation: result.recommendation,
       summary_text: buildSummaryText(newAnswers, result),
     });
+    postToParent({ type: 'kviz:done', sessionId: id, temperature: result.temperature });
     navigate('/');
   }
 

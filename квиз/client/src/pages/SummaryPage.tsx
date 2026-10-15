@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { apiGet, apiPatch, apiPost } from '../api';
+import { isEmbedded, postToParent } from '../utils/iframe';
 import {
   TEMP_BADGES, TEMP_COLORS, TEMP_TIPS, STEP_TITLES,
   TRAVEL_TIMES, AGE_GROUPS, POSTPARTUM_PERIODS, CONTRAINDICATIONS, GOALS,
@@ -123,7 +124,10 @@ export default function SummaryPage() {
 
   useEffect(() => {
     if (!id) return;
-    apiGet(`/api/sessions/${id}`).then(setSession);
+    apiGet(`/api/sessions/${id}`).then(s => {
+      setSession(s);
+      postToParent({ type: 'kviz:title', text: (s as { client_name?: string }).client_name ?? '' });
+    });
   }, [id, location.key]);
 
   if (!session) return <div className="page">Загрузка…</div>;
@@ -170,6 +174,7 @@ export default function SummaryPage() {
       summary_text: summaryText,
     });
     setSaving(false);
+    postToParent({ type: 'kviz:done', sessionId: id, temperature: result.temperature });
     navigate('/');
   }
 
@@ -193,7 +198,7 @@ export default function SummaryPage() {
           ← Назад
         </button>
         <span style={{ color: '#9ca3af', fontSize: 14 }}>{session.consultant}</span>
-        <a href="/window" style={{ marginLeft: 'auto', fontSize: 13, color: '#6b7280', textDecoration: 'none' }}>← Овчарка</a>
+        {!isEmbedded && <a href="/window" style={{ marginLeft: 'auto', fontSize: 13, color: '#6b7280', textDecoration: 'none' }}>← Овчарка</a>}
       </div>
 
       {readOnly && (

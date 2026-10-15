@@ -244,9 +244,23 @@ a{color:inherit}
 #agent-strip-dot{width:7px;height:7px;border-radius:50%;background:var(--brand);flex-shrink:0}
 #agent-strip-dot.err{background:var(--red)}
 #agent-strip-dot.idle{background:var(--c-muted)}
+/* ── Tabs ─────────────────────────────────────────────────────────────────── */
+#tabs-bar{display:flex;flex-shrink:0;border-bottom:1px solid var(--c-border);background:var(--glass);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);z-index:10;padding:0 8px}
+.tab-btn{background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;padding:10px 14px;font-size:13px;font-weight:600;font-family:inherit;color:var(--c-muted);transition:color .15s,border-color .15s;margin-bottom:-1px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.tab-btn:hover{color:var(--c-text)}
+.tab-btn.tab-active{color:var(--brand);border-bottom-color:var(--brand)}
+.tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:700;padding:0 4px}
+#kviz-title-text{font-size:12px;color:var(--c-muted);font-weight:400}
+.tab-pane.hidden{display:none}
+#tab-kviz{height:calc(100vh - 45px);overflow:hidden}
+#kviz-iframe{width:100%;height:100%;border:none;display:block}
+#sw-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--card);border:1px solid var(--c-border);border-radius:12px;padding:10px 20px;font-size:14px;font-weight:600;z-index:200;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;box-shadow:var(--shadow);white-space:nowrap}
+#sw-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media(min-width:1100px){
   body{overflow:hidden}
   #app.visible{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  .tab-pane{flex:1;min-height:0;display:flex;flex-direction:column}
+  #tab-kviz{height:auto}
   .page{flex:1;min-height:0;display:flex;flex-direction:column;max-width:none;padding:12px 16px 0}
   .page-hdr{flex-shrink:0}
   .columns{flex:1;min-height:0;display:flex;flex-direction:row;gap:10px;padding-bottom:12px}
@@ -278,13 +292,17 @@ a{color:inherit}
 </div>
 
 <div id="app">
+  <div id="tabs-bar">
+    <button id="tab-btn-watch" class="tab-btn tab-active" onclick="switchTab('watch')">🐕 Овчарка<span id="watch-alert-badge" class="tab-badge" style="display:none">0</span></button>
+    <button id="tab-btn-kviz" class="tab-btn" onclick="switchTab('kviz')">📝 Квалификация<span id="kviz-title-text"></span></button>
+  </div>
+  <div id="tab-watch" class="tab-pane">
   <div class="page">
     <div class="page-hdr">
       <div class="hdr">
         <div class="hdr-logo">SW</div>
         <span class="hdr-title">SlimWay — помощник</span>
         <div class="hdr-actions">
-          <a class="btn btn-sm" href="/kviz" target="_blank" rel="noopener">Квалификация</a>
           <button class="btn btn-sm" id="notif-btn">Уведомления</button>
           <button class="btn btn-sm" id="sound-btn">Звук: вкл</button>
           <button class="btn-icon" id="theme-btn" title="Тема">🌙</button>
@@ -316,6 +334,9 @@ a{color:inherit}
       </div>
     </div>
   </div>
+  </div>
+  <div id="tab-kviz" class="tab-pane hidden"></div>
+  <div id="sw-toast"></div>
 </div>
 
 <div class="modal-overlay" id="help-modal" style="display:none">

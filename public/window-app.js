@@ -8,6 +8,8 @@
   let soundOn = localStorage.getItem('sw_sound') !== 'false';
   let notifGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
   let audioCtx = null;
+  var activeTab = 'watch';
+  var hiddenAlertCount = 0;
 
   // ── Dark mode ─────────────────────────────────────────────────────────────
   let darkMode = localStorage.getItem('sw_theme') === 'dark';
@@ -69,7 +71,85 @@
     if (window.AgentRoom && !window._agentRoom) {
       try { window._agentRoom = new AgentRoom('agent-room-wrap'); } catch(e) {}
     }
+    if (location.hash === '#kviz') switchTab('kviz');
   }
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  window.switchTab = function (name, kvizUrl) {
+    if (name === 'kviz') {
+      var pane = $('tab-kviz');
+      if (!pane) return;
+      var iframe = document.getElementById('kviz-iframe');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'kviz-iframe';
+        iframe.allow = 'clipboard-write';
+        pane.appendChild(iframe);
+        iframe.src = kvizUrl || '/kviz/';
+      } else if (kvizUrl) {
+        iframe.src = kvizUrl;
+      }
+      $('tab-watch').classList.add('hidden');
+      pane.classList.remove('hidden');
+      $('tab-btn-watch').classList.remove('tab-active');
+      $('tab-btn-kviz').classList.add('tab-active');
+      history.replaceState(null, '', '#kviz');
+      activeTab = 'kviz';
+    } else {
+      var tabKviz  = $('tab-kviz');
+      var tabWatch = $('tab-watch');
+      if (tabKviz)  tabKviz.classList.add('hidden');
+      if (tabWatch) tabWatch.classList.remove('hidden');
+      var btnKviz  = $('tab-btn-kviz');
+      var btnWatch = $('tab-btn-watch');
+      if (btnKviz)  btnKviz.classList.remove('tab-active');
+      if (btnWatch) btnWatch.classList.add('tab-active');
+      history.replaceState(null, '', '#watch');
+      activeTab = 'watch';
+      hiddenAlertCount = 0;
+      var badge = $('watch-alert-badge');
+      if (badge) { badge.style.display = 'none'; badge.textContent = '0'; }
+    }
+  };
+
+  function showToast(text) {
+    var el = $('sw-toast');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('show');
+    setTimeout(function () { el.classList.remove('show'); }, 3500);
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.origin !== location.origin) return;
+    var d = e.data;
+    if (!d || !d.type) return;
+    if (d.type === 'kviz:title') {
+      var el = $('kviz-title-text');
+      if (el) el.textContent = d.text ? ' · ' + d.text : '';
+    }
+    if (d.type === 'kviz:done') {
+      var labels = { hot: '🔥 Горячий', warm: '🌤 Тёплый', cold: '❄️ Холодный', stop: '🚫 Стоп', postpone: '⏸ Отложен' };
+      showToast('Квалификация сохранена: ' + (labels[d.temperature] || d.temperature || ''));
+    }
+  });
+
+  window.addEventListener('hashchange', function () {
+    var h = location.hash.slice(1);
+    if (h === 'kviz' && activeTab !== 'kviz') window.switchTab('kviz');
+    else if (h !== 'kviz' && activeTab !== 'watch') window.switchTab('watch');
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (!$('app') || !$('app').classList.contains('visible')) return;
+    if (e.altKey && (e.key === '1' || e.code === 'Digit1')) { e.preventDefault(); window.switchTab('watch'); }
+    if (e.altKey && (e.key === '2' || e.code === 'Digit2')) { e.preventDefault(); window.switchTab('kviz'); }
+  });
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest && e.target.closest('[data-kviz]');
+    if (btn) { e.preventDefault(); window.switchTab('kviz', btn.getAttribute('data-kviz')); }
+  });
 
   // ── Login ─────────────────────────────────────────────────────────────────
   async function login() {
@@ -275,7 +355,7 @@
           + '</div>'
           + '<div class="card-actions">'
           +   '<span class="card-age">' + timeAgo(a.created_at) + '</span>'
-          +   (a.lead_id ? '<a class="btn btn-sm" href="/kviz/new?lead_id=' + a.lead_id + (a.short_name ? '&name=' + encodeURIComponent(a.short_name) : '') + (a.phone ? '&phone=' + encodeURIComponent(a.phone) : '') + '" target="_blank" rel="noopener" style="text-decoration:none">Квалифицировать</a>' : '')
+          +   (a.lead_id ? '<button class="btn btn-sm" data-kviz="/kviz/new?lead_id=' + a.lead_id + (a.short_name ? '&name=' + encodeURIComponent(a.short_name) : '') + (a.phone ? '&phone=' + encodeURIComponent(a.phone) : '') + '">Квалифицировать</button>' : '')
           +   '<button class="btn btn-take" onclick="ackLead(' + a.lead_id + ', this)">Взял в работу</button>'
           + '</div>'
           + '</div>';
@@ -434,6 +514,11 @@
       // Batch notifications: NEW_LEAD always individual; 3+ others → one batch
       var newItems = (data.new_alerts || []).filter(function (a) { return !notifiedIds.has(a.id); });
       newItems.forEach(function (a) { notifiedIds.add(a.id); since_id = Math.max(since_id, a.id); });
+      if (activeTab === 'kviz' && newItems.length > 0) {
+        hiddenAlertCount += newItems.length;
+        var badge = $('watch-alert-badge');
+        if (badge) { badge.style.display = 'inline-flex'; badge.textContent = String(hiddenAlertCount); }
+      }
       var newLeads = newItems.filter(function (a) { return a.rule === 'NEW_LEAD' || a.rule === 'NEW_LEAD_NO_TASK'; });
       var others   = newItems.filter(function (a) {
         return a.rule !== 'NEW_LEAD' && a.rule !== 'NEW_LEAD_NO_TASK' && (a.level === 'urgent' || a.level === 'important');

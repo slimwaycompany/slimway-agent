@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiDelete } from '../api';
 import { TEMP_BADGES, TEMP_COLORS, EARLY_CLOSE_REASONS } from '../config/qualify';
+import { isEmbedded, postToParent } from '../utils/iframe';
 
 interface Session {
   id: string; consultant: string; status: string; current_step: number;
@@ -20,7 +21,10 @@ export default function HomePage() {
   const [nameInput, setNameInput] = useState(consultant);
   const nameRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    postToParent({ type: 'kviz:title', text: '' });
+    load();
+  }, []);
   useEffect(() => { if (editingName) nameRef.current?.focus(); }, [editingName]);
 
   async function load() {
@@ -62,7 +66,7 @@ export default function HomePage() {
       <div className="page-header">
         <h1>SlimWay</h1>
         <div style={{ display: 'flex', gap: 8 }}>
-          <a className="btn btn-secondary" href="/window" style={{ fontSize: 13, padding: '8px 14px', textDecoration: 'none' }}>← Овчарка</a>
+          {!isEmbedded && <a className="btn btn-secondary" href="/window" style={{ fontSize: 13, padding: '8px 14px', textDecoration: 'none' }}>← Овчарка</a>}
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '8px 14px' }} onClick={() => navigate('/history')}>
             История
           </button>

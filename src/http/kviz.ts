@@ -141,6 +141,11 @@ function buildRouter(): Router {
 
   // Serve kviz client static files and SPA fallback
   if (fs.existsSync(CLIENT_DIST)) {
+    // Allow same-origin iframe embedding
+    router.use('/kviz', (_req: Request, res: Response, next: NextFunction) => {
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      next();
+    });
     router.use('/kviz', express.static(CLIENT_DIST));
     // SPA fallback: any /kviz/* that isn't /kviz/api/* → index.html
     router.get(/^\/kviz(?!\/api)/, (_req, res) => {
