@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import path   from 'path';
+import fs     from 'fs';
 import express from 'express';
 import { supabase } from '../db/supabase';
 import { env } from '../config';
@@ -7,6 +9,12 @@ import { rawGet } from './fitbase';
 const ALMATY_MS    = 5 * 3600 * 1000;
 const COOKIE_NAME  = 'swtoken';
 const COOKIE_MAX_S = 30 * 86400;
+
+// Loaded once at startup; served as /window/app.js
+const WINDOW_APP_JS = fs.readFileSync(
+  path.join(__dirname, '../../public/window-app.js'),
+  'utf8',
+);
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
 
@@ -107,17 +115,11 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 html,body{height:100%}
 body{font-family:'Manrope',system-ui,sans-serif;background:var(--c-bg);color:var(--c-text);font-size:14px;overflow-x:hidden}
 a{color:inherit}
-
-/* Blobs */
 .blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:.25;pointer-events:none;z-index:0}
 .blob-1{width:600px;height:600px;background:var(--brand);top:-200px;right:-150px}
 .blob-2{width:500px;height:500px;background:var(--accent);bottom:-150px;left:-100px}
 [data-theme="dark"] .blob{opacity:.15}
-
-/* Glass panel */
 .glass{background:var(--glass);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid var(--c-border);border-radius:var(--radius-panel);box-shadow:var(--shadow);position:relative;z-index:1}
-
-/* Login */
 #login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh}
 .login-box{width:320px;padding:36px;text-align:center}
 .login-box h1{font-size:22px;font-weight:700;margin-bottom:6px}
@@ -131,8 +133,6 @@ a{color:inherit}
 .btn-sm:hover{opacity:.8}
 .btn-ack{background:linear-gradient(135deg,var(--brand),var(--accent));color:#fff;padding:7px 14px;font-size:12px}
 .btn-take{background:linear-gradient(135deg,var(--brand),var(--accent));color:#fff;padding:8px 16px;font-size:13px;margin-top:10px;width:100%}
-
-/* Header */
 #app{display:none;position:relative;z-index:1}
 #app.visible{display:block}
 .page{max-width:900px;margin:0 auto;padding:14px 14px 0}
@@ -150,15 +150,11 @@ a{color:inherit}
 .stale-banner{background:#fef9c3;border:1px solid #fde047;color:#713f12;padding:8px 14px;border-radius:10px;margin-bottom:10px;font-size:13px}
 #err-banner{display:none;background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;padding:8px 14px;border-radius:10px;margin-bottom:10px;font-size:13px}
 #err-banner.show{display:block}
-
-/* Column layout */
 .columns{display:flex;flex-direction:column;gap:10px;padding-bottom:14px}
 .col-alerts{order:1}.col-closed{order:2}.col-feed{order:3}
 .col-hdr{padding:12px 16px 10px;border-bottom:1px solid var(--c-border);display:flex;align-items:center;gap:8px}
 .col-hdr h2{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--c-muted);flex:1}
 .col-body{padding:10px 12px 12px}
-
-/* Alert card base */
 .card{background:var(--card);border-radius:var(--radius-card);padding:12px 14px;margin-bottom:8px;border:1.5px solid var(--c-border);transition:transform .15s,box-shadow .15s}
 .card:last-child{margin-bottom:0}
 .card:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.09)}
@@ -170,58 +166,36 @@ a{color:inherit}
 .icon-urgent{background:rgba(239,68,68,.12);color:var(--red)}
 .icon-important{background:rgba(245,158,11,.12);color:var(--orange)}
 .icon-info{background:rgba(38,61,217,.1);color:var(--accent)}
-.icon-ok{background:rgba(16,185,129,.1);color:var(--green)}
 .card-main{flex:1;min-width:0}
 .card-name{font-size:14px;font-weight:600;line-height:1.3}
 .card-title{font-size:12px;color:var(--c-muted);margin-top:1px}
 .card-body{font-size:12px;color:var(--c-muted);margin-top:5px;line-height:1.5}
 .card-actions{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
 .card-age{font-size:11px;color:var(--c-muted)}
-
-/* NEW_LEAD special card */
-.card-new-lead{
-  background:linear-gradient(var(--card),var(--card)) padding-box,
-             linear-gradient(135deg,var(--brand),var(--accent)) border-box;
-  border:2px solid transparent;
-}
+.card-new-lead{background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,var(--brand),var(--accent)) border-box;border:2px solid transparent}
 .card-new-lead .card-name{font-size:18px;font-weight:700}
 .card-new-lead .card-icon{background:linear-gradient(135deg,var(--brand),var(--accent));color:#fff}
-@keyframes pulse-glow{
-  0%,100%{box-shadow:0 0 0 0 rgba(2,189,182,.4)}
-  50%{box-shadow:0 0 0 8px rgba(2,189,182,0)}
-}
+@keyframes pulse-glow{0%,100%{box-shadow:0 0 0 0 rgba(2,189,182,.4)}50%{box-shadow:0 0 0 8px rgba(2,189,182,0)}}
 .card-new-lead.fresh{animation:pulse-glow 2s ease-in-out infinite}
 .escalation-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(239,68,68,.1);color:var(--red);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;margin-top:6px}
-.card-new-lead.escalated{border-color:var(--red) !important;background:linear-gradient(rgba(255,255,255,0.92),rgba(255,255,255,0.92)) padding-box, linear-gradient(135deg,var(--red),#f97316) border-box}
-[data-theme="dark"] .card-new-lead.escalated{background:linear-gradient(rgba(20,28,44,.92),rgba(20,28,44,.92)) padding-box, linear-gradient(135deg,var(--red),#f97316) border-box}
+.card-new-lead.escalated{border-color:var(--red) !important;background:linear-gradient(rgba(255,255,255,0.92),rgba(255,255,255,0.92)) padding-box,linear-gradient(135deg,var(--red),#f97316) border-box}
+[data-theme="dark"] .card-new-lead.escalated{background:linear-gradient(rgba(20,28,44,.92),rgba(20,28,44,.92)) padding-box,linear-gradient(135deg,var(--red),#f97316) border-box}
 .source-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(2,189,182,.1);color:var(--brand)}
-
-/* Response timer */
 .timer-lbl{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px;background:rgba(2,189,182,.1);color:var(--brand);margin-top:4px}
 .timer-lbl.warn{background:rgba(234,179,8,.12);color:#b45309}
 .timer-lbl.late{background:rgba(239,68,68,.1);color:var(--red)}
-
-/* Deadline badge */
 .dl-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;margin-top:4px}
 .dl-ok{background:rgba(100,116,139,.08);color:var(--c-muted)}
 .dl-warn{background:rgba(245,158,11,.12);color:var(--orange)}
 .dl-over{background:rgba(239,68,68,.1);color:var(--red)}
-
-/* Task chip */
 .task-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(38,61,217,.1);color:var(--accent);margin-right:4px}
-
-/* Action buttons */
 .act-row{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
 .btn-a{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;font-size:12px;font-weight:600;border:1.5px solid var(--c-border);background:var(--card);color:var(--c-text);cursor:pointer;text-decoration:none;line-height:1;transition:opacity .15s}
 .btn-a:hover{opacity:.75}
 .btn-a-wa{background:rgba(37,211,102,.1);color:#16a34a;border-color:rgba(37,211,102,.3)}
 .btn-a-call{background:rgba(2,189,182,.1);color:var(--brand);border-color:rgba(2,189,182,.3)}
-
-/* Clients list */
 .clients-toggle{font-size:11px;color:var(--accent);cursor:pointer;margin-top:4px;display:inline-block}
 .clients-list{font-size:11px;color:var(--c-muted);line-height:1.6;margin-top:3px;display:none}
-
-/* Closed cards */
 .closed-card{background:var(--card);border-radius:10px;padding:9px 12px;margin-bottom:6px;border:1px solid var(--c-border);opacity:.8}
 .closed-card:last-child{margin-bottom:0}
 .closed-top{display:flex;align-items:center;gap:8px}
@@ -235,16 +209,12 @@ a{color:inherit}
 .section-toggle{cursor:pointer;user-select:none}
 .section-chevron{font-size:10px;color:var(--c-muted);transition:transform .2s}
 .section-chevron.open{transform:rotate(180deg)}
-
-/* Feed timeline */
 .feed-wrap{position:relative;padding-left:20px}
 .feed-wrap::before{content:'';position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--c-border);border-radius:1px}
-.feed-item{position:relative;padding:4px 0 6px 12px;font-size:12px;line-height:1.4;border-bottom:none}
+.feed-item{position:relative;padding:4px 0 6px 12px;font-size:12px;line-height:1.4}
 .feed-item::before{content:'';position:absolute;left:-3px;top:8px;width:10px;height:10px;border-radius:50%;background:var(--dot-c,var(--c-muted));border:2px solid var(--c-bg)}
 .feed-time{font-size:11px;color:var(--c-muted);margin-right:6px}
 .feed-name{font-weight:600}
-
-/* Help modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100}
 .modal-box{width:90%;max-width:480px;max-height:90vh;overflow-y:auto;padding:28px}
 .modal-box h3{font-size:18px;font-weight:700;margin-bottom:16px}
@@ -252,16 +222,10 @@ a{color:inherit}
 .dot{width:10px;height:10px;border-radius:50%;margin-top:4px;flex-shrink:0;background:var(--c-muted)}
 .modal-note{font-size:12px;color:var(--c-muted);margin-bottom:8px}
 .modal-close{margin-top:16px;width:100%}
-
-/* Dark mode icon button */
 .btn-icon{background:none;border:none;cursor:pointer;padding:6px;border-radius:8px;color:var(--c-muted);font-size:18px;line-height:1;transition:background .15s}
 .btn-icon:hover{background:var(--c-border)}
-
-/* Misc */
 .empty{color:var(--c-muted);font-size:13px;text-align:center;padding:20px}
 #login-err{color:var(--red);font-size:12px;margin-top:8px;min-height:18px}
-
-/* ── Desktop 3-column ─────────────────────────────────────────────────────── */
 @media(min-width:1100px){
   body{overflow:hidden}
   #app.visible{display:flex;flex-direction:column;height:100vh;overflow:hidden}
@@ -313,7 +277,6 @@ a{color:inherit}
       <div class="stale-banner" id="stale-banner" style="display:none">⚠ Агент не запускался более 10 минут</div>
       <div id="err-banner"></div>
     </div>
-
     <div class="columns">
       <div class="glass col-feed">
         <div class="col-hdr"><h2>Лента событий</h2></div>
@@ -335,7 +298,6 @@ a{color:inherit}
   </div>
 </div>
 
-<!-- Help modal -->
 <div class="modal-overlay" id="help-modal" style="display:none">
   <div class="modal-box glass">
     <h3>Как пользоваться окном</h3>
@@ -350,482 +312,8 @@ a{color:inherit}
 </div>
 
 <audio id="beep-audio" preload="none"></audio>
-
-<script>
-(function(){
-  const $ = id => document.getElementById(id);
-  const LEAD_URL   = '__LEAD_URL__';
-  const CLIENT_URL = '__CLIENT_URL__';
-  let since_id = 0;
-  const notifiedIds = new Set();
-  let soundOn = localStorage.getItem('sw_sound') !== 'false';
-  let notifGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
-  let audioCtx = null;
-
-  // ── Dark mode ─────────────────────────────────────────────────────────────
-  let darkMode = localStorage.getItem('sw_theme') === 'dark';
-  function applyTheme(){
-    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
-    $('theme-btn').textContent = darkMode ? '☀️' : '🌙';
-  }
-  applyTheme();
-  $('theme-btn').onclick = function(){
-    darkMode = !darkMode;
-    localStorage.setItem('sw_theme', darkMode ? 'dark' : 'light');
-    applyTheme();
-  };
-
-  // ── Sound ─────────────────────────────────────────────────────────────────
-  function playBeep(){
-    if (!soundOn) return;
-    try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const g   = audioCtx.createGain();
-      osc.connect(g); g.connect(audioCtx.destination);
-      osc.frequency.value = 880;
-      g.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
-      osc.start(); osc.stop(audioCtx.currentTime + 0.4);
-    } catch(e){}
-  }
-
-  $('sound-btn').textContent = 'Звук: ' + (soundOn ? 'вкл' : 'выкл');
-  $('sound-btn').onclick = function(){
-    soundOn = !soundOn;
-    localStorage.setItem('sw_sound', soundOn ? 'true' : 'false');
-    this.textContent = 'Звук: ' + (soundOn ? 'вкл' : 'выкл');
-    if (soundOn) playBeep();
-  };
-
-  $('notif-btn').onclick = function(){
-    if (typeof Notification === 'undefined'){ alert('Уведомления не поддерживаются'); return; }
-    Notification.requestPermission().then(p => {
-      notifGranted = p === 'granted';
-      $('notif-btn').textContent = notifGranted ? 'Уведомления вкл' : 'Уведомления выкл';
-    });
-  };
-  if (notifGranted) $('notif-btn').textContent = 'Уведомления вкл';
-
-  // ── Help modal ────────────────────────────────────────────────────────────
-  $('help-btn').onclick   = () => { $('help-modal').style.display = 'flex'; };
-  $('help-close').onclick = () => { $('help-modal').style.display = 'none'; };
-  $('help-modal').onclick = e => { if (e.target === $('help-modal')) $('help-modal').style.display = 'none'; };
-
-  // ── App visibility ────────────────────────────────────────────────────────
-  function showApp(){
-    $('app').classList.add('visible');
-    if (window.innerWidth >= 1100){
-      $('closed-list').style.display = 'block';
-      $('closed-chevron').classList.add('open');
-    }
-  }
-
-  // ── Login ─────────────────────────────────────────────────────────────────
-  async function login(){
-    const pw = $('pw-input').value;
-    const res = await fetch('/window/login', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password:pw})
-    });
-    if (res.ok){
-      $('login-screen').style.display = 'none';
-      showApp();
-      fetchState();
-    } else {
-      $('login-err').textContent = 'Неверный пароль';
-    }
-  }
-  $('pw-btn').onclick = login;
-  $('pw-input').addEventListener('keydown', e => { if(e.key==='Enter') login(); });
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function timeAgo(iso){
-    const d = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-    if (d < 1) return 'только что';
-    if (d < 60) return d+'м назад';
-    const h = Math.floor(d/60);
-    if (h < 24) return h+'ч '+(d%60)+'м';
-    return Math.floor(h/24)+'д';
-  }
-  function feedTime(iso){
-    const d = new Date(new Date(iso).getTime() + 5*3600000);
-    return d.toISOString().slice(11,16);
-  }
-  function fmtHHMM(iso){
-    const d = new Date(new Date(iso).getTime() + 5*3600000);
-    return d.toISOString().slice(11,16);
-  }
-  function secToAlmaty(sec){
-    return new Date(sec * 1000 + 5*3600000).toISOString().slice(11,16);
-  }
-  function isWorkHourAlmaty(iso){
-    const h = new Date(new Date(iso).getTime() + 5*3600000).getUTCHours();
-    return h >= 8 && h < 23;
-  }
-  function minutesAgo(iso){
-    return Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  }
-  function cleanPhone(phone){
-    const d = (phone||'').replace(/[^0-9]/g, '');
-    return d.startsWith('8') && d.length === 11 ? '7' + d.slice(1) : d;
-  }
-  function timerText(totalSec){
-    const m = Math.floor(totalSec / 60), s = totalSec % 60;
-    return m + 'м ' + String(s).padStart(2,'0') + 'с';
-  }
-
-  // ── Icons ─────────────────────────────────────────────────────────────────
-  const SVG = {
-    lightning: '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M9.5 1L3 9h5l-1.5 6L15 7h-5z"/></svg>',
-    calX:      '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M12 2h-1V1h-2v1H7V1H5v1H4a2 2 0 00-2 2v9a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2zm0 11H4V6h8v7zM6.7 8.7l1.3 1.3 1.3-1.3 1 1-1.3 1.3 1.3 1.3-1 1L8 12l-1.3 1.3-1-1 1.3-1.3L5.7 9.7z"/></svg>',
-    clock:     '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 2a5 5 0 110 10A5 5 0 018 3zm.5 2H7v4.5l3.25 1.75.75-1.25-2.5-1.5V5z"/></svg>',
-    question:  '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 11a1 1 0 110-2 1 1 0 010 2zm1-3H7V5h2v4z"/></svg>',
-    ticket:    '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M1 5a1 1 0 011-1h12a1 1 0 011 1v1.5a1.5 1.5 0 000 3V11a1 1 0 01-1 1H2a1 1 0 01-1-1V9.5a1.5 1.5 0 000-3V5z"/></svg>',
-    check:     '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M13.5 3L6 11.5 2.5 8 1 9.5l5 5 9-10z"/></svg>',
-    warning:   '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M8 1L1 14h14L8 1zm0 3l5 9H3l5-9zm-1 3v3h2V7H7zm0 4v2h2v-2H7z"/></svg>',
-    checklist: '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M13 2H3a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1V3a1 1 0 00-1-1zm-1 10H4V4h8v8zm-5-2l-2-2 1-1 1 1 3-3 1 1z"/></svg>',
-    tiktok:    '<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.53V6.77a4.85 4.85 0 01-1.01-.08z"/></svg>',
-    instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"/></svg>',
-    whatsapp:  '<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M17.47 14.38c-.26-.13-1.52-.75-1.75-.83-.24-.09-.41-.13-.58.13s-.67.83-.82.99c-.15.17-.3.19-.56.06-.26-.13-1.1-.41-2.1-1.3-.77-.69-1.3-1.54-1.45-1.8-.15-.26-.01-.4.11-.53.12-.11.26-.29.38-.44.13-.14.17-.26.26-.43.09-.17.04-.32-.02-.44s-.58-1.4-.8-1.91c-.21-.5-.42-.43-.58-.44h-.5c-.17 0-.44.06-.67.32s-.88.86-.88 2.1.9 2.44 1.03 2.61c.13.17 1.78 2.72 4.31 3.81.6.26 1.07.42 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.48-.61 1.69-1.19.21-.58.21-1.08.15-1.19-.06-.1-.22-.16-.47-.28z"/><path d="M12 2a10 10 0 100 20A10 10 0 0012 2zm0 18a8 8 0 110-16 8 8 0 010 16z"/></svg>',
-    globe:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2c-3 4-3 16 0 20M12 2c3 4 3 16 0 20"/></svg>',
-  };
-
-  function ruleIcon(rule){
-    if (rule === 'NEW_LEAD' || rule === 'NEW_LEAD_NO_TASK') return SVG.lightning;
-    if (rule === 'AGENT_TASK') return SVG.checklist;
-    if (rule && rule.includes('NO_SHOW')) return SVG.calX;
-    if (rule === 'UNCONFIRMED_3H') return SVG.question;
-    if (rule === 'NO_TASK' || rule === 'TASK_OVERDUE' || rule === 'TASK_TOO_FAR') return SVG.clock;
-    if (rule && (rule.includes('CONTRACT') || rule === 'CARD_FREE' || rule === 'PURCHASE')) return SVG.ticket;
-    return SVG.warning;
-  }
-  function srcIcon(src){
-    if (src === 'tiktok') return SVG.tiktok;
-    if (src === 'instagram') return SVG.instagram;
-    if (src === 'whatsapp') return SVG.whatsapp;
-    return SVG.globe;
-  }
-  function srcLabel(src){
-    if (src === 'tiktok') return 'TikTok';
-    if (src === 'instagram') return 'Instagram';
-    if (src === 'whatsapp') return 'WhatsApp';
-    if (src === 'site') return 'Сайт';
-    return 'Источник';
-  }
-  function iconClass(level){
-    if (level === 'urgent') return 'icon-urgent';
-    if (level === 'important') return 'icon-important';
-    return 'icon-info';
-  }
-
-  function actionButtons(a){
-    const ph = a.phone;
-    if (!ph) return '';
-    const wa = cleanPhone(ph);
-    if (!wa) return '';
-    const fitUrl = (a.lead_id && LEAD_URL) ? LEAD_URL.replace('{id}', a.lead_id)
-                 : (a.client_id && CLIENT_URL) ? CLIENT_URL.replace('{id}', a.client_id) : '';
-    return '<div class="act-row">'
-      + '<a class="btn-a btn-a-call" href="tel:+' + wa + '">📞 Позвонить</a>'
-      + '<a class="btn-a btn-a-wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">💬 WhatsApp</a>'
-      + (fitUrl ? '<a class="btn-a" href="' + esc(fitUrl) + '" target="_blank" rel="noopener">🔗 Fitbase</a>' : '')
-      + '</div>';
-  }
-
-  window.toggleClientList = function(el){
-    const list = el.nextElementSibling;
-    const open = list.style.display === 'block';
-    list.style.display = open ? 'none' : 'block';
-    el.textContent = (open ? '▸' : '▾') + el.textContent.slice(1);
-  };
-
-  // ── Status bar ────────────────────────────────────────────────────────────
-  function updateStatus(data, ok){
-    if (!ok){ $('status-bar').textContent = 'Последняя проверка: — · Связь: нет'; return; }
-    const t = data.last_watch_at ? fmtHHMM(data.last_watch_at) : '—';
-    $('status-bar').textContent = 'Последняя проверка: ' + t + ' · Связь: есть';
-    if (data.last_watch_at && data.server_time){
-      const stale = (new Date(data.server_time) - new Date(data.last_watch_at)) > 10*60000 && isWorkHourAlmaty(data.server_time);
-      $('stale-banner').style.display = stale ? 'block' : 'none';
-    }
-  }
-
-  // ── Stats pills ───────────────────────────────────────────────────────────
-  function renderStats(s){
-    if (!s) return;
-    const el = $('stats-pills');
-    if (!el) return;
-    const pills = [];
-    if (s.active_leads > 0)
-      pills.push('<span class="stat-pill sp-lead">⚡ ' + s.active_leads + ' заявок</span>');
-    if (s.no_shows > 0)
-      pills.push('<span class="stat-pill sp-task">✗ ' + s.no_shows + ' неявок</span>');
-    if (s.overdue_tasks > 0)
-      pills.push('<span class="stat-pill sp-lead">⚠ ' + s.overdue_tasks + ' задач просроч.</span>');
-    if (s.closed_today > 0)
-      pills.push('<span class="stat-pill sp-brand">✓ ' + s.closed_today + ' закрыто сег.</span>');
-    if (s.avg_response_min != null)
-      pills.push('<span class="stat-pill sp-muted">⏱ ср. ответ ' + s.avg_response_min + ' мин</span>');
-    el.innerHTML = pills.join('');
-  }
-
-  // ── Timer ticks (1s interval updates all live NEW_LEAD timers) ────────────
-  function updateTimers(){
-    document.querySelectorAll('.timer-lbl[data-ts]').forEach(function(el){
-      const totalSec = Math.floor((Date.now() - Number(el.dataset.ts)) / 1000);
-      el.textContent = '⏱ ' + timerText(totalSec);
-      el.className = 'timer-lbl' + (totalSec >= 300 ? ' late' : totalSec >= 120 ? ' warn' : '');
-    });
-  }
-  setInterval(updateTimers, 1000);
-
-  // ── Render alerts ─────────────────────────────────────────────────────────
-  const LEVEL_ORDER = {urgent:0,important:1,info:2};
-  function renderAlerts(alerts){
-    const list = $('alerts-list');
-    const sorted = [...alerts].sort((a,b)=>{
-      const lo = (LEVEL_ORDER[a.level]??2) - (LEVEL_ORDER[b.level]??2);
-      if (lo!==0) return lo;
-      return new Date(b.created_at) - new Date(a.created_at);
-    });
-    $('alert-count').textContent = sorted.length ? '('+sorted.length+')' : '';
-    document.title = (sorted.length ? '('+sorted.length+') ' : '') + 'SlimWay — помощник';
-    if (!sorted.length){ list.innerHTML = '<div class="empty">Всё под контролем — тревог нет</div>'; return; }
-    list.innerHTML = sorted.map(a => {
-      const isNewLead   = a.rule === 'NEW_LEAD' || a.rule === 'NEW_LEAD_NO_TASK';
-      const isAgentTask = a.rule === 'AGENT_TASK';
-      const ageMin      = minutesAgo(a.created_at);
-      const fresh       = ageMin < 2;
-      const escalated   = a.is_escalated;
-      const createdTs   = new Date(a.created_at).getTime();
-
-      if (isNewLead){
-        const cls = ['card','card-new-lead', fresh?'fresh':'', escalated?'escalated':''].filter(Boolean).join(' ');
-        const srcHtml = a.lead_source && a.lead_source !== 'other'
-          ? '<span class="source-chip">'+srcIcon(a.lead_source)+srcLabel(a.lead_source)+'</span>'
-          : '';
-        const escBadge = escalated
-          ? '<div class="escalation-badge">'+SVG.warning+' Без ответа '+(a.minutes_waiting||ageMin)+' мин</div>'
-          : '';
-        const hasNoTask = a.has_no_task
-          ? '<div class="card-body" style="color:var(--red);font-weight:600">⚠ Заявка без ответа — не создана задача</div>'
-          : '';
-        const initSec  = Math.floor((Date.now() - createdTs) / 1000);
-        const timerCls = 'timer-lbl' + (initSec >= 300 ? ' late' : initSec >= 120 ? ' warn' : '');
-        const timerHtml = '<div><span class="' + timerCls + '" data-ts="' + createdTs + '">⏱ ' + timerText(initSec) + '</span></div>';
-        return '<div class="' + cls + '" data-id="' + a.id + '">'
-          + '<div class="card-top">'
-          +   '<div class="card-icon ' + iconClass(a.level) + '">' + ruleIcon(a.rule) + '</div>'
-          +   '<div class="card-main">'
-          +     '<div class="card-name">' + esc(a.short_name||a.title) + '</div>'
-          +     '<div class="card-title">' + esc(a.title) + '</div>'
-          +     srcHtml + escBadge + hasNoTask + timerHtml
-          +     (a.body ? '<div class="card-body">'+esc(a.body)+'</div>' : '')
-          +     actionButtons(a)
-          +   '</div>'
-          + '</div>'
-          + '<div class="card-actions">'
-          +   '<span class="card-age">' + timeAgo(a.created_at) + '</span>'
-          +   '<button class="btn btn-take" onclick="ackLead(' + a.lead_id + ',\'' + a.created_at + '\')">Взял в работу</button>'
-          + '</div>'
-          + '</div>';
-      }
-
-      if (isAgentTask){
-        const meta    = a.meta || {};
-        const dlSec   = meta.deadline_sec;
-        const nowSec  = Math.floor(Date.now() / 1000);
-        let dlHtml = '';
-        if (dlSec){
-          const over   = dlSec < nowSec;
-          const soon   = !over && (dlSec - nowSec) < 30*60;
-          const dlCls  = over ? 'dl-over' : soon ? 'dl-warn' : 'dl-ok';
-          const dlTxt  = over
-            ? 'Просрочена ' + Math.floor((nowSec - dlSec)/60) + ' мин'
-            : 'До ' + secToAlmaty(dlSec);
-          dlHtml = '<span class="dl-badge ' + dlCls + '">' + dlTxt + '</span>';
-        }
-        const names = meta.client_names;
-        const clientsHtml = (names && names.length > 0)
-          ? '<span class="clients-toggle" onclick="toggleClientList(this)">▸ ' + names.length + ' клиентов</span>'
-            + '<div class="clients-list">' + names.map(n => esc(n)).join('<br>') + '</div>'
-          : '';
-        return '<div class="card ' + a.level + '" data-id="' + a.id + '">'
-          + '<div class="card-top">'
-          +   '<div class="card-icon ' + iconClass(a.level) + '">' + ruleIcon(a.rule) + '</div>'
-          +   '<div class="card-main">'
-          +     '<div class="card-name">' + esc(a.short_name||a.title) + '</div>'
-          +     '<div class="card-title"><span class="task-chip">' + SVG.checklist + ' Задача</span>' + esc(meta.category||'') + '</div>'
-          +     dlHtml
-          +     (a.body ? '<div class="card-body">'+esc(a.body)+'</div>' : '')
-          +     clientsHtml
-          +     actionButtons(a)
-          +   '</div>'
-          + '</div>'
-          + '<div class="card-actions">'
-          +   '<span class="card-age">' + timeAgo(a.created_at) + '</span>'
-          +   '<button class="btn btn-sm btn-ack" onclick="ack(' + a.id + ')">Принято</button>'
-          + '</div>'
-          + '</div>';
-      }
-
-      return '<div class="card ' + a.level + '" data-id="' + a.id + '">'
-        + '<div class="card-top">'
-        +   '<div class="card-icon ' + iconClass(a.level) + '">' + ruleIcon(a.rule) + '</div>'
-        +   '<div class="card-main">'
-        +     '<div class="card-name">' + esc(a.short_name||a.title) + '</div>'
-        +     (a.short_name ? '<div class="card-title">'+esc(a.title)+'</div>' : '')
-        +     (a.body ? '<div class="card-body">'+esc(a.body)+'</div>' : '')
-        +     actionButtons(a)
-        +   '</div>'
-        + '</div>'
-        + '<div class="card-actions">'
-        +   '<span class="card-age">' + timeAgo(a.created_at) + '</span>'
-        +   '<button class="btn btn-sm btn-ack" onclick="ack(' + a.id + ')">Принято</button>'
-        + '</div>'
-        + '</div>';
-    }).join('');
-  }
-
-  // ── Render closed ─────────────────────────────────────────────────────────
-  function reasonChip(reason, acked){
-    if (!reason && acked) reason = 'Принято вручную';
-    if (!reason) reason = 'Закрыто';
-    const cls = reason.includes('Визит') ? 'chip-green'
-              : reason.includes('Задача') ? 'chip-accent'
-              : 'chip-gray';
-    return '<span class="chip ' + cls + '">' + esc(reason) + '</span>';
-  }
-  function renderClosed(closed){
-    const el = $('closed-list');
-    $('closed-count').textContent = closed && closed.length ? '('+closed.length+')' : '';
-    if (!closed||!closed.length){ el.innerHTML='<div class="empty">Нет завершённых за 24 ч</div>'; return; }
-    el.innerHTML = closed.map(a => {
-      const closeTime = a.acked_at || a.resolved_at;
-      const reason    = (a.meta&&a.meta.resolve_reason) ? a.meta.resolve_reason : a.acked_at ? 'Принято вручную' : 'Закрыто автоматически';
-      const canUnack  = a.acked_at && !a.resolved_at;
-      return '<div class="closed-card">'
-        + '<div class="closed-top">'
-        +   '<div class="closed-title">' + esc(a.short_name ? a.title+' — '+a.short_name : a.title) + '</div>'
-        +   '<span class="closed-time">' + (closeTime?fmtHHMM(closeTime):'') + '</span>'
-        +   (canUnack ? '<button class="btn btn-sm" onclick="unack('+a.id+')">Вернуть</button>' : '')
-        + '</div>'
-        + '<div class="closed-chips">' + reasonChip(reason, !!a.acked_at) + '</div>'
-        + '</div>';
-    }).join('');
-  }
-
-  // ── Render feed ───────────────────────────────────────────────────────────
-  const FEED_DOT = { lead_moved:'var(--brand)', task_created:'var(--accent)', budget_updated:'var(--c-muted)' };
-  function renderFeed(feed){
-    const el = $('feed-list');
-    if (!feed.length){ el.innerHTML='<div class="empty">Действий нет</div>'; return; }
-    const items = feed.map(f => {
-      const c = FEED_DOT[f.type] || 'var(--c-muted)';
-      return '<div class="feed-item" style="--dot-c:' + c + '">'
-        + '<span class="feed-time">' + feedTime(f.created_at) + '</span>'
-        + (f.short_name ? '<span class="feed-name">'+esc(f.short_name)+'</span> ' : '')
-        + (f.text ? '— '+esc(f.text) : '')
-        + '</div>';
-    }).join('');
-    el.innerHTML = '<div class="feed-wrap">'+items+'</div>';
-  }
-
-  // ── Toggle closed ─────────────────────────────────────────────────────────
-  window.toggleClosed = function(){
-    if (window.innerWidth >= 1100) return;
-    const list = $('closed-list');
-    const chev = $('closed-chevron');
-    const open = list.style.display !== 'none';
-    list.style.display = open ? 'none' : 'block';
-    chev.classList.toggle('open', !open);
-  };
-
-  // ── Ack / Unack ───────────────────────────────────────────────────────────
-  window.ack = async function(id){
-    await fetch('/window/api/ack/'+id, {method:'POST'});
-    fetchState();
-  };
-  window.unack = async function(id){
-    await fetch('/window/api/unack/'+id, {method:'POST'});
-    fetchState();
-  };
-  window.ackLead = async function(leadId, createdAt){
-    const respSec = createdAt ? Math.round((Date.now() - new Date(createdAt).getTime()) / 1000) : null;
-    await fetch('/window/api/ack-lead/'+leadId, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ response_seconds: respSec }),
-    });
-    fetchState();
-  };
-
-  // ── Poll ──────────────────────────────────────────────────────────────────
-  function showError(msg){ const b=$('err-banner'); b.textContent=msg; b.classList.add('show'); }
-  function hideError(){ $('err-banner').classList.remove('show'); }
-
-  async function fetchState(){
-    try {
-      const res = await fetch('/window/api/state?since_id='+since_id);
-      if (res.status===401){ $('app').classList.remove('visible'); $('login-screen').style.display='flex'; return; }
-      if (!res.ok){ showError('Ошибка сервера ('+res.status+')'); updateStatus(null,false); return; }
-      hideError();
-      const data = await res.json();
-      updateStatus(data, true);
-      renderStats(data.stats);
-      renderAlerts(data.alerts||[]);
-      renderClosed(data.closed||[]);
-      renderFeed(data.feed||[]);
-
-      // Batch notifications: NEW_LEAD always individual; 3+ others → one batch
-      const newItems = (data.new_alerts||[]).filter(a => !notifiedIds.has(a.id));
-      for (const a of newItems){ notifiedIds.add(a.id); since_id = Math.max(since_id, a.id); }
-      const newLeads = newItems.filter(a => a.rule === 'NEW_LEAD' || a.rule === 'NEW_LEAD_NO_TASK');
-      const others   = newItems.filter(a => a.rule !== 'NEW_LEAD' && a.rule !== 'NEW_LEAD_NO_TASK' && ['urgent','important'].includes(a.level));
-      for (const a of newLeads){
-        if (notifGranted) new Notification(a.title, {body: String(a.body||'').substring(0,120)});
-        playBeep();
-      }
-      if (others.length >= 3){
-        if (notifGranted) new Notification(others.length + ' новых тревог', {body: others.map(a=>a.title).join(', ').substring(0,120)});
-        if (others.some(a=>a.level==='urgent')) playBeep();
-      } else {
-        for (const a of others){
-          if (notifGranted) new Notification(a.title, {body: String(a.body||'').substring(0,120)});
-          if (a.level==='urgent') playBeep();
-        }
-      }
-    } catch(e){
-      showError('Нет связи с сервером');
-      updateStatus(null, false);
-    }
-  }
-
-  // Auto-start if cookie exists
-  fetch('/window/api/state?since_id=0').then(r => {
-    if (r.ok){
-      $('login-screen').style.display = 'none';
-      showApp();
-      r.json().then(data => {
-        updateStatus(data, true);
-        renderStats(data.stats);
-        renderAlerts(data.alerts||[]);
-        renderClosed(data.closed||[]);
-        renderFeed(data.feed||[]);
-        if (data.alerts) since_id = Math.max(...data.alerts.map(a=>a.id||0), 0);
-      });
-    }
-  }).catch(()=>{});
-
-  setInterval(fetchState, 10000);
-
-  // ── PWA service worker ────────────────────────────────────────────────────
-  if ('serviceWorker' in navigator){
-    navigator.serviceWorker.register('/window/sw.js', {scope:'/window/'}).catch(()=>{});
-  }
-})();
-</script>
+<script>window.LEAD_URL='__LEAD_URL__';window.CLIENT_URL='__CLIENT_URL__';</script>
+<script src="/window/app.js"></script>
 </body>
 </html>`;
 
@@ -835,11 +323,19 @@ export function mountWindowRoutes(app: express.Application): void {
   app.use(express.json());
 
   app.get('/window', (_req, res) => {
+    const leadUrl   = (env.FITBASE_LEAD_URL_TEMPLATE   || '').replace(/'/g, "\\'");
+    const clientUrl = (env.FITBASE_CLIENT_URL_TEMPLATE || '').replace(/'/g, "\\'");
     const html = HTML_TEMPLATE
-      .replace('__LEAD_URL__',   env.FITBASE_LEAD_URL_TEMPLATE   || '')
-      .replace('__CLIENT_URL__', env.FITBASE_CLIENT_URL_TEMPLATE || '');
+      .replace('__LEAD_URL__',   leadUrl)
+      .replace('__CLIENT_URL__', clientUrl);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
+  });
+
+  app.get('/window/app.js', (_req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(WINDOW_APP_JS);
   });
 
   app.get('/window/manifest.json', (_req, res) => {
@@ -970,7 +466,6 @@ export function mountWindowRoutes(app: express.Application): void {
         type:       f.type,
       }));
 
-      // Compute day stats from already-fetched data (no extra DB queries)
       const todayAlmaty = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
       const respTimes = (closed as Record<string, unknown>[])
         .filter(a => a.rule === 'NEW_LEAD' && (a.meta as Record<string, unknown>)?.response_seconds)

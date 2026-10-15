@@ -10,7 +10,15 @@ import {
   TRIAL_TRAINING_ID, TRIAL_CHECK_HOURS,
   REG_STATUS_BOOKED, REG_STATUS_CONFIRMED, REG_STATUS_VISITED,
   REG_STATUS_CANCELLED, REG_STATUS_NOSHOW,
+  getResponsibleIds,
 } from '../config';
+
+function pickResponsibleIds(lead: Lead): string[] {
+  const r  = lead.responsible as Record<string, unknown> | null | undefined;
+  const id = String(r?.id ?? '').trim();
+  const all = getResponsibleIds();
+  return id && all.includes(id) ? [id] : all;
+}
 
 export const JOB_NAME = 'trial';
 
@@ -221,6 +229,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         if (!dryRun) {
           try { await createTask({ lead_id: leadId, description: desc, client_id: clientId,
             available_to: adjustForQuietHours(Math.floor(Date.now() / 1000) + AGENT_TASK_DUE_HOURS * 3600),
+            responsibleIds: pickResponsibleIds(lead),
           }, 'NO_REGISTRATION'); } catch { /* silent */ }
           state.open_task_types.push(taskKey);
           await saveState(state);
@@ -260,7 +269,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
           });
         } else {
           if (!dryRun) {
-            try { await createTask({ lead_id: leadId, description: desc, client_id: clientId }, 'NO_REGISTRATION'); } catch { /* silent */ }
+            try { await createTask({ lead_id: leadId, description: desc, client_id: clientId, responsibleIds: pickResponsibleIds(lead) }, 'NO_REGISTRATION'); } catch { /* silent */ }
             state.open_task_types.push(taskKey);
             await saveState(state);
           }
@@ -305,6 +314,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         if (!dryRun) {
           try { await createTask({ lead_id: leadId, description: desc, client_id: clientId,
             available_to: adjustForQuietHours(Math.floor(Date.now() / 1000) + AGENT_TASK_DUE_HOURS * 3600),
+            responsibleIds: pickResponsibleIds(lead),
           }, 'CANCELLED'); } catch { /* silent */ }
           state.open_task_types.push(taskKey);
           await saveState(state);
@@ -379,7 +389,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         await moveLead(leadId, STAGE_NOSHOW);
         try { await addClientNote(clientId, comment); } catch { /* silent */ }
         if (!dupTaskDesc) {
-          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId, responsibleIds: pickResponsibleIds(lead) }, 'NO_SHOW'); } catch { /* silent */ }
         }
         await markActed(leadId, regId, eventStart, 'MOVED_NOSHOW');
         await saveState(state);
@@ -446,7 +456,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         await moveLead(leadId, STAGE_NOSHOW);
         try { await addClientNote(clientId, comment); } catch { /* silent */ }
         if (!dupTaskDesc) {
-          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId, responsibleIds: pickResponsibleIds(lead) }, 'NO_SHOW'); } catch { /* silent */ }
         }
         await markActed(leadId, regId, eventStart, 'MOVED_NOSHOW');
         await saveState(state);
@@ -517,7 +527,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         await moveLead(leadId, STAGE_NOSHOW);
         try { await addClientNote(clientId, comment); } catch { /* silent */ }
         if (!dupTaskDesc) {
-          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId, responsibleIds: pickResponsibleIds(lead) }, 'NO_SHOW'); } catch { /* silent */ }
         }
         await markActed(leadId, regId, eventStart, 'MOVED_NOSHOW');
         await saveState(state);
@@ -554,7 +564,7 @@ async function processOne(lead: Lead, dryRun: boolean, stats: RunStats): Promise
         await moveLead(leadId, STAGE_NOSHOW);
         try { await addClientNote(clientId, comment); } catch { /* silent */ }
         if (!dupTaskDesc) {
-          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId }, 'NO_SHOW'); } catch { /* silent */ }
+          try { await createTask({ lead_id: leadId, description: taskDesc, client_id: clientId, responsibleIds: pickResponsibleIds(lead) }, 'NO_SHOW'); } catch { /* silent */ }
         }
         await markActed(leadId, regId, eventStart, 'MOVED_NOSHOW');
         await saveState(state);

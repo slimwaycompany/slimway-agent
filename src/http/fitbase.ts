@@ -143,7 +143,7 @@ export async function moveLead(leadId: number, toStep: number): Promise<void> {
 export type TaskType = 'NO_SHOW' | 'CANCELLED' | 'NO_REGISTRATION';
 
 export async function createTask(
-  params: { lead_id: number; description: string; client_id?: number; available_to?: number },
+  params: { lead_id: number; description: string; client_id?: number; available_to?: number; responsibleIds?: string[] },
   type: TaskType,
 ): Promise<void> {
   const isCall  = type === 'NO_SHOW' || type === 'CANCELLED';
@@ -157,7 +157,7 @@ export async function createTask(
     category_id: isCall ? TASK_CATEGORY_CALL_ID : TASK_CATEGORY_TASK_ID,
   };
   if (params.client_id) data.client_id = params.client_id;
-  const ids = getResponsibleIds();
+  const ids = params.responsibleIds ?? getResponsibleIds();
   // key already contains [] — array values repeat the key in form encoding
   if (ids.length > 0) data['responsible_id[]'] = ids;
   await rawPost('/task', data);
