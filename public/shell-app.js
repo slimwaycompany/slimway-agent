@@ -62,7 +62,7 @@
         var f = document.createElement('iframe');
         f.id = 'kviz-iframe'; f.className = 'frame';
         f.src = '/kviz/'; f.setAttribute('allow', 'clipboard-write');
-        $('kviz-pane').appendChild(f);
+        $('kviz-pane').insertBefore(f, $('side-to-measure'));
         kvizCreated = true;
       }
       history.replaceState(null, '', '#kviz');
@@ -151,7 +151,7 @@
           f2.className = 'frame';
           f2.src       = d.path;
           f2.setAttribute('allow', 'clipboard-write');
-          $('kviz-pane').appendChild(f2);
+          $('kviz-pane').insertBefore(f2, $('side-to-measure'));
           kvizCreated = true;
         }
       }
