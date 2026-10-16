@@ -196,6 +196,7 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
     <div class="tabs">
       <button class="tab-btn active" id="tab-btn-agent">🐕 Агент<span class="tbadge" id="badge-tab-agent">0</span></button>
       <button class="tab-btn" id="tab-btn-kviz">📝 <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
+      <button class="tab-btn" id="tab-btn-measure">📏 Замеры</button>
     </div>
     <button class="logout-btn" id="logout-btn">Выйти</button>
   </div>
@@ -211,6 +212,14 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       <button class="side-btn left" id="side-to-agent">
         <span class="sbadge" id="badge-side-agent">0</span>
         <span class="side-text">Агент</span>
+      </button>
+      <button class="side-btn" id="side-to-measure">
+        <span class="side-text">Замеры</span>
+      </button>
+    </div>
+    <div class="pane hidden" id="measure-pane">
+      <button class="side-btn left" id="side-to-kviz2">
+        <span class="side-text">Квалификация</span>
       </button>
     </div>
   </div>
@@ -231,6 +240,10 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
         <span class="cbadge" id="badge-choice-kviz">0</span>
         <span class="choice-icon">📝</span>
         <span class="choice-label">Квалификация</span>
+      </button>
+      <button class="choice-btn" id="choice-measure">
+        <span class="choice-icon">📏</span>
+        <span class="choice-label">Замеры</span>
       </button>
     </div>
   </div>

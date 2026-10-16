@@ -5,11 +5,12 @@
   var origin = location.origin;
 
   // State
-  var currentTab       = null; // null=choice, 'agent', 'kviz'
+  var currentTab       = null; // null=choice, 'agent', 'kviz', 'measure'
   var agentAlertCount  = 0;
   var agentSeenCount   = 0;
   var kvizDraftCount   = 0;
   var kvizCreated      = false;
+  var measureCreated   = false;
 
   // ── Badge helpers ───────────────────────────────────────────────────────────
   function setBadge(id, n) {
@@ -29,54 +30,71 @@
     setBadge('badge-side-kviz',    kvizDraftCount);
   }
 
+  function hidePanes() {
+    var ids = ['agent-pane','kviz-pane','measure-pane'];
+    for (var i = 0; i < ids.length; i++) {
+      var p = $(ids[i]);
+      if (p) p.classList.add('hidden');
+    }
+    var tabs = ['tab-btn-agent','tab-btn-kviz','tab-btn-measure'];
+    for (var j = 0; j < tabs.length; j++) {
+      var b = $(tabs[j]);
+      if (b) b.classList.remove('active');
+    }
+  }
+
   // ── Tab switching ───────────────────────────────────────────────────────────
   function showTab(name) {
     currentTab = name;
-
     $('choice-screen').style.display = 'none';
     $('top-bar').style.display = 'flex';
-
-    var agentPane = $('agent-pane');
-    var kvizPane  = $('kviz-pane');
-    var btnAgent  = $('tab-btn-agent');
-    var btnKviz   = $('tab-btn-kviz');
+    hidePanes();
 
     if (name === 'agent') {
-      agentPane.classList.remove('hidden');
-      kvizPane.classList.add('hidden');
-      btnAgent.classList.add('active');
-      btnKviz.classList.remove('active');
+      $('agent-pane').classList.remove('hidden');
+      $('tab-btn-agent').classList.add('active');
       agentSeenCount = agentAlertCount;
       history.replaceState(null, '', '#agent');
-    } else {
-      agentPane.classList.add('hidden');
-      kvizPane.classList.remove('hidden');
-      btnAgent.classList.remove('active');
-      btnKviz.classList.add('active');
+    } else if (name === 'kviz') {
+      $('kviz-pane').classList.remove('hidden');
+      $('tab-btn-kviz').classList.add('active');
       if (!kvizCreated) {
         var f = document.createElement('iframe');
-        f.id        = 'kviz-iframe';
-        f.className = 'frame';
-        f.src       = '/kviz/';
-        f.setAttribute('allow', 'clipboard-write');
-        kvizPane.appendChild(f);
+        f.id = 'kviz-iframe'; f.className = 'frame';
+        f.src = '/kviz/'; f.setAttribute('allow', 'clipboard-write');
+        $('kviz-pane').appendChild(f);
         kvizCreated = true;
       }
       history.replaceState(null, '', '#kviz');
+    } else if (name === 'measure') {
+      $('measure-pane').classList.remove('hidden');
+      $('tab-btn-measure').classList.add('active');
+      if (!measureCreated) {
+        var fm = document.createElement('iframe');
+        fm.id = 'measure-iframe'; fm.className = 'frame';
+        fm.src = '/kviz/measure/new'; fm.setAttribute('allow', 'clipboard-write');
+        $('measure-pane').appendChild(fm);
+        measureCreated = true;
+      }
+      history.replaceState(null, '', '#measure');
     }
 
     updateBadges();
   }
 
   // ── Choice buttons ──────────────────────────────────────────────────────────
-  $('choice-agent').onclick = function () { showTab('agent'); };
-  $('choice-kviz').onclick  = function () { showTab('kviz'); };
+  $('choice-agent').onclick   = function () { showTab('agent'); };
+  $('choice-kviz').onclick    = function () { showTab('kviz'); };
+  $('choice-measure').onclick = function () { showTab('measure'); };
 
   // ── Tab / side buttons ──────────────────────────────────────────────────────
-  $('tab-btn-agent').onclick = function () { showTab('agent'); };
-  $('tab-btn-kviz').onclick  = function () { showTab('kviz'); };
-  $('side-to-kviz').onclick  = function () { showTab('kviz'); };
-  $('side-to-agent').onclick = function () { showTab('agent'); };
+  $('tab-btn-agent').onclick   = function () { showTab('agent'); };
+  $('tab-btn-kviz').onclick    = function () { showTab('kviz'); };
+  $('tab-btn-measure').onclick = function () { showTab('measure'); };
+  $('side-to-kviz').onclick    = function () { showTab('kviz'); };
+  $('side-to-agent').onclick   = function () { showTab('agent'); };
+  $('side-to-measure').onclick = function () { showTab('measure'); };
+  $('side-to-kviz2').onclick   = function () { showTab('kviz'); };
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   $('logout-btn').onclick = function () {
@@ -89,14 +107,16 @@
   document.addEventListener('keydown', function (e) {
     if (e.altKey && (e.key === '1' || e.code === 'Digit1')) { e.preventDefault(); showTab('agent'); }
     if (e.altKey && (e.key === '2' || e.code === 'Digit2')) { e.preventDefault(); showTab('kviz'); }
+    if (e.altKey && (e.key === '3' || e.code === 'Digit3')) { e.preventDefault(); showTab('measure'); }
   });
 
   // ── Hash navigation (back / forward only, not on initial load) ──────────────
   window.addEventListener('hashchange', function () {
-    if (currentTab === null) return; // choice screen visible, ignore hash
+    if (currentTab === null) return;
     var h = location.hash.slice(1);
-    if (h === 'kviz' && currentTab !== 'kviz') showTab('kviz');
-    else if (h === 'agent' && currentTab !== 'agent') showTab('agent');
+    if (h === 'kviz'    && currentTab !== 'kviz')    showTab('kviz');
+    else if (h === 'agent'   && currentTab !== 'agent')   showTab('agent');
+    else if (h === 'measure' && currentTab !== 'measure') showTab('measure');
   });
 
   // ── postMessage from iframes ────────────────────────────────────────────────
@@ -134,6 +154,13 @@
           $('kviz-pane').appendChild(f2);
           kvizCreated = true;
         }
+      }
+    }
+    if (d.type === 'open-measure') {
+      showTab('measure');
+      if (d.path) {
+        var fm2 = $('measure-iframe');
+        if (fm2) fm2.src = d.path;
       }
     }
     if (d.type === 'auth-required') {

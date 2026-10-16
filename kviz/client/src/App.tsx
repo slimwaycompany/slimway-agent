@@ -5,6 +5,9 @@ import QuizPage from './pages/QuizPage';
 import SummaryPage from './pages/SummaryPage';
 import HistoryPage from './pages/HistoryPage';
 import NewPage from './pages/NewPage';
+import NewMeasurePage from './pages/measure/NewMeasurePage';
+import ReportsPage from './pages/measure/ReportsPage';
+import ClientPage from './pages/measure/ClientPage';
 import { isEmbedded } from './utils/iframe';
 import './index.css';
 
@@ -40,6 +43,10 @@ export default function App() {
       <Route path="/q/:id/summary" element={<RequireAuth><SummaryPage /></RequireAuth>} />
       <Route path="/q/:id/:step" element={<RequireAuth><QuizPage /></RequireAuth>} />
       <Route path="/history" element={<RequireAuth><HistoryPage /></RequireAuth>} />
+      <Route path="/measure" element={<Navigate to="/measure/new" replace />} />
+      <Route path="/measure/new" element={<RequireAuth><NewMeasurePage /></RequireAuth>} />
+      <Route path="/measure/reports" element={<RequireAuth><ReportsPage /></RequireAuth>} />
+      <Route path="/measure/client/:id" element={<RequireAuth><ClientPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
