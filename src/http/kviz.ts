@@ -3,7 +3,7 @@ import fs from 'fs';
 import express, { Router, Application, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
-import { buildMeasureRouter, buildClientsSyncRoute } from './measure';
+import { buildMeasureRouter } from './measure';
 
 const CLIENT_DIST = path.resolve(process.cwd(), 'kviz', 'client', 'dist');
 
@@ -165,7 +165,6 @@ export function mountKvizRoutes(app: Application): void {
   try {
     app.use(buildRouter());
     app.use(buildMeasureRouter());
-    app.use(buildClientsSyncRoute());
   } catch (e) {
     console.warn('[kviz] failed to mount routes:', (e as Error).message);
   }

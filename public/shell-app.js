@@ -11,6 +11,7 @@
   var kvizDraftCount   = 0;
   var kvizCreated      = false;
   var measureCreated   = false;
+  var managerCreated   = false;
 
   // ── Badge helpers ───────────────────────────────────────────────────────────
   function setBadge(id, n) {
@@ -31,12 +32,12 @@
   }
 
   function hidePanes() {
-    var ids = ['agent-pane','kviz-pane','measure-pane'];
+    var ids = ['agent-pane','kviz-pane','measure-pane','manager-pane'];
     for (var i = 0; i < ids.length; i++) {
       var p = $(ids[i]);
       if (p) p.classList.add('hidden');
     }
-    var tabs = ['tab-btn-agent','tab-btn-kviz','tab-btn-measure'];
+    var tabs = ['tab-btn-agent','tab-btn-kviz','tab-btn-measure','tab-btn-manager'];
     for (var j = 0; j < tabs.length; j++) {
       var b = $(tabs[j]);
       if (b) b.classList.remove('active');
@@ -73,10 +74,21 @@
         var fm = document.createElement('iframe');
         fm.id = 'measure-iframe'; fm.className = 'frame';
         fm.src = '/kviz/measure/new'; fm.setAttribute('allow', 'clipboard-write');
-        $('measure-pane').appendChild(fm);
+        $('measure-pane').insertBefore(fm, $('side-to-manager'));
         measureCreated = true;
       }
       history.replaceState(null, '', '#measure');
+    } else if (name === 'manager') {
+      $('manager-pane').classList.remove('hidden');
+      $('tab-btn-manager').classList.add('active');
+      if (!managerCreated) {
+        var fmg = document.createElement('iframe');
+        fmg.id = 'manager-iframe'; fmg.className = 'frame';
+        fmg.src = '/window'; fmg.setAttribute('allow', 'notifications; clipboard-write');
+        $('manager-pane').insertBefore(fmg, $('side-to-measure2'));
+        managerCreated = true;
+      }
+      history.replaceState(null, '', '#manager');
     }
 
     updateBadges();
@@ -86,15 +98,19 @@
   $('choice-agent').onclick   = function () { showTab('agent'); };
   $('choice-kviz').onclick    = function () { showTab('kviz'); };
   $('choice-measure').onclick = function () { showTab('measure'); };
+  $('choice-manager').onclick = function () { showTab('manager'); };
 
   // ── Tab / side buttons ──────────────────────────────────────────────────────
   $('tab-btn-agent').onclick   = function () { showTab('agent'); };
   $('tab-btn-kviz').onclick    = function () { showTab('kviz'); };
   $('tab-btn-measure').onclick = function () { showTab('measure'); };
+  $('tab-btn-manager').onclick = function () { showTab('manager'); };
   $('side-to-kviz').onclick    = function () { showTab('kviz'); };
   $('side-to-agent').onclick   = function () { showTab('agent'); };
   $('side-to-measure').onclick = function () { showTab('measure'); };
   $('side-to-kviz2').onclick   = function () { showTab('kviz'); };
+  $('side-to-manager').onclick  = function () { showTab('manager'); };
+  $('side-to-measure2').onclick = function () { showTab('measure'); };
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   $('logout-btn').onclick = function () {
@@ -108,6 +124,7 @@
     if (e.altKey && (e.key === '1' || e.code === 'Digit1')) { e.preventDefault(); showTab('agent'); }
     if (e.altKey && (e.key === '2' || e.code === 'Digit2')) { e.preventDefault(); showTab('kviz'); }
     if (e.altKey && (e.key === '3' || e.code === 'Digit3')) { e.preventDefault(); showTab('measure'); }
+    if (e.altKey && (e.key === '4' || e.code === 'Digit4')) { e.preventDefault(); showTab('manager'); }
   });
 
   // ── Hash navigation (back / forward only, not on initial load) ──────────────
@@ -117,6 +134,7 @@
     if (h === 'kviz'    && currentTab !== 'kviz')    showTab('kviz');
     else if (h === 'agent'   && currentTab !== 'agent')   showTab('agent');
     else if (h === 'measure' && currentTab !== 'measure') showTab('measure');
+    else if (h === 'manager' && currentTab !== 'manager') showTab('manager');
   });
 
   // ── postMessage from iframes ────────────────────────────────────────────────

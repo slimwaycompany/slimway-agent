@@ -452,7 +452,7 @@ export function buildClientsSyncRoute(): Router {
 
   r.get('/run/clients-sync', async (req, res) => {
     const secret = process.env.CRON_SECRET;
-    if (secret && req.headers['x-cron-secret'] !== secret && req.query.secret !== secret) {
+    if (secret && req.headers['x-cron-secret'] !== secret && req.query.key !== secret && req.query.secret !== secret) {
       res.status(401).json({ error: 'Unauthorized' }); return;
     }
     try {
@@ -464,7 +464,7 @@ export function buildClientsSyncRoute(): Router {
   // Debug: returns 2 raw Fitbase client objects (phones masked) to verify field names
   r.get('/run/clients-debug', async (req, res) => {
     const secret = process.env.CRON_SECRET;
-    if (secret && req.headers['x-cron-secret'] !== secret && req.query.secret !== secret) {
+    if (secret && req.headers['x-cron-secret'] !== secret && req.query.key !== secret && req.query.secret !== secret) {
       res.status(401).json({ error: 'Unauthorized' }); return;
     }
     try {

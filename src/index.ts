@@ -19,6 +19,7 @@ import { runInactive,  JOB_NAME as INACTIVE_JOB }    from './jobs/inactive';
 import { mountWindowRoutes }                          from './http/window';
 import { mountKvizRoutes }                            from './http/kviz';
 import { mountShellRoutes }                           from './http/shell';
+import { buildClientsSyncRoute }                      from './http/measure';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -202,6 +203,9 @@ async function handleLifecyclePlan(req: express.Request, res: express.Response):
 
 app.get('/run/lifecycle-plan',  handleLifecyclePlan);
 app.post('/run/lifecycle-plan', handleLifecyclePlan);
+
+// clients-sync and clients-debug — must be before generic /run/:job
+app.use(buildClientsSyncRoute());
 
 async function handleRun(req: express.Request, res: express.Response): Promise<void> {
   if (!checkSecret(req)) {
