@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
-import { addClientNote, paginateGet, FITBASE_PAGE_SIZE } from './fitbase';
+import { addClientNote, paginateGet, rawGet, FITBASE_PAGE_SIZE } from './fitbase';
 
 const CIRC_FIELDS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 
@@ -157,18 +157,35 @@ async function runClientsSync(): Promise<{ ok: true; total: number; upserted: nu
 
   const rows = clients
     .map(c => {
-      const phoneRaw = typeof c.phone === 'object' && c.phone !== null
-        ? String((c.phone as Record<string, unknown>).number || '')
-        : String(c.phone || '');
+      // Prefer individual name fields; skip patronymic
+      const first = String(c.first_name || '').trim();
+      const last  = String(c.last_name  || '').trim();
+      const name  = [first, last].filter(Boolean).join(' ') || String(c.name || '').trim();
+
+      // phones may be array [{number, is_main}], object {number}, or string
+      let phoneRaw = '';
+      const phonesArr = Array.isArray(c.phones) ? c.phones as Record<string, unknown>[]
+                      : Array.isArray(c.phone)  ? c.phone  as Record<string, unknown>[]
+                      : null;
+      if (phonesArr && phonesArr.length > 0) {
+        const main = phonesArr.find(p => p.is_main) ?? phonesArr[0];
+        phoneRaw = String(main.number || '');
+      } else if (typeof c.phone === 'object' && c.phone !== null) {
+        phoneRaw = String((c.phone as Record<string, unknown>).number || '');
+      } else {
+        phoneRaw = String(c.phone || '');
+      }
       const phone = normalizePhone(phoneRaw) || (phoneRaw || null);
+
       let fitbaseUpdatedAt: string | null = null;
       if (c.updated_at) {
         try { fitbaseUpdatedAt = new Date(String(c.updated_at)).toISOString(); } catch { /* skip */ }
       }
       return {
         fitbase_client_id:  Number(c.id),
-        name:               String(c.name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()),
+        name,
         phone,
+        raw:                c,
         fitbase_updated_at: fitbaseUpdatedAt,
         synced_at:          new Date().toISOString(),
       };
@@ -229,15 +246,16 @@ export function buildMeasureRouter(): Router {
     try {
       const digits = q.replace(/\D/g, '');
 
+      const phoneFilter = digits.length >= 4 ? `,phone_digits.ilike.%${digits}%` : '';
       const [bcRes, fcRes] = await Promise.all([
         supabase.from('body_clients')
           .select('id, name, phone, fitbase_client_id, created_at')
-          .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
+          .or(`name.ilike.%${q}%${phoneFilter}`)
           .limit(10),
-        digits.length >= 4
-          ? (supabase.from('fitbase_clients_cache').select('fitbase_client_id, name, phone') as any)
-              .or(`name.ilike.%${q}%,phone.ilike.%${digits}%`).limit(10)
-          : supabase.from('fitbase_clients_cache').select('fitbase_client_id, name, phone').ilike('name', `%${q}%`).limit(10),
+        supabase.from('fitbase_clients_cache')
+          .select('fitbase_client_id, name, phone')
+          .or(`name.ilike.%${q}%${phoneFilter}`)
+          .limit(10),
       ]);
 
       const bc = (bcRes.data || []) as Meas[];
@@ -431,6 +449,7 @@ export function buildMeasureRouter(): Router {
 // Fitbase clients sync — cron endpoint + shared runClientsSync
 export function buildClientsSyncRoute(): Router {
   const r = Router();
+
   r.get('/run/clients-sync', async (req, res) => {
     const secret = process.env.CRON_SECRET;
     if (secret && req.headers['x-cron-secret'] !== secret && req.query.secret !== secret) {
@@ -441,5 +460,39 @@ export function buildClientsSyncRoute(): Router {
       res.json(result);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
+
+  // Debug: returns 2 raw Fitbase client objects (phones masked) to verify field names
+  r.get('/run/clients-debug', async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers['x-cron-secret'] !== secret && req.query.secret !== secret) {
+      res.status(401).json({ error: 'Unauthorized' }); return;
+    }
+    try {
+      const resp  = await rawGet('/client?page_size=2');
+      const items = (resp.items || []) as Record<string, unknown>[];
+      const masked = items.map(c => {
+        const out: Record<string, unknown> = { ...c };
+        for (const k of ['phone', 'phones', 'mobile']) {
+          if (!out[k]) continue;
+          if (typeof out[k] === 'string') {
+            const s = String(out[k]);
+            out[k] = s.length > 2 ? s.slice(0, -2) + 'XX' : 'XX';
+          } else if (Array.isArray(out[k])) {
+            out[k] = (out[k] as unknown[]).map(p => {
+              if (typeof p === 'object' && p !== null) {
+                const po = { ...(p as Record<string, unknown>) };
+                if (po.number) po.number = String(po.number).slice(0, -2) + 'XX';
+                return po;
+              }
+              return p;
+            });
+          }
+        }
+        return out;
+      });
+      res.json(masked);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   return r;
 }

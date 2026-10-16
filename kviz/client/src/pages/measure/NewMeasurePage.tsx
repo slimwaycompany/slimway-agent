@@ -81,6 +81,8 @@ export default function NewMeasurePage() {
   const [saveErr, setSaveErr] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [phoneSuggestions, setPhoneSuggestions] = useState<Client[]>([]);
+  const phoneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [result, setResult] = useState<null | { m: Measurement & { fitbase_error?: string }; client: SavedClient; prev: Measurement | null; start: Measurement | null }>(null);
   const [showInbodyModal, setShowInbodyModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -127,6 +129,19 @@ export default function NewMeasurePage() {
     setNewClientMode(false);
     setValues({} as Record<FieldKey, string>);
   }
+
+  // Phone autosuggest in new-client form: search when >= 10 digits entered
+  useEffect(() => {
+    const digits = newPhone.replace(/\D/g, '');
+    if (digits.length < 10) { setPhoneSuggestions([]); return; }
+    if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
+    phoneDebounceRef.current = setTimeout(async () => {
+      try {
+        const data = await apiGet(`/api/measure/clients?q=${encodeURIComponent(digits)}`);
+        setPhoneSuggestions(Array.isArray(data) ? data : []);
+      } catch { setPhoneSuggestions([]); }
+    }, 400);
+  }, [newPhone]);
 
   async function createNewClient() {
     setNewClientErr('');
@@ -370,7 +385,20 @@ export default function NewMeasurePage() {
           <div style={{ background: '#f9fafb', border: '1px solid #e2e6ea', borderRadius: 12, padding: '16px', marginBottom: 16 }}>
             <div style={{ fontWeight: 600, marginBottom: 12 }}>Новый клиент</div>
             <div className="field"><label>Имя *</label><input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Имя клиента" /></div>
-            <div className="field"><label>Телефон *</label><input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="+7..." inputMode="tel" /></div>
+            <div className="field"><label>Телефон *</label><input value={newPhone} onChange={e => { setNewPhone(e.target.value); setPhoneSuggestions([]); }} placeholder="+7..." inputMode="tel" /></div>
+            {phoneSuggestions.length > 0 && (
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: '#92400e', marginBottom: 6 }}>Найдено совпадение по телефону — выбрать существующего?</div>
+                {phoneSuggestions.map((c, i) => (
+                  <div key={i} onClick={() => { setPhoneSuggestions([]); selectSuggestion(c); setNewClientMode(false); }}
+                    style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, background: '#fff', marginBottom: 4, border: '1px solid #e2e6ea' }}>
+                    <span style={{ fontWeight: 600 }}>{c.name}</span>
+                    {c.phone && <span style={{ color: '#6b7280', fontSize: 13 }}>{fmtPhone(c.phone)}</span>}
+                    <span className={`measure-source-badge ${c.source}`}>{c.source === 'measure' ? 'Замеры' : 'Fitbase'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {newClientErr && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 8 }}>{newClientErr}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={createNewClient}>Создать</button>
