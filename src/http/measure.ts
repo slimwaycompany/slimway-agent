@@ -157,23 +157,19 @@ async function runClientsSync(): Promise<{ ok: true; total: number; upserted: nu
 
   const rows = clients
     .map(c => {
-      // Prefer individual name fields; skip patronymic
-      const first = String(c.first_name || '').trim();
-      const last  = String(c.last_name  || '').trim();
-      const name  = [first, last].filter(Boolean).join(' ') || String(c.name || '').trim();
+      // Fitbase uses name=Имя, surname=Фамилия (not first_name/last_name)
+      const cap = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+      const rawFirst = String(c.name    || '').trim();
+      const rawLast  = String(c.surname || '').trim();
+      const name = [cap(rawFirst), cap(rawLast)].filter(Boolean).join(' ');
 
-      // phones may be array [{number, is_main}], object {number}, or string
+      // Phone is in contacts[].contact where contact_type === 'phone'
       let phoneRaw = '';
-      const phonesArr = Array.isArray(c.phones) ? c.phones as Record<string, unknown>[]
-                      : Array.isArray(c.phone)  ? c.phone  as Record<string, unknown>[]
-                      : null;
-      if (phonesArr && phonesArr.length > 0) {
-        const main = phonesArr.find(p => p.is_main) ?? phonesArr[0];
-        phoneRaw = String(main.number || '');
-      } else if (typeof c.phone === 'object' && c.phone !== null) {
-        phoneRaw = String((c.phone as Record<string, unknown>).number || '');
-      } else {
-        phoneRaw = String(c.phone || '');
+      if (Array.isArray(c.contacts)) {
+        const contacts = c.contacts as Record<string, unknown>[];
+        const ph = contacts.find(ct => ct.contact_type === 'phone' && ct.priority === 1)
+                ?? contacts.find(ct => ct.contact_type === 'phone');
+        if (ph) phoneRaw = String(ph.contact || '');
       }
       const phone = normalizePhone(phoneRaw) || (phoneRaw || null);
 
