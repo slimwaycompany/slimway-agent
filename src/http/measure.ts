@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { supabase } from '../db/supabase';
 import { addClientNote, paginateGet } from './fitbase';
 
-const CIRC_FIELDS = ['neck','chest','left_arm','right_arm','waist','belly','hips','left_thigh','right_thigh','left_calf','right_calf'] as const;
+const CIRC_FIELDS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 
 function normalizePhone(raw: string): string | null {
   let d = raw.replace(/\D/g, '');
@@ -78,16 +78,16 @@ function buildFitbaseComment(m: Meas, prev: Meas | null, start: Meas | null): st
 
   const waist  = Number(m.waist       ?? 0);
   const belly  = Number(m.belly       ?? 0);
-  const lThigh = Number(m.left_thigh  ?? 0);
-  const rThigh = Number(m.right_thigh ?? 0);
+  const lThigh = Number(m.thigh_l ?? 0);
+  const rThigh = Number(m.thigh_r ?? 0);
 
   let kLine = `Талия ${waist.toFixed(1)}`;
   if (prev?.waist != null) kLine += ` (${fmtDiff(waist - Number(prev.waist))})`;
   kLine += ` · Живот ${belly.toFixed(1)}`;
   if (prev?.belly != null) kLine += ` (${fmtDiff(belly - Number(prev.belly))})`;
   kLine += ` · Бёдра Л/П ${lThigh.toFixed(1)}/${rThigh.toFixed(1)}`;
-  if (prev?.left_thigh != null && prev?.right_thigh != null) {
-    kLine += ` (${fmtDiff(lThigh - Number(prev.left_thigh))}/${fmtDiff(rThigh - Number(prev.right_thigh))})`;
+  if (prev?.thigh_l != null && prev?.thigh_r != null) {
+    kLine += ` (${fmtDiff(lThigh - Number(prev.thigh_l))}/${fmtDiff(rThigh - Number(prev.thigh_r))})`;
   }
   lines.push(kLine);
 
@@ -130,9 +130,9 @@ export function buildMeasureRouter(): Router {
           .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
           .limit(10),
         digits.length >= 4
-          ? (supabase.from('fitbase_clients_cache').select('fitbase_id, name, phone') as any)
+          ? (supabase.from('fitbase_clients_cache').select('fitbase_client_id, name, phone') as any)
               .or(`name.ilike.%${q}%,phone.ilike.%${digits}%`).limit(10)
-          : supabase.from('fitbase_clients_cache').select('fitbase_id, name, phone').ilike('name', `%${q}%`).limit(10),
+          : supabase.from('fitbase_clients_cache').select('fitbase_client_id, name, phone').ilike('name', `%${q}%`).limit(10),
       ]);
 
       const bc = (bcRes.data || []) as Meas[];
@@ -166,8 +166,8 @@ export function buildMeasureRouter(): Router {
         });
       }
       for (const c of fc) {
-        if (seenFbIds.has(Number(c.fitbase_id))) continue;
-        results.push({ id: null, fitbase_client_id: c.fitbase_id, name: c.name, phone: c.phone, source: 'fitbase', measure_count: 0, last_measured: null });
+        if (seenFbIds.has(Number(c.fitbase_client_id))) continue;
+        results.push({ id: null, fitbase_client_id: c.fitbase_client_id, name: c.name, phone: c.phone, source: 'fitbase', measure_count: 0, last_measured: null });
       }
 
       res.json(results.slice(0, 15));
@@ -338,20 +338,20 @@ export function buildClientsSyncRoute(): Router {
             ? String((c.phone as Record<string, unknown>).number || '')
             : String(c.phone || '');
           return {
-            fitbase_id:   Number(c.id),
-            name:         String(c.name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()),
-            phone:        phoneRaw,
-            synced_at:    new Date().toISOString(),
+            fitbase_client_id: Number(c.id),
+            name:              String(c.name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()),
+            phone:             phoneRaw,
+            synced_at:         new Date().toISOString(),
           };
         })
-        .filter(c => c.fitbase_id && c.name);
+        .filter(c => c.fitbase_client_id && c.name);
 
       let upserted = 0;
       const BS = 200;
       for (let i = 0; i < rows.length; i += BS) {
         const { error } = await supabase
           .from('fitbase_clients_cache')
-          .upsert(rows.slice(i, i + BS), { onConflict: 'fitbase_id' });
+          .upsert(rows.slice(i, i + BS), { onConflict: 'fitbase_client_id' });
         if (error) throw error;
         upserted += Math.min(BS, rows.length - i);
       }

@@ -4,11 +4,11 @@ import { apiGet } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
 import * as XLSX from 'xlsx';
 
-const CIRC_KEYS = ['neck','chest','left_arm','right_arm','waist','belly','hips','left_thigh','right_thigh','left_calf','right_calf'];
+const CIRC_KEYS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'];
 const CIRC_LABELS: Record<string, string> = {
-  neck:'Шея', chest:'Грудь', left_arm:'Л.рука', right_arm:'П.рука',
-  waist:'Талия', belly:'Живот', hips:'Ягодицы', left_thigh:'Л.бедро',
-  right_thigh:'П.бедро', left_calf:'Л.голень', right_calf:'П.голень',
+  neck:'Шея', chest:'Грудь', arm_l:'Л.рука', arm_r:'П.рука',
+  waist:'Талия', belly:'Живот', glutes:'Ягодицы', thigh_l:'Л.бедро',
+  thigh_r:'П.бедро', shin_l:'Л.голень', shin_r:'П.голень',
 };
 
 interface Row {
