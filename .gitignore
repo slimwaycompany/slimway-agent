@@ -8,3 +8,4 @@ kviz/client/dist/
 kviz/server/node_modules/
 kviz/server/dist/
 test-screens/
+agent-room-demo.html

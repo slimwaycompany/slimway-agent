@@ -57,6 +57,7 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 <title>SlimWay — помощник</title>
 <script>if(window.self===window.top){location.replace('/');}</script>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/window/agent-room/room.css">
 <style>
 :root{
   --brand:#02BDB6;--accent:#263CD9;
@@ -182,11 +183,10 @@ a{color:inherit}
 #login-err{color:var(--red);font-size:12px;margin-top:8px;min-height:18px}
 /* ── Agent room ─────────────────────────────────────────────────────────── */
 #agent-room-wrap{flex-shrink:0;border-top:1px solid var(--c-border);position:relative;overflow:hidden;background:var(--card);border-radius:0 0 var(--radius-panel) var(--radius-panel)}
-#agent-room-wrap:not(.collapsed){height:clamp(180px,28vh,280px)}
+#agent-room-wrap:not(.collapsed){height:clamp(220px,33vh,320px)}
 #agent-room-wrap.collapsed{height:36px}
-#agent-canvas{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
 #agent-room-strip{display:none;align-items:center;gap:8px;padding:0 12px;height:36px;font-size:12px;color:var(--c-muted);cursor:pointer;user-select:none}
-#agent-room-wrap.collapsed #agent-canvas{display:none}
+#agent-room-wrap.collapsed #ar-scene{display:none}
 #agent-room-wrap.collapsed #agent-room-strip{display:flex}
 #agent-room-toggle{position:absolute;top:4px;right:6px;background:none;border:none;cursor:pointer;font-size:11px;color:var(--c-muted);padding:2px 6px;border-radius:4px;z-index:2;line-height:1}
 #agent-room-toggle:hover{background:var(--c-border)}
@@ -275,7 +275,7 @@ a{color:inherit}
 
 <audio id="beep-audio" preload="none"></audio>
 <script>window.LEAD_URL='__LEAD_URL__';window.CLIENT_URL='__CLIENT_URL__';</script>
-<script src="/window/agent-room/sprites.js"></script>
+<script src="/window/agent-room/scene.js"></script>
 <script src="/window/agent-room/phrases.js"></script>
 <script src="/window/agent-room/room.js"></script>
 <script src="/window/app.js"></script>

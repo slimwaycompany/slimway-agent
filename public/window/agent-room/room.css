@@ -1,0 +1,178 @@
+/* room.css — vector agent room: illustration styles */
+
+/* ── Bubble ─────────────────────────────────────────────────────────────── */
+#ar-bubble{position:absolute;transform:translate(-50%,-100%);background:rgba(255,255,255,.9);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border:1px solid rgba(2,189,182,.4);color:#13222A;font-size:12.5px;line-height:1.3;padding:6px 10px;border-radius:12px;box-shadow:0 8px 20px -10px rgba(10,40,60,.45);max-width:46%;text-align:center;pointer-events:none;animation:ar-pop .25s ease-out;z-index:5}
+#ar-bubble::after{content:"";position:absolute;left:50%;bottom:-6px;width:10px;height:10px;background:rgba(255,255,255,.95);border-right:1px solid rgba(2,189,182,.4);border-bottom:1px solid rgba(2,189,182,.4);transform:translateX(-50%) rotate(45deg)}
+@keyframes ar-pop{from{opacity:0;transform:translate(-50%,-90%) scale(.9)}to{opacity:1;transform:translate(-50%,-100%) scale(1)}}
+#ar-bubble.side{transform:translate(-100%,-50%);animation-name:ar-popSide}
+#ar-bubble.side::after{left:auto;right:-6px;bottom:auto;top:50%;transform:translateY(-50%) rotate(-45deg)}
+@keyframes ar-popSide{from{opacity:0;transform:translate(-95%,-50%) scale(.9)}to{opacity:1;transform:translate(-100%,-50%) scale(1)}}
+
+/* ── Time of day ────────────────────────────────────────────────────────── */
+.tod-morning{--sky1:#FFD3C2;--sky2:#CFEAF4;--city:#C2D8E0;--sun:#FFC98A}
+.tod-day    {--sky1:#8FD3EE;--sky2:#E3F6FB;--city:#B7D2DC;--sun:#FFD66B}
+.tod-evening{--sky1:#FF9D7C;--sky2:#FFD9A0;--city:#B08A8E;--sun:#FF8A55}
+.tod-night  {--sky1:#0D1838;--sky2:#2B3F78;--city:#1B2648;--sun:transparent}
+.sun{transition:transform 1s ease}
+.tod-morning .sun{transform:translate(48px,98px)}
+.tod-day     .sun{transform:translate(110px,44px)}
+.tod-evening .sun{transform:translate(104px,100px)}
+.tod-night   .sun{transform:translate(110px,44px)}
+.moon,.stars,.lights{display:none}
+.tod-night .moon,.tod-night .stars,.tod-night .lights{display:inline}
+.tod-night .clouds{display:none}
+#shade{opacity:0;transition:opacity .8s}
+.tod-night #shade{opacity:.34}
+#warm{opacity:0;transition:opacity .8s}
+.tod-evening #warm{opacity:.07}
+.cloud{animation:drift 26s linear infinite}
+@keyframes drift{from{transform:translateX(-30px)}to{transform:translateX(70px)}}
+.stars circle{animation:twinkle 3s ease-in-out infinite}
+.stars circle:nth-child(2n){animation-delay:1.2s}
+@keyframes twinkle{50%{opacity:.3}}
+.plant{transform-box:fill-box;transform-origin:center bottom;animation:sway 5s ease-in-out infinite}
+@keyframes sway{50%{transform:rotate(2.5deg)}}
+
+/* ── Hide utility ───────────────────────────────────────────────────────── */
+#room .hide{display:none}
+
+/* ── Girl shared ────────────────────────────────────────────────────────── */
+.arm,.leg,.headanim,.sbody,.stbody,.coffee-move{transform-origin:0 0}
+.eyes{animation:blink 5s infinite;transform-box:fill-box;transform-origin:center}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+.eyes-closed{display:none}
+.m{display:none}
+#room[data-mouth="smile"] .m-smile,
+#room[data-mouth="open"]  .m-open,
+#room[data-mouth="o"]     .m-o,
+#room[data-mouth="flat"]  .m-flat{display:inline}
+#room[data-eyes="closed"] .eyes{display:none}
+#room[data-eyes="closed"] .eyes-closed{display:inline}
+#room #lie .eyes{display:none}
+#room #lie .eyes-closed{display:inline}
+#room #lie .m{display:none}
+#room #lie .m-smile{display:inline}
+.x{display:none}
+.gs-happy   .x-spark,.gs-confused .x-q,.gs-panic .x-sweat,.gs-alert .x-alert{display:inline}
+.x-alert{animation:bump .6s ease-in-out infinite alternate}
+.x-q{animation:bump 1s ease-in-out infinite alternate}
+@keyframes bump{to{transform:translateY(-3px)}}
+.x-spark path{animation:twinkle .7s ease-in-out infinite}
+.x-spark path:nth-child(2){animation-delay:.35s}
+.x-sweat{animation:drop 1s ease-in infinite}
+@keyframes drop{0%{transform:translateY(0);opacity:1}100%{transform:translateY(8px);opacity:0}}
+
+/* ── Seated ─────────────────────────────────────────────────────────────── */
+#sit .arm-f{transform:rotate(88deg)}
+#sit .arm-b{transform:rotate(90deg)}
+.gs-typing #sit .arm-f{animation:tf .28s ease-in-out infinite alternate}
+.gs-typing #sit .arm-b{animation:tb .28s ease-in-out infinite alternate-reverse}
+.gs-typing #sit .headanim{animation:nod 1.8s ease-in-out infinite}
+@keyframes tf{from{transform:rotate(84deg)}to{transform:rotate(92deg)}}
+@keyframes tb{from{transform:rotate(86deg)}to{transform:rotate(94deg)}}
+@keyframes nod{50%{transform:rotate(3deg)}}
+.gs-happy #sit .arm-b{animation:pump .42s ease-in-out infinite alternate}
+.gs-happy #sit .sbody{animation:hop .42s ease-in-out infinite alternate}
+@keyframes pump{from{transform:rotate(148deg)}to{transform:rotate(172deg)}}
+@keyframes hop{to{transform:translateY(-2px)}}
+.gs-sticky #sit .arm-f{animation:reach 1.1s ease-in-out infinite alternate}
+@keyframes reach{from{transform:rotate(118deg)}to{transform:rotate(156deg)}}
+.gs-panic #sit .arm-f{transform:rotate(168deg)}
+.gs-panic #sit .arm-b{transform:rotate(172deg)}
+.gs-panic #sit .sbody{animation:shake .1s linear infinite alternate}
+@keyframes shake{from{transform:translateX(-1px)}to{transform:translateX(1px)}}
+.gs-confused #sit .arm-b{animation:scratchHead .22s ease-in-out infinite alternate}
+.gs-confused #sit .headanim{transform:rotate(9deg)}
+@keyframes scratchHead{from{transform:rotate(166deg)}to{transform:rotate(178deg)}}
+.gs-stretch #sit .arm{animation:stretch 3.2s ease-in-out infinite}
+.gs-stretch #sit .sbody{animation:stretchBody 3.2s ease-in-out infinite}
+@keyframes stretch{0%,100%{transform:rotate(88deg)}35%,70%{transform:rotate(176deg)}}
+@keyframes stretchBody{0%,100%{transform:translateY(0)}35%,70%{transform:translateY(-2px)}}
+
+/* ── Standing ───────────────────────────────────────────────────────────── */
+#stand .arm{transform:rotate(4deg)}
+#stand .coffee-arm{display:none}
+.gs-coffee #stand .coffee-arm{display:inline}
+.gs-coffee #stand .armf-wrap{display:none}
+.gs-coffee .coffee-move{animation:sip 3s ease-in-out infinite}
+@keyframes sip{0%,100%{transform:translate(-1px,10px) rotate(-12deg)}40%,65%{transform:translate(0,0) rotate(0)}}
+.steam path{animation:steam 2s ease-out infinite;opacity:0}
+.steam path:nth-child(2){animation-delay:.9s}
+@keyframes steam{0%{opacity:0;transform:translateY(2px)}40%{opacity:.7}100%{opacity:0;transform:translateY(-6px)}}
+.gs-window #stand .arm-f{transform:rotate(-22deg)}
+.gs-window #stand .arm-b{transform:rotate(-28deg)}
+.gs-window #stand .headanim{transform:rotate(-10deg)}
+.gs-alert #stand .stbody{transform:rotate(-7deg)}
+.gs-alert #stand .arm{transform:rotate(40deg)}
+.gs-pullup #stand .arm{animation:pullArm 1.6s ease-in-out infinite}
+.gs-pullup #stand .stbody{animation:pullBody 1.6s ease-in-out infinite}
+@keyframes pullArm{0%,100%{transform:rotate(180deg) scaleY(1)}50%{transform:rotate(180deg) scaleY(.66)}}
+@keyframes pullBody{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+.moving #stand .leg-a{animation:legSwing .46s ease-in-out infinite alternate}
+.moving #stand .leg-b{animation:legSwing .46s ease-in-out infinite alternate-reverse}
+.moving #stand .arm-f{animation:armSwing .46s ease-in-out infinite alternate}
+.moving #stand .arm-b{animation:armSwing .46s ease-in-out infinite alternate-reverse}
+.moving #stand .stbody{animation:bob .23s ease-in-out infinite alternate;transform:none}
+.moving #stand .coffee-arm{display:none}
+.moving #stand .armf-wrap{display:inline}
+@keyframes legSwing{from{transform:rotate(-20deg)}to{transform:rotate(20deg)}}
+@keyframes armSwing{from{transform:rotate(-18deg)}to{transform:rotate(18deg)}}
+@keyframes bob{to{transform:translateY(-1.5px)}}
+.blanket{transform-box:fill-box;transform-origin:center bottom;animation:breath 3.4s ease-in-out infinite}
+@keyframes breath{50%{transform:scaleY(1.05)}}
+.zz text{animation:zz 2.6s ease-in-out infinite;opacity:0}
+.zz text:nth-child(2){animation-delay:.8s}
+.zz text:nth-child(3){animation-delay:1.6s}
+@keyframes zz{0%{opacity:0;transform:translate(0,4px)}30%{opacity:.9}100%{opacity:0;transform:translate(4px,-6px)}}
+
+/* ── Monitor ────────────────────────────────────────────────────────────── */
+#scr-red,#scr-gray,#scr-off,#scr-flash{opacity:0;transition:opacity .4s}
+.scr-red   #scr-red  {animation:redBlink .5s ease-in-out infinite alternate}
+@keyframes redBlink{from{opacity:.15}to{opacity:.8}}
+.scr-gray  #scr-gray {opacity:.88}
+.scr-off   #scr-off  {opacity:1}
+.scr-flash #scr-flash{animation:flash .9s ease-in-out infinite}
+@keyframes flash{0%,100%{opacity:0}50%{opacity:.75}}
+#mcard{transition:transform .9s ease-in-out}
+.card-moved #mcard{transform:translateX(19px)}
+#sticky{display:none}
+.has-sticky #sticky{display:inline}
+.cursor{animation:twinkle 1s steps(1) infinite}
+
+/* ── Dog ────────────────────────────────────────────────────────────────── */
+.dheadanim,.dtail,.dtailw,.scratchanim,.washanim{transform-origin:0 0}
+.deyes-c,.tongue,.dzzz{display:none}
+.dtail{animation:wagSlow 2.4s ease-in-out infinite alternate}
+@keyframes wagSlow{from{transform:rotate(-6deg)}to{transform:rotate(8deg)}}
+.dtailw{animation:wag .26s ease-in-out infinite alternate}
+@keyframes wag{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}
+.da-lick .d-lie .dheadanim{animation:lick .5s ease-in-out infinite alternate}
+@keyframes lick{from{transform:translate(1px,8px) rotate(24deg)}to{transform:translate(2px,10px) rotate(32deg)}}
+.da-lick .tongue{display:inline}
+.d-sit .scratchleg,.d-sit .washpaw{display:none}
+.da-scratch .d-sit .scratchleg{display:inline}
+.da-scratch .d-sit .hindpaw{display:none}
+.da-scratch .scratchanim{animation:scr .1s linear infinite alternate}
+@keyframes scr{from{transform:rotate(-9deg)}to{transform:rotate(10deg)}}
+.da-scratch .d-sit .dheadanim{transform:translate(-3px,6px) rotate(16deg)}
+.da-wash .d-sit .washpaw{display:inline}
+.da-wash .d-sit .frontleg{display:none}
+.da-wash .washanim{animation:wash .36s ease-in-out infinite alternate}
+@keyframes wash{from{transform:translate(0,2px) rotate(-6deg)}to{transform:translate(1px,-2px) rotate(8deg)}}
+.da-wash .deyes{display:none}
+.da-wash .deyes-c{display:inline}
+.da-wash .d-sit .dheadanim{transform:rotate(9deg)}
+.da-sit   .d-sit   .dheadanim{animation:look 4.5s ease-in-out infinite}
+.da-stand .d-stand .dheadanim{animation:look 4s ease-in-out infinite}
+.da-lie   .d-lie   .dheadanim{animation:look 6s ease-in-out infinite}
+@keyframes look{0%,100%{transform:rotate(0)}30%{transform:rotate(-7deg)}60%{transform:rotate(5deg)}}
+.d-curl .deyes{display:none}
+.d-curl .deyes-c{display:inline}
+.dbreath{transform-box:fill-box;transform-origin:center bottom;animation:breath 3s ease-in-out infinite}
+.da-sleep .dzzz{display:inline}
+.deyes{animation:blink 6s infinite;transform-box:fill-box;transform-origin:center}
+
+/* ── Girl cursor & pause ─────────────────────────────────────────────────── */
+#sit,#stand,#lie{cursor:pointer}
+#room.paused *{animation-play-state:paused !important}
+@media (prefers-reduced-motion:reduce){#room *,#ar-bubble{animation:none !important;transition:none !important}}
