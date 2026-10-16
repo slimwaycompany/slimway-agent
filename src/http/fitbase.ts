@@ -10,6 +10,8 @@ import {
 
 const BASE = 'https://api.fitbase.io/api/v2';
 
+export const FITBASE_PAGE_SIZE = 100; // Fitbase rejects page_size > 100
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -88,12 +90,17 @@ async function request(
 
       const body = await resp.text();
       if (status < 200 || status >= 300) {
-        throw new Error(`[Fitbase] ${method} ${path} → ${status} ${body.substring(0, 300)}`);
+        const msg = `[Fitbase] ${method} ${path} → ${status} ${body.substring(0, 300)}`;
+        // 4xx are client errors (validation, bad params) — never retry
+        if (status >= 400 && status < 500) throw new Error(msg);
+        throw new Error(msg);
       }
 
       return JSON.parse(body);
     } catch (e) {
       if (e instanceof FitbaseAuthError) throw e;
+      // HTTP errors already carry a clear message — don't swallow and retry
+      if (e instanceof Error && e.message.startsWith('[Fitbase]')) throw e;
       lastError = e;
     }
   }
@@ -197,15 +204,18 @@ export async function addClientNote(clientId: number, note: string): Promise<voi
 }
 
 // Fetch all pages of a paginated GET endpoint, returning merged items array.
-// Pass label to emit a console.log summary on completion.
+// Stops when a page is empty or shorter than page_size (last page heuristic).
+// Adds 300 ms inter-page delay on top of the per-request 250 ms rate-limit.
 export async function paginateGet(
   path: string,
   params: Record<string, string | number> = {},
   label?: string,
 ): Promise<Record<string, unknown>[]> {
+  const usedPageSize = Number(params.page_size ?? FITBASE_PAGE_SIZE);
   const all: Record<string, unknown>[] = [];
   let page = 1;
   while (true) {
+    if (page > 1) await sleep(300); // inter-page pause (request() adds another 250 ms)
     const qs = new URLSearchParams(
       Object.entries({ ...params, page: String(page) }).map(([k, v]) => [k, String(v)]),
     ).toString();
@@ -213,10 +223,11 @@ export async function paginateGet(
     const items = (resp.items || []) as Record<string, unknown>[];
     all.push(...items);
     const total   = Number(resp.total_count ?? resp.total ?? 0);
-    const perPage = Number(resp.page_size   ?? resp.per_page ?? (items.length || 1));
-    if (items.length === 0 || (total > 0 && all.length >= total)) break;
+    const perPage = Number(resp.page_size   ?? resp.per_page ?? usedPageSize);
+    if (items.length === 0 || items.length < usedPageSize) break; // last page
+    if (total > 0 && all.length >= total) break;
     page++;
-    if (page > Math.ceil(total / perPage) + 2) break; // safety
+    if (page > Math.ceil(total / perPage) + 2) break; // safety cap
   }
   if (label) console.log(`[${label}] paginateGet ${path}: ${page} page(s), ${all.length} items`);
   return all;

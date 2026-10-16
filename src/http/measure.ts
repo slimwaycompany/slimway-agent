@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
-import { addClientNote, paginateGet } from './fitbase';
+import { addClientNote, paginateGet, FITBASE_PAGE_SIZE } from './fitbase';
 
 const CIRC_FIELDS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 
@@ -150,8 +150,10 @@ async function autoLinkClients(): Promise<number> {
 
 // ── Shared sync logic ─────────────────────────────────────────────────────────
 
-async function runClientsSync(): Promise<{ ok: true; total: number; upserted: number; linked: number; last_sync_at: string }> {
-  const clients = await paginateGet('/client', { page_size: 200 }, 'clients-sync');
+async function runClientsSync(): Promise<{ ok: true; total: number; upserted: number; linked: number; pages: number; elapsed_ms: number; last_sync_at: string }> {
+  const startMs = Date.now();
+  const clients = await paginateGet('/client', { page_size: FITBASE_PAGE_SIZE }, 'clients-sync');
+  const pages   = Math.ceil(clients.length / FITBASE_PAGE_SIZE) || 1;
 
   const rows = clients
     .map(c => {
@@ -191,7 +193,7 @@ async function runClientsSync(): Promise<{ ok: true; total: number; upserted: nu
     { onConflict: 'key' },
   );
 
-  return { ok: true, total: rows.length, upserted, linked, last_sync_at: now };
+  return { ok: true, total: rows.length, upserted, linked, pages, elapsed_ms: Date.now() - startMs, last_sync_at: now };
 }
 
 // ── Measure router ────────────────────────────────────────────────────────────
