@@ -568,6 +568,10 @@
   // Auto-start if cookie exists
   fetch('/window/api/state?since_id=0').then(function (r) {
     if (r.ok) {
+      var returnTo = new URLSearchParams(location.search).get('returnTo');
+      if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+        window.location.href = returnTo; return;
+      }
       $('login-screen').style.display = 'none';
       showApp();
       r.json().then(function (data) {

@@ -5,7 +5,7 @@ import QuizPage from './pages/QuizPage';
 import SummaryPage from './pages/SummaryPage';
 import HistoryPage from './pages/HistoryPage';
 import NewPage from './pages/NewPage';
-import { isEmbedded, postToParent } from './utils/iframe';
+import { isEmbedded } from './utils/iframe';
 import './index.css';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -14,7 +14,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const onFail = () => {
-      if (isEmbedded) { postToParent({ type: 'kviz:auth-fail' }); }
+      if (isEmbedded) { setOk(false); }
       else { window.location.href = '/window?returnTo=' + encodeURIComponent('/kviz/'); }
     };
     fetch('/kviz/api/me', { credentials: 'include' })
@@ -24,6 +24,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   }, [navigate]);
 
   if (ok === null) return null;
+  if (ok === false) return (
+    <div style={{ padding: '2rem', textAlign: 'center', color: '#666', fontFamily: 'sans-serif' }}>
+      Войдите во вкладке Овчарка и обновите страницу
+    </div>
+  );
   return <>{children}</>;
 }
 

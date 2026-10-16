@@ -313,6 +313,7 @@ async function insertRun(
 
 // ── Window page ───────────────────────────────────────────────────────────────
 
+app.use(express.json());
 mountKvizRoutes(app);
 mountWindowRoutes(app);
 

@@ -365,7 +365,6 @@ a{color:inherit}
 // ── Express routes ────────────────────────────────────────────────────────────
 
 export function mountWindowRoutes(app: express.Application): void {
-  app.use(express.json());
 
   // Serve pixel agent-room static files
   app.use('/window/agent-room', express.static(
@@ -412,9 +411,10 @@ export function mountWindowRoutes(app: express.Application): void {
       res.status(401).json({ error: 'Invalid password' }); return;
     }
     const token = makeToken();
-    res.setHeader('Set-Cookie',
-      `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_MAX_S}; Path=/`,
-    );
+    res.setHeader('Set-Cookie', [
+      `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_S}; Path=/`,
+      `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/window`,
+    ]);
     res.json({ ok: true });
   });
 
