@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
 
-const CONSULTANT_KEY = 'sw_consultant';
-
 const FIELDS = [
   { key: 'weight',      label: 'Вес',           unit: 'кг', min: 30,  max: 250, optional: true },
   { key: 'neck',        label: 'Шея',           unit: 'см', min: 10,  max: 200 },
@@ -69,7 +67,6 @@ function shortId(id: string) {
 
 export default function NewMeasurePage() {
   const navigate = useNavigate();
-  const [consultant, setConsultant] = useState(localStorage.getItem(CONSULTANT_KEY) ?? '');
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Client[]>([]);
   const [showDrop, setShowDrop] = useState(false);
@@ -82,6 +79,8 @@ export default function NewMeasurePage() {
   const [date, setDate] = useState(todayStr());
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
   const [result, setResult] = useState<null | { m: Measurement & { fitbase_error?: string }; client: SavedClient; prev: Measurement | null; start: Measurement | null }>(null);
   const [showInbodyModal, setShowInbodyModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -173,10 +172,9 @@ export default function NewMeasurePage() {
 
   async function save() {
     if (!selectedClient) return;
-    if (!consultant) { setSaveErr('Укажите имя консультанта в настройках'); return; }
     setSaving(true); setSaveErr('');
     try {
-      const payload: Record<string, unknown> = { client_id: selectedClient.id, consultant, measured_at: date };
+      const payload: Record<string, unknown> = { client_id: selectedClient.id, measured_at: date };
       for (const f of FIELDS) payload[f.key] = values[f.key] ?? '';
       const m = await apiPost('/api/measure/measurements', payload);
       if (m.error) { setSaveErr(m.error); return; }
@@ -216,6 +214,16 @@ export default function NewMeasurePage() {
       await apiPost(`/api/measure/measurements/${result.m.id}/fitbase`, {});
       setResult(r => r ? { ...r, m: { ...r.m, fitbase_error: undefined, fitbase_comment_at: new Date().toISOString() } } : r);
     } catch (e) { alert(String(e)); }
+  }
+
+  async function syncClients() {
+    setSyncing(true); setSyncResult(null);
+    try {
+      const r = await apiPost('/api/measure/clients/sync', {});
+      if (r.error) { setSyncResult(`Ошибка: ${r.error}`); }
+      else { setSyncResult(`Добавлено/обновлено: ${r.upserted}, связано: ${r.linked} · ${new Date(r.last_sync_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`); }
+    } catch (e) { setSyncResult(`Ошибка: ${String(e)}`); }
+    finally { setSyncing(false); }
   }
 
   async function deleteMeasurement(id: string) {
@@ -314,15 +322,13 @@ export default function NewMeasurePage() {
     <MeasureLayout active="new">
       <div style={{ padding: '0 16px 80px', maxWidth: 560, margin: '0 auto' }}>
 
-        {/* Consultant */}
-        <div className="consultant-bar" style={{ marginBottom: 16 }}>
-          <span>Консультант: </span>
-          <input
-            value={consultant}
-            onChange={e => { setConsultant(e.target.value); localStorage.setItem(CONSULTANT_KEY, e.target.value); }}
-            placeholder="Ваше имя"
-            style={{ flex: 1, padding: '5px 10px', border: '1px solid #e2e6ea', borderRadius: 6, fontSize: 14 }}
-          />
+        {/* Sync button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 14px' }}
+            disabled={syncing} onClick={syncClients}>
+            {syncing ? 'Обновляю…' : '🔄 Обновить клиентов из Fitbase'}
+          </button>
+          {syncResult && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncResult}</span>}
         </div>
 
         {/* Client search */}

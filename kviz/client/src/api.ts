@@ -3,7 +3,7 @@ const pfx = (path: string) => path.startsWith('/api') ? '/kviz' + path : path;
 
 async function req(path: string, opts?: RequestInit) {
   const r = await fetch(pfx(path), { credentials: 'include', ...opts });
-  if (r.status === 401) { window.location.href = '/window'; throw new Error('Unauthorized'); }
+  if (r.status === 401) { (window.top || window).location.href = '/login'; throw new Error('Unauthorized'); }
   return r;
 }
 

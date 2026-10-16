@@ -2,14 +2,13 @@ import path from 'path';
 import fs from 'fs';
 import express, { Router, Application, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
-import { getToken, verifyToken } from './auth';
+import { getSession } from './auth';
 import { buildMeasureRouter, buildClientsSyncRoute } from './measure';
 
 const CLIENT_DIST = path.resolve(process.cwd(), 'kviz', 'client', 'dist');
 
 function requireKvizAuth(req: Request, res: Response): boolean {
-  const token = getToken(req);
-  if (token && verifyToken(token)) return true;
+  if (getSession(req)) return true;
   res.status(401).json({ error: 'Unauthorized' });
   return false;
 }
@@ -26,8 +25,9 @@ function buildRouter(): Router {
 
   // Public: auth status check
   router.get('/kviz/api/me', (req, res) => {
-    const token = getToken(req);
-    res.json({ authed: !!(token && verifyToken(token)) });
+    const session = getSession(req);
+    if (!session) { res.json({ authed: false }); return; }
+    res.json({ authed: true, login: session.login, display_name: session.display_name, role: session.role });
   });
 
   // Protect all other /kviz/api/* routes
@@ -38,12 +38,12 @@ function buildRouter(): Router {
 
   router.post('/kviz/api/sessions', async (req, res) => {
     try {
-      const { consultant, fitbase_lead_id, client_name, client_phone } = req.body as Record<string, unknown>;
-      if (!consultant || typeof consultant !== 'string') {
-        res.status(400).json({ error: 'consultant is required' }); return;
-      }
+      const session = getSession(req);
+      const consultant = session?.display_name;
+      if (!consultant) { res.status(401).json({ error: 'Нет сессии' }); return; }
+      const { fitbase_lead_id, client_name, client_phone } = req.body as Record<string, unknown>;
       const insert: Record<string, unknown> = {
-        consultant: consultant.trim(), status: 'draft', current_step: 1, answers: {},
+        consultant, status: 'draft', current_step: 1, answers: {},
       };
       if (fitbase_lead_id) insert.fitbase_lead_id = fitbase_lead_id;
       if (client_name) {

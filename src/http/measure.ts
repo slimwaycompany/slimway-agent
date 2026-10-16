@@ -1,5 +1,6 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
+import { getSession } from './auth';
 import { addClientNote, paginateGet } from './fitbase';
 
 const CIRC_FIELDS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
@@ -76,8 +77,8 @@ function buildFitbaseComment(m: Meas, prev: Meas | null, start: Meas | null): st
   }
   lines.push(tLine);
 
-  const waist  = Number(m.waist       ?? 0);
-  const belly  = Number(m.belly       ?? 0);
+  const waist  = Number(m.waist   ?? 0);
+  const belly  = Number(m.belly   ?? 0);
   const lThigh = Number(m.thigh_l ?? 0);
   const rThigh = Number(m.thigh_r ?? 0);
 
@@ -113,8 +114,110 @@ async function postFitbaseComment(measurementId: string, clientId: string): Prom
   await supabase.from('body_measurements').update({ fitbase_comment_at: new Date().toISOString() }).eq('id', measurementId);
 }
 
+// ── Auto-link body_clients to fitbase_clients_cache by phone ──────────────────
+
+async function autoLinkClients(): Promise<number> {
+  const { data: unlinked } = await supabase
+    .from('body_clients').select('id, phone').is('fitbase_client_id', null);
+  if (!unlinked?.length) return 0;
+
+  const phones = unlinked.map(c => c.phone).filter(Boolean) as string[];
+  if (!phones.length) return 0;
+
+  const { data: cached } = await supabase
+    .from('fitbase_clients_cache').select('fitbase_client_id, phone').in('phone', phones);
+  if (!cached?.length) return 0;
+
+  const phoneMap = new Map<string, number[]>();
+  for (const c of cached) {
+    if (!c.phone) continue;
+    const arr = phoneMap.get(c.phone) || [];
+    arr.push(Number(c.fitbase_client_id));
+    phoneMap.set(c.phone, arr);
+  }
+
+  let linked = 0;
+  for (const client of unlinked) {
+    if (!client.phone) continue;
+    const matches = phoneMap.get(client.phone);
+    if (matches?.length === 1) {
+      await supabase.from('body_clients').update({ fitbase_client_id: matches[0] }).eq('id', client.id);
+      linked++;
+    }
+  }
+  return linked;
+}
+
+// ── Shared sync logic ─────────────────────────────────────────────────────────
+
+async function runClientsSync(): Promise<{ ok: true; total: number; upserted: number; linked: number; last_sync_at: string }> {
+  const clients = await paginateGet('/client', { page_size: 200 }, 'clients-sync');
+
+  const rows = clients
+    .map(c => {
+      const phoneRaw = typeof c.phone === 'object' && c.phone !== null
+        ? String((c.phone as Record<string, unknown>).number || '')
+        : String(c.phone || '');
+      const phone = normalizePhone(phoneRaw) || (phoneRaw || null);
+      let fitbaseUpdatedAt: string | null = null;
+      if (c.updated_at) {
+        try { fitbaseUpdatedAt = new Date(String(c.updated_at)).toISOString(); } catch { /* skip */ }
+      }
+      return {
+        fitbase_client_id:  Number(c.id),
+        name:               String(c.name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()),
+        phone,
+        fitbase_updated_at: fitbaseUpdatedAt,
+        synced_at:          new Date().toISOString(),
+      };
+    })
+    .filter(c => c.fitbase_client_id && c.name);
+
+  let upserted = 0;
+  const BS = 200;
+  for (let i = 0; i < rows.length; i += BS) {
+    const { error } = await supabase
+      .from('fitbase_clients_cache')
+      .upsert(rows.slice(i, i + BS), { onConflict: 'fitbase_client_id' });
+    if (error) throw error;
+    upserted += Math.min(BS, rows.length - i);
+  }
+
+  const linked = await autoLinkClients();
+
+  const now = new Date().toISOString();
+  await supabase.from('sync_state').upsert(
+    { key: 'fitbase_clients', value: { last_sync_at: now, total_count: rows.length }, updated_at: now },
+    { onConflict: 'key' },
+  );
+
+  return { ok: true, total: rows.length, upserted, linked, last_sync_at: now };
+}
+
+// ── Measure router ────────────────────────────────────────────────────────────
+
 export function buildMeasureRouter(): Router {
   const r = Router();
+
+  // Auth guard for all /kviz/api/measure/* routes
+  r.use('/kviz/api/measure', (req: Request, res: Response, next: NextFunction) => {
+    if (!getSession(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    next();
+  });
+
+  // Manual sync button (rate-limited to once per minute)
+  let lastManualSync = 0;
+  r.post('/kviz/api/measure/clients/sync', async (_req, res) => {
+    const now = Date.now();
+    if (now - lastManualSync < 60_000) {
+      res.status(429).json({ error: 'Подождите минуту перед следующим обновлением' }); return;
+    }
+    lastManualSync = now;
+    try {
+      const result = await runClientsSync();
+      res.json(result);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
 
   // ── Client search ──────────────────────────────────────────────────────────
 
@@ -213,11 +316,12 @@ export function buildMeasureRouter(): Router {
   r.post('/kviz/api/measure/measurements', async (req, res) => {
     const body = req.body as Record<string, unknown>;
     const client_id  = String(body.client_id  || '').trim();
-    const consultant = String(body.consultant || '').trim();
+    const session    = getSession(req);
+    const consultant = session?.display_name || '';
     const measured_at = String(body.measured_at || '').trim();
 
-    if (!client_id)  { res.status(400).json({ error: 'client_id обязателен' }); return; }
-    if (!consultant) { res.status(400).json({ error: 'consultant обязателен' }); return; }
+    if (!client_id)   { res.status(400).json({ error: 'client_id обязателен' }); return; }
+    if (!consultant)  { res.status(401).json({ error: 'Нет сессии' }); return; }
     if (!measured_at || measured_at > todayYek()) {
       res.status(400).json({ error: 'Дата не может быть в будущем' }); return;
     }
@@ -272,15 +376,16 @@ export function buildMeasureRouter(): Router {
       const val = validateMeasurement(merged);
       if (!val.ok) { res.status(400).json({ error: val.error }); return; }
 
-      const consultant  = body.consultant  ? String(body.consultant).trim()  : String(existing.consultant);
-      const measured_at = body.measured_at ? String(body.measured_at)         : String(existing.measured_at);
+      const session       = getSession(req);
+      const consultantName = session?.display_name || String(existing.consultant);
+      const measured_at   = body.measured_at ? String(body.measured_at) : String(existing.measured_at);
       if (measured_at > todayYek()) { res.status(400).json({ error: 'Дата не может быть в будущем' }); return; }
 
       const nowHHMM = new Date(Date.now() + 5 * 3600_000).toISOString().slice(11, 16);
-      const note = `исправлено ${consultant} ${nowHHMM}`;
+      const note = `исправлено ${consultantName} ${nowHHMM}`;
 
       const { data: updated, error } = await supabase.from('body_measurements')
-        .update({ ...val.data, consultant, measured_at, note, updated_at: new Date().toISOString(), fitbase_comment_at: null })
+        .update({ ...val.data, consultant: consultantName, measured_at, note, updated_at: new Date().toISOString(), fitbase_comment_at: null })
         .eq('id', req.params.id).select('*').single();
       if (error) { res.status(500).json({ error: error.message }); return; }
 
@@ -288,7 +393,6 @@ export function buildMeasureRouter(): Router {
       const { data: cl } = await supabase.from('body_clients').select('fitbase_client_id').eq('id', existing.client_id).single();
       if (cl?.fitbase_client_id) {
         try {
-          // Re-fetch after update so total_cm is fresh
           await postFitbaseComment(req.params.id, String(existing.client_id));
           updated.fitbase_comment_at = new Date().toISOString();
         } catch (e) { fitbase_error = String(e); }
@@ -322,7 +426,7 @@ export function buildMeasureRouter(): Router {
   return r;
 }
 
-// Fitbase clients sync — call once on deploy + weekly via cron
+// Fitbase clients sync — cron endpoint + shared runClientsSync
 export function buildClientsSyncRoute(): Router {
   const r = Router();
   r.get('/run/clients-sync', async (req, res) => {
@@ -331,31 +435,8 @@ export function buildClientsSyncRoute(): Router {
       res.status(401).json({ error: 'Unauthorized' }); return;
     }
     try {
-      const clients = await paginateGet('/client', { page_size: 200 }, 'clients-sync');
-      const rows = clients
-        .map(c => {
-          const phoneRaw = typeof c.phone === 'object' && c.phone !== null
-            ? String((c.phone as Record<string, unknown>).number || '')
-            : String(c.phone || '');
-          return {
-            fitbase_client_id: Number(c.id),
-            name:              String(c.name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()),
-            phone:             phoneRaw,
-            synced_at:         new Date().toISOString(),
-          };
-        })
-        .filter(c => c.fitbase_client_id && c.name);
-
-      let upserted = 0;
-      const BS = 200;
-      for (let i = 0; i < rows.length; i += BS) {
-        const { error } = await supabase
-          .from('fitbase_clients_cache')
-          .upsert(rows.slice(i, i + BS), { onConflict: 'fitbase_client_id' });
-        if (error) throw error;
-        upserted += Math.min(BS, rows.length - i);
-      }
-      res.json({ ok: true, total: rows.length, upserted });
+      const result = await runClientsSync();
+      res.json(result);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
   return r;

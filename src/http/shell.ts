@@ -1,13 +1,17 @@
 import fs   from 'fs';
 import path  from 'path';
 import express, { Application } from 'express';
-import { env } from '../config';
-import { makeToken, verifyToken, getToken, COOKIE_NAME, COOKIE_MAX_S, checkRate, recordFail, clearFails } from './auth';
+import { supabase } from '../db/supabase';
+import { makeToken, getSession, COOKIE_NAME, COOKIE_MAX_S, checkRate, recordFail, clearFails } from './auth';
 
 const SHELL_APP_JS = fs.readFileSync(
   path.join(__dirname, '../../public/shell-app.js'),
   'utf8',
 );
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 // ── Login page HTML ──────────────────────────────────────────────────────────
 
@@ -37,7 +41,7 @@ body{display:flex;align-items:center;justify-content:center}
   color:#fff;font-weight:700;font-size:18px}
 h1{font-size:22px;font-weight:700;margin-bottom:5px;color:#1a202c}
 .sub{font-size:13px;color:#64748b;margin-bottom:28px}
-input[type=password]{width:100%;padding:12px 14px;margin-bottom:14px;
+input[type=text],input[type=password]{width:100%;padding:12px 14px;margin-bottom:14px;
   border:1.5px solid rgba(255,255,255,0.65);border-radius:10px;
   background:rgba(255,255,255,0.82);font-size:14px;font-family:inherit;
   outline:none;color:#1a202c;transition:border-color .15s}
@@ -59,30 +63,32 @@ input:focus{border-color:var(--brand)}
   <div class="logo">SW</div>
   <h1>SlimWay</h1>
   <p class="sub">Помощник администратора</p>
+  <input type="text" id="login" placeholder="Логин" autocomplete="username" autocapitalize="none" spellcheck="false">
   <input type="password" id="pw" placeholder="Пароль" autocomplete="current-password">
   <button class="btn" id="btn">Войти</button>
   <div class="err" id="err"></div>
 </div>
 <script>
-var pw=document.getElementById('pw'),btn=document.getElementById('btn'),err=document.getElementById('err');
-function login(){
+var login=document.getElementById('login'),pw=document.getElementById('pw'),btn=document.getElementById('btn'),err=document.getElementById('err');
+function doLogin(){
   err.textContent='';btn.disabled=true;
-  fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw.value})})
+  fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:login.value.trim(),password:pw.value})})
     .then(function(r){return r.json().then(function(d){return{ok:r.ok,status:r.status,d:d}});})
     .then(function(v){
       if(v.ok){
         var rt=new URLSearchParams(location.search).get('returnTo');
         location.href=(rt&&rt.startsWith('/')&&!rt.startsWith('//'))?rt:'/';
       }else{
-        err.textContent=v.status===429?'Слишком много попыток, попробуйте через '+(v.d&&v.d.wait_min||'?')+' мин':'Неверный пароль';
+        err.textContent=v.status===429?'Слишком много попыток, попробуйте через '+(v.d&&v.d.wait_min||'?')+' мин':'Неверный логин или пароль';
         btn.disabled=false;pw.value='';pw.focus();
       }
     })
     .catch(function(){err.textContent='Нет связи с сервером';btn.disabled=false;});
 }
-btn.addEventListener('click',login);
-pw.addEventListener('keydown',function(e){if(e.key==='Enter')login();});
-pw.focus();
+btn.addEventListener('click',doLogin);
+pw.addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
+login.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();pw.focus();}});
+login.focus();
 </script>
 </body>
 </html>`;
@@ -198,7 +204,7 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       <button class="tab-btn" id="tab-btn-kviz">📝 <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
       <button class="tab-btn" id="tab-btn-measure">📏 Замеры</button>
     </div>
-    <button class="logout-btn" id="logout-btn">Выйти</button>
+    <button class="logout-btn" id="logout-btn"><!--DNAME--> · Выйти</button>
   </div>
   <div id="panes">
     <div class="pane" id="agent-pane">
@@ -266,40 +272,61 @@ export function mountShellRoutes(app: Application): void {
 
   // Login page: redirect to / if already authed
   app.get('/login', (req, res) => {
-    const token = getToken(req);
-    if (token && verifyToken(token)) { res.redirect(302, '/'); return; }
+    if (getSession(req)) { res.redirect(302, '/'); return; }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(LOGIN_HTML);
   });
 
-  // Shell page: redirect to /login if not authed
+  // Shell page: redirect to /login if not authed; inject display_name
   app.get('/', (req, res) => {
-    const token = getToken(req);
-    if (!token || !verifyToken(token)) {
-      res.redirect(302, '/login'); return;
-    }
+    const session = getSession(req);
+    if (!session) { res.redirect(302, '/login'); return; }
+    const html = SHELL_HTML.replace('<!--DNAME-->', escapeHtml(session.display_name));
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(SHELL_HTML);
+    res.send(html);
+  });
+
+  // GET /api/me
+  app.get('/api/me', (req, res) => {
+    const session = getSession(req);
+    if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    res.json({ login: session.login, display_name: session.display_name, role: session.role });
   });
 
   // POST /api/login
-  app.post('/api/login', (req, res) => {
-    const ip   = String(req.ip || req.socket.remoteAddress || '');
-    const rate = checkRate(ip);
+  app.post('/api/login', async (req, res) => {
+    const ip    = String(req.ip || req.socket.remoteAddress || '');
+    const login = String((req.body as Record<string, unknown>)?.login || '').trim().toLowerCase();
+    const pw    = String((req.body as Record<string, unknown>)?.password || '');
+
+    if (!login) { res.status(400).json({ error: 'Login required' }); return; }
+
+    const rateKey = `${login}:${ip}`;
+    const rate = checkRate(rateKey);
     if (!rate.ok) { res.status(429).json({ error: 'Too many attempts', wait_min: rate.waitMin }); return; }
 
-    const pw = (req.body as Record<string, unknown>)?.password;
-    if (!env.WINDOW_PASSWORD || String(pw) !== env.WINDOW_PASSWORD) {
-      recordFail(ip);
-      res.status(401).json({ error: 'Invalid password' }); return;
+    try {
+      const { data, error } = await supabase.rpc('app_check_login', { p_login: login, p_password: pw });
+      const user = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+      if (error || !user?.id) {
+        recordFail(rateKey);
+        res.status(401).json({ error: 'Invalid credentials' }); return;
+      }
+      clearFails(rateKey);
+      const token = makeToken({
+        id:           String(user.id),
+        login:        String(user.login),
+        display_name: String(user.display_name),
+        role:         String(user.role),
+      });
+      res.setHeader('Set-Cookie',
+        `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_S}; Path=/`,
+      );
+      res.json({ ok: true, display_name: String(user.display_name) });
+    } catch (e) {
+      recordFail(rateKey);
+      res.status(500).json({ error: String(e) });
     }
-    clearFails(ip);
-    const token = makeToken();
-    res.setHeader('Set-Cookie', [
-      `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_S}; Path=/`,
-      `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/window`,
-    ]);
-    res.json({ ok: true });
   });
 
   // POST /api/logout

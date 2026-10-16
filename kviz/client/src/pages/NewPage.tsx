@@ -2,8 +2,6 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiGet, apiPost } from '../api';
 
-const CONSULTANT_KEY = 'sw_consultant';
-
 export default function NewPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -24,12 +22,10 @@ export default function NewPage() {
         }
       }
 
-      const consultant = localStorage.getItem(CONSULTANT_KEY) ?? 'admin';
       const s = await apiPost('/api/sessions', {
-        consultant,
-        fitbase_lead_id: leadId   || undefined,
-        client_name:    name      || undefined,
-        client_phone:   phone     || undefined,
+        fitbase_lead_id: leadId || undefined,
+        client_name:     name  || undefined,
+        client_phone:    phone || undefined,
       });
       navigate(`/q/${s.id}/1`, { replace: true });
     }
