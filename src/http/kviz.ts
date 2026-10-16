@@ -141,6 +141,7 @@ function buildRouter(): Router {
 
   // Serve kviz client static files and SPA fallback
   if (fs.existsSync(CLIENT_DIST)) {
+    console.log('[kviz] dist found:', CLIENT_DIST);
     // Allow same-origin iframe embedding
     router.use('/kviz', (_req: Request, res: Response, next: NextFunction) => {
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -152,7 +153,7 @@ function buildRouter(): Router {
       res.sendFile(path.join(CLIENT_DIST, 'index.html'));
     });
   } else {
-    console.warn('[kviz] client dist not found at', CLIENT_DIST, '— /kviz will return 503 until built');
+    console.warn('[kviz] dist NOT found:', CLIENT_DIST);
     router.get('/kviz', (_req, res) => res.status(503).send('kviz client not built — run npm run build:kviz'));
   }
 
