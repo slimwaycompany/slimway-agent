@@ -24,6 +24,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^20.17.0",
     "@types/nodemailer": "^6.4.17",
+    "playwright": "^1.64.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
