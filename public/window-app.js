@@ -1,5 +1,10 @@
 (function () {
   'use strict';
+  // Guard: /window must never load inside an iframe
+  if (window.self !== window.top) {
+    document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#eef2f7;padding:24px;box-sizing:border-box"><div style="text-align:center"><p style="font-size:15px;font-weight:600;margin:0 0 12px">Ошибка: вместо квалификатора загрузилось окно</p><a href="/kviz/" target="_top" style="display:inline-block;padding:9px 18px;background:#02BDB6;color:#fff;border-radius:8px;text-decoration:none;font-size:14px">Открыть /kviz/ в новой вкладке</a></div></div>';
+    return;
+  }
   const $ = id => document.getElementById(id);
   const LEAD_URL   = window.LEAD_URL   || '';
   const CLIENT_URL = window.CLIENT_URL || '';
@@ -84,6 +89,16 @@
         iframe = document.createElement('iframe');
         iframe.id = 'kviz-iframe';
         iframe.allow = 'clipboard-write';
+        iframe.onload = function () {
+          try {
+            if (!iframe.contentWindow.__KVIZ__) {
+              pane.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:sans-serif;background:#eef2f7">' +
+                '<p style="margin:0;font-size:15px;font-weight:600">Квалификатор не загружен</p>' +
+                '<a href="/kviz/" target="_blank" rel="noopener" style="padding:9px 18px;background:#02BDB6;color:#fff;border-radius:8px;text-decoration:none;font-size:14px">Открыть /kviz/ в новой вкладке</a>' +
+                '</div>';
+            }
+          } catch (e) {}
+        };
         pane.appendChild(iframe);
         iframe.src = kvizUrl || '/kviz/';
       } else if (kvizUrl) {
@@ -128,6 +143,10 @@
       var el = $('kviz-title-text');
       if (el) el.textContent = d.text ? ' · ' + d.text : '';
     }
+    if (d.type === 'kviz:auth-fail') {
+      var pane = $('tab-kviz');
+      if (pane) pane.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:sans-serif;background:#eef2f7"><p style="margin:0;font-size:15px;font-weight:600">Сессия истекла</p><a href="/kviz/" target="_blank" rel="noopener" style="padding:9px 18px;background:#02BDB6;color:#fff;border-radius:8px;text-decoration:none;font-size:14px">Открыть /kviz/ в новой вкладке</a></div>';
+    }
     if (d.type === 'kviz:done') {
       var labels = { hot: '🔥 Горячий', warm: '🌤 Тёплый', cold: '❄️ Холодный', stop: '🚫 Стоп', postpone: '⏸ Отложен' };
       showToast('Квалификация сохранена: ' + (labels[d.temperature] || d.temperature || ''));
@@ -158,6 +177,10 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }),
     });
     if (res.ok) {
+      const returnTo = new URLSearchParams(location.search).get('returnTo');
+      if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+        window.location.href = returnTo; return;
+      }
       $('login-screen').style.display = 'none';
       showApp();
       fetchState();

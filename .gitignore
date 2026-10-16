@@ -3,7 +3,7 @@ dist/
 .env
 import/
 *.log
-квиз/client/node_modules/
-квиз/client/dist/
-квиз/server/node_modules/
-квиз/server/dist/
+kviz/client/node_modules/
+kviz/client/dist/
+kviz/server/node_modules/
+kviz/server/dist/

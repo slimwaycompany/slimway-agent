@@ -99,6 +99,7 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 <meta name="theme-color" content="#02BDB6">
 <link rel="manifest" href="/window/manifest.json">
 <title>SlimWay — помощник</title>
+<script>if(window.self!==window.top){document.addEventListener('DOMContentLoaded',function(){document.body.innerHTML='<div style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#eef2f7;padding:24px;box-sizing:border-box"><div style="text-align:center"><p style="font-size:15px;font-weight:600;margin:0 0 12px">Ошибка: вместо квалификатора загрузилось окно</p><a href="/kviz/" target="_top" style="display:inline-block;padding:9px 18px;background:#02BDB6;color:#fff;border-radius:8px;text-decoration:none;font-size:14px">Открыть /kviz/ в новой вкладке</a></div></div>';});}</script>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{

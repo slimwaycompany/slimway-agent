@@ -4,7 +4,7 @@ import express, { Router, Application, Request, Response, NextFunction } from 'e
 import { supabase } from '../db/supabase';
 import { getToken, verifyToken } from './window';
 
-const CLIENT_DIST = path.join(__dirname, '../../квиз/client/dist');
+const CLIENT_DIST = path.resolve(process.cwd(), 'kviz', 'client', 'dist');
 
 function requireKvizAuth(req: Request, res: Response): boolean {
   const token = getToken(req);

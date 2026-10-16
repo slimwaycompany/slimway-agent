@@ -313,8 +313,8 @@ async function insertRun(
 
 // ── Window page ───────────────────────────────────────────────────────────────
 
-mountWindowRoutes(app);
 mountKvizRoutes(app);
+mountWindowRoutes(app);
 
 // ── Startup: clear stale locks and orphaned running job_runs ──────────────────
 
