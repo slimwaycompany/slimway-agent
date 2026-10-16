@@ -1,0 +1,300 @@
+import fs   from 'fs';
+import path  from 'path';
+import express, { Application } from 'express';
+import { env } from '../config';
+import { makeToken, verifyToken, getToken, COOKIE_NAME, COOKIE_MAX_S, checkRate, recordFail, clearFails } from './auth';
+
+const SHELL_APP_JS = fs.readFileSync(
+  path.join(__dirname, '../../public/shell-app.js'),
+  'utf8',
+);
+
+// ── Login page HTML ──────────────────────────────────────────────────────────
+
+const LOGIN_HTML = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SlimWay — Вход</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--brand:#02BDB6;--accent:#263CD9;--red:#ef4444}
+html,body{height:100%;font-family:'Manrope',system-ui,sans-serif;background:#eef2f7}
+body{display:flex;align-items:center;justify-content:center}
+.blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:.22;pointer-events:none;z-index:0}
+.b1{width:600px;height:600px;background:var(--brand);top:-200px;right:-150px}
+.b2{width:500px;height:500px;background:var(--accent);bottom:-150px;left:-100px}
+.card{position:relative;z-index:1;width:320px;padding:40px 36px;
+  background:rgba(255,255,255,0.55);backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
+  border:1px solid rgba(255,255,255,0.65);border-radius:22px;
+  box-shadow:0 4px 32px rgba(2,49,100,0.10);text-align:center}
+.logo{width:48px;height:48px;margin:0 auto 14px;border-radius:14px;
+  background:linear-gradient(135deg,var(--brand),var(--accent));
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;font-size:18px}
+h1{font-size:22px;font-weight:700;margin-bottom:5px;color:#1a202c}
+.sub{font-size:13px;color:#64748b;margin-bottom:28px}
+input[type=password]{width:100%;padding:12px 14px;margin-bottom:14px;
+  border:1.5px solid rgba(255,255,255,0.65);border-radius:10px;
+  background:rgba(255,255,255,0.82);font-size:14px;font-family:inherit;
+  outline:none;color:#1a202c;transition:border-color .15s}
+input:focus{border-color:var(--brand)}
+.btn{width:100%;padding:12px;border:none;border-radius:10px;
+  background:linear-gradient(135deg,var(--brand),var(--accent));
+  color:#fff;font-size:15px;font-weight:600;font-family:inherit;
+  cursor:pointer;transition:opacity .15s,transform .1s}
+.btn:hover{opacity:.9}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.6;cursor:not-allowed}
+.err{margin-top:12px;font-size:13px;color:var(--red);min-height:20px}
+</style>
+</head>
+<body>
+<div class="blob b1"></div>
+<div class="blob b2"></div>
+<div class="card">
+  <div class="logo">SW</div>
+  <h1>SlimWay</h1>
+  <p class="sub">Помощник администратора</p>
+  <input type="password" id="pw" placeholder="Пароль" autocomplete="current-password">
+  <button class="btn" id="btn">Войти</button>
+  <div class="err" id="err"></div>
+</div>
+<script>
+var pw=document.getElementById('pw'),btn=document.getElementById('btn'),err=document.getElementById('err');
+function login(){
+  err.textContent='';btn.disabled=true;
+  fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw.value})})
+    .then(function(r){return r.json().then(function(d){return{ok:r.ok,status:r.status,d:d}});})
+    .then(function(v){
+      if(v.ok){
+        var rt=new URLSearchParams(location.search).get('returnTo');
+        location.href=(rt&&rt.startsWith('/')&&!rt.startsWith('//'))?rt:'/';
+      }else{
+        err.textContent=v.status===429?'Слишком много попыток, попробуйте через '+(v.d&&v.d.wait_min||'?')+' мин':'Неверный пароль';
+        btn.disabled=false;pw.value='';pw.focus();
+      }
+    })
+    .catch(function(){err.textContent='Нет связи с сервером';btn.disabled=false;});
+}
+btn.addEventListener('click',login);
+pw.addEventListener('keydown',function(e){if(e.key==='Enter')login();});
+pw.focus();
+</script>
+</body>
+</html>`;
+
+// ── Shell page HTML ──────────────────────────────────────────────────────────
+
+const SHELL_HTML = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#02BDB6">
+<title>SlimWay</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--brand:#02BDB6;--accent:#263CD9;--red:#ef4444;--glass:rgba(255,255,255,0.55);--border:rgba(255,255,255,0.65);--shadow:0 4px 24px rgba(2,49,100,0.08)}
+html,body{height:100%;overflow:hidden;font-family:'Manrope',system-ui,sans-serif;background:#eef2f7;color:#1a202c}
+.blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:.18;pointer-events:none;z-index:0}
+.b1{width:600px;height:600px;background:var(--brand);top:-200px;right:-150px}
+.b2{width:500px;height:500px;background:var(--accent);bottom:-150px;left:-100px}
+
+/* Work area */
+#work-area{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
+#top-bar{height:44px;flex-shrink:0;display:none;align-items:center;justify-content:space-between;
+  padding:0 10px;background:var(--glass);backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);border-bottom:1px solid var(--border);
+  box-shadow:0 1px 8px rgba(2,49,100,0.06)}
+.tabs{display:flex;gap:2px}
+.tab-btn{background:none;border:none;cursor:pointer;padding:7px 14px;border-radius:8px;
+  font-size:13px;font-weight:600;font-family:inherit;color:#64748b;
+  display:inline-flex;align-items:center;gap:5px;transition:background .15s,color .15s}
+.tab-btn:hover{background:rgba(2,189,182,0.1);color:#1a202c}
+.tab-btn.active{background:rgba(2,189,182,0.13);color:var(--brand)}
+.tbadge{min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;
+  font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;
+  padding:0 4px;font-family:inherit}
+.logout-btn{background:rgba(255,255,255,0.6);border:1px solid var(--border);border-radius:8px;
+  padding:5px 12px;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;
+  color:#64748b;transition:opacity .15s}
+.logout-btn:hover{opacity:.75}
+
+/* Panes */
+#panes{flex:1;overflow:hidden;position:relative}
+.pane{position:absolute;inset:0;display:flex;flex-direction:row}
+.pane.hidden{display:none}
+iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
+
+/* Side buttons */
+.side-btn{width:40px;flex-shrink:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.32);backdrop-filter:blur(8px);
+  border:none;border-left:1px solid var(--border);
+  cursor:pointer;font-family:inherit;transition:background .15s;position:relative}
+.side-btn.left{border-left:none;border-right:1px solid var(--border)}
+.side-btn:hover{background:rgba(2,189,182,0.12)}
+.side-text{writing-mode:vertical-rl;transform:rotate(180deg);
+  font-size:11px;font-weight:600;color:#64748b;letter-spacing:.05em;white-space:nowrap}
+.sbadge{position:absolute;top:8px;min-width:18px;height:18px;border-radius:9px;
+  background:var(--red);color:#fff;font-size:11px;font-weight:700;
+  display:none;align-items:center;justify-content:center;padding:0 4px}
+
+/* Choice screen overlay */
+#choice-screen{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+  background:rgba(238,242,247,0.55);backdrop-filter:blur(6px)}
+.choice-card{background:var(--glass);backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid var(--border);
+  border-radius:24px;box-shadow:0 4px 32px rgba(2,49,100,0.10);
+  padding:40px 36px 36px;text-align:center;position:relative;z-index:1}
+.choice-logo{width:50px;height:50px;margin:0 auto 14px;border-radius:14px;
+  background:linear-gradient(135deg,var(--brand),var(--accent));
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;font-size:19px}
+.choice-title{font-size:22px;font-weight:700;margin-bottom:5px}
+.choice-sub{font-size:13px;color:#64748b;margin-bottom:28px}
+.choice-btns{display:flex;gap:16px;justify-content:center}
+.choice-btn{width:152px;height:100px;background:rgba(255,255,255,0.42);
+  backdrop-filter:blur(8px);border:1.5px solid var(--border);border-radius:16px;
+  cursor:pointer;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:7px;font-family:inherit;position:relative;
+  transition:background .15s,border-color .15s,box-shadow .15s}
+.choice-btn:hover{background:rgba(2,189,182,0.1);border-color:rgba(2,189,182,0.45);
+  box-shadow:0 0 0 4px rgba(2,189,182,0.08)}
+.choice-icon{font-size:28px;line-height:1}
+.choice-label{font-size:14px;font-weight:600;color:#1a202c}
+.cbadge{position:absolute;top:8px;right:8px;min-width:20px;height:20px;border-radius:10px;
+  background:var(--red);color:#fff;font-size:12px;font-weight:700;
+  display:none;align-items:center;justify-content:center;padding:0 5px}
+
+/* Toast */
+#shell-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);
+  background:rgba(255,255,255,0.88);backdrop-filter:blur(12px);border:1px solid var(--border);
+  border-radius:12px;padding:10px 20px;font-size:14px;font-weight:600;z-index:200;
+  opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;
+  box-shadow:var(--shadow);white-space:nowrap}
+#shell-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media(max-width:767px){
+  .side-btn{display:none!important}
+  .choice-btns{gap:12px}
+  .choice-btn{width:136px;height:90px}
+}
+</style>
+</head>
+<body>
+<div class="blob b1"></div>
+<div class="blob b2"></div>
+
+<div id="work-area">
+  <div id="top-bar">
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-btn-agent">🐕 Агент<span class="tbadge" id="badge-tab-agent">0</span></button>
+      <button class="tab-btn" id="tab-btn-kviz">📝 <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
+    </div>
+    <button class="logout-btn" id="logout-btn">Выйти</button>
+  </div>
+  <div id="panes">
+    <div class="pane" id="agent-pane">
+      <iframe class="frame" id="agent-iframe" src="/window" allow="notifications; clipboard-write"></iframe>
+      <button class="side-btn" id="side-to-kviz">
+        <span class="sbadge" id="badge-side-kviz">0</span>
+        <span class="side-text">Квалификация</span>
+      </button>
+    </div>
+    <div class="pane hidden" id="kviz-pane">
+      <button class="side-btn left" id="side-to-agent">
+        <span class="sbadge" id="badge-side-agent">0</span>
+        <span class="side-text">Агент</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="choice-screen">
+  <div class="choice-card">
+    <div class="choice-logo">SW</div>
+    <h1 class="choice-title">SlimWay</h1>
+    <p class="choice-sub">Выберите раздел</p>
+    <div class="choice-btns">
+      <button class="choice-btn" id="choice-agent">
+        <span class="cbadge" id="badge-choice-agent">0</span>
+        <span class="choice-icon">🐕</span>
+        <span class="choice-label">Агент</span>
+      </button>
+      <button class="choice-btn" id="choice-kviz">
+        <span class="cbadge" id="badge-choice-kviz">0</span>
+        <span class="choice-icon">📝</span>
+        <span class="choice-label">Квалификация</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="shell-toast"></div>
+<script src="/shell-app.js"></script>
+</body>
+</html>`;
+
+// ── Routes ───────────────────────────────────────────────────────────────────
+
+export function mountShellRoutes(app: Application): void {
+
+  app.get('/shell-app.js', (_req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(SHELL_APP_JS);
+  });
+
+  // Login page: redirect to / if already authed
+  app.get('/login', (req, res) => {
+    const token = getToken(req);
+    if (token && verifyToken(token)) { res.redirect(302, '/'); return; }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(LOGIN_HTML);
+  });
+
+  // Shell page: redirect to /login if not authed
+  app.get('/', (req, res) => {
+    const token = getToken(req);
+    if (!token || !verifyToken(token)) {
+      res.redirect(302, '/login'); return;
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(SHELL_HTML);
+  });
+
+  // POST /api/login
+  app.post('/api/login', (req, res) => {
+    const ip   = String(req.ip || req.socket.remoteAddress || '');
+    const rate = checkRate(ip);
+    if (!rate.ok) { res.status(429).json({ error: 'Too many attempts', wait_min: rate.waitMin }); return; }
+
+    const pw = (req.body as Record<string, unknown>)?.password;
+    if (!env.WINDOW_PASSWORD || String(pw) !== env.WINDOW_PASSWORD) {
+      recordFail(ip);
+      res.status(401).json({ error: 'Invalid password' }); return;
+    }
+    clearFails(ip);
+    const token = makeToken();
+    res.setHeader('Set-Cookie', [
+      `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_S}; Path=/`,
+      `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/window`,
+    ]);
+    res.json({ ok: true });
+  });
+
+  // POST /api/logout
+  app.post('/api/logout', (_req, res) => {
+    res.setHeader('Set-Cookie', [
+      `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/`,
+      `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/window`,
+    ]);
+    res.json({ ok: true });
+  });
+}

@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import express, { Router, Application, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
-import { getToken, verifyToken } from './window';
+import { getToken, verifyToken } from './auth';
 
 const CLIENT_DIST = path.resolve(process.cwd(), 'kviz', 'client', 'dist');
 
@@ -142,14 +142,14 @@ function buildRouter(): Router {
   // Serve kviz client static files and SPA fallback
   if (fs.existsSync(CLIENT_DIST)) {
     console.log('[kviz] dist found:', CLIENT_DIST);
-    // Allow same-origin iframe embedding
     router.use('/kviz', (_req: Request, res: Response, next: NextFunction) => {
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       next();
     });
     router.use('/kviz', express.static(CLIENT_DIST));
-    // SPA fallback: any /kviz/* that isn't /kviz/api/* → index.html
-    router.get(/^\/kviz(?!\/api)/, (_req, res) => {
+    // SPA fallback: redirect direct browser access to shell; serve index for iframes
+    router.get(/^\/kviz(?!\/api)/, (req: Request, res: Response) => {
+      if (req.headers['sec-fetch-dest'] === 'document') { res.redirect(302, '/'); return; }
       res.sendFile(path.join(CLIENT_DIST, 'index.html'));
     });
   } else {

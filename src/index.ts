@@ -18,6 +18,7 @@ import { runProbeTasks }                              from './jobs/probeTasks';
 import { runInactive,  JOB_NAME as INACTIVE_JOB }    from './jobs/inactive';
 import { mountWindowRoutes }                          from './http/window';
 import { mountKvizRoutes }                            from './http/kviz';
+import { mountShellRoutes }                           from './http/shell';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -311,9 +312,10 @@ async function insertRun(
   });
 }
 
-// ── Window page ───────────────────────────────────────────────────────────────
+// ── Shell, window, kviz ───────────────────────────────────────────────────────
 
 app.use(express.json());
+mountShellRoutes(app);
 mountKvizRoutes(app);
 mountWindowRoutes(app);
 

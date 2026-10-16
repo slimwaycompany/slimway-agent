@@ -1,10 +1,7 @@
 (function () {
   'use strict';
-  // Guard: /window must never load inside an iframe
-  if (window.self !== window.top) {
-    document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#eef2f7;padding:24px;box-sizing:border-box"><div style="text-align:center"><p style="font-size:15px;font-weight:600;margin:0 0 12px">Ошибка: вместо квалификатора загрузилось окно</p><a href="/kviz/" target="_top" style="display:inline-block;padding:9px 18px;background:#02BDB6;color:#fff;border-radius:8px;text-decoration:none;font-size:14px">Открыть /kviz/ в новой вкладке</a></div></div>';
-    return;
-  }
+  // /window must only run inside the shell iframe
+  if (window.self === window.top) { location.replace('/'); return; }
   const $ = id => document.getElementById(id);
   const LEAD_URL   = window.LEAD_URL   || '';
   const CLIENT_URL = window.CLIENT_URL || '';
@@ -13,8 +10,6 @@
   let soundOn = localStorage.getItem('sw_sound') !== 'false';
   let notifGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
   let audioCtx = null;
-  var activeTab = 'watch';
-  var hiddenAlertCount = 0;
 
   // ── Dark mode ─────────────────────────────────────────────────────────────
   let darkMode = localStorage.getItem('sw_theme') === 'dark';
@@ -76,120 +71,17 @@
     if (window.AgentRoom && !window._agentRoom) {
       try { window._agentRoom = new AgentRoom('agent-room-wrap'); } catch(e) {}
     }
-    if (location.hash === '#kviz') switchTab('kviz');
   }
 
-  // ── Tabs ──────────────────────────────────────────────────────────────────
-  window.switchTab = function (name, kvizUrl) {
-    if (name === 'kviz') {
-      var pane = $('tab-kviz');
-      if (!pane) return;
-      var iframe = document.getElementById('kviz-iframe');
-      if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'kviz-iframe';
-        iframe.allow = 'clipboard-write';
-        iframe.onload = function () {
-          try {
-            if (!iframe.contentWindow.__KVIZ__) {
-              pane.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:sans-serif;background:#eef2f7">' +
-                '<p style="margin:0;font-size:15px;font-weight:600">Квалификатор не загружен</p>' +
-                '<a href="/kviz/" target="_blank" rel="noopener" style="padding:9px 18px;background:#02BDB6;color:#fff;border-radius:8px;text-decoration:none;font-size:14px">Открыть /kviz/ в новой вкладке</a>' +
-                '</div>';
-            }
-          } catch (e) {}
-        };
-        pane.appendChild(iframe);
-        iframe.src = kvizUrl || '/kviz/';
-      } else if (kvizUrl) {
-        iframe.src = kvizUrl;
-      }
-      $('tab-watch').classList.add('hidden');
-      pane.classList.remove('hidden');
-      $('tab-btn-watch').classList.remove('tab-active');
-      $('tab-btn-kviz').classList.add('tab-active');
-      history.replaceState(null, '', '#kviz');
-      activeTab = 'kviz';
-    } else {
-      var tabKviz  = $('tab-kviz');
-      var tabWatch = $('tab-watch');
-      if (tabKviz)  tabKviz.classList.add('hidden');
-      if (tabWatch) tabWatch.classList.remove('hidden');
-      var btnKviz  = $('tab-btn-kviz');
-      var btnWatch = $('tab-btn-watch');
-      if (btnKviz)  btnKviz.classList.remove('tab-active');
-      if (btnWatch) btnWatch.classList.add('tab-active');
-      history.replaceState(null, '', '#watch');
-      activeTab = 'watch';
-      hiddenAlertCount = 0;
-      var badge = $('watch-alert-badge');
-      if (badge) { badge.style.display = 'none'; badge.textContent = '0'; }
-    }
-  };
-
-  function showToast(text) {
-    var el = $('sw-toast');
-    if (!el) return;
-    el.textContent = text;
-    el.classList.add('show');
-    setTimeout(function () { el.classList.remove('show'); }, 3500);
-  }
-
-  window.addEventListener('message', function (e) {
-    if (e.origin !== location.origin) return;
-    var d = e.data;
-    if (!d || !d.type) return;
-    if (d.type === 'kviz:title') {
-      var el = $('kviz-title-text');
-      if (el) el.textContent = d.text ? ' · ' + d.text : '';
-    }
-    if (d.type === 'kviz:auth-fail') {
-      var pane = $('tab-kviz');
-      if (pane) pane.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:sans-serif;background:#eef2f7"><p style="margin:0;font-size:15px;font-weight:600">Сессия истекла</p><a href="/kviz/" target="_blank" rel="noopener" style="padding:9px 18px;background:#02BDB6;color:#fff;border-radius:8px;text-decoration:none;font-size:14px">Открыть /kviz/ в новой вкладке</a></div>';
-    }
-    if (d.type === 'kviz:done') {
-      var labels = { hot: '🔥 Горячий', warm: '🌤 Тёплый', cold: '❄️ Холодный', stop: '🚫 Стоп', postpone: '⏸ Отложен' };
-      showToast('Квалификация сохранена: ' + (labels[d.temperature] || d.temperature || ''));
-    }
-  });
-
-  window.addEventListener('hashchange', function () {
-    var h = location.hash.slice(1);
-    if (h === 'kviz' && activeTab !== 'kviz') window.switchTab('kviz');
-    else if (h !== 'kviz' && activeTab !== 'watch') window.switchTab('watch');
-  });
-
-  document.addEventListener('keydown', function (e) {
-    if (!$('app') || !$('app').classList.contains('visible')) return;
-    if (e.altKey && (e.key === '1' || e.code === 'Digit1')) { e.preventDefault(); window.switchTab('watch'); }
-    if (e.altKey && (e.key === '2' || e.code === 'Digit2')) { e.preventDefault(); window.switchTab('kviz'); }
-  });
-
+  // "Квалифицировать" button → tell shell to open kviz with prefilled URL
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest && e.target.closest('[data-kviz]');
-    if (btn) { e.preventDefault(); window.switchTab('kviz', btn.getAttribute('data-kviz')); }
-  });
-
-  // ── Login ─────────────────────────────────────────────────────────────────
-  async function login() {
-    const pw  = $('pw-input').value;
-    const res = await fetch('/window/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }),
-    });
-    if (res.ok) {
-      const returnTo = new URLSearchParams(location.search).get('returnTo');
-      if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
-        window.location.href = returnTo; return;
-      }
-      $('login-screen').style.display = 'none';
-      showApp();
-      fetchState();
-    } else {
-      $('login-err').textContent = 'Неверный пароль';
+    if (btn) {
+      e.preventDefault();
+      var path = btn.getAttribute('data-kviz');
+      try { window.parent.postMessage({ type: 'open-kviz', path: path }, location.origin); } catch (e2) {}
     }
-  }
-  $('pw-btn').onclick = login;
-  $('pw-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
+  });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   function esc(s) {
@@ -341,6 +233,7 @@
     });
     $('alert-count').textContent = sorted.length ? '(' + sorted.length + ')' : '';
     document.title = (sorted.length ? '(' + sorted.length + ') ' : '') + 'SlimWay — помощник';
+    try { window.parent.postMessage({ type: 'agent:alerts', count: sorted.length }, location.origin); } catch(e2) {}
     if (!sorted.length) { list.innerHTML = '<div class="empty">Всё под контролем — тревог нет</div>'; return; }
 
     list.innerHTML = sorted.map(function (a) {
@@ -524,7 +417,7 @@
   async function fetchState() {
     try {
       var res = await fetch('/window/api/state?since_id=' + since_id);
-      if (res.status === 401) { $('app').classList.remove('visible'); $('login-screen').style.display = 'flex'; return; }
+      if (res.status === 401) { try { window.parent.postMessage({ type: 'auth-required' }, location.origin); } catch(e2) {} return; }
       if (!res.ok) { showError('Ошибка сервера (' + res.status + ')'); updateStatus(null, false); return; }
       hideError();
       var data = await res.json();
@@ -537,11 +430,6 @@
       // Batch notifications: NEW_LEAD always individual; 3+ others → one batch
       var newItems = (data.new_alerts || []).filter(function (a) { return !notifiedIds.has(a.id); });
       newItems.forEach(function (a) { notifiedIds.add(a.id); since_id = Math.max(since_id, a.id); });
-      if (activeTab === 'kviz' && newItems.length > 0) {
-        hiddenAlertCount += newItems.length;
-        var badge = $('watch-alert-badge');
-        if (badge) { badge.style.display = 'inline-flex'; badge.textContent = String(hiddenAlertCount); }
-      }
       var newLeads = newItems.filter(function (a) { return a.rule === 'NEW_LEAD' || a.rule === 'NEW_LEAD_NO_TASK'; });
       var others   = newItems.filter(function (a) {
         return a.rule !== 'NEW_LEAD' && a.rule !== 'NEW_LEAD_NO_TASK' && (a.level === 'urgent' || a.level === 'important');
@@ -565,26 +453,9 @@
     }
   }
 
-  // Auto-start if cookie exists
-  fetch('/window/api/state?since_id=0').then(function (r) {
-    if (r.ok) {
-      var returnTo = new URLSearchParams(location.search).get('returnTo');
-      if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
-        window.location.href = returnTo; return;
-      }
-      $('login-screen').style.display = 'none';
-      showApp();
-      r.json().then(function (data) {
-        updateStatus(data, true);
-        renderStats(data.stats);
-        renderAlerts(data.alerts || []);
-        renderClosed(data.closed || []);
-        renderFeed(data.feed || []);
-        if (data.alerts) since_id = Math.max.apply(null, data.alerts.map(function (a) { return a.id || 0; }).concat([0]));
-      });
-    }
-  }).catch(function () {});
-
+  // Start immediately (auth is handled by shell)
+  showApp();
+  fetchState();
   setInterval(fetchState, 10000);
 
   // ── PWA service worker ────────────────────────────────────────────────────

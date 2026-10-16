@@ -1,14 +1,12 @@
-import crypto from 'crypto';
 import path   from 'path';
 import fs     from 'fs';
 import express from 'express';
 import { supabase } from '../db/supabase';
 import { env } from '../config';
 import { rawGet } from './fitbase';
+import { getToken, verifyToken, requireAuth } from './auth';
 
-const ALMATY_MS    = 5 * 3600 * 1000;
-const COOKIE_NAME  = 'swtoken';
-const COOKIE_MAX_S = 30 * 86400;
+const ALMATY_MS = 5 * 3600 * 1000;
 
 // Agent-state cache (15 s)
 let _agentStateCache: { data: unknown; at: number } | null = null;
@@ -18,48 +16,6 @@ const WINDOW_APP_JS = fs.readFileSync(
   path.join(__dirname, '../../public/window-app.js'),
   'utf8',
 );
-
-// ── Token helpers ─────────────────────────────────────────────────────────────
-
-function windowSecret(): string {
-  return env.WINDOW_SECRET || env.CRON_SECRET;
-}
-
-function makeToken(): string {
-  const exp     = Math.floor(Date.now() / 1000) + COOKIE_MAX_S;
-  const payload = Buffer.from(JSON.stringify({ exp })).toString('base64url');
-  const sig     = crypto.createHmac('sha256', windowSecret()).update(payload).digest('base64url');
-  return `${payload}.${sig}`;
-}
-
-export function verifyToken(token: string): boolean {
-  const dot = token.lastIndexOf('.');
-  if (dot <= 0) return false;
-  const payload  = token.slice(0, dot);
-  const sig      = token.slice(dot + 1);
-  const expected = crypto.createHmac('sha256', windowSecret()).update(payload).digest('base64url');
-  try {
-    const eSig = Buffer.from(expected, 'base64url');
-    const gSig = Buffer.from(sig,      'base64url');
-    if (eSig.length !== gSig.length) return false;
-    if (!crypto.timingSafeEqual(eSig, gSig)) return false;
-    const data = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { exp: number };
-    return data.exp > Math.floor(Date.now() / 1000);
-  } catch { return false; }
-}
-
-export function getToken(req: express.Request): string | null {
-  const header = req.headers.cookie || '';
-  const part   = header.split(';').map(s => s.trim()).find(s => s.startsWith(COOKIE_NAME + '='));
-  return part ? part.slice(COOKIE_NAME.length + 1) : null;
-}
-
-function requireAuth(req: express.Request, res: express.Response): boolean {
-  const token = getToken(req);
-  if (token && verifyToken(token)) return true;
-  res.status(401).json({ error: 'Unauthorized' });
-  return false;
-}
 
 // ── Feed helpers ──────────────────────────────────────────────────────────────
 
@@ -99,7 +55,7 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 <meta name="theme-color" content="#02BDB6">
 <link rel="manifest" href="/window/manifest.json">
 <title>SlimWay — помощник</title>
-<script>if(window.self!==window.top){document.addEventListener('DOMContentLoaded',function(){document.body.innerHTML='<div style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#eef2f7;padding:24px;box-sizing:border-box"><div style="text-align:center"><p style="font-size:15px;font-weight:600;margin:0 0 12px">Ошибка: вместо квалификатора загрузилось окно</p><a href="/kviz/" target="_top" style="display:inline-block;padding:9px 18px;background:#02BDB6;color:#fff;border-radius:8px;text-decoration:none;font-size:14px">Открыть /kviz/ в новой вкладке</a></div></div>';});}</script>
+<script>if(window.self===window.top){location.replace('/');}</script>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -124,12 +80,6 @@ a{color:inherit}
 .blob-2{width:500px;height:500px;background:var(--accent);bottom:-150px;left:-100px}
 [data-theme="dark"] .blob{opacity:.15}
 .glass{background:var(--glass);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid var(--c-border);border-radius:var(--radius-panel);box-shadow:var(--shadow);position:relative;z-index:1}
-#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh}
-.login-box{width:320px;padding:36px;text-align:center}
-.login-box h1{font-size:22px;font-weight:700;margin-bottom:6px}
-.login-tagline{font-size:13px;color:var(--c-muted);margin-bottom:24px}
-.login-box input{width:100%;padding:11px 14px;border:1.5px solid var(--c-border);border-radius:10px;background:var(--card);color:var(--c-text);font-size:14px;font-family:inherit;margin-bottom:12px;outline:none}
-.login-box input:focus{border-color:var(--brand)}
 .btn{padding:10px 18px;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;font-family:inherit;transition:opacity .15s,transform .1s}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:linear-gradient(135deg,var(--brand),var(--accent));color:#fff;width:100%}
@@ -245,23 +195,10 @@ a{color:inherit}
 #agent-strip-dot{width:7px;height:7px;border-radius:50%;background:var(--brand);flex-shrink:0}
 #agent-strip-dot.err{background:var(--red)}
 #agent-strip-dot.idle{background:var(--c-muted)}
-/* ── Tabs ─────────────────────────────────────────────────────────────────── */
-#tabs-bar{display:flex;flex-shrink:0;border-bottom:1px solid var(--c-border);background:var(--glass);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);z-index:10;padding:0 8px}
-.tab-btn{background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;padding:10px 14px;font-size:13px;font-weight:600;font-family:inherit;color:var(--c-muted);transition:color .15s,border-color .15s;margin-bottom:-1px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
-.tab-btn:hover{color:var(--c-text)}
-.tab-btn.tab-active{color:var(--brand);border-bottom-color:var(--brand)}
-.tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:700;padding:0 4px}
-#kviz-title-text{font-size:12px;color:var(--c-muted);font-weight:400}
-.tab-pane.hidden{display:none}
-#tab-kviz{height:calc(100vh - 45px);overflow:hidden}
-#kviz-iframe{width:100%;height:100%;border:none;display:block}
-#sw-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--card);border:1px solid var(--c-border);border-radius:12px;padding:10px 20px;font-size:14px;font-weight:600;z-index:200;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;box-shadow:var(--shadow);white-space:nowrap}
-#sw-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media(min-width:1100px){
   body{overflow:hidden}
   #app.visible{display:flex;flex-direction:column;height:100vh;overflow:hidden}
-  .tab-pane{flex:1;min-height:0;display:flex;flex-direction:column}
-  #tab-kviz{height:auto}
+  #tab-watch{flex:1;min-height:0;display:flex;flex-direction:column}
   .page{flex:1;min-height:0;display:flex;flex-direction:column;max-width:none;padding:12px 16px 0}
   .page-hdr{flex-shrink:0}
   .columns{flex:1;min-height:0;display:flex;flex-direction:row;gap:10px;padding-bottom:12px}
@@ -281,23 +218,8 @@ a{color:inherit}
 <div class="blob blob-1"></div>
 <div class="blob blob-2"></div>
 
-<div id="login-screen">
-  <div class="login-box glass">
-    <div class="hdr-logo" style="margin:0 auto 14px">SW</div>
-    <h1>SlimWay</h1>
-    <p class="login-tagline">Помощник администратора</p>
-    <input type="password" id="pw-input" placeholder="Пароль" autocomplete="current-password">
-    <button class="btn btn-primary" id="pw-btn">Войти</button>
-    <div id="login-err"></div>
-  </div>
-</div>
-
 <div id="app">
-  <div id="tabs-bar">
-    <button id="tab-btn-watch" class="tab-btn tab-active" onclick="switchTab('watch')">🐕 Овчарка<span id="watch-alert-badge" class="tab-badge" style="display:none">0</span></button>
-    <button id="tab-btn-kviz" class="tab-btn" onclick="switchTab('kviz')">📝 Квалификация<span id="kviz-title-text"></span></button>
-  </div>
-  <div id="tab-watch" class="tab-pane">
+  <div id="tab-watch">
   <div class="page">
     <div class="page-hdr">
       <div class="hdr">
@@ -336,8 +258,6 @@ a{color:inherit}
     </div>
   </div>
   </div>
-  <div id="tab-kviz" class="tab-pane hidden"></div>
-  <div id="sw-toast"></div>
 </div>
 
 <div class="modal-overlay" id="help-modal" style="display:none">
@@ -372,7 +292,9 @@ export function mountWindowRoutes(app: express.Application): void {
     { maxAge: 0 },
   ));
 
-  app.get('/window', (_req, res) => {
+  app.get('/window', (req, res) => {
+    // Redirect to shell when opened directly in browser
+    if (req.headers['sec-fetch-dest'] === 'document') { res.redirect(302, '/'); return; }
     const leadUrl   = (env.FITBASE_LEAD_URL_TEMPLATE   || '').replace(/'/g, "\\'");
     const clientUrl = (env.FITBASE_CLIENT_URL_TEMPLATE || '').replace(/'/g, "\\'");
     const html = HTML_TEMPLATE
@@ -403,19 +325,6 @@ export function mountWindowRoutes(app: express.Application): void {
   app.get('/window/sw.js', (_req, res) => {
     res.setHeader('Content-Type', 'application/javascript');
     res.send('self.addEventListener("fetch",e=>e.respondWith(fetch(e.request)));');
-  });
-
-  app.post('/window/login', (req, res) => {
-    const pw = (req.body as Record<string, unknown>)?.password;
-    if (!env.WINDOW_PASSWORD || String(pw) !== env.WINDOW_PASSWORD) {
-      res.status(401).json({ error: 'Invalid password' }); return;
-    }
-    const token = makeToken();
-    res.setHeader('Set-Cookie', [
-      `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_S}; Path=/`,
-      `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/window`,
-    ]);
-    res.json({ ok: true });
   });
 
   app.get('/window/api/state', async (req, res) => {
