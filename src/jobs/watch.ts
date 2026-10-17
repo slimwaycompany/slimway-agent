@@ -968,7 +968,7 @@ async function processShiftRules(
         const cutoff = new Date(today + 'T03:15:00Z').toISOString(); // 08:15 YEK
         const { data: lateShifts } = await supabase
           .from('staff_shifts').select('user_id, user_name, started_at')
-          .eq('date', today).gt('started_at', cutoff);
+          .eq('shift_date', today).gt('started_at', cutoff);
         for (const s of (lateShifts ?? []) as Record<string, unknown>[]) {
           const key = `SHIFT_LATE:${today}:${String(s.user_id)}`;
           activeKeys.add(key);
@@ -993,7 +993,7 @@ async function processShiftRules(
     try {
       const { data: autoClosed } = await supabase
         .from('staff_shifts').select('user_id, user_name, started_at')
-        .eq('status', 'auto_closed').eq('date', yesterday);
+        .eq('status', 'auto_closed').eq('shift_date', yesterday);
       for (const s of (autoClosed ?? []) as Record<string, unknown>[]) {
         const key = `SHIFT_NOT_CLOSED:${yesterday}:${String(s.user_id)}`;
         activeKeys.add(key);

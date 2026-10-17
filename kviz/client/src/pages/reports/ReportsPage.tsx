@@ -6,17 +6,14 @@ interface ShiftRecord {
   id: string;
   user_id: string;
   user_name: string;
-  user_login: string;
-  date: string;
+  shift_date: string;
   started_at: string;
   ended_at: string | null;
   status: string;
   replacing: string | null;
   comment: string | null;
-  comment_end: string | null;
   sheet_synced_start: boolean;
   sheet_synced_end: boolean;
-  sheet_sync_attempts: number;
 }
 
 interface TaskDone {
@@ -130,12 +127,11 @@ export default function ReportsPage() {
     setShiftSaving(true); setShiftError(null);
     try {
       const body: Record<string, unknown> = {};
-      if (editShift.started_at  !== undefined) body.started_at  = editShift.started_at;
-      if (editShift.ended_at    !== undefined) body.ended_at    = editShift.ended_at;
-      if (editShift.status      !== undefined) body.status      = editShift.status;
-      if (editShift.replacing   !== undefined) body.replacing   = editShift.replacing;
-      if (editShift.comment     !== undefined) body.comment     = editShift.comment;
-      if (editShift.comment_end !== undefined) body.comment_end = editShift.comment_end;
+      if (editShift.started_at !== undefined) body.started_at = editShift.started_at;
+      if (editShift.ended_at   !== undefined) body.ended_at   = editShift.ended_at;
+      if (editShift.status     !== undefined) body.status     = editShift.status;
+      if (editShift.replacing  !== undefined) body.replacing  = editShift.replacing;
+      if (editShift.comment    !== undefined) body.comment    = editShift.comment;
       const r = await fetch(`/kviz/api/shifts/${editShift.id}`, {
         method: 'PATCH', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -153,7 +149,7 @@ export default function ReportsPage() {
     const map = new Map<string, number>();
     for (const sh of shifts) {
       if (!sh.started_at || !sh.ended_at) continue;
-      const key = `${sh.user_name}|${sh.date.slice(0, 7)}`;
+      const key = `${sh.user_name}|${sh.shift_date.slice(0, 7)}`;
       map.set(key, (map.get(key) ?? 0) + calcHoursNum(sh));
     }
     return [...map.entries()]
@@ -174,12 +170,12 @@ export default function ReportsPage() {
       return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')} ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
     };
     const rows = [
-      ['Дата','Сотрудник','Логин','Начало','Конец','Часов','Статус','Комментарий','Конец комм.','Замена','Таблица'],
+      ['Дата','Сотрудник','Начало','Конец','Часов','Статус','Комментарий','Замена','Таблица'],
       ...shifts.map(sh => [
-        sh.date, sh.user_name, sh.user_login,
+        sh.shift_date, sh.user_name,
         fmtYek(sh.started_at), fmtYek(sh.ended_at),
         calcHours(sh), sh.status,
-        sh.comment ?? '', sh.comment_end ?? '', sh.replacing ?? '',
+        sh.comment ?? '', sh.replacing ?? '',
         sh.sheet_synced_end ? '1' : '0',
       ]),
     ];
@@ -239,7 +235,7 @@ export default function ReportsPage() {
             <div key={sh.id} style={shiftRowSt(sh)}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={s.rowTitle}>
-                  {fmtDate(sh.date)} · {sh.user_name}
+                  {fmtDate(sh.shift_date)} · {sh.user_name}
                   {sh.replacing && <span style={s.muted}> (замена: {sh.replacing})</span>}
                 </div>
                 <div style={s.rowMeta}>
@@ -247,12 +243,8 @@ export default function ReportsPage() {
                   {' · '}{SHIFT_STATUS[sh.status] ?? sh.status}
                   {sh.ended_at && !sh.sheet_synced_end && <span style={s.warn}> ! не в таблице</span>}
                 </div>
-                {(sh.comment || sh.comment_end) && (
-                  <div style={{ ...s.rowMeta, marginTop: 2 }}>
-                    {sh.comment && <span>Начало: {sh.comment}</span>}
-                    {sh.comment && sh.comment_end && ' · '}
-                    {sh.comment_end && <span>Конец: {sh.comment_end}</span>}
-                  </div>
+                {sh.comment && (
+                  <div style={{ ...s.rowMeta, marginTop: 2 }}>{sh.comment}</div>
                 )}
               </div>
               <button style={s.editBtn} onClick={() => setEditShift({ ...sh })}>Ред.</button>
@@ -354,11 +346,8 @@ export default function ReportsPage() {
             <Field label="Замена">
               <input style={s.inp} value={editShift.replacing ?? ''} onChange={e => setEditShift(p => ({ ...p!, replacing: e.target.value || null }))} />
             </Field>
-            <Field label="Комментарий (начало)">
+            <Field label="Комментарий">
               <input style={s.inp} value={editShift.comment ?? ''} onChange={e => setEditShift(p => ({ ...p!, comment: e.target.value || null }))} />
-            </Field>
-            <Field label="Комментарий (конец)">
-              <input style={s.inp} value={editShift.comment_end ?? ''} onChange={e => setEditShift(p => ({ ...p!, comment_end: e.target.value || null }))} />
             </Field>
             <div style={s.mBtns}>
               <button style={s.cancelBtn} onClick={() => { setEditShift(null); setShiftError(null); }}>Отмена</button>
