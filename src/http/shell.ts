@@ -204,6 +204,7 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       <button class="tab-btn active" id="tab-btn-agent">🐕 Агент<span class="tbadge" id="badge-tab-agent">0</span></button>
       <button class="tab-btn" id="tab-btn-kviz">📝 <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
       <button class="tab-btn" id="tab-btn-measure">📏 Замеры</button>
+      <!--REPORTS_TAB_BTN-->
     </div>
     <button class="logout-btn" id="logout-btn"><!--DNAME--> · Выйти</button>
   </div>
@@ -238,7 +239,9 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       <button class="side-btn left" id="side-to-kviz2">
         <span class="side-text">Квалификация</span>
       </button>
+      <!--REPORTS_SIDE_FROM_MEASURE-->
     </div>
+    <!--REPORTS_PANE-->
   </div>
 </div>
 
@@ -267,6 +270,7 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
         <span class="choice-icon">📏</span>
         <span class="choice-label">Замеры</span>
       </button>
+      <!--REPORTS_CHOICE_BTN-->
     </div>
   </div>
 </div>
@@ -293,11 +297,29 @@ export function mountShellRoutes(app: Application): void {
     res.send(LOGIN_HTML);
   });
 
-  // Shell page: redirect to /login if not authed; inject display_name
+  // Shell page: redirect to /login if not authed; inject display_name + admin-only Reports tab
   app.get('/', (req, res) => {
     const session = getSession(req);
     if (!session) { res.redirect(302, '/login'); return; }
-    const html = SHELL_HTML.replace('<!--DNAME-->', escapeHtml(session.display_name));
+    const isAdmin = session.role === 'admin';
+    const reportsTabBtn = isAdmin
+      ? '<button class="tab-btn" id="tab-btn-reports">📊 Отчёты</button>'
+      : '';
+    const reportsSideFromMeasure = isAdmin
+      ? '<button class="side-btn" id="side-to-reports"><span class="side-text">Отчёты</span></button>'
+      : '';
+    const reportsPane = isAdmin
+      ? '<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button></div>'
+      : '';
+    const reportsChoiceBtn = isAdmin
+      ? '<button class="choice-btn" id="choice-reports"><span class="choice-icon">📊</span><span class="choice-label">Отчёты</span></button>'
+      : '';
+    const html = SHELL_HTML
+      .replace('<!--DNAME-->', escapeHtml(session.display_name))
+      .replace('<!--REPORTS_TAB_BTN-->', reportsTabBtn)
+      .replace('<!--REPORTS_SIDE_FROM_MEASURE-->', reportsSideFromMeasure)
+      .replace('<!--REPORTS_PANE-->', reportsPane)
+      .replace('<!--REPORTS_CHOICE_BTN-->', reportsChoiceBtn);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   });

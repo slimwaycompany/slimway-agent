@@ -27,7 +27,7 @@ function calcHours(startIso: string, endIso: string): string {
 
 async function postToSheet(payload: Record<string, unknown>): Promise<void> {
   const url = env.SHIFTS_SHEET_WEBHOOK_URL;
-  if (!url) return; // unconfigured — silently skip
+  if (!url) { console.warn('[shifts] SHIFTS_SHEET_WEBHOOK_URL not set, skipping sheet sync'); return; }
   const body = JSON.stringify({ secret: env.SHIFTS_SHEET_SECRET ?? '', ...payload });
   // Apps Script returns a 302 redirect; fetch follows it automatically
   const resp = await fetch(url, {

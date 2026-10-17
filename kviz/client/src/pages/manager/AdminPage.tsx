@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface Template {
   id: string;
@@ -10,6 +10,7 @@ interface Template {
   stories_slot: string | null;
   sort: number;
   is_active: boolean;
+  weekdays: number[] | null;
 }
 
 interface Idea {
@@ -21,53 +22,12 @@ interface Idea {
   is_active: boolean;
 }
 
-interface ShiftRecord {
-  id: string;
-  user_id: string;
-  user_name: string;
-  user_login: string;
-  date: string;
-  started_at: string;
-  ended_at: string | null;
-  status: string;
-  replacing: string | null;
-  comment: string | null;
-  comment_end: string | null;
-  sheet_synced_start: boolean;
-  sheet_synced_end: boolean;
-  sheet_sync_attempts: number;
-}
+type ActiveTab = 'templates' | 'ideas';
 
-type ActiveTab = 'templates' | 'ideas' | 'shifts';
-
-function toYekLocal(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(new Date(iso).getTime() + 5 * 3600_000);
-  return d.toISOString().slice(0, 16);
-}
-
-function fromYekLocal(val: string): string {
-  if (!val) return '';
-  return new Date(new Date(val + ':00Z').getTime() - 5 * 3600_000).toISOString();
-}
-
-function fmtHHMM(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(new Date(iso).getTime() + 5 * 3600_000);
-  return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
-}
-
-function calcHours(s: ShiftRecord): string {
-  if (!s.started_at || !s.ended_at) return '—';
-  return ((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 3_600_000).toFixed(1);
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  open: 'открыта', closed: 'закрыта', auto_closed: 'авто',
-};
+const WEEKDAY_LABELS: [string, number][] = [['Пн',1],['Вт',2],['Ср',3],['Чт',4],['Пт',5],['Сб',6],['Вс',7]];
 
 export default function AdminPage() {
-  const [tab, setTab]           = useState<ActiveTab>('templates');
+  const [tab, setTab]             = useState<ActiveTab>('templates');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [ideas, setIdeas]         = useState<Idea[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -75,17 +35,6 @@ export default function AdminPage() {
   const [editIdea, setEditIdea]   = useState<Partial<Idea> | null>(null);
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState<string | null>(null);
-
-  // Shifts tab state
-  const today = new Date().toISOString().slice(0, 10);
-  const monthStart = today.slice(0, 7) + '-01';
-  const [shiftFrom, setShiftFrom] = useState(monthStart);
-  const [shiftTo, setShiftTo]     = useState(today);
-  const [shifts, setShifts]       = useState<ShiftRecord[]>([]);
-  const [shiftsLoading, setShiftsLoading] = useState(false);
-  const [editShift, setEditShift] = useState<Partial<ShiftRecord> | null>(null);
-  const [shiftSaving, setShiftSaving] = useState(false);
-  const [shiftError, setShiftError]   = useState<string | null>(null);
 
   const loadTemplates = useCallback(async () => {
     const r = await fetch('/kviz/api/manager/templates', { credentials: 'include' });
@@ -102,16 +51,6 @@ export default function AdminPage() {
   useEffect(() => {
     Promise.all([loadTemplates(), loadIdeas()]).finally(() => setLoading(false));
   }, [loadTemplates, loadIdeas]);
-
-  const loadShifts = useCallback(async () => {
-    setShiftsLoading(true);
-    try {
-      const r = await fetch(`/kviz/api/shifts?from=${shiftFrom}&to=${shiftTo}`, { credentials: 'include' });
-      const d = await r.json();
-      setShifts(Array.isArray(d) ? d : []);
-    } catch {}
-    finally { setShiftsLoading(false); }
-  }, [shiftFrom, shiftTo]);
 
   const saveTpl = async () => {
     if (!editTpl) return;
@@ -153,68 +92,12 @@ export default function AdminPage() {
     finally { setSaving(false); }
   };
 
-  const saveShift = async () => {
-    if (!editShift?.id) return;
-    setShiftSaving(true); setShiftError(null);
-    try {
-      const body: Record<string, unknown> = {};
-      if (editShift.started_at  !== undefined) body.started_at  = editShift.started_at;
-      if (editShift.ended_at    !== undefined) body.ended_at    = editShift.ended_at;
-      if (editShift.status      !== undefined) body.status      = editShift.status;
-      if (editShift.replacing   !== undefined) body.replacing   = editShift.replacing;
-      if (editShift.comment     !== undefined) body.comment     = editShift.comment;
-      if (editShift.comment_end !== undefined) body.comment_end = editShift.comment_end;
-      const r = await fetch(`/kviz/api/shifts/${editShift.id}`, {
-        method: 'PATCH', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Ошибка');
-      setEditShift(null);
-      await loadShifts();
-    } catch (e) { setShiftError(String(e)); }
-    finally { setShiftSaving(false); }
-  };
-
-  const monthlyTotals = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const sh of shifts) {
-      if (!sh.started_at || !sh.ended_at) continue;
-      const key = `${sh.user_name}|${sh.date.slice(0, 7)}`;
-      const h = (new Date(sh.ended_at).getTime() - new Date(sh.started_at).getTime()) / 3_600_000;
-      map.set(key, (map.get(key) ?? 0) + h);
-    }
-    return [...map.entries()]
-      .map(([k, h]) => { const [name, month] = k.split('|'); return { name, month, hours: h }; })
-      .sort((a, b) => a.month.localeCompare(b.month) || a.name.localeCompare(b.name));
-  }, [shifts]);
-
-  const exportCSV = () => {
-    const fmtYek = (iso: string | null) => {
-      if (!iso) return '';
-      const d = new Date(new Date(iso).getTime() + 5 * 3600_000);
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')} ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
-    };
-    const rows = [
-      ['Дата','Сотрудник','Логин','Начало','Конец','Часов','Статус','Комментарий','Конец комм.','Замена','Таблица'],
-      ...shifts.map(sh => [
-        sh.date, sh.user_name, sh.user_login,
-        fmtYek(sh.started_at), fmtYek(sh.ended_at),
-        calcHours(sh), sh.status,
-        sh.comment ?? '', sh.comment_end ?? '', sh.replacing ?? '',
-        sh.sheet_synced_end ? '1' : '0',
-      ]),
-    ];
-    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `shifts_${shiftFrom}_${shiftTo}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-  };
-
   if (loading) return <div style={s.center}>Загрузка...</div>;
+
+  const weekdaysSummary = (wd: number[] | null | undefined) => {
+    if (!wd) return '';
+    return ' · дни: ' + wd.map(d => WEEKDAY_LABELS[d - 1][0]).join(',');
+  };
 
   return (
     <div style={s.root}>
@@ -226,12 +109,11 @@ export default function AdminPage() {
       <div style={s.tabsBar}>
         <button style={tabBtnSt(tab === 'templates')} onClick={() => setTab('templates')}>Задачи</button>
         <button style={tabBtnSt(tab === 'ideas')} onClick={() => setTab('ideas')}>Идеи сторисов</button>
-        <button style={tabBtnSt(tab === 'shifts')} onClick={() => setTab('shifts')}>Смены</button>
       </div>
 
       {tab === 'templates' && (
         <div style={s.section}>
-          <button style={s.addBtn} onClick={() => setEditTpl({ title: '', category: 'other', slot_time: '09:00', sort: 99, is_active: true })}>
+          <button style={s.addBtn} onClick={() => setEditTpl({ title: '', category: 'other', slot_time: '09:00', sort: 99, is_active: true, weekdays: null })}>
             + Добавить задачу
           </button>
           {templates.map(t => (
@@ -241,6 +123,7 @@ export default function AdminPage() {
                 <div style={s.rowMeta}>
                   {t.slot_time}{t.weekend_time ? ` / вых: ${t.weekend_time}` : ''} · {t.category}
                   {t.stories_slot ? ` · сторис: ${t.stories_slot}` : ''}
+                  {weekdaysSummary(t.weekdays)}
                   {!t.is_active ? ' · неактивна' : ''}
                 </div>
               </div>
@@ -268,64 +151,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {tab === 'shifts' && (
-        <div style={s.section}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-            <input type="date" style={s.dateInp} value={shiftFrom} onChange={e => setShiftFrom(e.target.value)} />
-            <span style={{ color: '#64748b', fontSize: 13 }}>—</span>
-            <input type="date" style={s.dateInp} value={shiftTo} onChange={e => setShiftTo(e.target.value)} />
-            <button style={s.addBtn} onClick={loadShifts} disabled={shiftsLoading}>
-              {shiftsLoading ? '...' : 'Загрузить'}
-            </button>
-            {shifts.length > 0 && (
-              <button style={s.csvBtn} onClick={exportCSV}>CSV</button>
-            )}
-          </div>
-
-          {shifts.length === 0 && !shiftsLoading && (
-            <div style={{ color: '#94a3b8', fontSize: 13 }}>Нет данных за период</div>
-          )}
-
-          {shifts.map(sh => (
-            <div key={sh.id} style={shiftRowSt(sh)}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={s.rowTitle}>
-                  {sh.date.split('-').reverse().join('.')} · {sh.user_name}
-                  {sh.replacing ? <span style={{ fontWeight: 400, color: '#64748b' }}> (замена: {sh.replacing})</span> : null}
-                </div>
-                <div style={s.rowMeta}>
-                  {fmtHHMM(sh.started_at)} — {fmtHHMM(sh.ended_at)} · {calcHours(sh)} ч
-                  {' · '}{STATUS_LABEL[sh.status] ?? sh.status}
-                  {sh.ended_at && !sh.sheet_synced_end && (
-                    <span style={{ color: '#ef4444', marginLeft: 6 }}>! не в таблице</span>
-                  )}
-                </div>
-                {(sh.comment || sh.comment_end) && (
-                  <div style={{ ...s.rowMeta, marginTop: 2 }}>
-                    {sh.comment && <span>Начало: {sh.comment}</span>}
-                    {sh.comment && sh.comment_end && ' · '}
-                    {sh.comment_end && <span>Конец: {sh.comment_end}</span>}
-                  </div>
-                )}
-              </div>
-              <button style={s.editBtn} onClick={() => setEditShift({ ...sh })}>Ред.</button>
-            </div>
-          ))}
-
-          {monthlyTotals.length > 0 && (
-            <div style={{ marginTop: 24 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Итого по месяцам</div>
-              {monthlyTotals.map(mt => (
-                <div key={mt.month + mt.name} style={s.totalRow}>
-                  <span style={{ color: '#374151' }}>{mt.month} · {mt.name}</span>
-                  <span style={{ fontWeight: 700, color: '#02BDB6' }}>{mt.hours.toFixed(1)} ч</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Template modal */}
       {editTpl && (
         <div style={s.overlay}>
@@ -349,6 +174,29 @@ export default function AdminPage() {
             </Field>
             <Field label="Слот сторисов">
               <input style={s.inp} value={editTpl.stories_slot ?? ''} placeholder="необязательно" onChange={e => setEditTpl(p => ({ ...p!, stories_slot: e.target.value || null }))} />
+            </Field>
+            <Field label="Дни недели (пусто = все дни)">
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+                {WEEKDAY_LABELS.map(([label, dow]) => {
+                  const checked = editTpl.weekdays ? editTpl.weekdays.includes(dow) : true;
+                  return (
+                    <label key={dow} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 13, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={e => {
+                          const current = editTpl.weekdays ?? [1,2,3,4,5,6,7];
+                          const next = e.target.checked
+                            ? [...current, dow].sort((a, b) => a - b)
+                            : current.filter(d => d !== dow);
+                          setEditTpl(p => ({ ...p!, weekdays: next.length === 7 ? null : (next.length === 0 ? null : next) }));
+                        }}
+                      />
+                      {label}
+                    </label>
+                  );
+                })}
+              </div>
             </Field>
             <Field label="Сортировка">
               <input style={s.inp} type="number" value={editTpl.sort ?? 99} onChange={e => setEditTpl(p => ({ ...p!, sort: Number(e.target.value) }))} />
@@ -394,50 +242,6 @@ export default function AdminPage() {
           </div>
         </div>
       )}
-
-      {/* Shift edit modal */}
-      {editShift && (
-        <div style={s.overlay}>
-          <div style={s.modal}>
-            <h3 style={s.mh3}>Редактировать смену</h3>
-            {shiftError && <div style={s.errBox}>{shiftError}</div>}
-            <Field label="Начало (время Екб)">
-              <input
-                style={s.inp} type="datetime-local"
-                value={toYekLocal(editShift.started_at)}
-                onChange={e => setEditShift(p => ({ ...p!, started_at: fromYekLocal(e.target.value) }))}
-              />
-            </Field>
-            <Field label="Конец (время Екб)">
-              <input
-                style={s.inp} type="datetime-local"
-                value={toYekLocal(editShift.ended_at)}
-                onChange={e => setEditShift(p => ({ ...p!, ended_at: e.target.value ? fromYekLocal(e.target.value) : null }))}
-              />
-            </Field>
-            <Field label="Статус">
-              <select style={s.inp} value={editShift.status ?? 'closed'} onChange={e => setEditShift(p => ({ ...p!, status: e.target.value }))}>
-                <option value="open">открыта</option>
-                <option value="closed">закрыта</option>
-                <option value="auto_closed">авто-закрыта</option>
-              </select>
-            </Field>
-            <Field label="Замена">
-              <input style={s.inp} value={editShift.replacing ?? ''} onChange={e => setEditShift(p => ({ ...p!, replacing: e.target.value || null }))} />
-            </Field>
-            <Field label="Комментарий (начало)">
-              <input style={s.inp} value={editShift.comment ?? ''} onChange={e => setEditShift(p => ({ ...p!, comment: e.target.value || null }))} />
-            </Field>
-            <Field label="Комментарий (конец)">
-              <input style={s.inp} value={editShift.comment_end ?? ''} onChange={e => setEditShift(p => ({ ...p!, comment_end: e.target.value || null }))} />
-            </Field>
-            <div style={s.mBtns}>
-              <button style={s.cancelBtn} onClick={() => { setEditShift(null); setShiftError(null); }}>Отмена</button>
-              <button style={s.saveBtn} disabled={shiftSaving} onClick={saveShift}>{shiftSaving ? '...' : 'Сохранить'}</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -466,14 +270,6 @@ const rowSt = (active: boolean): React.CSSProperties => ({
   boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
 });
 
-const shiftRowSt = (sh: ShiftRecord): React.CSSProperties => ({
-  background: sh.ended_at && !sh.sheet_synced_end ? '#fef9f9' : '#fff',
-  borderRadius: 10, padding: '10px 12px', marginBottom: 8,
-  display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8,
-  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-  borderLeft: `4px solid ${sh.status === 'open' ? '#22c55e' : sh.status === 'auto_closed' ? '#f59e0b' : '#94a3b8'}`,
-});
-
 const s: Record<string, React.CSSProperties> = {
   root:     { height: '100vh', overflow: 'auto', background: '#f8fafc', fontFamily: "'Manrope',system-ui,sans-serif" },
   center:   { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#64748b', fontFamily: 'system-ui,sans-serif' },
@@ -483,12 +279,9 @@ const s: Record<string, React.CSSProperties> = {
   tabsBar:  { display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#fff' },
   section:  { padding: '12px 12px 32px' },
   addBtn:   { marginBottom: 12, padding: '8px 16px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  csvBtn:   { padding: '8px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  dateInp:  { padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
   rowTitle: { fontSize: 14, fontWeight: 600, color: '#1a202c' },
   rowMeta:  { fontSize: 12, color: '#64748b', marginTop: 2 },
   editBtn:  { padding: '5px 12px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 },
-  totalRow: { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9' },
   overlay:  { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
   modal:    { background: '#fff', borderRadius: 16, padding: 24, width: 'min(440px,96vw)', maxHeight: '90vh', overflow: 'auto' },
   mh3:      { fontSize: 16, fontWeight: 700, margin: '0 0 16px' },

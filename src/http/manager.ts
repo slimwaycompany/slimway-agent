@@ -7,6 +7,7 @@ const YEK_MS = 5 * 3600_000;
 function yekNow() { return new Date(Date.now() + YEK_MS); }
 function yekToday() { return yekNow().toISOString().slice(0, 10); }
 function isWeekend() { const d = yekNow().getUTCDay(); return d === 0 || d === 6; }
+function isoDowNow() { const d = yekNow().getUTCDay(); return d === 0 ? 7 : d; }
 function slotMin(hhmm: string) { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; }
 function nowMin() { const d = yekNow(); return d.getUTCHours() * 60 + d.getUTCMinutes(); }
 function hhmmOf(slot: string) { return slot.slice(0, 5); }
@@ -16,6 +17,11 @@ function taskStatus(sm: number, now: number, done: boolean): 'done' | 'current' 
   if (now < sm) return 'pending';
   if (now < sm + 30) return 'current';
   return 'overdue';
+}
+
+function weekdayOk(weekdays: unknown, dow: number): boolean {
+  if (!weekdays) return true;
+  return (weekdays as number[]).includes(dow);
 }
 
 function requireAdmin(req: Request, res: Response): boolean {
@@ -32,13 +38,15 @@ export async function getOverdueMissed(nowMs: number): Promise<{ templateId: str
   const d     = new Date(nowMs + YEK_MS_L);
   const now   = d.getUTCHours() * 60 + d.getUTCMinutes();
   const isWknd = (() => { const dd = d.getUTCDay(); return dd === 0 || dd === 6; })();
+  const isoDow = (() => { const dd = d.getUTCDay(); return dd === 0 ? 7 : dd; })();
 
   const [tplRes, doneRes] = await Promise.all([
-    supabase.from('manager_task_templates').select('id, title, slot_time, weekend_time').eq('is_active', true),
+    supabase.from('manager_task_templates').select('id, title, slot_time, weekend_time, weekdays').eq('is_active', true),
     supabase.from('manager_task_done').select('template_id').eq('task_date', today),
   ]);
   const doneIds = new Set((doneRes.data || []).map((d: Record<string, unknown>) => String(d.template_id)));
   return ((tplRes.data || []) as Record<string, unknown>[])
+    .filter(t => weekdayOk(t.weekdays, isoDow))
     .filter(t => !doneIds.has(String(t.id)))
     .map(t => {
       const raw = isWknd && t.weekend_time ? String(t.weekend_time) : String(t.slot_time);
@@ -58,6 +66,13 @@ export function buildManagerRouter(): Router {
     next();
   });
 
+  r.use('/kviz/api/reports', (req: Request, res: Response, next: NextFunction) => {
+    const s = getSession(req);
+    if (!s) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    if (s.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
+    next();
+  });
+
   // GET /today — full day data
   r.get('/kviz/api/manager/today', async (req, res) => {
     const session = getSession(req)!;
@@ -65,12 +80,14 @@ export function buildManagerRouter(): Router {
       const today   = yekToday();
       const weekend = isWeekend();
       const now     = nowMin();
+      const isoDow  = isoDowNow();
 
       const [tplRes, doneRes] = await Promise.all([
         supabase.from('manager_task_templates').select('*').eq('is_active', true).order('sort'),
         supabase.from('manager_task_done').select('*').eq('task_date', today),
       ]);
-      const templates = (tplRes.data || []) as Record<string, unknown>[];
+      const templates = ((tplRes.data || []) as Record<string, unknown>[])
+        .filter(t => weekdayOk(t.weekdays, isoDow));
       const done      = (doneRes.data || []) as Record<string, unknown>[];
       const doneMap   = new Map(done.map(d => [String(d.template_id), d]));
 
@@ -122,6 +139,59 @@ export function buildManagerRouter(): Router {
           overdue: tasks.filter(t => t.status === 'overdue').length,
         },
       });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // GET /week-reels — this week's reel tasks with completion status
+  r.get('/kviz/api/manager/week-reels', async (_req, res) => {
+    try {
+      const now     = yekNow();
+      const today   = yekToday();
+      const isoDow  = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
+      // Monday of current week
+      const mon = new Date(now);
+      mon.setUTCDate(now.getUTCDate() - (isoDow - 1));
+      const monday = mon.toISOString().slice(0, 10);
+      const sunday = new Date(mon.getTime() + 6 * 86400_000).toISOString().slice(0, 10);
+
+      const [tplRes, doneRes] = await Promise.all([
+        supabase.from('manager_task_templates')
+          .select('id, title, weekdays, stories_slot')
+          .eq('is_active', true)
+          .not('stories_slot', 'is', null),
+        supabase.from('manager_task_done')
+          .select('template_id, task_date')
+          .gte('task_date', monday)
+          .lte('task_date', sunday),
+      ]);
+
+      const doneSet = new Set(
+        ((doneRes.data || []) as Record<string, unknown>[]).map(d => `${d.template_id}:${d.task_date}`),
+      );
+      const DAYS_RU = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+      const result = ((tplRes.data || []) as Record<string, unknown>[])
+        .flatMap(t => {
+          const days = (t.weekdays as number[] | null) ?? [];
+          if (days.length === 0) return [];
+          return days.map(dow => {
+            const offset = dow - isoDow;
+            const dObj = new Date(now);
+            dObj.setUTCDate(now.getUTCDate() + offset);
+            const date = dObj.toISOString().slice(0, 10);
+            const isDone = doneSet.has(`${t.id}:${date}`);
+            const isPast = date < today;
+            return {
+              id: t.id, title: t.title,
+              day_iso: dow, day_name: DAYS_RU[dow] ?? String(dow),
+              date,
+              status: isDone ? 'done' : isPast ? 'overdue' : 'pending',
+            };
+          });
+        })
+        .sort((a, b) => a.day_iso - b.day_iso);
+
+      res.json(result);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -187,7 +257,8 @@ export function buildManagerRouter(): Router {
     const { data, error } = await supabase.from('manager_task_templates')
       .insert({ title: b.title, hint: b.hint || null, category: b.category || 'other',
                 slot_time: b.slot_time, weekend_time: b.weekend_time || null,
-                stories_slot: b.stories_slot || null, sort: b.sort ?? 99, is_active: b.is_active !== false })
+                stories_slot: b.stories_slot || null, sort: b.sort ?? 99, is_active: b.is_active !== false,
+                weekdays: b.weekdays ?? null })
       .select().single();
     if (error) { res.status(500).json({ error: error.message }); return; }
     res.json(data);
@@ -227,6 +298,30 @@ export function buildManagerRouter(): Router {
       .update(req.body as Record<string, unknown>).eq('id', req.params.id).select().single();
     if (error) { res.status(500).json({ error: error.message }); return; }
     res.json(data);
+  });
+
+  // ── Reports (admin only) ──────────────────────────────────────────────────────
+
+  r.get('/kviz/api/reports/tasks', async (req, res) => {
+    try {
+      let q = supabase.from('manager_task_done')
+        .select('*, manager_task_templates!inner(title, slot_time, category, weekdays)')
+        .order('task_date', { ascending: false }).order('done_at', { ascending: true }).limit(500);
+      if (req.query.from) q = q.gte('task_date', String(req.query.from));
+      if (req.query.to)   q = q.lte('task_date', String(req.query.to));
+      const { data, error } = await q;
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.get('/kviz/api/reports/studio', async (_req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('studio_results').select('*').order('created_at', { ascending: false }).limit(200);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data ?? []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
   return r;

@@ -5,7 +5,7 @@
   var origin = location.origin;
 
   // State
-  var currentTab          = null; // null=choice, 'manager', 'agent', 'kviz', 'measure'
+  var currentTab          = null; // null=choice, 'manager', 'agent', 'kviz', 'measure', 'reports'
   var agentAlertCount     = 0;
   var agentSeenCount      = 0;
   var kvizDraftCount      = 0;
@@ -13,6 +13,7 @@
   var kvizCreated         = false;
   var measureCreated      = false;
   var managerCreated      = false;
+  var reportsCreated      = false;
 
   // ── Badge helpers ───────────────────────────────────────────────────────────
   function setBadge(id, n) {
@@ -38,12 +39,12 @@
   }
 
   function hidePanes() {
-    var ids = ['manager-pane', 'agent-pane', 'kviz-pane', 'measure-pane'];
+    var ids = ['manager-pane', 'agent-pane', 'kviz-pane', 'measure-pane', 'reports-pane'];
     for (var i = 0; i < ids.length; i++) {
       var p = $(ids[i]);
       if (p) p.classList.add('hidden');
     }
-    var tabs = ['tab-btn-manager', 'tab-btn-agent', 'tab-btn-kviz', 'tab-btn-measure'];
+    var tabs = ['tab-btn-manager', 'tab-btn-agent', 'tab-btn-kviz', 'tab-btn-measure', 'tab-btn-reports'];
     for (var j = 0; j < tabs.length; j++) {
       var b = $(tabs[j]);
       if (b) b.classList.remove('active');
@@ -91,10 +92,28 @@
         var fme = document.createElement('iframe');
         fme.id = 'measure-iframe'; fme.className = 'frame';
         fme.src = '/kviz/measure/new'; fme.setAttribute('allow', 'clipboard-write');
-        $('measure-pane').appendChild(fme);
+        var sideToReports = $('side-to-reports');
+        if (sideToReports) $('measure-pane').insertBefore(fme, sideToReports);
+        else $('measure-pane').appendChild(fme);
         measureCreated = true;
       }
       history.replaceState(null, '', '#measure');
+    } else if (name === 'reports') {
+      var rp = $('reports-pane');
+      if (!rp) return;
+      rp.classList.remove('hidden');
+      var trb = $('tab-btn-reports');
+      if (trb) trb.classList.add('active');
+      if (!reportsCreated) {
+        var frep = document.createElement('iframe');
+        frep.id = 'reports-iframe'; frep.className = 'frame';
+        frep.src = '/kviz/reports'; frep.setAttribute('allow', 'clipboard-write');
+        var sideM2 = $('side-to-measure2');
+        if (sideM2) rp.insertBefore(frep, sideM2);
+        else rp.appendChild(frep);
+        reportsCreated = true;
+      }
+      history.replaceState(null, '', '#reports');
     }
 
     updateBadges();
@@ -105,12 +124,14 @@
   $('choice-agent').onclick   = function () { showTab('agent'); };
   $('choice-kviz').onclick    = function () { showTab('kviz'); };
   $('choice-measure').onclick = function () { showTab('measure'); };
+  if ($('choice-reports')) $('choice-reports').onclick = function () { showTab('reports'); };
 
   // ── Tab buttons ─────────────────────────────────────────────────────────────
   $('tab-btn-manager').onclick = function () { showTab('manager'); };
   $('tab-btn-agent').onclick   = function () { showTab('agent'); };
   $('tab-btn-kviz').onclick    = function () { showTab('kviz'); };
   $('tab-btn-measure').onclick = function () { showTab('measure'); };
+  if ($('tab-btn-reports')) $('tab-btn-reports').onclick = function () { showTab('reports'); };
 
   // ── Side buttons ────────────────────────────────────────────────────────────
   $('side-to-agent').onclick   = function () { showTab('agent'); };    // manager-pane right
@@ -119,6 +140,8 @@
   $('side-to-agent2').onclick  = function () { showTab('agent'); };    // kviz-pane left
   $('side-to-measure').onclick = function () { showTab('measure'); };  // kviz-pane right
   $('side-to-kviz2').onclick   = function () { showTab('kviz'); };     // measure-pane left
+  if ($('side-to-reports'))  $('side-to-reports').onclick  = function () { showTab('reports'); }; // measure-pane right (admin)
+  if ($('side-to-measure2')) $('side-to-measure2').onclick = function () { showTab('measure'); }; // reports-pane left (admin)
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   $('logout-btn').onclick = function () {
@@ -127,12 +150,13 @@
     });
   };
 
-  // ── Keyboard shortcuts: Alt+1=Менеджер, Alt+2=Агент, Alt+3=Квалификация, Alt+4=Замеры
+  // ── Keyboard shortcuts: Alt+1=Менеджер, Alt+2=Агент, Alt+3=Квалификация, Alt+4=Замеры, Alt+5=Отчёты
   document.addEventListener('keydown', function (e) {
     if (e.altKey && (e.key === '1' || e.code === 'Digit1')) { e.preventDefault(); showTab('manager'); }
     if (e.altKey && (e.key === '2' || e.code === 'Digit2')) { e.preventDefault(); showTab('agent'); }
     if (e.altKey && (e.key === '3' || e.code === 'Digit3')) { e.preventDefault(); showTab('kviz'); }
     if (e.altKey && (e.key === '4' || e.code === 'Digit4')) { e.preventDefault(); showTab('measure'); }
+    if (e.altKey && (e.key === '5' || e.code === 'Digit5') && $('reports-pane')) { e.preventDefault(); showTab('reports'); }
   });
 
   // ── Hash navigation (back / forward only) ───────────────────────────────────
@@ -143,6 +167,7 @@
     else if (h === 'agent'   && currentTab !== 'agent')   showTab('agent');
     else if (h === 'kviz'    && currentTab !== 'kviz')    showTab('kviz');
     else if (h === 'measure' && currentTab !== 'measure') showTab('measure');
+    else if (h === 'reports' && currentTab !== 'reports') showTab('reports');
   });
 
   // ── postMessage from iframes ────────────────────────────────────────────────

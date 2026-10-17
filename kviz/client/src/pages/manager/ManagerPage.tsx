@@ -25,6 +25,15 @@ interface Task {
   stories_today?: Story[];
 }
 
+interface WeekReel {
+  id: string;
+  title: string;
+  day_iso: number;
+  day_name: string;
+  date: string;
+  status: 'done' | 'overdue' | 'pending';
+}
+
 interface DayData {
   date: string;
   day_of_week: string;
@@ -80,6 +89,7 @@ export default function ManagerPage() {
     my_shift: Shift | null;
     on_shift: { name: string; started_at: string }[];
   } | null>(null);
+  const [weekReels, setWeekReels] = useState<WeekReel[]>([]);
   const [shiftUsers, setShiftUsers] = useState<{ id: string; display_name: string }[]>([]);
   const [replacing, setReplacing] = useState('');
   const [commentStart, setCommentStart] = useState('');
@@ -117,16 +127,24 @@ export default function ManagerPage() {
     } catch {}
   }, []);
 
+  const loadWeekReels = useCallback(async () => {
+    try {
+      const r = await fetch('/kviz/api/manager/week-reels', { credentials: 'include' });
+      if (r.ok) setWeekReels(await r.json());
+    } catch {}
+  }, []);
+
   useEffect(() => {
     load();
     loadShift();
+    loadWeekReels();
     fetch('/kviz/api/shifts/users', { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
       .then((d: unknown) => setShiftUsers(Array.isArray(d) ? d as { id: string; display_name: string }[] : []))
       .catch(() => {});
-    const t = setInterval(() => { load(); loadShift(); }, 30_000);
+    const t = setInterval(() => { load(); loadShift(); loadWeekReels(); }, 30_000);
     return () => clearInterval(t);
-  }, [load, loadShift]);
+  }, [load, loadShift, loadWeekReels]);
 
   const startShift = async () => {
     setShiftBusy(true); setShiftErr(null);
@@ -262,6 +280,19 @@ export default function ManagerPage() {
         </div>
       )}
 
+      {weekReels.length > 0 && (
+        <div style={s.weekReels}>
+          <div style={s.weekReelsHdr}>На этой неделе</div>
+          {weekReels.map(r => (
+            <div key={`${r.id}:${r.day_iso}`} style={s.reelRow}>
+              <span style={s.reelDay}>{r.day_name}</span>
+              <span style={s.reelTitle}>{r.title}</span>
+              <span>{r.status === 'done' ? '✅' : r.status === 'overdue' ? '❌' : '⏳'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={s.list}>
         {tasks.map(task => (
           <div key={task.id} style={{ ...s.card, borderLeft: `4px solid ${STATUS_COLOR[task.status]}` }}>
@@ -337,6 +368,11 @@ const s: Record<string, React.CSSProperties> = {
   btnCancelEnd:  { padding: '7px 14px', background: 'none', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 8, fontWeight: 500, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
   onShift:       { fontSize: 12, color: '#64748b', marginTop: 8 },
   shiftErr:      { fontSize: 12, color: '#ef4444', marginTop: 4 },
+  weekReels:     { background: '#fff', padding: '10px 16px', borderBottom: '1px solid #e2e8f0' },
+  weekReelsHdr:  { fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 },
+  reelRow:       { display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' },
+  reelDay:       { fontSize: 12, fontWeight: 700, color: '#64748b', width: 22, flexShrink: 0 },
+  reelTitle:     { fontSize: 13, color: '#1a202c', flex: 1 },
   list:          { padding: '12px 12px 32px' },
   card:          { background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
   cardTop:       { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
