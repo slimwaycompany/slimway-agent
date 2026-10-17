@@ -339,6 +339,32 @@ export function buildMeasureRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  r.get('/kviz/api/measure/clients/:id/results', async (req, res) => {
+    const { data, error } = await supabase.from('studio_results').select('*').eq('client_id', req.params.id).maybeSingle();
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    res.json(data);
+  });
+
+  r.post('/kviz/api/measure/clients/:id/results', async (req, res) => {
+    try {
+      const session = getSession(req);
+      if (!session?.display_name) { res.status(401).json({ error: 'Нет сессии' }); return; }
+      const { data: ms, error: msError } = await supabase.from('body_measurements').select('measure_no,total_cm,weight')
+        .eq('client_id', req.params.id).order('measure_no', { ascending: true });
+      if (msError) { res.status(500).json({ error: msError.message }); return; }
+      if (!ms?.length) { res.status(400).json({ error: 'У клиента пока нет замеров' }); return; }
+      const first = ms[0], last = ms[ms.length - 1];
+      const cmLost = Math.max(0, Number(first.total_cm ?? 0) - Number(last.total_cm ?? 0));
+      const kgLost = first.weight != null && last.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
+      if (cmLost <= 0 && kgLost <= 0) { res.status(400).json({ error: 'Потерь со старта пока нет' }); return; }
+      const row = { client_id: req.params.id, from_measure_no: 1, to_measure_no: last.measure_no,
+        cm_lost: cmLost, kg_lost: kgLost, fat_kg_lost: null, sent_by: session.display_name, sent_at: new Date().toISOString() };
+      const { data, error } = await supabase.from('studio_results').upsert(row, { onConflict: 'client_id' }).select('*').single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // ── Measurements ───────────────────────────────────────────────────────────
 
   r.post('/kviz/api/measure/measurements', async (req, res) => {
@@ -379,7 +405,10 @@ export function buildMeasureRouter(): Router {
       if (req.query.consultant) q = (q as any).ilike('consultant', `%${req.query.consultant}%`);
       const { data, error } = await q;
       if (error) { res.status(500).json({ error: error.message }); return; }
-      res.json(data);
+      const ids = [...new Set((data || []).map((m: any) => m.client_id))];
+      const { data: results } = ids.length ? await supabase.from('studio_results').select('client_id,cm_lost,kg_lost,sent_by,sent_at').in('client_id', ids) : { data: [] };
+      const byClient = new Map((results || []).map((x: any) => [x.client_id, x]));
+      res.json((data || []).map((m: any) => ({ ...m, studio_result: byClient.get(m.client_id) || null })));
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

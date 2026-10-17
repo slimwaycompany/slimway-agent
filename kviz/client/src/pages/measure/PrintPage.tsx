@@ -70,13 +70,6 @@ export default function PrintPage() {
       .finally(() => setLoading(false));
   }, [clientId]);
 
-  useEffect(() => {
-    if (!loading && !err && client) {
-      const t = setTimeout(() => window.print(), 600);
-      return () => clearTimeout(t);
-    }
-  }, [loading, err, client]);
-
   if (loading) return <div style={{ padding: 40, fontFamily: 'sans-serif', color: '#6b7280' }}>Загрузка…</div>;
   if (err || !client) return <div style={{ padding: 40, fontFamily: 'sans-serif', color: '#ef4444' }}>{err || 'Клиент не найден'}</div>;
 
@@ -108,29 +101,16 @@ export default function PrintPage() {
       <style>{`
         @page { size: A4; margin: 0; }
         body { margin: 0; padding: 0; }
-        @media screen { .print-btn { display: flex; } }
+        @media screen { .print-btn { display: none; } .print-sheet { width: min(100vw, 790px) !important; height: auto !important; aspect-ratio: 210 / 297; margin: 0 auto; } }
         @media print  { .print-btn { display: none !important; } }
       `}</style>
 
-      {/* Screen-only print button */}
-      <div className="print-btn" style={{ position: 'fixed', top: 16, right: 16, zIndex: 10, gap: 8 }}>
-        <button onClick={() => window.print()}
-          style={{ padding: '8px 20px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-          🖨 Печать
-        </button>
-        <button onClick={() => window.close()}
-          style={{ padding: '8px 16px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', borderRadius: 8, fontSize: 14, cursor: 'pointer' }}>
-          Закрыть
-        </button>
-      </div>
-
       {/* A4 page */}
       <div style={{
-        width: '210mm', height: '297mm',
-        position: 'relative', overflow: 'hidden',
+        width: '210mm', height: '297mm', position: 'relative', overflow: 'hidden',
         background: '#fff',
-      }}>
-        <img src="/kviz/img/bodyr.png" alt="" style={{ width: '100%', height: '100%', display: 'block' }} />
+      }} className="print-sheet">
+        <img src="/kviz/img/bodyr.png" alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
 
         {/* Client name */}
         {client && <Txt x={36} y={12.3} bold size={15}>{client.name}</Txt>}

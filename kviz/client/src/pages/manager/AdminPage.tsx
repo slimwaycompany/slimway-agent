@@ -22,7 +22,7 @@ interface Idea {
   is_active: boolean;
 }
 
-type ActiveTab = 'templates' | 'ideas';
+type ActiveTab = 'templates' | 'ideas' | 'mission';
 
 const WEEKDAY_LABELS: [string, number][] = [['Пн',1],['Вт',2],['Ср',3],['Чт',4],['Пт',5],['Сб',6],['Вс',7]];
 
@@ -35,6 +35,9 @@ export default function AdminPage() {
   const [editIdea, setEditIdea]   = useState<Partial<Idea> | null>(null);
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState<string | null>(null);
+  const [mission, setMission]     = useState('');
+  const [resultsUrl, setResultsUrl] = useState('');
+  const [missionSaved, setMissionSaved] = useState(false);
 
   const loadTemplates = useCallback(async () => {
     const r = await fetch('/kviz/api/manager/templates', { credentials: 'include' });
@@ -48,9 +51,27 @@ export default function AdminPage() {
     setIdeas(Array.isArray(d) ? d : []);
   }, []);
 
+  const loadMission = useCallback(async () => {
+    const r = await fetch('/kviz/api/results/mission', { credentials: 'include' });
+    const d = await r.json();
+    setMission(typeof d.mission === 'string' ? d.mission : '');
+    setResultsUrl(typeof d.display_url === 'string' ? d.display_url : '');
+  }, []);
+
   useEffect(() => {
-    Promise.all([loadTemplates(), loadIdeas()]).finally(() => setLoading(false));
-  }, [loadTemplates, loadIdeas]);
+    Promise.all([loadTemplates(), loadIdeas(), loadMission()]).finally(() => setLoading(false));
+  }, [loadTemplates, loadIdeas, loadMission]);
+
+  const saveMission = async () => {
+    setSaving(true); setError(null); setMissionSaved(false);
+    try {
+      const r = await fetch('/kviz/api/results/mission', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Ошибка');
+      setMission(d.value || ''); setMissionSaved(true);
+    } catch (e) { setError(String(e)); }
+    finally { setSaving(false); }
+  };
 
   const saveTpl = async () => {
     if (!editTpl) return;
@@ -109,7 +130,19 @@ export default function AdminPage() {
       <div style={s.tabsBar}>
         <button style={tabBtnSt(tab === 'templates')} onClick={() => setTab('templates')}>Задачи</button>
         <button style={tabBtnSt(tab === 'ideas')} onClick={() => setTab('ideas')}>Идеи сторисов</button>
+        <button style={tabBtnSt(tab === 'mission')} onClick={() => setTab('mission')}>Результаты студии</button>
       </div>
+
+      {tab === 'mission' && <div style={s.section}>
+        <div style={s.rowTitle}>Миссия на экране результатов студии</div>
+        <textarea value={mission} onChange={e => { setMission(e.target.value); setMissionSaved(false); }} maxLength={500} rows={4}
+          style={{ width: '100%', marginTop: 12, padding: 12, border: '1px solid #e2e6ea', borderRadius: 10, font: 'inherit', resize: 'vertical' }} />
+        <div style={s.rowMeta}>{mission.length}/500</div>
+        {error && <div style={s.errBox}>{error}</div>}
+        {missionSaved && <div style={{ color: '#059669', fontSize: 13, marginTop: 8 }}>Миссия сохранена</div>}
+        <button style={{ ...s.addBtn, marginTop: 12 }} onClick={saveMission} disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить миссию'}</button>
+        {resultsUrl ? <a href={resultsUrl} style={{ display: 'block', marginTop: 16, color: '#02BDB6' }}>Открыть экран результатов</a> : <div style={s.rowMeta}>Добавьте RESULTS_DISPLAY_KEY в Environment Render, чтобы открыть экран по ключу.</div>}
+      </div>}
 
       {tab === 'templates' && (
         <div style={s.section}>

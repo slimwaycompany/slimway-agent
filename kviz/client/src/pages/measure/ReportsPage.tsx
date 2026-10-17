@@ -15,6 +15,7 @@ interface Row {
   id: string; client_id: string; measure_no: number; consultant: string;
   measured_at: string; weight: number | null; total_cm: number;
   body_clients: { name: string; phone: string | null; fitbase_client_id: number | null };
+  studio_result?: { cm_lost: number; kg_lost: number; sent_by: string; sent_at: string } | null;
   [key: string]: unknown;
 }
 
@@ -152,6 +153,7 @@ export default function ReportsPage() {
                   <Th label="Вес" k="weight" />
                   {CIRC_KEYS.map(k => <th key={k}>{CIRC_LABELS[k]}</th>)}
                   <Th label="∑ см" k="total_cm" />
+                  <th>В результатах</th>
                 </tr>
               </thead>
               <tbody>
@@ -170,6 +172,9 @@ export default function ReportsPage() {
                     <td>{r.weight != null ? Number(r.weight).toFixed(1) : '—'}</td>
                     {CIRC_KEYS.map(k => <td key={k}>{r[k] != null ? Number(r[k]).toFixed(1) : '—'}</td>)}
                     <td style={{ fontWeight: 600 }}>{Number(r.total_cm).toFixed(1)}</td>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: r.studio_result ? '#047857' : '#9ca3af' }}>
+                      {r.studio_result ? `${Number(r.studio_result.cm_lost).toFixed(0)} см, ${Number(r.studio_result.kg_lost).toFixed(1)} кг (${fmtDate(r.studio_result.sent_at)}, ${r.studio_result.sent_by})` : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

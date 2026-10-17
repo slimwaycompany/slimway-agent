@@ -48,6 +48,7 @@ interface Client {
   id: string; name: string; phone: string | null; fitbase_client_id: number | null;
   measurements: Measurement[];
 }
+interface StudioResult { cm_lost: number; kg_lost: number; fat_kg_lost: number | null; sent_by: string; sent_at: string; to_measure_no: number }
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -75,59 +76,39 @@ function BodyFigure({ m, prev, activeZones, onToggleZone }: {
   m: Measurement | null; prev: Measurement | null;
   activeZones: string[]; onToggleZone: (key: string) => void;
 }) {
+  const leftKeys = new Set<CircKey>(['arm_r', 'thigh_r', 'shin_r']);
+  const centerKeys = new Set<CircKey>(['neck', 'chest', 'waist', 'belly', 'glutes']);
+  const sideByKey = new Map<CircKey, 'left' | 'right'>();
+  let centerIndex = 0;
+  for (const pt of BODY_POINTS) {
+    const side = leftKeys.has(pt.key) ? 'left' : centerKeys.has(pt.key) ? (centerIndex++ % 2 ? 'right' : 'left') : 'right';
+    sideByKey.set(pt.key, side);
+  }
+  const rows = { left: BODY_POINTS.filter(p => sideByKey.get(p.key) === 'left'), right: BODY_POINTS.filter(p => sideByKey.get(p.key) === 'right') };
+  const rowY = new Map<CircKey, number>();
+  for (const side of ['left', 'right'] as const) rows[side].forEach((pt, i) => rowY.set(pt.key, 8 + (84 * (i + 1)) / (rows[side].length + 1)));
   return (
-    <div style={{ position: 'relative', width: '100%', maxWidth: 200, margin: '0 auto', userSelect: 'none' }}>
-      <img src="/kviz/img/body.png" alt="body" style={{ width: '100%', display: 'block' }} />
+    <div className="figure-canvas">
+      <img className="body-silhouette" src="/kviz/img/body.png" alt="Силуэт фигуры" />
+      <svg className="figure-leaders" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {BODY_POINTS.map(pt => <line key={pt.key} x1={15 + pt.x * .7} y1={pt.y} x2={sideByKey.get(pt.key) === 'left' ? 27 : 73} y2={rowY.get(pt.key)} stroke="#91a0b7" strokeWidth=".35" />)}
+      </svg>
       {m && BODY_POINTS.map(pt => {
         const val = m[pt.key] != null ? Number(m[pt.key]) : null;
         if (val == null) return null;
         const diff = prev && prev[pt.key] != null ? val - Number(prev[pt.key]) : null;
         const active = activeZones.includes(pt.key);
         const zoneColor = ALL_ZONES.find(z => z.key === pt.key)?.color ?? '#02BDB6';
-        // pills on right side for left-of-center points, on left for right-of-center
-        const onRight = pt.x <= 50;
+        const side = sideByKey.get(pt.key)!;
         return (
           <div key={pt.key}
             onClick={() => onToggleZone(pt.key)}
-            style={{
-              position: 'absolute',
-              left: `${pt.x}%`, top: `${pt.y}%`,
-              transform: 'translateY(-50%)',
-              cursor: 'pointer',
-            }}
+            className={`body-callout body-callout-${side} ${active ? 'active' : ''}`}
+            style={{ top: `${rowY.get(pt.key)}%`, '--zone-color': zoneColor } as React.CSSProperties}
           >
-            {/* dot */}
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: active ? zoneColor : '#9ca3af',
-              border: '2px solid #fff',
-              position: 'absolute', left: -4, top: '50%', transform: 'translateY(-50%)',
-              zIndex: 2,
-            }} />
-            {/* pill */}
-            <div style={{
-              position: 'absolute',
-              [onRight ? 'left' : 'right']: 8,
-              top: '50%', transform: 'translateY(-50%)',
-              background: 'rgba(255,255,255,0.92)',
-              backdropFilter: 'blur(4px)',
-              border: `1.5px solid ${active ? zoneColor : '#e2e6ea'}`,
-              borderRadius: 7,
-              padding: '2px 6px',
-              whiteSpace: 'nowrap',
-              fontSize: 10,
-              fontWeight: 600,
-              color: '#1a202c',
-              lineHeight: 1.4,
-              minWidth: 52,
-              zIndex: 1,
-            }}>
-              <div style={{ color: '#6b7280', fontSize: 9 }}>{pt.label}</div>
-              <div>{val.toFixed(1)}</div>
-              {diff !== null && (
-                <div style={{ color: diffColor(diff), fontSize: 9 }}>{fmtDiff(diff)}</div>
-              )}
-            </div>
+            <span className="body-callout-label">{pt.label}</span>
+            <strong>{val.toFixed(1)} см</strong>
+            {diff !== null && <small style={{ color: diffColor(diff) }}>{fmtDiff(diff)}</small>}
           </div>
         );
       })}
@@ -292,7 +273,7 @@ function MultiLineChart({ ms, zones, selectedId, onSelect }: {
           return (
             <g key={`${z.key}-${i}`}>
               <circle cx={tx(i)} cy={tyCm(v)} r={isSelected ? 6 : isLast ? 5 : 3.5} fill={z.color} stroke="#fff" strokeWidth={1.5} />
-              {isLast && (
+              {isLast && z.key === activeZones[0]?.key && (
                 <text x={tx(i)} y={tyCm(v) - 8} textAnchor="middle" fontSize={9} fontWeight="700" fill={z.color}>
                   {v.toFixed(1)}
                 </text>
@@ -308,7 +289,7 @@ function MultiLineChart({ ms, zones, selectedId, onSelect }: {
         return (
           <g key={`w-${i}`}>
             <circle cx={tx(i)} cy={tyW(m.weight)} r={isSelected ? 5 : isLast ? 4 : 3} fill="#263CD9" stroke="#fff" strokeWidth={1.5} />
-            {isLast && (
+            {isLast && zones[0] === 'weight' && (
               <text x={tx(i)} y={tyW(m.weight) - 7} textAnchor="middle" fontSize={9} fontWeight="700" fill="#263CD9">
                 {m.weight.toFixed(1)}
               </text>
@@ -478,16 +459,38 @@ function PrintDialog({ ms, clientId, onClose }: {
 }) {
   const [fromId, setFromId] = useState(ms[0]?.id ?? '');
   const [toId, setToId] = useState(ms[ms.length - 1]?.id ?? '');
+  const query = `client=${encodeURIComponent(clientId)}&from=${encodeURIComponent(fromId)}&to=${encodeURIComponent(toId)}`;
 
-  function openPrint() {
-    window.open(`/kviz/measure/print?client=${clientId}&from=${fromId}&to=${toId}`, '_blank');
-    onClose();
+  function printBlank() {
+    const frame = document.createElement('iframe');
+    frame.title = 'Печать бланка замеров';
+    frame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none';
+    let disposed = false;
+    const cleanup = () => { if (disposed) return; disposed = true; window.removeEventListener('afterprint', cleanup); window.setTimeout(() => frame.remove(), 300); };
+    window.addEventListener('afterprint', cleanup, { once: true });
+    frame.onload = () => {
+      const started = Date.now();
+      const waitForBlank = () => {
+        try {
+          const image = frame.contentDocument?.querySelector('img');
+          if (image && image.complete && image.naturalWidth > 0) {
+            frame.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
+            frame.contentWindow?.focus(); frame.contentWindow?.print(); window.setTimeout(cleanup, 300_000); return;
+          }
+        } catch { cleanup(); return; }
+        if (Date.now() - started > 20_000) { cleanup(); return; }
+        window.setTimeout(waitForBlank, 100);
+      };
+      waitForBlank();
+    };
+    document.body.appendChild(frame);
+    frame.src = `/kviz/measure/print?${query}&embed=1&mode=print`;
   }
 
   return (
     <div style={overlayS} onClick={onClose}>
-      <div style={modalS} onClick={e => e.stopPropagation()}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>🖨 Печать бланка</div>
+      <div style={{ ...modalS, width: 'min(1100px,96vw)', height: 'min(92vh,900px)', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>🖨 Предпросмотр бланка</div>
         <label style={lblS}>ДО — замер</label>
         <select value={fromId} onChange={e => setFromId(e.target.value)} style={selS}>
           {ms.map(m => <option key={m.id} value={m.id}>№{m.measure_no} ({fmtDate(m.measured_at)})</option>)}
@@ -496,10 +499,11 @@ function PrintDialog({ ms, clientId, onClose }: {
         <select value={toId} onChange={e => setToId(e.target.value)} style={selS}>
           {ms.map(m => <option key={m.id} value={m.id}>№{m.measure_no} ({fmtDate(m.measured_at)})</option>)}
         </select>
+        <iframe title="Предпросмотр бланка" src={`/kviz/measure/print?${query}&embed=1&mode=preview`} style={{ flex: 1, minHeight: 220, width: '100%', border: '1px solid #e2e6ea', borderRadius: 8, background: '#f8fafc', marginTop: 14 }} />
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button onClick={onClose} style={{ ...fbBtnSt, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', padding: '7px 14px', fontSize: 13 }}>Отмена</button>
-          <button onClick={openPrint} style={{ padding: '7px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flex: 1 }}>
-            Открыть бланк
+          <button onClick={printBlank} style={{ padding: '7px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flex: 1 }}>
+            Печать
           </button>
         </div>
       </div>
@@ -518,6 +522,9 @@ export default function ClientPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [client, setClient] = useState<Client | null>(null);
+  const [studioResult, setStudioResult] = useState<StudioResult | null>(null);
+  const [sendingResult, setSendingResult] = useState(false);
+  const [resultError, setResultError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedMId, setSelectedMId] = useState<string>('');
   const [zones, setZones] = useState<string[]>(() => {
@@ -531,8 +538,11 @@ export default function ClientPage() {
 
   const reload = useCallback(async () => {
     if (!id) return;
-    const d: Client = await apiGet(`/api/measure/clients/${id}`);
+    const [d, result]: [Client, StudioResult | null] = await Promise.all([
+      apiGet(`/api/measure/clients/${id}`), apiGet(`/api/measure/clients/${id}/results`).then((r: any) => r?.error ? null : r).catch(() => null),
+    ]);
     setClient(d);
+    setStudioResult(result);
     setSelectedMId(prev => prev || (d.measurements.at(-1)?.id ?? ''));
   }, [id]);
 
@@ -552,6 +562,9 @@ export default function ClientPage() {
 
   const ms = client.measurements;
   const first = ms[0], last = ms[ms.length - 1];
+  const cmLost = first && last ? Math.max(0, Number(first.total_cm) - Number(last.total_cm)) : 0;
+  const kgLost = first?.weight != null && last?.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
+  const canSendResult = cmLost > 0 || kgLost > 0;
   const selectedM = ms.find(m => m.id === selectedMId) ?? last ?? null;
   const selectedIdx = ms.findIndex(m => m.id === selectedMId);
   const prevM = selectedIdx > 0 ? ms[selectedIdx - 1] : null;
@@ -567,6 +580,17 @@ export default function ClientPage() {
     setFbOverrides(prev => ({ ...prev, [mId]: at }));
   }
 
+  async function sendStudioResult() {
+    setSendingResult(true); setResultError('');
+    try {
+      const result = await apiPost(`/api/measure/clients/${client.id}/results`, {});
+      if (result.error) throw new Error(result.error);
+      setStudioResult(result);
+    }
+    catch (e) { setResultError(String(e).replace(/^Error:\s*/, '')); }
+    finally { setSendingResult(false); }
+  }
+
   return (
     <MeasureLayout active="reports">
       {printDialog && ms.length > 0 && (
@@ -577,7 +601,7 @@ export default function ClientPage() {
           onLinked={fbId => { setLinkDialog(false); setClient(c => c ? { ...c, fitbase_client_id: fbId } : c); }} />
       )}
 
-      <div style={{ padding: '16px', maxWidth: 960, margin: '0 auto' }}>
+      <div className="measure-client-content">
         {/* Header */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
@@ -627,52 +651,37 @@ export default function ClientPage() {
           </div>
         )}
 
-        {/* Figure + selected measurement details */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-          {/* Body figure */}
-          <div style={{ flex: '0 0 auto', width: 'min(200px, 45vw)' }}>
+        <div className="measure-client-grid">
+          <aside className="measure-figure-column">
             <BodyFigure m={mergedM} prev={prevM} activeZones={zones} onToggleZone={toggleZoneFromFigure} />
-          </div>
-
-          {/* Selected measurement stats */}
-          {mergedM && (
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8, color: '#374151' }}>
-                Замер №{mergedM.measure_no} · {fmtDate(mergedM.measured_at)}
+          </aside>
+          <section>
+            <div className="measure-lost-card">
+              <div style={{ fontWeight: 700, color: '#263CD9', fontSize: 16 }}>Потеряно со старта</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>{first && last ? `С замера №${first.measure_no} по №${last.measure_no}` : 'Появится после первого замера'}</div>
+              <div className="measure-lost-values">
+                <div className="measure-lost-value"><strong>{cmLost.toFixed(1)}</strong><span>сантиметров</span></div>
+                <div className="measure-lost-value"><strong>{kgLost.toFixed(1)}</strong><span>килограммов</span></div>
+                <div className="measure-lost-value"><strong>{studioResult?.fat_kg_lost?.toFixed(1) ?? '—'}</strong><span>жира, кг · скоро с InBody</span></div>
               </div>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>
-                {mergedM.consultant}
-                {mergedM.note && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>{mergedM.note}</span>}
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 13, marginBottom: 10 }}>
-                {mergedM.weight != null && (
-                  <>
-                    <span style={{ color: '#6b7280' }}>Вес:</span>
-                    <span style={{ fontWeight: 600 }}>
-                      {Number(mergedM.weight).toFixed(1)} кг
-                      {prevM?.weight != null && <span style={{ color: diffColor(Number(mergedM.weight) - Number(prevM.weight)), marginLeft: 4, fontSize: 11 }}>{fmtDiff(Number(mergedM.weight) - Number(prevM.weight))}</span>}
-                    </span>
-                  </>
-                )}
-                <span style={{ color: '#6b7280' }}>∑ обхватов:</span>
-                <span style={{ fontWeight: 700, color: '#02BDB6' }}>
-                  {Number(mergedM.total_cm).toFixed(1)} см
-                  {prevM && <span style={{ color: diffColor(Number(mergedM.total_cm) - Number(prevM.total_cm)), marginLeft: 4, fontSize: 11 }}>{fmtDiff(Number(mergedM.total_cm) - Number(prevM.total_cm))}</span>}
-                </span>
-              </div>
-
-              {/* Fitbase button */}
-              <div style={{ marginTop: 6 }}>
-                <FitbaseBtn
-                  m={{ ...mergedM, fitbase_comment_at: fbOverrides[mergedM.id] ?? mergedM.fitbase_comment_at }}
-                  client={mergedClient}
-                  onDone={onFbDone}
-                />
-              </div>
+              <button disabled={!canSendResult || sendingResult} title={!canSendResult ? 'Потерь со старта пока нет' : undefined} onClick={sendStudioResult}>
+                {sendingResult ? 'Отправка…' : studioResult ? 'Обновить результат студии' : 'Отправить в результаты студии'}
+              </button>
+              {!canSendResult && <span style={{ marginLeft: 10, fontSize: 12, color: '#64748b' }}>Кнопка станет доступна при снижении суммы обхватов или веса</span>}
+              {resultError && <div style={{ color: '#b91c1c', fontSize: 12, marginTop: 8 }}>{resultError}</div>}
+              {studioResult && <div style={{ color: '#047857', fontSize: 12, marginTop: 8 }}>
+                В результатах студии: {Number(studioResult.cm_lost).toFixed(0)} см, {Number(studioResult.kg_lost).toFixed(1)} кг ({new Date(studioResult.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}, {studioResult.sent_by})
+              </div>}
             </div>
-          )}
-        </div>
+            {mergedM && <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>Замер №{mergedM.measure_no} · {fmtDate(mergedM.measured_at)}</div>
+              <div style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 10px' }}>{mergedM.consultant}{mergedM.note && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>{mergedM.note}</span>}</div>
+              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 8, fontSize: 13 }}>
+                {mergedM.weight != null && <span>Вес: <b>{Number(mergedM.weight).toFixed(1)} кг</b>{prevM?.weight != null && <span style={{ color: diffColor(Number(mergedM.weight) - Number(prevM.weight)), marginLeft: 5 }}>{fmtDiff(Number(mergedM.weight) - Number(prevM.weight))}</span>}</span>}
+                <span>∑ обхватов: <b style={{ color: '#02BDB6' }}>{Number(mergedM.total_cm).toFixed(1)} см</b>{prevM && <span style={{ color: diffColor(Number(mergedM.total_cm) - Number(prevM.total_cm)), marginLeft: 5 }}>{fmtDiff(Number(mergedM.total_cm) - Number(prevM.total_cm))}</span>}</span>
+              </div>
+              <FitbaseBtn m={{ ...mergedM, fitbase_comment_at: fbOverrides[mergedM.id] ?? mergedM.fitbase_comment_at }} client={mergedClient} onDone={onFbDone} />
+            </div>}
 
         {/* Zone checkboxes + chart */}
         {ms.length >= 2 && (
@@ -777,6 +786,8 @@ export default function ClientPage() {
               </tbody>
             </table>
           </div>
+        </div>
+          </section>
         </div>
       </div>
     </MeasureLayout>

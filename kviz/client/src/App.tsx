@@ -12,6 +12,7 @@ import PrintPage from './pages/measure/PrintPage';
 import ManagerPage from './pages/manager/ManagerPage';
 import AdminPage from './pages/manager/AdminPage';
 import AdminReportsPage from './pages/reports/ReportsPage';
+import ResultsPage from './pages/ResultsPage';
 import { isEmbedded } from './utils/iframe';
 import './index.css';
 
@@ -42,6 +43,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
+      <Route path="/results" element={<ResultsPage />} />
       <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
       <Route path="/new" element={<RequireAuth><NewPage /></RequireAuth>} />
       <Route path="/q/:id/summary" element={<RequireAuth><SummaryPage /></RequireAuth>} />

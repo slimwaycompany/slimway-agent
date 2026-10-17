@@ -26,6 +26,39 @@ function normalizePhone(raw: string): string | null {
 function buildRouter(): Router {
   const router = Router();
 
+  // Public TV screen and key protected aggregate API. No client identifiers or names leave this route.
+  router.get('/api/results/summary', async (req, res) => {
+    const expected = process.env.RESULTS_DISPLAY_KEY;
+    if (!expected || typeof req.query.key !== 'string' || req.query.key !== expected) { res.status(404).end(); return; }
+    try {
+      const [{ data: rows, error }, { data: missionRow }] = await Promise.all([
+        supabase.from('studio_results').select('cm_lost,kg_lost,fat_kg_lost'),
+        supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle(),
+      ]);
+      if (error) { res.status(500).json({ error: 'Не удалось загрузить результаты' }); return; }
+      const totals = (rows || []).reduce((a, row) => ({
+        cm_lost: a.cm_lost + Number(row.cm_lost || 0),
+        kg_lost: a.kg_lost + Number(row.kg_lost || 0),
+        fat_kg_lost: a.fat_kg_lost + Number(row.fat_kg_lost || 0),
+      }), { cm_lost: 0, kg_lost: 0, fat_kg_lost: 0 });
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ ...totals, clients: (rows || []).length, mission: String(missionRow?.value || '') });
+    } catch (e) { res.status(500).json({ error: 'Не удалось загрузить результаты' }); }
+  });
+
+  router.get('/results', (req, res) => {
+    const displayKey = process.env.RESULTS_DISPLAY_KEY;
+    if (!displayKey || typeof req.query.key !== 'string' || req.query.key !== displayKey) { res.status(404).end(); return; }
+    if (!fs.existsSync(CLIENT_DIST)) { res.status(404).end(); return; }
+    res.sendFile(path.join(CLIENT_DIST, 'index.html'));
+  });
+
+  router.get('/img/logo.png', (_req, res) => {
+    const logo = path.resolve(process.cwd(), 'img', 'logo.png');
+    if (!fs.existsSync(logo)) { res.status(404).end(); return; }
+    res.sendFile(logo);
+  });
+
   // Public: auth status check
   router.get('/kviz/api/me', (req, res) => {
     const session = getSession(req);
@@ -37,6 +70,23 @@ function buildRouter(): Router {
   router.use('/kviz/api', (req: Request, res: Response, next: NextFunction) => {
     if (!requireKvizAuth(req, res)) return;
     next();
+  });
+
+  router.get('/kviz/api/results/mission', async (req, res) => {
+    if (getSession(req)?.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const { data, error } = await supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle();
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    const key = process.env.RESULTS_DISPLAY_KEY;
+    res.json({ mission: String(data?.value || ''), display_url: key ? `/results?key=${encodeURIComponent(key)}` : '' });
+  });
+
+  router.put('/kviz/api/results/mission', async (req, res) => {
+    if (getSession(req)?.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const mission = String((req.body as Record<string, unknown>).mission ?? '').trim();
+    if (mission.length > 500) { res.status(400).json({ error: 'Текст миссии: не более 500 символов' }); return; }
+    const { data, error } = await supabase.from('studio_settings').upsert({ key: 'mission', value: mission }, { onConflict: 'key' }).select('key,value').single();
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    res.json(data);
   });
 
   router.post('/kviz/api/sessions', async (req, res) => {
