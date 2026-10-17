@@ -203,6 +203,15 @@ export async function addClientNote(clientId: number, note: string): Promise<voi
   });
 }
 
+export async function addLeadNote(leadId: number, note: string): Promise<void> {
+  await rawPost('/note', {
+    lead_id:    leadId,
+    manager_id: env.AGENT_USER_ID,
+    note,
+    pinned:     0,
+  });
+}
+
 // Fetch all pages of a paginated GET endpoint, returning merged items array.
 // Stops when a page is empty or shorter than page_size (last page heuristic).
 // Adds 300 ms inter-page delay on top of the per-request 250 ms rate-limit.

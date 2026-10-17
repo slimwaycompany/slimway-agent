@@ -5,6 +5,7 @@ import { supabase } from '../db/supabase';
 import { getSession } from './auth';
 import { buildMeasureRouter } from './measure';
 import { buildManagerRouter } from './manager';
+import { addLeadNote } from './fitbase';
 
 const CLIENT_DIST = path.resolve(process.cwd(), 'kviz', 'client', 'dist');
 
@@ -132,6 +133,19 @@ function buildRouter(): Router {
       const { error } = await supabase.from('qualify_sessions').delete().eq('id', req.params.id).eq('status', 'draft');
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  router.post('/kviz/api/sessions/:id/fitbase', async (req, res) => {
+    try {
+      const { data: s } = await supabase.from('qualify_sessions').select('fitbase_lead_id, summary_text, answers').eq('id', req.params.id).single();
+      if (!s) { res.status(404).json({ error: 'Not found' }); return; }
+      if (!s.fitbase_lead_id) { res.status(400).json({ error: 'Нет привязки к заявке Fitbase' }); return; }
+      if (!s.summary_text) { res.status(400).json({ error: 'Нет текста квалификации' }); return; }
+      await addLeadNote(Number(s.fitbase_lead_id), String(s.summary_text));
+      const fitbase_sent_at = new Date().toISOString();
+      await supabase.from('qualify_sessions').update({ answers: { ...(s.answers as object || {}), fitbase_sent_at } }).eq('id', req.params.id);
+      res.json({ ok: true, fitbase_sent_at });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

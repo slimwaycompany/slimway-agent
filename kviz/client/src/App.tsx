@@ -8,6 +8,7 @@ import NewPage from './pages/NewPage';
 import NewMeasurePage from './pages/measure/NewMeasurePage';
 import ReportsPage from './pages/measure/ReportsPage';
 import ClientPage from './pages/measure/ClientPage';
+import PrintPage from './pages/measure/PrintPage';
 import ManagerPage from './pages/manager/ManagerPage';
 import AdminPage from './pages/manager/AdminPage';
 import { isEmbedded } from './utils/iframe';
@@ -49,6 +50,7 @@ export default function App() {
       <Route path="/measure/new" element={<RequireAuth><NewMeasurePage /></RequireAuth>} />
       <Route path="/measure/reports" element={<RequireAuth><ReportsPage /></RequireAuth>} />
       <Route path="/measure/client/:id" element={<RequireAuth><ClientPage /></RequireAuth>} />
+      <Route path="/measure/print" element={<RequireAuth><PrintPage /></RequireAuth>} />
       <Route path="/manager" element={<RequireAuth><ManagerPage /></RequireAuth>} />
       <Route path="/manager/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />

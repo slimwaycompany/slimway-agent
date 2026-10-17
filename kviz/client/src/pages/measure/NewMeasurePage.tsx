@@ -83,7 +83,10 @@ export default function NewMeasurePage() {
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [phoneSuggestions, setPhoneSuggestions] = useState<Client[]>([]);
   const phoneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [result, setResult] = useState<null | { m: Measurement & { fitbase_error?: string }; client: SavedClient; prev: Measurement | null; start: Measurement | null }>(null);
+  const [result, setResult] = useState<null | { m: Measurement; client: SavedClient; prev: Measurement | null; start: Measurement | null }>(null);
+  const [fbSendingResult, setFbSendingResult] = useState(false);
+  const [fbErrorResult, setFbErrorResult] = useState<string | null>(null);
+  const [fbAtResult, setFbAtResult] = useState<string | null>(null);
   const [showInbodyModal, setShowInbodyModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -200,6 +203,7 @@ export default function NewMeasurePage() {
       const prev = idx > 0 ? sorted[idx - 1] : null;
       const start = idx > 0 ? sorted[0] : null;
       setResult({ m, client: refreshed, prev, start });
+    setFbAtResult(null); setFbErrorResult(null);
     } catch (e: unknown) {
       setSaveErr(String(e));
     } finally { setSaving(false); }
@@ -223,12 +227,15 @@ export default function NewMeasurePage() {
     navigator.clipboard.writeText(text).catch(() => {});
   }
 
-  async function retryFitbase() {
+  async function sendResultFitbase() {
     if (!result) return;
+    setFbSendingResult(true); setFbErrorResult(null);
     try {
-      await apiPost(`/api/measure/measurements/${result.m.id}/fitbase`, {});
-      setResult(r => r ? { ...r, m: { ...r.m, fitbase_error: undefined, fitbase_comment_at: new Date().toISOString() } } : r);
-    } catch (e) { alert(String(e)); }
+      const r = await apiPost(`/api/measure/measurements/${result.m.id}/fitbase`, {});
+      if (r.error) throw new Error(r.error);
+      setFbAtResult(r.fitbase_comment_at);
+    } catch (e) { setFbErrorResult(String(e)); }
+    finally { setFbSendingResult(false); }
   }
 
   async function syncClients() {
@@ -263,10 +270,12 @@ export default function NewMeasurePage() {
           <div style={{ background: 'linear-gradient(135deg,#02BDB6,#263CD9)', borderRadius: 16, padding: '20px 24px', color: '#fff', marginBottom: 20, textAlign: 'center' }}>
             <div style={{ fontSize: 32, fontWeight: 700 }}>Замер №{m.measure_no} сохранён</div>
             <div style={{ opacity: 0.85, marginTop: 4 }}>{client.name} · {fmtDate(m.measured_at)}</div>
-            {m.fitbase_error && (
-              <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
-                ⚠ В Fitbase не отправлено
-                <button onClick={retryFitbase} style={{ marginLeft: 10, background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, color: '#fff', padding: '3px 10px', cursor: 'pointer', fontSize: 12 }}>Отправить ещё раз</button>
+            {client.fitbase_client_id && (
+              <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.15)', borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
+                {fbAtResult
+                  ? <span>✓ Отправлено в Fitbase {new Date(fbAtResult).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</span>
+                  : <><button onClick={sendResultFitbase} disabled={fbSendingResult} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, color: '#fff', padding: '3px 10px', cursor: 'pointer', fontSize: 12 }}>{fbSendingResult ? '…' : 'Отправить в Fitbase'}</button>
+                    {fbErrorResult && <span style={{ marginLeft: 8, opacity: 0.85 }}>{fbErrorResult}</span>}</>}
               </div>
             )}
           </div>

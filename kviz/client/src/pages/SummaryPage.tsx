@@ -17,6 +17,7 @@ import QuickReplies from '../components/QuickReplies';
 interface Session {
   id: string; consultant: string; status: string; answers: Answers;
   score?: number; temperature?: string; bmi?: number; summary_text?: string;
+  fitbase_lead_id?: number | null;
 }
 
 const TEMP_SCRIPT_IDS: Record<string, string[]> = {
@@ -121,12 +122,17 @@ export default function SummaryPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [fbSending, setFbSending] = useState(false);
+  const [fbSentAt, setFbSentAt] = useState<string | null>(null);
+  const [fbError, setFbError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
     apiGet(`/api/sessions/${id}`).then(s => {
       setSession(s);
       postToParent({ type: 'kviz:title', text: (s as { client_name?: string }).client_name ?? '' });
+      const sentAt = (s as Session).answers?.fitbase_sent_at as string | undefined;
+      if (sentAt) setFbSentAt(sentAt);
     });
   }, [id, location.key]);
 
@@ -156,6 +162,17 @@ export default function SummaryPage() {
   function goBack() {
     if (location.key !== 'default') navigate(-1);
     else navigate('/');
+  }
+
+  async function sendToFitbase() {
+    if (!id) return;
+    setFbSending(true); setFbError(null);
+    try {
+      const r = await apiPost(`/api/sessions/${id}/fitbase`, {});
+      if (r.error) throw new Error(r.error);
+      setFbSentAt(r.fitbase_sent_at);
+    } catch (e) { setFbError(String(e)); }
+    finally { setFbSending(false); }
   }
 
   async function copyToClipboard() {
@@ -348,6 +365,24 @@ export default function SummaryPage() {
         <button className="btn btn-outline" onClick={copyToClipboard}>
           {copied ? '✓ Скопировано!' : 'Скопировать для Fitbase'}
         </button>
+        {session.fitbase_lead_id ? (
+          fbSentAt ? (
+            <div style={{ fontSize: 13, color: '#22c55e', textAlign: 'center' }}>
+              ✓ Отправлено в Fitbase {new Date(fbSentAt).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}
+            </div>
+          ) : (
+            <div>
+              <button className="btn btn-outline" disabled={fbSending} onClick={sendToFitbase}>
+                {fbSending ? 'Отправка…' : 'Отправить в Fitbase'}
+              </button>
+              {fbError && <div style={{ fontSize: 13, color: '#ef4444', marginTop: 4 }}>{fbError}</div>}
+            </div>
+          )
+        ) : (
+          <button className="btn btn-outline" disabled title="Привязка к клиенту будет позже" style={{ opacity: 0.4, cursor: 'default' }}>
+            Отправить в Fitbase
+          </button>
+        )}
         {!readOnly && (
           <button className="btn btn-primary" disabled={saving} onClick={complete}>
             {saving ? 'Сохраняем…' : 'Завершить квалификацию'}

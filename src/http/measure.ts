@@ -317,6 +317,18 @@ export function buildMeasureRouter(): Router {
     res.json(data);
   });
 
+  r.patch('/kviz/api/measure/clients/:id', async (req, res) => {
+    try {
+      const b = req.body as Record<string, unknown>;
+      const allowed: Record<string, unknown> = {};
+      if (b.fitbase_client_id !== undefined) allowed.fitbase_client_id = b.fitbase_client_id != null ? Number(b.fitbase_client_id) : null;
+      if (!Object.keys(allowed).length) { res.status(400).json({ error: 'Нечего обновлять' }); return; }
+      const { data: upd, error } = await supabase.from('body_clients').update(allowed).eq('id', req.params.id).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(upd);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   r.get('/kviz/api/measure/clients/:id', async (req, res) => {
     try {
       const { data: client, error } = await supabase.from('body_clients').select('*').eq('id', req.params.id).single();
@@ -353,15 +365,7 @@ export function buildMeasureRouter(): Router {
       .select('*').single();
     if (error) { res.status(500).json({ error: error.message }); return; }
 
-    let fitbase_error: string | null = null;
-    if (client.fitbase_client_id) {
-      try {
-        await postFitbaseComment(String(m.id), client_id);
-        m.fitbase_comment_at = new Date().toISOString();
-      } catch (e) { fitbase_error = String(e); }
-    }
-
-    res.json({ ...m, fitbase_error });
+    res.json(m);
   });
 
   r.get('/kviz/api/measure/measurements', async (req, res) => {
@@ -405,16 +409,7 @@ export function buildMeasureRouter(): Router {
         .eq('id', req.params.id).select('*').single();
       if (error) { res.status(500).json({ error: error.message }); return; }
 
-      let fitbase_error: string | null = null;
-      const { data: cl } = await supabase.from('body_clients').select('fitbase_client_id').eq('id', existing.client_id).single();
-      if (cl?.fitbase_client_id) {
-        try {
-          await postFitbaseComment(req.params.id, String(existing.client_id));
-          updated.fitbase_comment_at = new Date().toISOString();
-        } catch (e) { fitbase_error = String(e); }
-      }
-
-      res.json({ ...updated, fitbase_error });
+      res.json(updated);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -435,7 +430,8 @@ export function buildMeasureRouter(): Router {
       const { data: m } = await supabase.from('body_measurements').select('client_id').eq('id', req.params.id).single();
       if (!m) { res.status(404).json({ error: 'Замер не найден' }); return; }
       await postFitbaseComment(req.params.id, String(m.client_id));
-      res.json({ ok: true });
+      const { data: upd } = await supabase.from('body_measurements').select('fitbase_comment_at').eq('id', req.params.id).single();
+      res.json({ ok: true, fitbase_comment_at: upd?.fitbase_comment_at ?? new Date().toISOString() });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
