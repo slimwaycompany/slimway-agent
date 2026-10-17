@@ -1,4 +1,5 @@
 import { supabase }            from '../db/supabase';
+import { retrySheetSync }     from '../http/shifts';
 import { paginateGet, rawGet }  from '../http/fitbase';
 import { getOverdueMissed }     from '../http/manager';
 import { shortName }            from '../core/names';
@@ -950,6 +951,68 @@ async function processManagerTaskMissed(
   }
 }
 
+// ── Shift rules ───────────────────────────────────────────────────────────────
+
+async function processShiftRules(
+  nowMs:      number,
+  today:      string,
+  activeKeys: Set<string>,
+  toUpsert:   AlertRow[],
+): Promise<void> {
+  const yesterday = almatyDate(nowMs - 86_400_000);
+
+  if (isEnabled('SHIFT_LATE')) {
+    try {
+      const dow = new Date(nowMs + ALMATY_MS).getUTCDay();
+      if (dow >= 1 && dow <= 5) {
+        const cutoff = new Date(today + 'T03:15:00Z').toISOString(); // 08:15 YEK
+        const { data: lateShifts } = await supabase
+          .from('staff_shifts').select('user_id, user_name, started_at')
+          .eq('date', today).gt('started_at', cutoff);
+        for (const s of (lateShifts ?? []) as Record<string, unknown>[]) {
+          const key = `SHIFT_LATE:${today}:${String(s.user_id)}`;
+          activeKeys.add(key);
+          if (toUpsert.some(r => r.alert_key === key)) continue;
+          const time = fmtTime(new Date(String(s.started_at)).getTime());
+          toUpsert.push({
+            alert_key: key, rule: 'SHIFT_LATE', level: 'important',
+            lead_id: null, client_id: null, registration_id: null,
+            manager_name: String(s.user_name), short_name: String(s.user_name),
+            title: getTitle('SHIFT_LATE'),
+            body: pickBody('SHIFT_LATE', key, { name: String(s.user_name), time }),
+            action_hint: null, link: null, meta: { user_id: s.user_id, started_at: s.started_at },
+          });
+        }
+      }
+    } catch (e) {
+      console.error('[watch] processShiftRules SHIFT_LATE:', (e as Error).message);
+    }
+  }
+
+  if (isEnabled('SHIFT_NOT_CLOSED')) {
+    try {
+      const { data: autoClosed } = await supabase
+        .from('staff_shifts').select('user_id, user_name, started_at')
+        .eq('status', 'auto_closed').eq('date', yesterday);
+      for (const s of (autoClosed ?? []) as Record<string, unknown>[]) {
+        const key = `SHIFT_NOT_CLOSED:${yesterday}:${String(s.user_id)}`;
+        activeKeys.add(key);
+        if (toUpsert.some(r => r.alert_key === key)) continue;
+        toUpsert.push({
+          alert_key: key, rule: 'SHIFT_NOT_CLOSED', level: 'important',
+          lead_id: null, client_id: null, registration_id: null,
+          manager_name: String(s.user_name), short_name: String(s.user_name),
+          title: getTitle('SHIFT_NOT_CLOSED'),
+          body: pickBody('SHIFT_NOT_CLOSED', key, { name: String(s.user_name) }),
+          action_hint: null, link: null, meta: { user_id: s.user_id, date: yesterday },
+        });
+      }
+    } catch (e) {
+      console.error('[watch] processShiftRules SHIFT_NOT_CLOSED:', (e as Error).message);
+    }
+  }
+}
+
 // ── Resolve reason inference ──────────────────────────────────────────────────
 
 function inferResolveReason(
@@ -1095,6 +1158,8 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   await processContractRules(nowMs, activeKeys, toUpsert, nameByClientId, managerByClientId);
   await processAgentTaskRules(rawTasks, nowMs, nowSec, activeKeys, toUpsert, nameByClientId, leadById);
   await processManagerTaskMissed(nowMs, today, activeKeys, toUpsert);
+  await processShiftRules(nowMs, today, activeKeys, toUpsert);
+  try { await retrySheetSync(); } catch (e) { console.error('[watch] retrySheetSync:', (e as Error).message); }
 
   // 8. Flood guard
   const maxNewPerRule = env.WATCH_MAX_NEW_PER_RULE;

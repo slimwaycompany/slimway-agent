@@ -20,6 +20,7 @@ import { mountWindowRoutes }                          from './http/window';
 import { mountKvizRoutes }                            from './http/kviz';
 import { mountShellRoutes }                           from './http/shell';
 import { buildClientsSyncRoute }                      from './http/measure';
+import { buildShiftsAutocloseRoute }                  from './http/shifts';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -203,6 +204,9 @@ async function handleLifecyclePlan(req: express.Request, res: express.Response):
 
 app.get('/run/lifecycle-plan',  handleLifecyclePlan);
 app.post('/run/lifecycle-plan', handleLifecyclePlan);
+
+// shifts-autoclose — must be before generic /run/:job
+app.use(buildShiftsAutocloseRoute());
 
 // clients-sync and clients-debug — must be before generic /run/:job
 app.use(buildClientsSyncRoute());
