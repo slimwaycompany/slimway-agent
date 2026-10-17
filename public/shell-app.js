@@ -5,13 +5,14 @@
   var origin = location.origin;
 
   // State
-  var currentTab       = null; // null=choice, 'agent', 'kviz', 'measure'
-  var agentAlertCount  = 0;
-  var agentSeenCount   = 0;
-  var kvizDraftCount   = 0;
-  var kvizCreated      = false;
-  var measureCreated   = false;
-  var managerCreated   = false;
+  var currentTab          = null; // null=choice, 'manager', 'agent', 'kviz', 'measure'
+  var agentAlertCount     = 0;
+  var agentSeenCount      = 0;
+  var kvizDraftCount      = 0;
+  var managerOverdueCount = 0;
+  var kvizCreated         = false;
+  var measureCreated      = false;
+  var managerCreated      = false;
 
   // ── Badge helpers ───────────────────────────────────────────────────────────
   function setBadge(id, n) {
@@ -22,22 +23,27 @@
   }
 
   function updateBadges() {
-    var agentNew = (currentTab === 'agent') ? 0 : Math.max(0, agentAlertCount - agentSeenCount);
-    setBadge('badge-choice-agent', agentAlertCount);
-    setBadge('badge-choice-kviz',  kvizDraftCount);
-    setBadge('badge-tab-agent',    agentNew);
-    setBadge('badge-tab-kviz',     kvizDraftCount);
-    setBadge('badge-side-agent',   agentNew);
-    setBadge('badge-side-kviz',    kvizDraftCount);
+    var agentNew   = (currentTab === 'agent')   ? 0 : Math.max(0, agentAlertCount - agentSeenCount);
+    var managerNew = (currentTab === 'manager') ? 0 : managerOverdueCount;
+    setBadge('badge-tab-manager',    managerNew);
+    setBadge('badge-tab-agent',      agentNew);
+    setBadge('badge-tab-kviz',       kvizDraftCount);
+    setBadge('badge-choice-manager', managerOverdueCount);
+    setBadge('badge-choice-agent',   agentAlertCount);
+    setBadge('badge-choice-kviz',    kvizDraftCount);
+    setBadge('badge-side-agent',     agentNew);     // manager-pane right → agent
+    setBadge('badge-side-manager',   managerNew);   // agent-pane left → manager
+    setBadge('badge-side-kviz',      kvizDraftCount); // agent-pane right → kviz
+    setBadge('badge-side-agent2',    agentNew);     // kviz-pane left → agent
   }
 
   function hidePanes() {
-    var ids = ['agent-pane','kviz-pane','measure-pane','manager-pane'];
+    var ids = ['manager-pane', 'agent-pane', 'kviz-pane', 'measure-pane'];
     for (var i = 0; i < ids.length; i++) {
       var p = $(ids[i]);
       if (p) p.classList.add('hidden');
     }
-    var tabs = ['tab-btn-agent','tab-btn-kviz','tab-btn-measure','tab-btn-manager'];
+    var tabs = ['tab-btn-manager', 'tab-btn-agent', 'tab-btn-kviz', 'tab-btn-measure'];
     for (var j = 0; j < tabs.length; j++) {
       var b = $(tabs[j]);
       if (b) b.classList.remove('active');
@@ -51,7 +57,18 @@
     $('top-bar').style.display = 'flex';
     hidePanes();
 
-    if (name === 'agent') {
+    if (name === 'manager') {
+      $('manager-pane').classList.remove('hidden');
+      $('tab-btn-manager').classList.add('active');
+      if (!managerCreated) {
+        var fm = document.createElement('iframe');
+        fm.id = 'manager-iframe'; fm.className = 'frame';
+        fm.src = '/kviz/manager'; fm.setAttribute('allow', 'clipboard-write');
+        $('manager-pane').insertBefore(fm, $('side-to-agent'));
+        managerCreated = true;
+      }
+      history.replaceState(null, '', '#manager');
+    } else if (name === 'agent') {
       $('agent-pane').classList.remove('hidden');
       $('tab-btn-agent').classList.add('active');
       agentSeenCount = agentAlertCount;
@@ -60,10 +77,10 @@
       $('kviz-pane').classList.remove('hidden');
       $('tab-btn-kviz').classList.add('active');
       if (!kvizCreated) {
-        var f = document.createElement('iframe');
-        f.id = 'kviz-iframe'; f.className = 'frame';
-        f.src = '/kviz/'; f.setAttribute('allow', 'clipboard-write');
-        $('kviz-pane').insertBefore(f, $('side-to-measure'));
+        var fk = document.createElement('iframe');
+        fk.id = 'kviz-iframe'; fk.className = 'frame';
+        fk.src = '/kviz/'; fk.setAttribute('allow', 'clipboard-write');
+        $('kviz-pane').insertBefore(fk, $('side-to-measure'));
         kvizCreated = true;
       }
       history.replaceState(null, '', '#kviz');
@@ -71,46 +88,37 @@
       $('measure-pane').classList.remove('hidden');
       $('tab-btn-measure').classList.add('active');
       if (!measureCreated) {
-        var fm = document.createElement('iframe');
-        fm.id = 'measure-iframe'; fm.className = 'frame';
-        fm.src = '/kviz/measure/new'; fm.setAttribute('allow', 'clipboard-write');
-        $('measure-pane').insertBefore(fm, $('side-to-manager'));
+        var fme = document.createElement('iframe');
+        fme.id = 'measure-iframe'; fme.className = 'frame';
+        fme.src = '/kviz/measure/new'; fme.setAttribute('allow', 'clipboard-write');
+        $('measure-pane').appendChild(fme);
         measureCreated = true;
       }
       history.replaceState(null, '', '#measure');
-    } else if (name === 'manager') {
-      $('manager-pane').classList.remove('hidden');
-      $('tab-btn-manager').classList.add('active');
-      if (!managerCreated) {
-        var fmg = document.createElement('iframe');
-        fmg.id = 'manager-iframe'; fmg.className = 'frame';
-        fmg.src = '/window'; fmg.setAttribute('allow', 'notifications; clipboard-write');
-        $('manager-pane').insertBefore(fmg, $('side-to-measure2'));
-        managerCreated = true;
-      }
-      history.replaceState(null, '', '#manager');
     }
 
     updateBadges();
   }
 
   // ── Choice buttons ──────────────────────────────────────────────────────────
+  $('choice-manager').onclick = function () { showTab('manager'); };
   $('choice-agent').onclick   = function () { showTab('agent'); };
   $('choice-kviz').onclick    = function () { showTab('kviz'); };
   $('choice-measure').onclick = function () { showTab('measure'); };
-  $('choice-manager').onclick = function () { showTab('manager'); };
 
-  // ── Tab / side buttons ──────────────────────────────────────────────────────
+  // ── Tab buttons ─────────────────────────────────────────────────────────────
+  $('tab-btn-manager').onclick = function () { showTab('manager'); };
   $('tab-btn-agent').onclick   = function () { showTab('agent'); };
   $('tab-btn-kviz').onclick    = function () { showTab('kviz'); };
   $('tab-btn-measure').onclick = function () { showTab('measure'); };
-  $('tab-btn-manager').onclick = function () { showTab('manager'); };
-  $('side-to-kviz').onclick    = function () { showTab('kviz'); };
-  $('side-to-agent').onclick   = function () { showTab('agent'); };
-  $('side-to-measure').onclick = function () { showTab('measure'); };
-  $('side-to-kviz2').onclick   = function () { showTab('kviz'); };
-  $('side-to-manager').onclick  = function () { showTab('manager'); };
-  $('side-to-measure2').onclick = function () { showTab('measure'); };
+
+  // ── Side buttons ────────────────────────────────────────────────────────────
+  $('side-to-agent').onclick   = function () { showTab('agent'); };    // manager-pane right
+  $('side-to-manager').onclick = function () { showTab('manager'); };  // agent-pane left
+  $('side-to-kviz').onclick    = function () { showTab('kviz'); };     // agent-pane right
+  $('side-to-agent2').onclick  = function () { showTab('agent'); };    // kviz-pane left
+  $('side-to-measure').onclick = function () { showTab('measure'); };  // kviz-pane right
+  $('side-to-kviz2').onclick   = function () { showTab('kviz'); };     // measure-pane left
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   $('logout-btn').onclick = function () {
@@ -119,22 +127,22 @@
     });
   };
 
-  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
+  // ── Keyboard shortcuts: Alt+1=Менеджер, Alt+2=Агент, Alt+3=Квалификация, Alt+4=Замеры
   document.addEventListener('keydown', function (e) {
-    if (e.altKey && (e.key === '1' || e.code === 'Digit1')) { e.preventDefault(); showTab('agent'); }
-    if (e.altKey && (e.key === '2' || e.code === 'Digit2')) { e.preventDefault(); showTab('kviz'); }
-    if (e.altKey && (e.key === '3' || e.code === 'Digit3')) { e.preventDefault(); showTab('measure'); }
-    if (e.altKey && (e.key === '4' || e.code === 'Digit4')) { e.preventDefault(); showTab('manager'); }
+    if (e.altKey && (e.key === '1' || e.code === 'Digit1')) { e.preventDefault(); showTab('manager'); }
+    if (e.altKey && (e.key === '2' || e.code === 'Digit2')) { e.preventDefault(); showTab('agent'); }
+    if (e.altKey && (e.key === '3' || e.code === 'Digit3')) { e.preventDefault(); showTab('kviz'); }
+    if (e.altKey && (e.key === '4' || e.code === 'Digit4')) { e.preventDefault(); showTab('measure'); }
   });
 
-  // ── Hash navigation (back / forward only, not on initial load) ──────────────
+  // ── Hash navigation (back / forward only) ───────────────────────────────────
   window.addEventListener('hashchange', function () {
     if (currentTab === null) return;
     var h = location.hash.slice(1);
-    if (h === 'kviz'    && currentTab !== 'kviz')    showTab('kviz');
+    if      (h === 'manager' && currentTab !== 'manager') showTab('manager');
     else if (h === 'agent'   && currentTab !== 'agent')   showTab('agent');
+    else if (h === 'kviz'    && currentTab !== 'kviz')    showTab('kviz');
     else if (h === 'measure' && currentTab !== 'measure') showTab('measure');
-    else if (h === 'manager' && currentTab !== 'manager') showTab('manager');
   });
 
   // ── postMessage from iframes ────────────────────────────────────────────────
@@ -148,12 +156,16 @@
       if (currentTab === 'agent') agentSeenCount = agentAlertCount;
       updateBadges();
     }
+    if (d.type === 'manager:overdue') {
+      managerOverdueCount = typeof d.count === 'number' ? d.count : managerOverdueCount;
+      updateBadges();
+    }
     if (d.type === 'kviz:title') {
       var lbl = $('kviz-tab-text');
       if (lbl) lbl.textContent = d.text ? 'Квалификация · ' + d.text : 'Квалификация';
     }
     if (d.type === 'kviz:done') {
-      var map = { hot: '🔥 Горячий', warm: '🌤 Тёплый', cold: '❄️ Холодный', stop: '🚫 Стоп', postpone: '⏸ Отложен' };
+      var map = { hot: '🔥 Горячий', warm: '🌤 Тёплый', cold: '❄️ Холодный', stop: '🚫 Стоп', postpone: '⏸ Отложен' };
       showToast('Квалификация сохранена: ' + (map[d.temperature] || d.temperature || ''));
     }
     if (d.type === 'open-kviz') {
@@ -163,13 +175,10 @@
         if (frame) {
           frame.src = d.path;
         } else {
-          // kviz pane just created; attach iframe with the target path
-          var f2 = document.createElement('iframe');
-          f2.id        = 'kviz-iframe';
-          f2.className = 'frame';
-          f2.src       = d.path;
-          f2.setAttribute('allow', 'clipboard-write');
-          $('kviz-pane').insertBefore(f2, $('side-to-measure'));
+          var fk2 = document.createElement('iframe');
+          fk2.id = 'kviz-iframe'; fk2.className = 'frame';
+          fk2.src = d.path; fk2.setAttribute('allow', 'clipboard-write');
+          $('kviz-pane').insertBefore(fk2, $('side-to-measure'));
           kvizCreated = true;
         }
       }

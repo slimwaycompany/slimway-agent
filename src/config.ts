@@ -29,7 +29,7 @@ const envSchema = z.object({
   FITBASE_LEAD_URL_TEMPLATE:   z.string().optional(),
   FITBASE_CLIENT_URL_TEMPLATE: z.string().optional(),
   WATCH_REG_SCOPE: z.enum(['all', 'trial']).default('all'),
-  WATCH_RULES:                    z.string().default('NEW_LEAD,NEW_LEAD_NO_TASK,UNCONFIRMED_3H,NO_SHOW_UNCONFIRMED,NO_SHOW_NO_MARK,NO_SHOW_MARKED,CONTRACT_ENDING,CONTRACT_ENDED,AGENT_TASK'),
+  WATCH_RULES:                    z.string().default('NEW_LEAD,NEW_LEAD_NO_TASK,UNCONFIRMED_3H,NO_SHOW_UNCONFIRMED,NO_SHOW_NO_MARK,NO_SHOW_MARKED,CONTRACT_ENDING,CONTRACT_ENDED,AGENT_TASK,MANAGER_TASK_MISSED'),
   WATCH_NO_SHOW_EXCLUDE_TRAININGS: z.string().default('Аренда'),
   WATCH_EXCLUDE_CLIENT_IDS:        z.string().default('294'),
   CONTRACT_ENDED_DAYS:             z.coerce.number().default(14),

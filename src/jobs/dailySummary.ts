@@ -190,6 +190,40 @@ export async function runDailySummary(): Promise<void> {
     body += `\n== Неактивные клиенты: ошибка — ${(e as Error).message} ==\n`;
   }
 
+  // ── Manager tasks block ───────────────────────────────────────────────────────
+  try {
+    const { data: managerAll } = await supabase
+      .from('manager_task_templates')
+      .select('id, title, slot_time')
+      .eq('is_active', true)
+      .order('sort');
+
+    if (managerAll && managerAll.length > 0) {
+      const { data: managerDone } = await supabase
+        .from('manager_task_done')
+        .select('template_id, done_by_name, done_at')
+        .eq('task_date', today);
+
+      const doneMap = new Map(
+        (managerDone ?? []).map((d: Record<string, unknown>) => [String(d.template_id), d]),
+      );
+
+      body += `\n== Задачи смены (${doneMap.size} из ${managerAll.length}) ==\n`;
+      for (const t of managerAll as Record<string, unknown>[]) {
+        const d = doneMap.get(String(t.id));
+        const slotStr = String(t.slot_time).slice(0, 5);
+        if (d) {
+          const timeStr = new Date(d.done_at as string).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Almaty' });
+          body += `  ✓ ${t.title} (${slotStr}) — ${d.done_by_name}, ${timeStr}\n`;
+        } else {
+          body += `  ✗ ${t.title} (${slotStr})\n`;
+        }
+      }
+    }
+  } catch (e) {
+    body += `\n== Задачи смены: ошибка — ${(e as Error).message} ==\n`;
+  }
+
   await sendDailySummary(subject, body);
   console.log('[daily-summary] sent:', subject);
 }

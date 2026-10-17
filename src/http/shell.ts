@@ -200,15 +200,25 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
 <div id="work-area">
   <div id="top-bar">
     <div class="tabs">
+      <button class="tab-btn" id="tab-btn-manager">👔 Менеджер<span class="tbadge" id="badge-tab-manager">0</span></button>
       <button class="tab-btn active" id="tab-btn-agent">🐕 Агент<span class="tbadge" id="badge-tab-agent">0</span></button>
       <button class="tab-btn" id="tab-btn-kviz">📝 <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
       <button class="tab-btn" id="tab-btn-measure">📏 Замеры</button>
-      <button class="tab-btn" id="tab-btn-manager">👔 Менеджер</button>
     </div>
     <button class="logout-btn" id="logout-btn"><!--DNAME--> · Выйти</button>
   </div>
   <div id="panes">
+    <div class="pane hidden" id="manager-pane">
+      <button class="side-btn" id="side-to-agent">
+        <span class="sbadge" id="badge-side-agent">0</span>
+        <span class="side-text">Агент</span>
+      </button>
+    </div>
     <div class="pane" id="agent-pane">
+      <button class="side-btn left" id="side-to-manager">
+        <span class="sbadge" id="badge-side-manager">0</span>
+        <span class="side-text">Менеджер</span>
+      </button>
       <iframe class="frame" id="agent-iframe" src="/window" allow="notifications; clipboard-write"></iframe>
       <button class="side-btn" id="side-to-kviz">
         <span class="sbadge" id="badge-side-kviz">0</span>
@@ -216,8 +226,8 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       </button>
     </div>
     <div class="pane hidden" id="kviz-pane">
-      <button class="side-btn left" id="side-to-agent">
-        <span class="sbadge" id="badge-side-agent">0</span>
+      <button class="side-btn left" id="side-to-agent2">
+        <span class="sbadge" id="badge-side-agent2">0</span>
         <span class="side-text">Агент</span>
       </button>
       <button class="side-btn" id="side-to-measure">
@@ -227,14 +237,6 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
     <div class="pane hidden" id="measure-pane">
       <button class="side-btn left" id="side-to-kviz2">
         <span class="side-text">Квалификация</span>
-      </button>
-      <button class="side-btn" id="side-to-manager">
-        <span class="side-text">Менеджер</span>
-      </button>
-    </div>
-    <div class="pane hidden" id="manager-pane">
-      <button class="side-btn left" id="side-to-measure2">
-        <span class="side-text">Замеры</span>
       </button>
     </div>
   </div>
@@ -246,6 +248,11 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
     <h1 class="choice-title">SlimWay</h1>
     <p class="choice-sub">Выберите раздел</p>
     <div class="choice-btns">
+      <button class="choice-btn" id="choice-manager">
+        <span class="cbadge" id="badge-choice-manager">0</span>
+        <span class="choice-icon">👔</span>
+        <span class="choice-label">Менеджер</span>
+      </button>
       <button class="choice-btn" id="choice-agent">
         <span class="cbadge" id="badge-choice-agent">0</span>
         <span class="choice-icon">🐕</span>
@@ -259,10 +266,6 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       <button class="choice-btn" id="choice-measure">
         <span class="choice-icon">📏</span>
         <span class="choice-label">Замеры</span>
-      </button>
-      <button class="choice-btn" id="choice-manager">
-        <span class="choice-icon">👔</span>
-        <span class="choice-label">Менеджер</span>
       </button>
     </div>
   </div>

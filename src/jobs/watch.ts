@@ -1,5 +1,6 @@
 import { supabase }            from '../db/supabase';
 import { paginateGet, rawGet }  from '../http/fitbase';
+import { getOverdueMissed }     from '../http/manager';
 import { shortName }            from '../core/names';
 import { getLeadFunnel }        from '../core/funnel';
 import { alertError }           from '../core/mail';
@@ -919,6 +920,36 @@ async function processAgentTaskRules(
   }
 }
 
+// ── Manager task missed rule ──────────────────────────────────────────────────
+
+async function processManagerTaskMissed(
+  nowMs:     number,
+  today:     string,
+  activeKeys: Set<string>,
+  toUpsert:  AlertRow[],
+): Promise<void> {
+  if (!isEnabled('MANAGER_TASK_MISSED')) return;
+  try {
+    const missed = await getOverdueMissed(nowMs);
+    for (const m of missed) {
+      const key = `MANAGER_TASK_MISSED:${today}:${m.templateId}`;
+      activeKeys.add(key);
+      if (toUpsert.some(r => r.alert_key === key)) continue;
+      toUpsert.push({
+        alert_key: key, rule: 'MANAGER_TASK_MISSED', level: 'important',
+        lead_id: null, client_id: null, registration_id: null,
+        manager_name: null, short_name: m.title,
+        title: getTitle('MANAGER_TASK_MISSED'),
+        body: pickBody('MANAGER_TASK_MISSED', key, { name: m.title, time: m.slotHHMM }),
+        action_hint: 'Отметьте задачу в разделе «Менеджер»',
+        link: null, meta: { template_id: m.templateId, slot: m.slotHHMM },
+      });
+    }
+  } catch (e) {
+    console.error('[watch] processManagerTaskMissed:', (e as Error).message);
+  }
+}
+
 // ── Resolve reason inference ──────────────────────────────────────────────────
 
 function inferResolveReason(
@@ -932,6 +963,7 @@ function inferResolveReason(
   const { rule, registration_id, lead_id } = alert;
 
   if (rule === 'AGENT_TASK') return 'Задача выполнена';
+  if (rule === 'MANAGER_TASK_MISSED') return 'Задача выполнена';
 
   if (registration_id) {
     const reg    = regByRegId.get(registration_id);
@@ -1062,6 +1094,7 @@ export async function runWatch(): Promise<Record<string, unknown>> {
   await processSystemRules(nowMs, activeKeys, toUpsert);
   await processContractRules(nowMs, activeKeys, toUpsert, nameByClientId, managerByClientId);
   await processAgentTaskRules(rawTasks, nowMs, nowSec, activeKeys, toUpsert, nameByClientId, leadById);
+  await processManagerTaskMissed(nowMs, today, activeKeys, toUpsert);
 
   // 8. Flood guard
   const maxNewPerRule = env.WATCH_MAX_NEW_PER_RULE;
