@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,7 +27,19 @@ interface TaskDone {
   manager_task_templates: { title: string; slot_time: string; category: string };
 }
 
-type ActiveTab = 'shifts' | 'tasks' | 'studio';
+type ActiveTab = 'shifts' | 'tasks' | 'studio' | 'sales';
+
+interface SalesOp {
+  id: number; pay_ts: string; amount: number; is_refund: boolean;
+  payment_type: string; item_type: string; cashier: string; manager: string; client: string;
+}
+interface SalesData {
+  from: string; to: string;
+  totals: { cash_sale: number; card_sale: number; cash_refund: number; card_refund: number };
+  by_manager: { name: string; amount: number }[];
+  by_cashier: { name: string; amount: number }[];
+  ops: SalesOp[];
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -97,6 +110,12 @@ export default function ReportsPage() {
   const [studioLoading, setStudioLoading] = useState(false);
   const [studioLoaded, setStudioLoaded]   = useState(false);
 
+  // Sales
+  const [salesFrom, setSalesFrom] = useState(today);
+  const [salesTo, setSalesTo]     = useState(today);
+  const [salesData, setSalesData] = useState<SalesData | null>(null);
+  const [salesLoading, setSalesLoading] = useState(false);
+
   const loadShifts = useCallback(async () => {
     setShiftsLoading(true);
     try {
@@ -121,6 +140,58 @@ export default function ReportsPage() {
       setStudio(r.ok ? await r.json() : []);
     } catch {} finally { setStudioLoading(false); setStudioLoaded(true); }
   }, [studioLoaded]);
+
+  const loadSales = useCallback(async () => {
+    setSalesLoading(true);
+    try {
+      const r = await fetch(`/kviz/api/reports/sales?from=${salesFrom}&to=${salesTo}`, { credentials: 'include' });
+      setSalesData(r.ok ? await r.json() : null);
+    } catch {} finally { setSalesLoading(false); }
+  }, [salesFrom, salesTo]);
+
+  function setSalesPreset(preset: 'today' | 'week' | 'month') {
+    const now = new Date(Date.now() + 5*3600_000);
+    const d = now.toISOString().slice(0, 10);
+    if (preset === 'today') { setSalesFrom(d); setSalesTo(d); return; }
+    if (preset === 'week') {
+      const dow = now.getUTCDay() || 7;
+      const mon = new Date(now.getTime() - (dow - 1) * 86400_000).toISOString().slice(0, 10);
+      setSalesFrom(mon); setSalesTo(d); return;
+    }
+    setSalesFrom(d.slice(0, 7) + '-01'); setSalesTo(d);
+  }
+
+  function exportSalesXLSX() {
+    if (!salesData) return;
+    const wb = XLSX.utils.book_new();
+    const t = salesData.totals;
+    const fmtN = (n: number) => Math.round(n);
+    const s1 = [
+      ['Период', `${salesData.from} — ${salesData.to}`],
+      [],
+      ['Продажи наличными', fmtN(t.cash_sale)],
+      ['Продажи по карте', fmtN(t.card_sale)],
+      ['Итого продаж', fmtN(t.cash_sale + t.card_sale)],
+      ['Возвраты наличными', fmtN(t.cash_refund)],
+      ['Возвраты по карте', fmtN(t.card_refund)],
+      ['Итого возвратов', fmtN(t.cash_refund + t.card_refund)],
+      ['Чистые продажи', fmtN(t.cash_sale + t.card_sale - t.cash_refund - t.card_refund)],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s1), 'Итоги');
+    const mgr = [['Менеджер', 'Сумма'], ...salesData.by_manager.map(m => [m.name, fmtN(m.amount)])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mgr), 'По менеджеру');
+    const cas = [['Кассир', 'Сумма'], ...salesData.by_cashier.map(c => [c.name, fmtN(c.amount)])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cas), 'По кассиру');
+    const ops = [['Время', 'Тип', 'Клиент', 'Менеджер', 'Кассир', 'Тип товара', 'Сумма', 'Оплата'],
+      ...salesData.ops.map(o => [
+        new Date(o.pay_ts).toLocaleString('ru', { timeZone: 'Asia/Yekaterinburg' }),
+        o.is_refund ? 'Возврат' : 'Продажа',
+        o.client, o.manager, o.cashier, o.item_type,
+        o.is_refund ? -o.amount : o.amount, o.payment_type,
+      ])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ops), 'Операции');
+    XLSX.writeFile(wb, `sales-${salesData.from}-${salesData.to}.xlsx`);
+  }
 
   const saveShift = async () => {
     if (!editShift?.id) return;
@@ -216,6 +287,7 @@ export default function ReportsPage() {
         <button style={tabBtnSt(tab === 'shifts')} onClick={() => setTab('shifts')}>Смены</button>
         <button style={tabBtnSt(tab === 'tasks')} onClick={() => setTab('tasks')}>Задачи</button>
         <button style={tabBtnSt(tab === 'studio')} onClick={() => { setTab('studio'); loadStudio(); }}>Результаты студии</button>
+        <button style={tabBtnSt(tab === 'sales')} onClick={() => setTab('sales')}>Продажи</button>
       </div>
 
       {/* ── Shifts ── */}
@@ -319,6 +391,92 @@ export default function ReportsPage() {
               ))}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Sales ── */}
+      {tab === 'sales' && (
+        <div style={s.section}>
+          <div style={s.filterRow}>
+            {(['today','week','month'] as const).map(p => (
+              <button key={p} style={s.csvBtn} onClick={() => setSalesPreset(p)}>
+                {{ today: 'Сегодня', week: 'Неделя', month: 'Месяц' }[p]}
+              </button>
+            ))}
+            <input type="date" style={s.dateInp} value={salesFrom} onChange={e => setSalesFrom(e.target.value)} />
+            <span style={s.dash}>—</span>
+            <input type="date" style={s.dateInp} value={salesTo} onChange={e => setSalesTo(e.target.value)} />
+            <button style={s.loadBtn} onClick={loadSales} disabled={salesLoading}>{salesLoading ? '...' : 'Загрузить'}</button>
+            {salesData && <button style={s.csvBtn} onClick={exportSalesXLSX}>Excel</button>}
+          </div>
+
+          {!salesData && !salesLoading && <div style={s.empty}>Выберите период и нажмите «Загрузить»</div>}
+          {salesLoading && <div style={s.empty}>Загрузка из Fitbase…</div>}
+
+          {salesData && (() => {
+            const t = salesData.totals;
+            const fmt = (n: number) => Math.round(n).toLocaleString('ru');
+            return (
+              <>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+                  {[
+                    { label: 'Продажи нал.', val: t.cash_sale, color: '#02BDB6' },
+                    { label: 'Продажи карта', val: t.card_sale, color: '#263CD9' },
+                    { label: 'Возвраты', val: -(t.cash_refund + t.card_refund), color: '#ef4444' },
+                    { label: 'Итого чисто', val: t.cash_sale + t.card_sale - t.cash_refund - t.card_refund, color: '#22c55e' },
+                  ].map(c => (
+                    <div key={c.label} style={{ background: '#fff', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 130 }}>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>{c.label}</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: c.color }}>{fmt(c.val)} ₸</div>
+                    </div>
+                  ))}
+                </div>
+
+                {salesData.by_manager.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={s.sectionTitle}>По менеджеру клиента</div>
+                    {salesData.by_manager.map(m => (
+                      <div key={m.name} style={s.totalRow}><span>{m.name}</span><span style={{ fontWeight: 700 }}>{fmt(m.amount)} ₸</span></div>
+                    ))}
+                  </div>
+                )}
+
+                {salesData.by_cashier.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={s.sectionTitle}>По кассиру</div>
+                    {salesData.by_cashier.map(c => (
+                      <div key={c.name} style={s.totalRow}><span>{c.name}</span><span style={{ fontWeight: 700 }}>{fmt(c.amount)} ₸</span></div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={s.sectionTitle}>Операции ({salesData.ops.length})</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead><tr style={{ background: '#f1f5f9' }}>
+                      {['Время','Тип','Клиент','Менеджер','Кассир','Товар','Сумма','Оплата'].map(h => (
+                        <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {salesData.ops.map(op => (
+                        <tr key={op.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '5px 8px' }}>{new Date(op.pay_ts).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</td>
+                          <td style={{ padding: '5px 8px', color: op.is_refund ? '#ef4444' : '#22c55e' }}>{op.is_refund ? 'Возврат' : 'Продажа'}</td>
+                          <td style={{ padding: '5px 8px' }}>{op.client || '—'}</td>
+                          <td style={{ padding: '5px 8px' }}>{op.manager}</td>
+                          <td style={{ padding: '5px 8px' }}>{op.cashier}</td>
+                          <td style={{ padding: '5px 8px' }}>{op.item_type}</td>
+                          <td style={{ padding: '5px 8px', fontWeight: 600 }}>{op.is_refund ? '-' : ''}{fmt(op.amount)}</td>
+                          <td style={{ padding: '5px 8px' }}>{op.payment_type}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
