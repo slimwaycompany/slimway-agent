@@ -31,8 +31,8 @@
 | 04-6 | Клик по зоне фигуры: анимированное приближение + панель | `docs/tasks/04-now-list.md#часть-6` | ⏳ ждёт |
 | 04-7 | Внешняя ссылка клиента /r/:token | `docs/tasks/04-now-list.md#часть-7` | ✅ готово (f0b6ad5) |
 | 04-8 | Кабинет агента: клики (собака, девушка) | `docs/tasks/04-now-list.md#часть-8` | ⏳ ждёт |
-| 04-9 | Вкладка «Метрики» (заглушка) | `docs/tasks/04-now-list.md#часть-9` | ⏳ ждёт |
-| 04-10 | Проверка агента по воронкам (только отчёт, ничего не менять) | `docs/tasks/04-now-list.md#часть-10` | ⏳ ждёт |
+| 04-9 | Вкладка «Метрики» (заглушка) | `docs/tasks/04-now-list.md#часть-9` | ✅ готово (386111d) |
+| 04-10 | Проверка агента по воронкам (только отчёт, ничего не менять) | `docs/tasks/04-now-list.md#часть-10` | ✅ готово (docs/reports/funnels-check.md) |
 | 04-11 | Финал: проверка прода по всем частям, QUEUE.md | `docs/tasks/04-now-list.md#часть-11` | ⏳ ждёт |
 | 04-InBody-import | Импорт полной выгрузки InBody | — | ⛔ ждёт файла от Сергея |
 
@@ -55,3 +55,6 @@
 | 21.10.2026 | Claude | 04-2: shared/personal задачи — код готов, нужен SQL | 144c938 | SQL: ALTER TABLE manager_task_done DROP CONSTRAINT manager_task_done_template_id_task_date_key; ALTER TABLE manager_task_done ADD CONSTRAINT manager_task_done_template_date_user_key UNIQUE (template_id, task_date, done_by); |
 | 21.10.2026 | Claude | 04-3: X-отчёт — cash.ts, CashClosing, ManagerPage button | ниже | Внесения/изъятия ручные (Fitbase API нет); templates/zakrytie-smeny.xlsx не существовало — Excel из нуля |
 | 21.10.2026 | Claude | 04-5: InBody — парсер inbody.ts + selfCheck, InBodyDialog (камера/файл/вставка), POST /inbody, fat_kg_lost в «Потеряно» | 812b79c | Если body_measurements.inbody NOT NULL или обхваты NOT NULL — сервер вернёт 409 с нужным SQL |
+| 21.10.2026 | Claude | 04-7: Ссылка для клиента /r/:token — SharePage, ShareLinkDialog, token generate/refresh, rate limiter | f0b6ad5 | — |
+| 21.10.2026 | Claude | 04-9: Метрики-заглушка — MetricsPage + вкладка в shell (admin, Alt+6) | 386111d | — |
+| 21.10.2026 | Claude | 04-10: Аудит воронок — только анализ кода, ничего не запускалось | docs/reports/funnels-check.md | lifecycle-plan всегда DRY; budget на воронке 1 может сбрасывать бюджет |
