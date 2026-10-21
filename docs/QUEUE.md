@@ -30,7 +30,7 @@
 | 04-5 | InBody: сканирование QR, парсер, сохранение, привязка к замеру | `docs/tasks/04-now-list.md#часть-5` | ✅ готово (812b79c) |
 | 04-6 | Клик по зоне фигуры: анимированное приближение + панель | `docs/tasks/04-now-list.md#часть-6` | ⏳ ждёт |
 | 04-7 | Внешняя ссылка клиента /r/:token | `docs/tasks/04-now-list.md#часть-7` | ✅ готово (f0b6ad5) |
-| 04-8 | Кабинет агента: клики (собака, девушка) | `docs/tasks/04-now-list.md#часть-8` | ⏳ ждёт |
+| 04-8 | Кабинет агента: клики (собака, девушка) | `docs/tasks/04-now-list.md#часть-8` | ✅ готово (33da1bd) |
 | 04-9 | Вкладка «Метрики» (заглушка) | `docs/tasks/04-now-list.md#часть-9` | ✅ готово (386111d) |
 | 04-10 | Проверка агента по воронкам (только отчёт, ничего не менять) | `docs/tasks/04-now-list.md#часть-10` | ✅ готово (docs/reports/funnels-check.md) |
 | 04-11 | Финал: проверка прода по всем частям, QUEUE.md | `docs/tasks/04-now-list.md#часть-11` | ⏳ ждёт |
@@ -58,3 +58,4 @@
 | 21.10.2026 | Claude | 04-7: Ссылка для клиента /r/:token — SharePage, ShareLinkDialog, token generate/refresh, rate limiter | f0b6ad5 | — |
 | 21.10.2026 | Claude | 04-9: Метрики-заглушка — MetricsPage + вкладка в shell (admin, Alt+6) | 386111d | — |
 | 21.10.2026 | Claude | 04-10: Аудит воронок — только анализ кода, ничего не запускалось | docs/reports/funnels-check.md | lifecycle-plan всегда DRY; budget на воронке 1 может сбрасывать бюджет |
+| 21.10.2026 | Claude | 04-8: клики в кабинете агента — dog bark+bubble+sound, girl popup с данными | 33da1bd | звук выкл по умолчанию, кнопка 🔈/🔇 сохраняется в localStorage |
