@@ -74,9 +74,9 @@ function fmtShortDate(iso: string) {
 
 // ── Body figure ────────────────────────────────────────────────────────────────
 
-function BodyFigure({ m, prev, activeZones, onToggleZone }: {
+function BodyFigure({ m, prev, activeZones, zoomKey, onZoneClick }: {
   m: Measurement | null; prev: Measurement | null;
-  activeZones: string[]; onToggleZone: (key: string) => void;
+  activeZones: string[]; zoomKey: CircKey | null; onZoneClick: (key: CircKey) => void;
 }) {
   const leftKeys = new Set<CircKey>(['arm_r', 'thigh_r', 'shin_r']);
   const centerKeys = new Set<CircKey>(['neck', 'chest', 'waist', 'belly', 'glutes']);
@@ -89,8 +89,10 @@ function BodyFigure({ m, prev, activeZones, onToggleZone }: {
   const rows = { left: BODY_POINTS.filter(p => sideByKey.get(p.key) === 'left'), right: BODY_POINTS.filter(p => sideByKey.get(p.key) === 'right') };
   const rowY = new Map<CircKey, number>();
   for (const side of ['left', 'right'] as const) rows[side].forEach((pt, i) => rowY.set(pt.key, 8 + (84 * (i + 1)) / (rows[side].length + 1)));
+  const zoomOy = zoomKey ? (rowY.get(zoomKey) ?? 50) : 50;
   return (
-    <div className="figure-canvas">
+    <div className={`figure-canvas${zoomKey ? ' figure-zoomed' : ''}`}
+      style={zoomKey ? { '--zoom-oy': `${zoomOy}%` } as React.CSSProperties : {}}>
       <img className="body-silhouette" src="/kviz/img/body.png" alt="Силуэт фигуры" />
       <svg className="figure-leaders" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {BODY_POINTS.map(pt => <line key={pt.key} x1={15 + pt.x * .7} y1={pt.y} x2={sideByKey.get(pt.key) === 'left' ? 27 : 73} y2={rowY.get(pt.key)} stroke="#91a0b7" strokeWidth=".35" />)}
@@ -104,8 +106,8 @@ function BodyFigure({ m, prev, activeZones, onToggleZone }: {
         const side = sideByKey.get(pt.key)!;
         return (
           <div key={pt.key}
-            onClick={() => onToggleZone(pt.key)}
-            className={`body-callout body-callout-${side} ${active ? 'active' : ''}`}
+            onClick={() => onZoneClick(pt.key)}
+            className={`body-callout body-callout-${side} ${active ? 'active' : ''}${zoomKey === pt.key ? ' zoomed-active' : ''}`}
             style={{ top: `${rowY.get(pt.key)}%`, '--zone-color': zoneColor } as React.CSSProperties}
           >
             <span className="body-callout-label">{pt.label}</span>
@@ -749,6 +751,102 @@ function InBodyDialog({ clientId, onDone, onClose }: {
 }
 const ibBtnSt: React.CSSProperties = { padding: '6px 14px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 };
 
+// ── Zone Detail Panel ─────────────────────────────────────────────────────────
+
+type SegKey = keyof InBodyData['lean_by_segment'];
+const SEGMENT_MAP: Partial<Record<CircKey, SegKey>> = {
+  arm_r: 'right_arm', arm_l: 'left_arm',
+  chest: 'trunk', waist: 'trunk', belly: 'trunk', glutes: 'trunk',
+  thigh_r: 'right_leg', thigh_l: 'left_leg',
+  shin_r: 'right_leg', shin_l: 'left_leg',
+};
+const SEG_LABELS: Record<SegKey, string> = { right_arm: 'Правая рука', left_arm: 'Левая рука', trunk: 'Туловище', right_leg: 'Правая нога', left_leg: 'Левая нога' };
+
+function ZoneDetailPanel({ zoneKey, ms, onClose }: { zoneKey: CircKey; ms: Measurement[]; onClose: () => void }) {
+  const zone = ALL_ZONES.find(z => z.key === zoneKey)!;
+  const history = ms.map((m, i) => ({ m, prev: ms[i - 1] ?? null })).filter(({ m }) => m[zoneKey] != null);
+
+  // Linear trend (last 6 measurements, min 3 required)
+  let trendInfo: { slopePerWeek: number; next2w: number; next4w: number } | null = null;
+  if (history.length >= 3) {
+    const pts = history.slice(-6);
+    const xs = pts.map(({ m }) => new Date(m.measured_at).getTime() / 86400000);
+    const ys = pts.map(({ m }) => Number(m[zoneKey]));
+    const n = pts.length;
+    const mx = xs.reduce((a, b) => a + b) / n, my = ys.reduce((a, b) => a + b) / n;
+    const num = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
+    const den = xs.reduce((s, x) => s + (x - mx) ** 2, 0);
+    const slopePerDay = den > 0 ? num / den : 0;
+    const lastVal = Number(history[history.length - 1].m[zoneKey]);
+    trendInfo = { slopePerWeek: slopePerDay * 7, next2w: lastVal + slopePerDay * 14, next4w: lastVal + slopePerDay * 28 };
+  }
+
+  // InBody segment data (latest measurement that has InBody)
+  const segKey = SEGMENT_MAP[zoneKey];
+  const latestInbody = segKey ? [...ms].reverse().find(m => m.inbody != null)?.inbody : null;
+
+  // Sparkline SVG
+  const vals = history.map(({ m }) => Number(m[zoneKey]));
+  const sparkMin = Math.min(...vals), sparkMax = Math.max(...vals), sparkRange = sparkMax - sparkMin || 1;
+  const SW = 240, SH = 44;
+  const pts2 = vals.map((v, i) => [i / Math.max(vals.length - 1, 1) * (SW - 16) + 8, SH - 8 - (v - sparkMin) / sparkRange * (SH - 16)] as [number, number]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  return (
+    <div className="zone-panel-overlay" onClick={onClose}>
+      <div className="zone-panel" style={{ '--zone-color': zone.color } as React.CSSProperties} onClick={e => e.stopPropagation()}>
+        <div className="zone-panel-header">
+          <span style={{ fontWeight: 700, fontSize: 16, color: zone.color }}>{zone.label}</span>
+          <button className="zone-panel-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="zone-panel-history">
+          {history.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Нет замеров для этой зоны</div>}
+          {history.map(({ m, prev: p }) => {
+            const val = Number(m[zoneKey]);
+            const diff = p && p[zoneKey] != null ? val - Number(p[zoneKey]) : null;
+            return (
+              <div key={m.id} className="zone-panel-row">
+                <span className="zone-row-date">№{m.measure_no} · {fmtDate(m.measured_at)}</span>
+                <span className="zone-row-val">{val.toFixed(1)} <span style={{ fontSize: 10, fontWeight: 400 }}>см</span></span>
+                {diff !== null && <span className="zone-row-diff" style={{ color: diffColor(diff) }}>{fmtDiff(diff)}</span>}
+              </div>
+            );
+          })}
+        </div>
+
+        {vals.length >= 2 && (
+          <svg width="100%" viewBox={`0 0 ${SW} ${SH}`} style={{ display: 'block', marginTop: 8 }}>
+            <polyline points={pts2.map(p => p.join(',')).join(' ')} fill="none" stroke={zone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            {pts2.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="3" fill={zone.color} />)}
+          </svg>
+        )}
+
+        {trendInfo && (
+          <div style={{ fontSize: 12, color: '#374151', marginTop: 8, padding: '6px 10px', background: '#f8fafc', borderRadius: 8 }}>
+            <span style={{ fontWeight: 600 }}>Тренд: </span>
+            {trendInfo.slopePerWeek < 0 ? '↓ ' : '↑ '}{Math.abs(trendInfo.slopePerWeek).toFixed(2)} см/нед ·{' '}
+            через 2 нед: <b>{trendInfo.next2w.toFixed(1)}</b> · через 4 нед: <b>{trendInfo.next4w.toFixed(1)}</b>
+          </div>
+        )}
+
+        {latestInbody && segKey && (
+          <div style={{ fontSize: 12, color: '#374151', marginTop: 8, padding: '6px 10px', background: 'rgba(2,189,182,.06)', borderRadius: 8, border: '1px solid rgba(2,189,182,.2)' }}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>InBody · {SEG_LABELS[segKey]}</div>
+            <div>Безжировая: <b>{latestInbody.lean_by_segment[segKey].toFixed(2)} кг</b></div>
+            <div>Жировая: <b>{latestInbody.fat_by_segment[segKey].toFixed(2)} кг</b></div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main ClientPage ────────────────────────────────────────────────────────────
 
 export default function ClientPage() {
@@ -769,6 +867,7 @@ export default function ClientPage() {
   const [linkDialog, setLinkDialog] = useState(false);
   const [inbodyDialog, setInbodyDialog] = useState(false);
   const [shareLinkDialog, setShareLinkDialog] = useState(false);
+  const [zoneDetailKey, setZoneDetailKey] = useState<CircKey | null>(null);
   const [fbOverrides, setFbOverrides] = useState<Record<string, string>>({}); // mId → fitbase_comment_at
 
   const reload = useCallback(async () => {
@@ -788,9 +887,7 @@ export default function ClientPage() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(z)); } catch {}
   }
 
-  function toggleZoneFromFigure(key: string) {
-    saveZones(zones.includes(key) ? zones.filter(z => z !== key) : [...zones, key]);
-  }
+  function openZoneDetail(key: CircKey) { setZoneDetailKey(key); }
 
   if (loading) return <MeasureLayout active="reports"><div style={{ padding: 32, color: '#9ca3af' }}>Загрузка…</div></MeasureLayout>;
   if (!client) return <MeasureLayout active="reports"><div style={{ padding: 32 }}>Клиент не найден</div></MeasureLayout>;
@@ -845,6 +942,9 @@ export default function ClientPage() {
       )}
       {shareLinkDialog && (
         <ShareLinkDialog clientId={client.id} onClose={() => setShareLinkDialog(false)} />
+      )}
+      {zoneDetailKey && (
+        <ZoneDetailPanel zoneKey={zoneDetailKey} ms={ms} onClose={() => setZoneDetailKey(null)} />
       )}
 
       <div className="measure-client-content">
@@ -903,7 +1003,7 @@ export default function ClientPage() {
 
         <div className="measure-client-grid">
           <aside className="measure-figure-column">
-            <BodyFigure m={mergedM} prev={prevM} activeZones={zones} onToggleZone={toggleZoneFromFigure} />
+            <BodyFigure m={mergedM} prev={prevM} activeZones={zones} zoomKey={zoneDetailKey} onZoneClick={openZoneDetail} />
           </aside>
           <section>
             <div className="measure-lost-card">
