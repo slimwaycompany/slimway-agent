@@ -41,11 +41,12 @@ export async function getOverdueMissed(nowMs: number): Promise<{ templateId: str
   const isoDow = (() => { const dd = d.getUTCDay(); return dd === 0 ? 7 : dd; })();
 
   const [tplRes, doneRes] = await Promise.all([
-    supabase.from('manager_task_templates').select('id, title, slot_time, weekend_time, weekdays').eq('is_active', true),
+    supabase.from('manager_task_templates').select('id, title, slot_time, weekend_time, weekdays, scope').eq('is_active', true),
     supabase.from('manager_task_done').select('template_id').eq('task_date', today),
   ]);
   const doneIds = new Set((doneRes.data || []).map((d: Record<string, unknown>) => String(d.template_id)));
   return ((tplRes.data || []) as Record<string, unknown>[])
+    .filter(t => (t.scope ?? 'shared') === 'shared') // personal tasks don't have a single overdue state
     .filter(t => weekdayOk(t.weekdays, isoDow))
     .filter(t => !doneIds.has(String(t.id)))
     .map(t => {
@@ -89,7 +90,12 @@ export function buildManagerRouter(): Router {
       const templates = ((tplRes.data || []) as Record<string, unknown>[])
         .filter(t => weekdayOk(t.weekdays, isoDow));
       const done      = (doneRes.data || []) as Record<string, unknown>[];
-      const doneMap   = new Map(done.map(d => [String(d.template_id), d]));
+      // shared: first match by template_id; personal: match by template_id + current user
+      const doneShared   = new Map(done.map(d => [String(d.template_id), d]));
+      const donePersonal = new Map(
+        done.filter(d => String(d.done_by) === session.id).map(d => [String(d.template_id), d]),
+      );
+      const doneMap = { shared: doneShared, personal: donePersonal };
 
       const storySlots = [...new Set(templates.filter(t => t.stories_slot).map(t => String(t.stories_slot)))];
       const ideasBySlot: Record<string, Record<string, unknown>[]> = {};
@@ -110,11 +116,12 @@ export function buildManagerRouter(): Router {
         const rawSlot  = weekend && t.weekend_time ? String(t.weekend_time) : String(t.slot_time);
         const hhmm     = hhmmOf(rawSlot);
         const sm       = slotMin(hhmm);
-        const doneRec  = doneMap.get(String(t.id));
+        const scope    = (t.scope as string) ?? 'shared';
+        const doneRec  = scope === 'personal' ? doneMap.personal.get(String(t.id)) : doneMap.shared.get(String(t.id));
         const status   = taskStatus(sm, now, !!doneRec);
         const task: Record<string, unknown> = {
           id: t.id, title: t.title, hint: t.hint, category: t.category,
-          slot_time: hhmm, slot_min: sm, status,
+          slot_time: hhmm, slot_min: sm, status, scope,
           done: doneRec ? { done_id: doneRec.id, done_by: doneRec.done_by, done_by_name: doneRec.done_by_name, done_at: doneRec.done_at } : null,
         };
         if (t.stories_slot) {
@@ -201,8 +208,11 @@ export function buildManagerRouter(): Router {
     try {
       const today = yekToday();
       const tid   = req.params.id;
-      const { data: ex } = await supabase.from('manager_task_done')
-        .select('id').eq('template_id', tid).eq('task_date', today).maybeSingle();
+      const { data: tpl } = await supabase.from('manager_task_templates').select('scope').eq('id', tid).maybeSingle();
+      const scope = (tpl?.scope as string) ?? 'shared';
+      let q = supabase.from('manager_task_done').select('id').eq('template_id', tid).eq('task_date', today);
+      if (scope === 'personal') q = q.eq('done_by', session.id);
+      const { data: ex } = await q.maybeSingle();
       if (ex) { res.json({ ok: true, already: true }); return; }
       const { data, error } = await supabase.from('manager_task_done')
         .insert({ template_id: tid, task_date: today, done_by: session.id, done_by_name: session.display_name, done_at: new Date().toISOString() })
@@ -218,10 +228,13 @@ export function buildManagerRouter(): Router {
     try {
       const today = yekToday();
       const tid   = req.params.id;
-      const { data: ex } = await supabase.from('manager_task_done')
-        .select('id, done_by, task_date').eq('template_id', tid).eq('task_date', today).maybeSingle();
+      const { data: tpl } = await supabase.from('manager_task_templates').select('scope').eq('id', tid).maybeSingle();
+      const scope = (tpl?.scope as string) ?? 'shared';
+      let q = supabase.from('manager_task_done').select('id, done_by').eq('template_id', tid).eq('task_date', today);
+      if (scope === 'personal') q = q.eq('done_by', session.id);
+      const { data: ex } = await q.maybeSingle();
       if (!ex) { res.json({ ok: true, not_found: true }); return; }
-      if (session.role !== 'admin' && ex.done_by !== session.id) {
+      if (session.role !== 'admin' && String(ex.done_by) !== session.id) {
         res.status(403).json({ error: 'Только отметивший или admin может отменить' }); return;
       }
       await supabase.from('manager_task_done').delete().eq('id', ex.id);

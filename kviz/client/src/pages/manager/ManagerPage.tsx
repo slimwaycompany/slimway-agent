@@ -21,6 +21,7 @@ interface Task {
   category: string;
   slot_time: string;
   status: 'done' | 'current' | 'overdue' | 'pending';
+  scope: 'shared' | 'personal';
   done: DoneInfo | null;
   stories_today?: Story[];
 }
@@ -304,10 +305,16 @@ export default function ManagerPage() {
             </div>
             <div style={s.title}>{task.title}</div>
             {task.hint && <div style={s.hint}>{task.hint}</div>}
-            {task.done && (
+            {task.done && task.scope === 'shared' && (
               <div style={s.doneInfo}>
                 ✓ {task.done.done_by_name} · {new Date(task.done.done_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}
               </div>
+            )}
+            {task.done && task.scope === 'personal' && (
+              <div style={s.doneInfo}>✓ Готово</div>
+            )}
+            {!task.done && task.scope === 'personal' && (
+              <div style={{ ...s.doneInfo, color: '#94a3b8' }}>личная задача</div>
             )}
 
             {task.stories_today && task.stories_today.length > 0 && (
