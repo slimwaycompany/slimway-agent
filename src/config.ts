@@ -14,6 +14,7 @@ const envSchema = z.object({
   TRIAL_AGENT_DRY_RUN:    z.string().transform(v => v !== 'false').default('true'),
   BUDGET_DRY_RUN:         z.string().transform(v => v !== 'false').default('true'),
   INACTIVE_DRY_RUN:       z.string().transform(v => v !== 'false').default('true'),
+  LIFECYCLE_DRY_RUN:      z.string().transform(v => v !== 'false').default('true'),
   INACTIVE_DAYS_1:        z.coerce.number().default(7),
   INACTIVE_DAYS_2:        z.coerce.number().default(10),
   INACTIVE_DAYS_OWNER:    z.coerce.number().default(14),
@@ -59,11 +60,12 @@ export const WATCH_EXCLUDE_CLIENT_IDS_SET = new Set(
   env.WATCH_EXCLUDE_CLIENT_IDS.split(',').map(s => Number(s.trim())).filter(n => n > 0),
 );
 
-type Module = 'trial' | 'budget' | 'inactive';
+type Module = 'trial' | 'budget' | 'inactive' | 'lifecycle';
 const DRY_FLAGS: Record<Module, boolean> = {
-  trial:    env.TRIAL_AGENT_DRY_RUN,
-  budget:   env.BUDGET_DRY_RUN,
-  inactive: env.INACTIVE_DRY_RUN,
+  trial:     env.TRIAL_AGENT_DRY_RUN,
+  budget:    env.BUDGET_DRY_RUN,
+  inactive:  env.INACTIVE_DRY_RUN,
+  lifecycle: env.LIFECYCLE_DRY_RUN,
 };
 export function isDry(module: Module): boolean {
   return DRY_FLAGS[module];

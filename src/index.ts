@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { env }           from './config';
+import { env, isDry }    from './config';
 import { isInWorkWindow, isInWatchWindow } from './core/window';
 import { acquireLock, releaseLock } from './core/lock';
 import { supabase }      from './db/supabase';
@@ -191,6 +191,9 @@ app.post('/run/inactive', handleInactive);
 async function handleLifecyclePlan(req: express.Request, res: express.Response): Promise<void> {
   if (!checkSecret(req)) {
     res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  if (isDry('lifecycle')) {
+    res.json({ status: 'dry_run', message: 'LIFECYCLE_DRY_RUN=true — set to false in env to enable' }); return;
   }
 
   const locked = await acquireLock('lifecycle-plan', 30 * 60);
