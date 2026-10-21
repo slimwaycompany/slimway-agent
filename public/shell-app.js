@@ -5,7 +5,7 @@
   var origin = location.origin;
 
   // State
-  var currentTab          = null; // null=choice, 'manager', 'agent', 'kviz', 'measure', 'reports'
+  var currentTab          = null; // null=choice, 'manager', 'agent', 'kviz', 'measure', 'reports', 'metrics'
   var agentAlertCount     = 0;
   var agentSeenCount      = 0;
   var kvizDraftCount      = 0;
@@ -14,6 +14,7 @@
   var measureCreated      = false;
   var managerCreated      = false;
   var reportsCreated      = false;
+  var metricsCreated      = false;
 
   // ── Badge helpers ───────────────────────────────────────────────────────────
   function setBadge(id, n) {
@@ -39,12 +40,12 @@
   }
 
   function hidePanes() {
-    var ids = ['manager-pane', 'agent-pane', 'kviz-pane', 'measure-pane', 'reports-pane'];
+    var ids = ['manager-pane', 'agent-pane', 'kviz-pane', 'measure-pane', 'reports-pane', 'metrics-pane'];
     for (var i = 0; i < ids.length; i++) {
       var p = $(ids[i]);
       if (p) p.classList.add('hidden');
     }
-    var tabs = ['tab-btn-manager', 'tab-btn-agent', 'tab-btn-kviz', 'tab-btn-measure', 'tab-btn-reports'];
+    var tabs = ['tab-btn-manager', 'tab-btn-agent', 'tab-btn-kviz', 'tab-btn-measure', 'tab-btn-reports', 'tab-btn-metrics'];
     for (var j = 0; j < tabs.length; j++) {
       var b = $(tabs[j]);
       if (b) b.classList.remove('active');
@@ -114,6 +115,22 @@
         reportsCreated = true;
       }
       history.replaceState(null, '', '#reports');
+    } else if (name === 'metrics') {
+      var mp = $('metrics-pane');
+      if (!mp) return;
+      mp.classList.remove('hidden');
+      var tmb = $('tab-btn-metrics');
+      if (tmb) tmb.classList.add('active');
+      if (!metricsCreated) {
+        var fmet = document.createElement('iframe');
+        fmet.id = 'metrics-iframe'; fmet.className = 'frame';
+        fmet.src = '/kviz/metrics'; fmet.setAttribute('allow', 'clipboard-write');
+        var sr2 = $('side-to-reports2');
+        if (sr2) mp.insertBefore(fmet, sr2);
+        else mp.appendChild(fmet);
+        metricsCreated = true;
+      }
+      history.replaceState(null, '', '#metrics');
     }
 
     updateBadges();
@@ -125,6 +142,7 @@
   $('choice-kviz').onclick    = function () { showTab('kviz'); };
   $('choice-measure').onclick = function () { showTab('measure'); };
   if ($('choice-reports')) $('choice-reports').onclick = function () { showTab('reports'); };
+  if ($('choice-metrics')) $('choice-metrics').onclick = function () { showTab('metrics'); };
 
   // ── Tab buttons ─────────────────────────────────────────────────────────────
   $('tab-btn-manager').onclick = function () { showTab('manager'); };
@@ -132,6 +150,7 @@
   $('tab-btn-kviz').onclick    = function () { showTab('kviz'); };
   $('tab-btn-measure').onclick = function () { showTab('measure'); };
   if ($('tab-btn-reports')) $('tab-btn-reports').onclick = function () { showTab('reports'); };
+  if ($('tab-btn-metrics')) $('tab-btn-metrics').onclick = function () { showTab('metrics'); };
 
   // ── Side buttons ────────────────────────────────────────────────────────────
   $('side-to-agent').onclick   = function () { showTab('agent'); };    // manager-pane right
@@ -142,6 +161,8 @@
   $('side-to-kviz2').onclick   = function () { showTab('kviz'); };     // measure-pane left
   if ($('side-to-reports'))  $('side-to-reports').onclick  = function () { showTab('reports'); }; // measure-pane right (admin)
   if ($('side-to-measure2')) $('side-to-measure2').onclick = function () { showTab('measure'); }; // reports-pane left (admin)
+  if ($('side-to-metrics'))  $('side-to-metrics').onclick  = function () { showTab('metrics'); }; // reports-pane right (admin)
+  if ($('side-to-reports2')) $('side-to-reports2').onclick = function () { showTab('reports'); }; // metrics-pane left (admin)
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   $('logout-btn').onclick = function () {
@@ -157,6 +178,7 @@
     if (e.altKey && (e.key === '3' || e.code === 'Digit3')) { e.preventDefault(); showTab('kviz'); }
     if (e.altKey && (e.key === '4' || e.code === 'Digit4')) { e.preventDefault(); showTab('measure'); }
     if (e.altKey && (e.key === '5' || e.code === 'Digit5') && $('reports-pane')) { e.preventDefault(); showTab('reports'); }
+    if (e.altKey && (e.key === '6' || e.code === 'Digit6') && $('metrics-pane')) { e.preventDefault(); showTab('metrics'); }
   });
 
   // ── Hash navigation (back / forward only) ───────────────────────────────────
@@ -168,6 +190,7 @@
     else if (h === 'kviz'    && currentTab !== 'kviz')    showTab('kviz');
     else if (h === 'measure' && currentTab !== 'measure') showTab('measure');
     else if (h === 'reports' && currentTab !== 'reports') showTab('reports');
+    else if (h === 'metrics' && currentTab !== 'metrics') showTab('metrics');
   });
 
   // ── postMessage from iframes ────────────────────────────────────────────────

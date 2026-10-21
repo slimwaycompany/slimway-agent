@@ -205,6 +205,7 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       <button class="tab-btn" id="tab-btn-kviz">📝 <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
       <button class="tab-btn" id="tab-btn-measure">📏 Замеры</button>
       <!--REPORTS_TAB_BTN-->
+      <!--METRICS_TAB_BTN-->
     </div>
     <button class="logout-btn" id="logout-btn"><!--DNAME--> · Выйти</button>
   </div>
@@ -242,6 +243,7 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       <!--REPORTS_SIDE_FROM_MEASURE-->
     </div>
     <!--REPORTS_PANE-->
+    <!--METRICS_PANE-->
   </div>
 </div>
 
@@ -271,6 +273,7 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
         <span class="choice-label">Замеры</span>
       </button>
       <!--REPORTS_CHOICE_BTN-->
+      <!--METRICS_CHOICE_BTN-->
     </div>
   </div>
 </div>
@@ -309,17 +312,29 @@ export function mountShellRoutes(app: Application): void {
       ? '<button class="side-btn" id="side-to-reports"><span class="side-text">Отчёты</span></button>'
       : '';
     const reportsPane = isAdmin
-      ? '<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button></div>'
+      ? '<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button><button class="side-btn" id="side-to-metrics"><span class="side-text">Метрики</span></button></div>'
       : '';
     const reportsChoiceBtn = isAdmin
       ? '<button class="choice-btn" id="choice-reports"><span class="choice-icon">📊</span><span class="choice-label">Отчёты</span></button>'
+      : '';
+    const metricsTabBtn = isAdmin
+      ? '<button class="tab-btn" id="tab-btn-metrics">📈 Метрики</button>'
+      : '';
+    const metricsPane = isAdmin
+      ? '<div class="pane hidden" id="metrics-pane"><button class="side-btn left" id="side-to-reports2"><span class="side-text">Отчёты</span></button></div>'
+      : '';
+    const metricsChoiceBtn = isAdmin
+      ? '<button class="choice-btn" id="choice-metrics"><span class="choice-icon">📈</span><span class="choice-label">Метрики</span></button>'
       : '';
     const html = SHELL_HTML
       .replace('<!--DNAME-->', escapeHtml(session.display_name))
       .replace('<!--REPORTS_TAB_BTN-->', reportsTabBtn)
       .replace('<!--REPORTS_SIDE_FROM_MEASURE-->', reportsSideFromMeasure)
       .replace('<!--REPORTS_PANE-->', reportsPane)
-      .replace('<!--REPORTS_CHOICE_BTN-->', reportsChoiceBtn);
+      .replace('<!--REPORTS_CHOICE_BTN-->', reportsChoiceBtn)
+      .replace('<!--METRICS_TAB_BTN-->', metricsTabBtn)
+      .replace('<!--METRICS_PANE-->', metricsPane)
+      .replace('<!--METRICS_CHOICE_BTN-->', metricsChoiceBtn);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   });
