@@ -357,8 +357,10 @@ export function buildMeasureRouter(): Router {
       const cmLost = Math.max(0, Number(first.total_cm ?? 0) - Number(last.total_cm ?? 0));
       const kgLost = first.weight != null && last.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
       if (cmLost <= 0 && kgLost <= 0) { res.status(400).json({ error: 'Потерь со старта пока нет' }); return; }
+      const body2 = req.body as Record<string, unknown>;
+      const fatKgLost = body2.fat_kg_lost != null ? Number(body2.fat_kg_lost) : null;
       const row = { client_id: req.params.id, from_measure_no: 1, to_measure_no: last.measure_no,
-        cm_lost: cmLost, kg_lost: kgLost, fat_kg_lost: null, sent_by: session.display_name, sent_at: new Date().toISOString() };
+        cm_lost: cmLost, kg_lost: kgLost, fat_kg_lost: fatKgLost, sent_by: session.display_name, sent_at: new Date().toISOString() };
       const { data, error } = await supabase.from('studio_results').upsert(row, { onConflict: 'client_id' }).select('*').single();
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data);
@@ -451,6 +453,73 @@ export function buildMeasureRouter(): Router {
       }
       await supabase.from('body_measurements').delete().eq('id', req.params.id);
       res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // POST InBody scan result — attach to existing measurement on the day or create new one
+  r.post('/kviz/api/measure/clients/:id/inbody', async (req, res) => {
+    try {
+      const session = getSession(req);
+      if (!session) { res.status(401).json({ error: 'Нет сессии' }); return; }
+      const clientId = req.params.id;
+      const { inbody } = req.body as Record<string, unknown>;
+      if (!inbody || typeof inbody !== 'object') { res.status(400).json({ error: 'inbody обязателен' }); return; }
+
+      const ib = inbody as Record<string, unknown>;
+      const measuredAt = typeof ib.measured_at === 'string' ? ib.measured_at : null;
+      if (!measuredAt) { res.status(400).json({ error: 'inbody.measured_at обязателен' }); return; }
+
+      const day = yekDay(measuredAt);
+
+      // Look for a measurement on this day
+      const { data: existing } = await supabase.from('body_measurements')
+        .select('id').eq('client_id', clientId)
+        .gte('measured_at', day).lte('measured_at', day + 'T23:59:59')
+        .order('measured_at', { ascending: false }).limit(1).maybeSingle();
+
+      let measurementId: string;
+      if (existing) {
+        const { error } = await supabase.from('body_measurements')
+          .update({ inbody }).eq('id', existing.id);
+        if (error) { res.status(500).json({ error: error.message }); return; }
+        measurementId = existing.id;
+      } else {
+        // Check if body_measurements allows null circumferences (they do — table has nullable cols)
+        const { data: newM, error } = await supabase.from('body_measurements')
+          .insert({ client_id: clientId, consultant: session.display_name, measured_at: measuredAt, inbody })
+          .select('id').single();
+        if (error) {
+          // If insert fails due to NOT NULL (neck etc.), report SQL needed
+          if (error.message.includes('not-null') || error.message.includes('null value')) {
+            res.status(409).json({ error: 'Нужен SQL: ALTER TABLE body_measurements ALTER COLUMN neck DROP NOT NULL (и другие обхваты)' });
+          } else {
+            res.status(500).json({ error: error.message });
+          }
+          return;
+        }
+        measurementId = newM.id;
+      }
+
+      // Also update studio_results.fat_kg_lost from InBody if possible
+      const fatKg = typeof ib.fat_kg === 'number' ? ib.fat_kg : null;
+      if (fatKg != null) {
+        const { data: allM } = await supabase.from('body_measurements')
+          .select('id, inbody').eq('client_id', clientId).order('measured_at', { ascending: true });
+        const withInBody = (allM || []).filter((m: Meas) => m.inbody != null);
+        if (withInBody.length >= 1) {
+          const firstFat = (withInBody[0].inbody as Record<string, unknown>).fat_kg as number | null;
+          const lastFat  = (withInBody[withInBody.length - 1].inbody as Record<string, unknown>).fat_kg as number | null;
+          if (firstFat != null && lastFat != null) {
+            const fatLost = Math.max(0, firstFat - lastFat);
+            await supabase.from('studio_results')
+              .update({ fat_kg_lost: fatLost })
+              .eq('client_id', clientId);
+          }
+        }
+      }
+
+      const { data: updated } = await supabase.from('body_measurements').select('*').eq('id', measurementId).single();
+      res.json(updated);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

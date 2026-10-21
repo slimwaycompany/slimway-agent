@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
+import { parseInBody, type InBodyData } from '../../utils/inbody';
 
 const CIRC_KEYS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 type CircKey = typeof CIRC_KEYS[number];
@@ -42,6 +43,7 @@ interface Measurement {
   id: string; measure_no: number; measured_at: string;
   weight: number | null; total_cm: number; consultant: string;
   fitbase_comment_at: string | null; note: string | null;
+  inbody: InBodyData | null;
   [key: string]: unknown;
 }
 interface Client {
@@ -516,6 +518,179 @@ const inputS:   React.CSSProperties = { width: '100%', padding: '9px 12px', bord
 const selS:     React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1.5px solid #e2e6ea', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', marginTop: 4 };
 const lblS:     React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#374151', display: 'block' };
 
+// ── InBody scan dialog ─────────────────────────────────────────────────────────
+
+function extractIBData(input: string): string | null {
+  const trimmed = input.trim();
+  // Full URL: https://qrcode.inbody.com?IBData=...
+  try {
+    const u = new URL(trimmed);
+    const v = u.searchParams.get('IBData');
+    if (v) return v;
+  } catch { /* not a URL, try raw string */ }
+  // Raw QR string (starts with device prefix)
+  if (/^270-/.test(trimmed)) return trimmed;
+  return null;
+}
+
+function InBodyDialog({ clientId, onDone, onClose }: {
+  clientId: string; onDone: () => void; onClose: () => void;
+}) {
+  const [pasteVal, setPasteVal] = useState('');
+  const [parsed, setParsed] = useState<InBodyData | null>(null);
+  const [parseErr, setParseErr] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
+  const [cameraActive, setCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number>(0);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function tryParse(raw: string) {
+    const s = extractIBData(raw);
+    if (!s) { setParseErr('Не удалось найти данные InBody в строке'); setParsed(null); return; }
+    const d = parseInBody(s);
+    if (!d) { setParseErr('Строка не распознана как данные InBody'); setParsed(null); return; }
+    setParseErr('');
+    setParsed(d);
+  }
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
+      setCameraActive(true);
+      scanFrame();
+    } catch { setParseErr('Камера недоступна. Вставьте ссылку или загрузите фото.'); }
+  }
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    cancelAnimationFrame(rafRef.current);
+    setCameraActive(false);
+  }
+
+  function scanFrame() {
+    const video = videoRef.current, canvas = canvasRef.current;
+    if (!video || !canvas || !streamRef.current) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
+    ctx.drawImage(video, 0, 0);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    import('jsqr').then(({ default: jsQR }) => {
+      const code = jsQR(imgData.data, imgData.width, imgData.height);
+      if (code?.data) {
+        stopCamera();
+        tryParse(code.data);
+      } else {
+        rafRef.current = requestAnimationFrame(scanFrame);
+      }
+    });
+  }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      import('jsqr').then(({ default: jsQR }) => {
+        const code = jsQR(imgData.data, imgData.width, imgData.height);
+        if (code?.data) tryParse(code.data);
+        else setParseErr('QR-код не найден на фото. Попробуйте вставить ссылку вручную.');
+      });
+    };
+    img.src = URL.createObjectURL(file);
+  }
+
+  useEffect(() => () => { stopCamera(); }, []);
+
+  async function save() {
+    if (!parsed) return;
+    setSaving(true); setSaveErr('');
+    try {
+      const r = await fetch(`/kviz/api/measure/clients/${clientId}/inbody`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inbody: parsed }),
+      });
+      const json = await r.json();
+      if (!r.ok) { setSaveErr(json.error || 'Ошибка сохранения'); return; }
+      onDone();
+    } catch (e) { setSaveErr(String(e)); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div style={overlayS} onClick={onClose}>
+      <div style={{ ...modalS, width: 'min(460px,96vw)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>InBody — сканирование</div>
+
+        {!parsed && (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <button style={ibBtnSt} onClick={cameraActive ? stopCamera : startCamera}>
+                {cameraActive ? '⏹ Стоп' : '📷 Камера'}
+              </button>
+              <button style={ibBtnSt} onClick={() => fileRef.current?.click()}>📂 Фото</button>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+            </div>
+            {cameraActive && (
+              <div style={{ position: 'relative', marginBottom: 12, borderRadius: 8, overflow: 'hidden', background: '#000' }}>
+                <video ref={videoRef} style={{ width: '100%', display: 'block' }} muted playsInline />
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+                <div style={{ position: 'absolute', inset: 0, border: '2px solid #02BDB6', borderRadius: 8, pointerEvents: 'none' }} />
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Или вставьте ссылку / строку из QR:</div>
+            <input style={inputS} placeholder="https://qrcode.inbody.com?IBData=..." value={pasteVal}
+              onChange={e => { setPasteVal(e.target.value); if (e.target.value.length > 20) tryParse(e.target.value); }} />
+            {parseErr && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 6 }}>{parseErr}</div>}
+          </>
+        )}
+
+        {parsed && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: 13 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6, color: '#166534' }}>✓ Данные распознаны</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
+              <span>Дата: {new Date(parsed.measured_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</span>
+              <span>Вес: {parsed.weight_kg} кг</span>
+              <span>Рост: {parsed.height_cm} см</span>
+              <span>Жир: {parsed.fat_kg} кг ({parsed.fat_pct}%)</span>
+              <span>Мышцы: {parsed.skeletal_muscle_kg} кг</span>
+              <span>ИМТ: {parsed.bmi}</span>
+            </div>
+            <button style={{ marginTop: 8, fontSize: 12, background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 0 }}
+              onClick={() => { setParsed(null); setPasteVal(''); }}>← Заново</button>
+          </div>
+        )}
+
+        {saveErr && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 8 }}>{saveErr}</div>}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <button onClick={onClose} style={{ ...fbBtnSt, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', padding: '7px 14px', fontSize: 13 }}>Отмена</button>
+          {parsed && (
+            <button onClick={save} disabled={saving} style={{ flex: 1, padding: '7px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {saving ? 'Сохранение…' : 'Сохранить'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+const ibBtnSt: React.CSSProperties = { padding: '6px 14px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 };
+
 // ── Main ClientPage ────────────────────────────────────────────────────────────
 
 export default function ClientPage() {
@@ -534,6 +709,7 @@ export default function ClientPage() {
   const [cmpTo, setCmpTo] = useState('');
   const [printDialog, setPrintDialog] = useState(false);
   const [linkDialog, setLinkDialog] = useState(false);
+  const [inbodyDialog, setInbodyDialog] = useState(false);
   const [fbOverrides, setFbOverrides] = useState<Record<string, string>>({}); // mId → fitbase_comment_at
 
   const reload = useCallback(async () => {
@@ -565,6 +741,10 @@ export default function ClientPage() {
   const cmLost = first && last ? Math.max(0, Number(first.total_cm) - Number(last.total_cm)) : 0;
   const kgLost = first?.weight != null && last?.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
   const canSendResult = cmLost > 0 || kgLost > 0;
+  const msWithInBody = ms.filter(m => m.inbody != null);
+  const firstFat = msWithInBody[0]?.inbody?.fat_kg ?? null;
+  const lastFat  = msWithInBody[msWithInBody.length - 1]?.inbody?.fat_kg ?? null;
+  const fatKgLost = firstFat != null && lastFat != null ? Math.max(0, firstFat - lastFat) : null;
   const selectedM = ms.find(m => m.id === selectedMId) ?? last ?? null;
   const selectedIdx = ms.findIndex(m => m.id === selectedMId);
   const prevM = selectedIdx > 0 ? ms[selectedIdx - 1] : null;
@@ -583,7 +763,7 @@ export default function ClientPage() {
   async function sendStudioResult() {
     setSendingResult(true); setResultError('');
     try {
-      const result = await apiPost(`/api/measure/clients/${client.id}/results`, {});
+      const result = await apiPost(`/api/measure/clients/${client.id}/results`, { fat_kg_lost: fatKgLost });
       if (result.error) throw new Error(result.error);
       setStudioResult(result);
     }
@@ -600,6 +780,10 @@ export default function ClientPage() {
         <LinkDialog clientId={client.id} onClose={() => setLinkDialog(false)}
           onLinked={fbId => { setLinkDialog(false); setClient(c => c ? { ...c, fitbase_client_id: fbId } : c); }} />
       )}
+      {inbodyDialog && (
+        <InBodyDialog clientId={client.id} onClose={() => setInbodyDialog(false)}
+          onDone={() => { setInbodyDialog(false); reload(); }} />
+      )}
 
       <div className="measure-client-content">
         {/* Header */}
@@ -611,6 +795,8 @@ export default function ClientPage() {
             <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
               onClick={() => setPrintDialog(true)}>🖨 Бланк</button>
           )}
+          <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
+            onClick={() => setInbodyDialog(true)}>InBody</button>
           <button className="btn btn-primary" style={{ fontSize: 13, padding: '6px 12px' }}
             onClick={() => navigate('/measure/new')}>+ Замер</button>
         </div>
@@ -662,7 +848,7 @@ export default function ClientPage() {
               <div className="measure-lost-values">
                 <div className="measure-lost-value"><strong>{cmLost.toFixed(1)}</strong><span>сантиметров</span></div>
                 <div className="measure-lost-value"><strong>{kgLost.toFixed(1)}</strong><span>килограммов</span></div>
-                <div className="measure-lost-value"><strong>{studioResult?.fat_kg_lost?.toFixed(1) ?? '—'}</strong><span>жира, кг · скоро с InBody</span></div>
+                <div className="measure-lost-value"><strong>{fatKgLost != null ? fatKgLost.toFixed(1) : (studioResult?.fat_kg_lost?.toFixed(1) ?? '—')}</strong><span>жира, кг{fatKgLost == null ? ' · добавьте InBody' : ''}</span></div>
               </div>
               <button disabled={!canSendResult || sendingResult} title={!canSendResult ? 'Потерь со старта пока нет' : undefined} onClick={sendStudioResult}>
                 {sendingResult ? 'Отправка…' : studioResult ? 'Обновить результат студии' : 'Отправить в результаты студии'}
