@@ -417,6 +417,19 @@ function say(text) {
 
 function hideBubble() { bubbleEl.hidden = true; }
 
+let dogBubbleEl, dogBubbleTimer;
+
+function dogSay(text) {
+  if (!dogBubbleEl) return;
+  dogBubbleEl.textContent = text;
+  dogBubbleEl.hidden = false;
+  dogBubbleEl.style.animation = 'none';
+  void dogBubbleEl.offsetWidth;
+  dogBubbleEl.style.animation = '';
+  clearTimeout(dogBubbleTimer);
+  dogBubbleTimer = setTimeout(() => { dogBubbleEl.hidden = true; }, 4000);
+}
+
 // ── init ──────────────────────────────────────────────────────────────────────
 
 function init(wrapEl) {
@@ -429,6 +442,11 @@ function init(wrapEl) {
   bubbleEl.id = 'ar-bubble';
   bubbleEl.hidden = true;
   sceneDiv.appendChild(bubbleEl);
+
+  dogBubbleEl = document.createElement('div');
+  dogBubbleEl.id = 'ar-dog-bubble';
+  dogBubbleEl.hidden = true;
+  sceneDiv.appendChild(dogBubbleEl);
 
   wrapEl.appendChild(sceneDiv);
 
@@ -446,5 +464,5 @@ function init(wrapEl) {
   return room;
 }
 
-window.AgentScene = { init, setGirl, setDog, setTod, tickClock, say, hideBubble, getRoom: () => room };
+window.AgentScene = { init, setGirl, setDog, setTod, tickClock, say, hideBubble, dogSay, getRoom: () => room, getDog: () => dogEl };
 }());

@@ -67,7 +67,21 @@
     self.forceGirlState = urlP.get('agentState') || null;
     self.forceDogState  = urlP.get('dogState')   || null;
 
-    // Collapse/expand
+    // Sound toggle
+    self.soundOn = localStorage.getItem('sw_room_sound') === '1';
+    self.soundBtn = document.createElement('button');
+    self.soundBtn.id = 'agent-sound-toggle';
+    self.soundBtn.title = 'Звук собаки';
+    self.soundBtn.textContent = self.soundOn ? '🔈' : '🔇';
+    self.soundBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      self.soundOn = !self.soundOn;
+      self.soundBtn.textContent = self.soundOn ? '🔈' : '🔇';
+      localStorage.setItem('sw_room_sound', self.soundOn ? '1' : '0');
+    });
+    self.wrap.appendChild(self.soundBtn);
+
+  // Collapse/expand
     var savedCollapsed = localStorage.getItem(STORAGE_KEY) === '1';
     var mobileDefault  = window.innerWidth < 768;
     self.collapsed = savedCollapsed || mobileDefault;
@@ -78,7 +92,11 @@
     self.strip.addEventListener('click', function () { self.expand(); });
 
     var svgEl = window.AgentScene.getRoom();
-    if (svgEl) svgEl.addEventListener('click', function () { self.showPopup(); });
+    if (svgEl) svgEl.addEventListener('click', function (e) {
+      var dogEl = window.AgentScene.getDog && window.AgentScene.getDog();
+      if (dogEl && (dogEl === e.target || dogEl.contains(e.target))) { self.barkDog(); }
+      else { self.showPopup(); }
+    });
 
     document.addEventListener('click', function (e) {
       if (!self.popup.contains(e.target)) self.hidePopup();
@@ -255,6 +273,50 @@
         self._updateStrip();
       })
       .catch(function () {});
+  };
+
+  // ── Dog interaction ────────────────────────────────────────────────────────
+
+  var WOOF_PHRASES = ['Гав!', 'Гав-гав!', 'Вуф!', 'Гррав!', 'Ав-ав!', '🐾 Гав!'];
+  var RARE_PHRASES = ['Хозяйка, пора кушать!', 'Гуляем?', 'Гав!! Гав!!', 'Мяу.. нет, ГАВ!'];
+
+  AgentRoom.prototype.barkDog = function () {
+    var self = this;
+    var phrase = Math.random() < 0.15
+      ? RARE_PHRASES[Math.floor(Math.random() * RARE_PHRASES.length)]
+      : WOOF_PHRASES[Math.floor(Math.random() * WOOF_PHRASES.length)];
+    window.AgentScene.dogSay(phrase);
+    // Bounce animation
+    var r = window.AgentScene.getRoom();
+    if (r) {
+      r.classList.remove('dog-barked');
+      void r.offsetWidth;
+      r.classList.add('dog-barked');
+      setTimeout(function () { r.classList.remove('dog-barked'); }, 400);
+    }
+    // Dog switches to sit state briefly
+    window.AgentScene.setDog('sit');
+    self._dogState = 'sit';
+    clearTimeout(self._dogTimer);
+    self._dogTimer = setTimeout(function () { self._dogTick(); }, 2000);
+    // Sound
+    if (self.soundOn) self._playBark();
+  };
+
+  AgentRoom.prototype._playBark = function () {
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(320, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+      osc.start(); osc.stop(ctx.currentTime + 0.22);
+      setTimeout(function () { ctx.close(); }, 500);
+    } catch (e) { /* AudioContext unavailable */ }
   };
 
   // ── Status popup ───────────────────────────────────────────────────────────
