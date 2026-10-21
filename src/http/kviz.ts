@@ -53,6 +53,14 @@ function buildRouter(): Router {
     res.sendFile(path.join(CLIENT_DIST, 'index.html'));
   });
 
+  // Staff-only proxy: redirects to /results with key so managers can view without seeing the key in their URL bar
+  router.get('/kviz/results-view', (req, res) => {
+    if (!getSession(req)) { res.redirect('/login?returnTo=/kviz/results-view'); return; }
+    const key = process.env.RESULTS_DISPLAY_KEY;
+    if (!key) { res.status(503).send('RESULTS_DISPLAY_KEY не задан'); return; }
+    res.redirect(302, `/results?key=${encodeURIComponent(key)}`);
+  });
+
   router.get('/img/logo.png', (_req, res) => {
     const logo = path.resolve(process.cwd(), 'img', 'logo.png');
     if (!fs.existsSync(logo)) { res.status(404).end(); return; }

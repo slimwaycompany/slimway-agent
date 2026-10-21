@@ -33,14 +33,14 @@ function fmtDateRu(iso: string) {
 }
 function fmtDiff(d: number) { return (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1); }
 
-function Txt({ x, y, children, bold, size }: {
-  x: number; y: number; children: React.ReactNode; bold?: boolean; size?: number;
+function Txt({ x, y, children, bold, size, anchor }: {
+  x: number; y: number; children: React.ReactNode; bold?: boolean; size?: number; anchor?: 'left';
 }) {
   return (
     <div style={{
       position: 'absolute',
       left: `${x}%`, top: `${y}%`,
-      transform: 'translate(-50%, -50%)',
+      transform: anchor === 'left' ? 'translateY(-50%)' : 'translate(-50%, -50%)',
       fontFamily: "'Arial", fontWeight: bold ? 700 : 400,
       fontSize: size ?? 13,
       color: '#1a1a1a',
@@ -117,14 +117,14 @@ export default function PrintPage() {
 
         {/* ДО */}
         {fromM && <>
-          <Txt x={20.5} y={25.3} size={12}>{fmtDateRu(fromM.measured_at)}</Txt>
-          {fromM.weight != null && <Txt x={19} y={29.5} size={13} bold>{Number(fromM.weight).toFixed(1)}</Txt>}
+          <Txt x={19.5} y={25.3} size={12} anchor="left">{fmtDateRu(fromM.measured_at)}</Txt>
+          {fromM.weight != null && <Txt x={18} y={29.5} size={13} bold anchor="left">{Number(fromM.weight).toFixed(1)}</Txt>}
         </>}
 
         {/* ПОСЛЕ */}
         {toM && <>
-          <Txt x={79.2} y={25.3} size={12}>{fmtDateRu(toM.measured_at)}</Txt>
-          {toM.weight != null && <Txt x={77.8} y={29.5} size={13} bold>{Number(toM.weight).toFixed(1)}</Txt>}
+          <Txt x={78.5} y={25.3} size={12} anchor="left">{fmtDateRu(toM.measured_at)}</Txt>
+          {toM.weight != null && <Txt x={77} y={29.5} size={13} bold anchor="left">{Number(toM.weight).toFixed(1)}</Txt>}
         </>}
 
         {/* Measurement rows */}
