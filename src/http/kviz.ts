@@ -6,6 +6,7 @@ import { getSession } from './auth';
 import { buildMeasureRouter } from './measure';
 import { buildManagerRouter } from './manager';
 import { buildShiftsRouter } from './shifts';
+import { buildCashRouter } from './cash';
 import { addLeadNote } from './fitbase';
 
 const CLIENT_DIST = path.resolve(process.cwd(), 'kviz', 'client', 'dist');
@@ -241,6 +242,7 @@ export function mountKvizRoutes(app: Application): void {
     app.use(buildMeasureRouter());
     app.use(buildManagerRouter());
     app.use(buildShiftsRouter());
+    app.use(buildCashRouter());
   } catch (e) {
     console.warn('[kviz] failed to mount routes:', (e as Error).message);
   }

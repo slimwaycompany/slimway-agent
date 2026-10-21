@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import CashClosing from './CashClosing';
 
 interface DoneInfo {
   done_id: string;
@@ -99,6 +100,7 @@ export default function ManagerPage() {
   const [shiftBusy, setShiftBusy] = useState(false);
   const [shiftErr, setShiftErr] = useState<string | null>(null);
   const [, setTick] = useState(0);
+  const [showCashClosing, setShowCashClosing] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setTick(n => n + 1), 60_000);
@@ -215,10 +217,14 @@ export default function ManagerPage() {
             {stats.overdue > 0 && <span style={{ ...s.statAll, color: '#ef4444' }}>Просрочено: {stats.overdue}</span>}
           </div>
         </div>
-        {user.role === 'admin' && (
-          <a href="/kviz/manager/admin" style={s.adminLink}>⚙ Настройки</a>
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          {user.role === 'admin' && (
+            <a href="/kviz/manager/admin" style={s.adminLink}>⚙ Настройки</a>
+          )}
+          <button onClick={() => setShowCashClosing(true)} style={s.btnCashClose}>Закрытие смены</button>
+        </div>
       </div>
+      {showCashClosing && <CashClosing onClose={() => setShowCashClosing(false)} />}
 
       {/* Shift block */}
       {shiftData !== null && (
@@ -347,6 +353,9 @@ export default function ManagerPage() {
                   {busy[task.id] ? '...' : 'Отменить'}
                 </button>
               )}
+              {/касс/i.test(task.title) && (
+                <button style={s.btnCashClose} onClick={() => setShowCashClosing(true)}>X-отчёт</button>
+              )}
             </div>
           </div>
         ))}
@@ -363,6 +372,7 @@ const s: Record<string, React.CSSProperties> = {
   statsRow:      { display: 'flex', gap: 12, marginTop: 4 },
   statAll:       { fontSize: 13, color: '#64748b' },
   adminLink:     { fontSize: 13, color: '#263CD9', textDecoration: 'none', flexShrink: 0 },
+  btnCashClose:  { padding: '5px 12px', background: '#263CD9', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const },
   shiftBlock:    { background: '#fff', padding: '12px 16px', borderBottom: '1px solid #e2e8f0' },
   shiftActive:   { fontSize: 15, fontWeight: 700, color: '#02BDB6', marginBottom: 8 },
   shiftInactive: { fontSize: 14, fontWeight: 600, color: '#64748b', marginBottom: 8 },

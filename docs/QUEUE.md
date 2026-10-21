@@ -25,7 +25,7 @@
 | 04-0 | Подготовка: gitignore, правила, очередь | `docs/tasks/04-now-list.md` | ✅ готово (84ecc3b) |
 | 04-1 | Печать бланка замеров: сдвиг цифр + кнопка «Результаты студии» | `docs/tasks/04-now-list.md#часть-1` | 🔧 в работе (Claude, 2026-10-21) |
 | 04-2 | Задачи менеджера: shared / personal | `docs/tasks/04-now-list.md#часть-2` | 🟡 частично (нужен SQL — см. ниже) |
-| 04-3 | Закрытие смены (Х-отчёт): Fitbase + cash_closings + печать + Excel | `docs/tasks/04-now-list.md#часть-3` | ⏳ ждёт |
+| 04-3 | Закрытие смены (Х-отчёт): Fitbase + cash_closings + печать + Excel | `docs/tasks/04-now-list.md#часть-3` | ✅ готово (ниже) |
 | 04-4 | Отчёт по продажам (admin, Fitbase, Excel) | `docs/tasks/04-now-list.md#часть-4` | ⏳ ждёт |
 | 04-5 | InBody: сканирование QR, парсер, сохранение, привязка к замеру | `docs/tasks/04-now-list.md#часть-5` | ⏳ ждёт |
 | 04-6 | Клик по зоне фигуры: анимированное приближение + панель | `docs/tasks/04-now-list.md#часть-6` | ⏳ ждёт |
@@ -51,5 +51,6 @@
 | 17.10.2026 | Codex | Замеры: карточка, печать, результаты студии | 039631f, 51cd5db | Сборка и локальная проверка 1440/1024/375 прошли; push остановлен: нет GitHub auth, прод не проверен |
 | 21.10.2026 | Claude | 04-0: gitignore, правила crm-reference, ТЗ 04, очередь | 84ecc3b | — |
 | 21.10.2026 | Claude | 02: векторный кабинет агента — проверен по git log, уже в main | 4c67966 | — |
-| 21.10.2026 | Claude | 03: LIFECYCLE_DRY_RUN добавлен в config + блок в handler | 6c7fd44 | — |
-| 21.10.2026 | Claude | 04-2: shared/personal задачи — код готов, нужен SQL на уникальный индекс | ниже | SQL: ALTER TABLE manager_task_done DROP CONSTRAINT manager_task_done_template_id_task_date_key; ALTER TABLE manager_task_done ADD CONSTRAINT manager_task_done_template_date_user_key UNIQUE (template_id, task_date, done_by); |
+| 21.10.2026 | Claude | 03: LIFECYCLE_DRY_RUN добавлен в config + блок в handler | 6c7fd44 | LIFECYCLE_DRY_RUN=true в Render env |
+| 21.10.2026 | Claude | 04-2: shared/personal задачи — код готов, нужен SQL | 144c938 | SQL: ALTER TABLE manager_task_done DROP CONSTRAINT manager_task_done_template_id_task_date_key; ALTER TABLE manager_task_done ADD CONSTRAINT manager_task_done_template_date_user_key UNIQUE (template_id, task_date, done_by); |
+| 21.10.2026 | Claude | 04-3: X-отчёт — cash.ts, CashClosing, ManagerPage button | ниже | Внесения/изъятия ручные (Fitbase API нет); templates/zakrytie-smeny.xlsx не существовало — Excel из нуля |
