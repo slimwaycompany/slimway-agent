@@ -13,6 +13,7 @@ import ManagerPage from './pages/manager/ManagerPage';
 import AdminPage from './pages/manager/AdminPage';
 import AdminReportsPage from './pages/reports/ReportsPage';
 import ResultsPage from './pages/ResultsPage';
+import SharePage from './pages/measure/SharePage';
 import { isEmbedded } from './utils/iframe';
 import './index.css';
 
@@ -44,6 +45,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/results" element={<ResultsPage />} />
+      <Route path="/r/:token" element={<SharePage />} />
       <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
       <Route path="/new" element={<RequireAuth><NewPage /></RequireAuth>} />
       <Route path="/q/:id/summary" element={<RequireAuth><SummaryPage /></RequireAuth>} />

@@ -518,6 +518,64 @@ const inputS:   React.CSSProperties = { width: '100%', padding: '9px 12px', bord
 const selS:     React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1.5px solid #e2e6ea', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', marginTop: 4 };
 const lblS:     React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#374151', display: 'block' };
 
+// ── Share link dialog ──────────────────────────────────────────────────────────
+
+function ShareLinkDialog({ clientId, onClose }: { clientId: string; onClose: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch(`/kviz/api/measure/clients/${clientId}/share`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setUrl(d.url ? window.location.origin + d.url : null))
+      .catch(e => setErr(String(e))).finally(() => setLoading(false));
+  }, [clientId]);
+
+  async function refresh() {
+    setLoading(true); setErr('');
+    try {
+      const r = await fetch(`/kviz/api/measure/clients/${clientId}/share/refresh`, { method: 'POST', credentials: 'include' });
+      const d = await r.json();
+      setUrl(d.url ? window.location.origin + d.url : null);
+    } catch (e) { setErr(String(e)); }
+    finally { setLoading(false); }
+  }
+
+  function copy() {
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+
+  const waUrl = url ? `https://wa.me/?text=${encodeURIComponent('Ваши результаты SlimWay: ' + url)}` : '';
+
+  return (
+    <div style={overlayS} onClick={onClose}>
+      <div style={{ ...modalS, width: 'min(400px,94vw)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Ссылка для клиента</div>
+        {loading && <div style={{ color: '#9ca3af', fontSize: 13 }}>Генерация…</div>}
+        {err && <div style={{ color: '#ef4444', fontSize: 13 }}>{err}</div>}
+        {url && !loading && (
+          <>
+            <div style={{ background: '#f1f5f9', borderRadius: 8, padding: '8px 12px', fontSize: 12, wordBreak: 'break-all', marginBottom: 12 }}>{url}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <button onClick={copy} style={{ ...ibBtnSt, flex: 1 }}>{copied ? '✓ Скопировано' : 'Скопировать'}</button>
+              <a href={waUrl} target="_blank" rel="noopener noreferrer"
+                style={{ ...ibBtnSt, textDecoration: 'none', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', flex: 1, textAlign: 'center' as const }}>
+                WhatsApp
+              </a>
+            </div>
+            <button onClick={refresh} disabled={loading} style={{ fontSize: 12, background: 'none', border: '1px solid #e2e6ea', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', color: '#6b7280', width: '100%', fontFamily: 'inherit' }}>
+              Перевыпустить ссылку (старая перестанет работать)
+            </button>
+          </>
+        )}
+        <button onClick={onClose} style={{ ...fbBtnSt, marginTop: 12, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', width: '100%', padding: '8px', fontSize: 13 }}>Закрыть</button>
+      </div>
+    </div>
+  );
+}
+
 // ── InBody scan dialog ─────────────────────────────────────────────────────────
 
 function extractIBData(input: string): string | null {
@@ -710,6 +768,7 @@ export default function ClientPage() {
   const [printDialog, setPrintDialog] = useState(false);
   const [linkDialog, setLinkDialog] = useState(false);
   const [inbodyDialog, setInbodyDialog] = useState(false);
+  const [shareLinkDialog, setShareLinkDialog] = useState(false);
   const [fbOverrides, setFbOverrides] = useState<Record<string, string>>({}); // mId → fitbase_comment_at
 
   const reload = useCallback(async () => {
@@ -784,6 +843,9 @@ export default function ClientPage() {
         <InBodyDialog clientId={client.id} onClose={() => setInbodyDialog(false)}
           onDone={() => { setInbodyDialog(false); reload(); }} />
       )}
+      {shareLinkDialog && (
+        <ShareLinkDialog clientId={client.id} onClose={() => setShareLinkDialog(false)} />
+      )}
 
       <div className="measure-client-content">
         {/* Header */}
@@ -797,6 +859,8 @@ export default function ClientPage() {
           )}
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
             onClick={() => setInbodyDialog(true)}>InBody</button>
+          <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
+            onClick={() => setShareLinkDialog(true)}>🔗 Ссылка</button>
           <button className="btn btn-primary" style={{ fontSize: 13, padding: '6px 12px' }}
             onClick={() => navigate('/measure/new')}>+ Замер</button>
         </div>

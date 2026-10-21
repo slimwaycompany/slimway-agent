@@ -24,6 +24,16 @@ function normalizePhone(raw: string): string | null {
   return null;
 }
 
+// Simple in-memory rate limiter: max 30 req per IP per minute for public /r/ routes
+const shareRateMap = new Map<string, { count: number; resetAt: number }>();
+function shareRateOk(ip: string): boolean {
+  const now = Date.now();
+  let entry = shareRateMap.get(ip);
+  if (!entry || entry.resetAt < now) { entry = { count: 0, resetAt: now + 60_000 }; shareRateMap.set(ip, entry); }
+  entry.count++;
+  return entry.count <= 30;
+}
+
 function buildRouter(): Router {
   const router = Router();
 
@@ -213,6 +223,32 @@ function buildRouter(): Router {
   router.use('/kviz/api', (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('[kviz] API error:', err);
     if (!res.headersSent) res.status(500).json({ error: 'Internal server error' });
+  });
+
+  // Public share page data (no auth, rate-limited)
+  router.get('/api/r/:token', async (req, res) => {
+    const ip = req.ip || 'unknown';
+    if (!shareRateOk(ip)) { res.status(429).json({ error: 'Слишком много запросов' }); return; }
+    const token = req.params.token;
+    if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) { res.status(404).end(); return; }
+    try {
+      const { data: client } = await supabase.from('body_clients')
+        .select('id, name, share_token').eq('share_token', token).maybeSingle();
+      if (!client) { res.status(404).json({ error: 'Ссылка недействительна' }); return; }
+      const { data: ms } = await supabase.from('body_measurements')
+        .select('measure_no,measured_at,weight,total_cm,neck,chest,arm_l,arm_r,waist,belly,glutes,thigh_l,thigh_r,shin_l,shin_r,inbody')
+        .eq('client_id', client.id).order('measured_at', { ascending: true });
+      const { data: result } = await supabase.from('studio_results')
+        .select('cm_lost,kg_lost,fat_kg_lost').eq('client_id', client.id).maybeSingle();
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ name: client.name, measurements: ms || [], result: result || null });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // Public share client page — serves SPA, no auth required
+  router.get('/r/:token', (req, res) => {
+    if (!fs.existsSync(CLIENT_DIST)) { res.status(503).end(); return; }
+    res.sendFile(path.join(CLIENT_DIST, 'index.html'));
   });
 
   // Serve kviz client static files and SPA fallback

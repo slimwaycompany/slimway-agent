@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
@@ -530,6 +531,31 @@ export function buildMeasureRouter(): Router {
       await postFitbaseComment(req.params.id, String(m.client_id));
       const { data: upd } = await supabase.from('body_measurements').select('fitbase_comment_at').eq('id', req.params.id).single();
       res.json({ ok: true, fitbase_comment_at: upd?.fitbase_comment_at ?? new Date().toISOString() });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Share link (staff-authenticated) ────────────────────────────────────────
+
+  r.get('/kviz/api/measure/clients/:id/share', async (req, res) => {
+    try {
+      const { data: c } = await supabase.from('body_clients').select('share_token').eq('id', req.params.id).single();
+      if (!c) { res.status(404).json({ error: 'Клиент не найден' }); return; }
+      let token = c.share_token as string | null;
+      if (!token) {
+        token = crypto.randomBytes(18).toString('base64url'); // 24 URL-safe chars
+        const { error } = await supabase.from('body_clients').update({ share_token: token }).eq('id', req.params.id);
+        if (error) { res.status(500).json({ error: error.message }); return; }
+      }
+      res.json({ token, url: `/r/${token}` });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/measure/clients/:id/share/refresh', async (req, res) => {
+    try {
+      const token = crypto.randomBytes(18).toString('base64url');
+      const { error } = await supabase.from('body_clients').update({ share_token: token }).eq('id', req.params.id);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ token, url: `/r/${token}` });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
