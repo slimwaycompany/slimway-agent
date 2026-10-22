@@ -21,6 +21,7 @@ import { mountKvizRoutes }                            from './http/kviz';
 import { mountShellRoutes }                           from './http/shell';
 import { buildClientsSyncRoute }                      from './http/measure';
 import { buildShiftsAutocloseRoute }                  from './http/shifts';
+import { runFitbaseOps, JOB_NAME as FITBASE_OPS_JOB } from './jobs/fitbaseOps';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -207,6 +208,17 @@ async function handleLifecyclePlan(req: express.Request, res: express.Response):
 
 app.get('/run/lifecycle-plan',  handleLifecyclePlan);
 app.post('/run/lifecycle-plan', handleLifecyclePlan);
+
+// fitbase-ops sync: fire-and-forget with lock
+async function handleFitbaseOps(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const locked = await acquireLock(FITBASE_OPS_JOB, 10 * 60);
+  if (!locked) { res.json({ status: 'already_running' }); return; }
+  res.status(202).json({ status: 'accepted', job: FITBASE_OPS_JOB });
+  executeJob(FITBASE_OPS_JOB, runFitbaseOps);
+}
+app.get('/run/fitbase-ops',  handleFitbaseOps);
+app.post('/run/fitbase-ops', handleFitbaseOps);
 
 // shifts-autoclose — must be before generic /run/:job
 app.use(buildShiftsAutocloseRoute());

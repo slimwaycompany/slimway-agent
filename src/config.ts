@@ -32,6 +32,7 @@ const envSchema = z.object({
   WATCH_REG_SCOPE: z.enum(['all', 'trial']).default('all'),
   SHIFTS_SHEET_WEBHOOK_URL: z.string().optional(),
   SHIFTS_SHEET_SECRET:      z.string().optional(),
+  FITBASE_OPS_SINCE: z.string().default('2026-01-01'),
   WATCH_RULES:                    z.string().default('NEW_LEAD,NEW_LEAD_NO_TASK,UNCONFIRMED_3H,NO_SHOW_UNCONFIRMED,NO_SHOW_NO_MARK,NO_SHOW_MARKED,CONTRACT_ENDING,CONTRACT_ENDED,AGENT_TASK,MANAGER_TASK_MISSED,SHIFT_LATE,SHIFT_NOT_CLOSED'),
   WATCH_NO_SHOW_EXCLUDE_TRAININGS: z.string().default('Аренда'),
   WATCH_EXCLUDE_CLIENT_IDS:        z.string().default('294'),

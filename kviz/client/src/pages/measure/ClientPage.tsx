@@ -96,9 +96,11 @@ function BodyFigure({ m, prev, activeZones, zoomKey, onZoneClick }: {
   const rowY = new Map<CircKey, number>();
   for (const side of ['left', 'right'] as const) rows[side].forEach((pt, i) => rowY.set(pt.key, 8 + (84 * (i + 1)) / (rows[side].length + 1)));
   const zoomOy = zoomKey ? (rowY.get(zoomKey) ?? 50) : 50;
+  // Scale: upper zones (neck/chest/arms) → 3.2×; mid → 2.8×; lower (shins) → 3.5×
+  const zoomScale = zoomOy < 32 ? 3.2 : zoomOy > 68 ? 3.5 : 2.8;
   return (
     <div className={`figure-canvas${zoomKey ? ' figure-zoomed' : ''}`}
-      style={zoomKey ? { '--zoom-oy': `${zoomOy}%` } as React.CSSProperties : {}}>
+      style={zoomKey ? { '--zoom-oy': `${zoomOy}%`, '--zoom-scale': zoomScale } as React.CSSProperties : {}}>
       <img className="body-silhouette" src="/kviz/img/body.png" alt="Силуэт фигуры" />
       <svg className="figure-leaders" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {BODY_POINTS.map(pt => <line key={pt.key} x1={15 + pt.x * .7} y1={pt.y} x2={sideByKey.get(pt.key) === 'left' ? 27 : 73} y2={rowY.get(pt.key)} stroke="#91a0b7" strokeWidth=".35" />)}
