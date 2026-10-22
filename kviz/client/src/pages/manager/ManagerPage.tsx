@@ -84,6 +84,7 @@ export default function ManagerPage() {
   const [err, setErr]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [toast, setToast] = useState<string | null>(null);
   const lastOverdue = useRef(-1);
 
   // Shift state
@@ -184,7 +185,12 @@ export default function ManagerPage() {
   const markDone = async (taskId: string) => {
     setBusy(b => ({ ...b, [taskId]: true }));
     try {
-      await fetch(`/kviz/api/manager/tasks/${taskId}/done`, { method: 'POST', credentials: 'include' });
+      const r = await fetch(`/kviz/api/manager/tasks/${taskId}/done`, { method: 'POST', credentials: 'include' });
+      const json = await r.json();
+      if (json.already && json.message) {
+        setToast(json.message);
+        setTimeout(() => setToast(null), 3500);
+      }
       await load();
     } finally { setBusy(b => ({ ...b, [taskId]: false })); }
   };
@@ -206,6 +212,11 @@ export default function ManagerPage() {
 
   return (
     <div style={s.root}>
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1e293b', color: '#fff', padding: '10px 20px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, pointerEvents: 'none', boxShadow: '0 4px 16px rgba(0,0,0,.25)' }}>
+          {toast}
+        </div>
+      )}
       <div style={s.header}>
         <div>
           <div style={s.dateLabel}>

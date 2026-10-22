@@ -210,10 +210,17 @@ export function buildManagerRouter(): Router {
       const tid   = req.params.id;
       const { data: tpl } = await supabase.from('manager_task_templates').select('scope').eq('id', tid).maybeSingle();
       const scope = (tpl?.scope as string) ?? 'shared';
-      let q = supabase.from('manager_task_done').select('id').eq('template_id', tid).eq('task_date', today);
-      if (scope === 'personal') q = q.eq('done_by', session.id);
-      const { data: ex } = await q.maybeSingle();
-      if (ex) { res.json({ ok: true, already: true }); return; }
+      // Use limit(1) — after constraint change multiple rows per template/date are possible for different users
+      const baseQ = supabase.from('manager_task_done')
+        .select('id, done_by_name, done_at').eq('template_id', tid).eq('task_date', today);
+      const { data: exArr } = await (scope === 'personal' ? baseQ.eq('done_by', session.id) : baseQ).limit(1);
+      const ex = (exArr as Record<string, unknown>[] | null)?.[0] ?? null;
+      if (ex) {
+        const message = scope === 'shared' && ex.done_by_name
+          ? `уже сделал(а) ${ex.done_by_name} в ${new Date(String(ex.done_at)).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}`
+          : null;
+        res.json({ ok: true, already: true, message }); return;
+      }
       const { data, error } = await supabase.from('manager_task_done')
         .insert({ template_id: tid, task_date: today, done_by: session.id, done_by_name: session.display_name, done_at: new Date().toISOString() })
         .select().single();
@@ -230,14 +237,14 @@ export function buildManagerRouter(): Router {
       const tid   = req.params.id;
       const { data: tpl } = await supabase.from('manager_task_templates').select('scope').eq('id', tid).maybeSingle();
       const scope = (tpl?.scope as string) ?? 'shared';
-      let q = supabase.from('manager_task_done').select('id, done_by').eq('template_id', tid).eq('task_date', today);
-      if (scope === 'personal') q = q.eq('done_by', session.id);
-      const { data: ex } = await q.maybeSingle();
+      // Non-admin can only delete their own record; admin can delete any (first found)
+      const delQ = supabase.from('manager_task_done')
+        .select('id, done_by').eq('template_id', tid).eq('task_date', today);
+      const { data: exArr } = await (session.role === 'admin' && scope === 'shared'
+        ? delQ : delQ.eq('done_by', session.id)).limit(1);
+      const ex = (exArr as Record<string, unknown>[] | null)?.[0] ?? null;
       if (!ex) { res.json({ ok: true, not_found: true }); return; }
-      if (session.role !== 'admin' && String(ex.done_by) !== session.id) {
-        res.status(403).json({ error: 'Только отметивший или admin может отменить' }); return;
-      }
-      await supabase.from('manager_task_done').delete().eq('id', ex.id);
+      await supabase.from('manager_task_done').delete().eq('id', String(ex.id));
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
