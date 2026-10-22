@@ -34,7 +34,7 @@
 | 04-9 | Вкладка «Метрики» (заглушка) | `docs/tasks/04-now-list.md#часть-9` | ✅ готово (386111d) |
 | 04-10 | Проверка агента по воронкам (только отчёт, ничего не менять) | `docs/tasks/04-now-list.md#часть-10` | ✅ готово (docs/reports/funnels-check.md) |
 | 04-11 | Финал: проверка прода по всем частям, QUEUE.md | `docs/tasks/04-now-list.md#часть-11` | ✅ готово (ced059b) |
-| 05 | InBody: таблица тестов, импорт CSV, показ в карточке | `docs/tasks/05-inbody-import.md` | ✅ готово (fc718a7, e0ff09e) |
+| 05 | InBody: таблица тестов, импорт CSV, показ в карточке | `docs/tasks/05-inbody-import.md` | ✅ готово (fc718a7, e0ff09e, cd1730c) |
 | 06 | Операции Fitbase в Supabase, закрытие смены по шаблону, приближение зоны | `docs/tasks/06-ops-closing-zoom.md` | 🟡 частично (6a264e0, 5656a1d; SQL/env нужны, проверка на проде — на стороне Сергея) |
 
 ## Сделано недавно (для контекста)
@@ -73,4 +73,5 @@
 | 22.10.2026 | Claude | 04-2: SQL выполнен Сергеем; сервер POST /done → limit(1), сообщение «уже сделал(а) X в HH:MM»; тост на клиенте | 4a0e724 | — |
 | 22.10.2026 | Claude | 05: inbody_tests — POST /inbody/qr, GET /inbody/clients/:id, CSV-парсер, импорт, InBodyBlock в карточке, InBody колонка в отчётах, SharePage обновлён | fc718a7, e0ff09e | проверка на проде с реальным CSV — на стороне Сергея |
 | 22.10.2026 | Claude | 05 bugfix: CSV import 413 — express.json({limit:'2mb'}) для csv-import/preview; preview шлёт только id+date+phone; import — пачками по 50 | 2dae0f5 | — |
+| 22.10.2026 | Claude | 05 bugfix2: убран client_id из inbody_tests (его нет в схеме); связь тест↔клиент только по phone_digits; csv-preview проверяет body_clients+fitbase_clients_cache; GET /counts через phone_digits | cd1730c | — |
 | 22.10.2026 | Claude | 06: fitbase ops sync (fitbaseOps.ts, /run/fitbase-ops), отчёт и закрытие из Supabase, тестовый баннер, Excel по шаблону, зум зоны ×2.8-3.5 + backdrop-filter | 6a264e0, 5656a1d | Нужен SQL sync_state (см. ниже); FITBASE_OPS_SINCE в Render env; cron /run/fitbase-ops каждые 15 мин; проверка данных за 21.10.2026 — на стороне Сергея |
