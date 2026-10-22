@@ -7,6 +7,7 @@ import { buildMeasureRouter } from './measure';
 import { buildManagerRouter } from './manager';
 import { buildShiftsRouter } from './shifts';
 import { buildCashRouter } from './cash';
+import { buildInbodyRouter } from './inbody';
 import { addLeadNote } from './fitbase';
 
 const CLIENT_DIST = path.resolve(process.cwd(), 'kviz', 'client', 'dist');
@@ -235,13 +236,18 @@ function buildRouter(): Router {
       const { data: client } = await supabase.from('body_clients')
         .select('id, name, share_token').eq('share_token', token).maybeSingle();
       if (!client) { res.status(404).json({ error: 'Ссылка недействительна' }); return; }
-      const { data: ms } = await supabase.from('body_measurements')
-        .select('measure_no,measured_at,weight,total_cm,neck,chest,arm_l,arm_r,waist,belly,glutes,thigh_l,thigh_r,shin_l,shin_r,inbody')
-        .eq('client_id', client.id).order('measured_at', { ascending: true });
-      const { data: result } = await supabase.from('studio_results')
-        .select('cm_lost,kg_lost,fat_kg_lost').eq('client_id', client.id).maybeSingle();
+      const [{ data: ms }, { data: ibs }, { data: result }] = await Promise.all([
+        supabase.from('body_measurements')
+          .select('measure_no,measured_at,weight,total_cm,neck,chest,arm_l,arm_r,waist,belly,glutes,thigh_l,thigh_r,shin_l,shin_r')
+          .eq('client_id', client.id).order('measured_at', { ascending: true }),
+        supabase.from('inbody_tests')
+          .select('id,tested_at,weight,bfm,pbf,smm,inbody_score,bmi,vfl,data')
+          .eq('client_id', client.id).order('tested_at', { ascending: true }),
+        supabase.from('studio_results')
+          .select('cm_lost,kg_lost,fat_kg_lost').eq('client_id', client.id).maybeSingle(),
+      ]);
       res.setHeader('Cache-Control', 'no-store');
-      res.json({ name: client.name, measurements: ms || [], result: result || null });
+      res.json({ name: client.name, measurements: ms || [], inbody_tests: ibs || [], result: result || null });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -279,6 +285,7 @@ export function mountKvizRoutes(app: Application): void {
     app.use(buildManagerRouter());
     app.use(buildShiftsRouter());
     app.use(buildCashRouter());
+    app.use(buildInbodyRouter());
   } catch (e) {
     console.warn('[kviz] failed to mount routes:', (e as Error).message);
   }

@@ -36,6 +36,7 @@ export default function ReportsPage() {
   const [consultant, setConsultant] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('measured_at');
   const [sortAsc, setSortAsc] = useState(false);
+  const [ibCounts, setIbCounts] = useState<Record<string, number>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,6 +47,11 @@ export default function ReportsPage() {
       if (consultant) qs.set('consultant', consultant);
       const data = await apiGet(`/api/measure/measurements?${qs}`);
       setRows(data);
+      const clientIds = [...new Set((data as Row[]).map(r => r.client_id))];
+      if (clientIds.length) {
+        const counts = await apiGet(`/api/inbody/counts?client_ids=${clientIds.join(',')}`).catch(() => ({}));
+        setIbCounts(counts || {});
+      }
     } catch { setRows([]); }
     finally { setLoading(false); }
   }, [from, to, consultant]);
@@ -153,6 +159,7 @@ export default function ReportsPage() {
                   <Th label="Вес" k="weight" />
                   {CIRC_KEYS.map(k => <th key={k}>{CIRC_LABELS[k]}</th>)}
                   <Th label="∑ см" k="total_cm" />
+                  <th>InBody</th>
                   <th>В результатах</th>
                 </tr>
               </thead>
@@ -172,6 +179,9 @@ export default function ReportsPage() {
                     <td>{r.weight != null ? Number(r.weight).toFixed(1) : '—'}</td>
                     {CIRC_KEYS.map(k => <td key={k}>{r[k] != null ? Number(r[k]).toFixed(1) : '—'}</td>)}
                     <td style={{ fontWeight: 600 }}>{Number(r.total_cm).toFixed(1)}</td>
+                    <td style={{ color: ibCounts[r.client_id] ? '#02BDB6' : '#9ca3af', fontWeight: ibCounts[r.client_id] ? 600 : 400 }}>
+                      {ibCounts[r.client_id] ?? '—'}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: r.studio_result ? '#047857' : '#9ca3af' }}>
                       {r.studio_result ? `${Number(r.studio_result.cm_lost).toFixed(0)} см, ${Number(r.studio_result.kg_lost).toFixed(1)} кг (${fmtDate(r.studio_result.sent_at)}, ${r.studio_result.sent_by})` : '—'}
                     </td>

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
-import { parseInBody, type InBodyData } from '../../utils/inbody';
+import { parseInBody } from '../../utils/inbody';
 
 const CIRC_KEYS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 type CircKey = typeof CIRC_KEYS[number];
@@ -43,7 +43,6 @@ interface Measurement {
   id: string; measure_no: number; measured_at: string;
   weight: number | null; total_cm: number; consultant: string;
   fitbase_comment_at: string | null; note: string | null;
-  inbody: InBodyData | null;
   [key: string]: unknown;
 }
 interface Client {
@@ -51,6 +50,13 @@ interface Client {
   measurements: Measurement[];
 }
 interface StudioResult { cm_lost: number; kg_lost: number; fat_kg_lost: number | null; sent_by: string; sent_at: string; to_measure_no: number }
+interface InBodyTest {
+  id: string; inbody_id: string; tested_at: string; source: 'qr' | 'csv';
+  weight: number | null; bfm: number | null; pbf: number | null;
+  smm: number | null; ffm: number | null; bmi: number | null;
+  vfl: number | null; inbody_score: number | null; whr: number | null; bmr: number | null;
+  data: Record<string, unknown> | null; client_id: string | null;
+}
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -679,10 +685,10 @@ function InBodyDialog({ clientId, onDone, onClose }: {
     if (!parsed) return;
     setSaving(true); setSaveErr('');
     try {
-      const r = await fetch(`/kviz/api/measure/clients/${clientId}/inbody`, {
+      const r = await fetch('/kviz/api/inbody/qr', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inbody: parsed }),
+        body: JSON.stringify({ client_id: clientId, inbody: parsed }),
       });
       const json = await r.json();
       if (!r.ok) { setSaveErr(json.error || 'Ошибка сохранения'); return; }
@@ -753,7 +759,7 @@ const ibBtnSt: React.CSSProperties = { padding: '6px 14px', background: '#eff6ff
 
 // ── Zone Detail Panel ─────────────────────────────────────────────────────────
 
-type SegKey = keyof InBodyData['lean_by_segment'];
+type SegKey = 'right_arm' | 'left_arm' | 'trunk' | 'right_leg' | 'left_leg';
 const SEGMENT_MAP: Partial<Record<CircKey, SegKey>> = {
   arm_r: 'right_arm', arm_l: 'left_arm',
   chest: 'trunk', waist: 'trunk', belly: 'trunk', glutes: 'trunk',
@@ -761,8 +767,13 @@ const SEGMENT_MAP: Partial<Record<CircKey, SegKey>> = {
   shin_r: 'right_leg', shin_l: 'left_leg',
 };
 const SEG_LABELS: Record<SegKey, string> = { right_arm: 'Правая рука', left_arm: 'Левая рука', trunk: 'Туловище', right_leg: 'Правая нога', left_leg: 'Левая нога' };
+const SEG_DATA_KEYS: Record<SegKey, { ffm: string; bfm: string }> = {
+  right_arm: { ffm: 'ffm_ra', bfm: 'bfm_ra' }, left_arm: { ffm: 'ffm_la', bfm: 'bfm_la' },
+  trunk: { ffm: 'ffm_tr', bfm: 'bfm_tr' },
+  right_leg: { ffm: 'ffm_rl', bfm: 'bfm_rl' }, left_leg: { ffm: 'ffm_ll', bfm: 'bfm_ll' },
+};
 
-function ZoneDetailPanel({ zoneKey, ms, onClose }: { zoneKey: CircKey; ms: Measurement[]; onClose: () => void }) {
+function ZoneDetailPanel({ zoneKey, ms, latestIBData, onClose }: { zoneKey: CircKey; ms: Measurement[]; latestIBData: Record<string, unknown> | null; onClose: () => void }) {
   const zone = ALL_ZONES.find(z => z.key === zoneKey)!;
   const history = ms.map((m, i) => ({ m, prev: ms[i - 1] ?? null })).filter(({ m }) => m[zoneKey] != null);
 
@@ -781,9 +792,8 @@ function ZoneDetailPanel({ zoneKey, ms, onClose }: { zoneKey: CircKey; ms: Measu
     trendInfo = { slopePerWeek: slopePerDay * 7, next2w: lastVal + slopePerDay * 14, next4w: lastVal + slopePerDay * 28 };
   }
 
-  // InBody segment data (latest measurement that has InBody)
   const segKey = SEGMENT_MAP[zoneKey];
-  const latestInbody = segKey ? [...ms].reverse().find(m => m.inbody != null)?.inbody : null;
+  const segDataKeys = segKey ? SEG_DATA_KEYS[segKey] : null;
 
   // Sparkline SVG
   const vals = history.map(({ m }) => Number(m[zoneKey]));
@@ -835,14 +845,217 @@ function ZoneDetailPanel({ zoneKey, ms, onClose }: { zoneKey: CircKey; ms: Measu
           </div>
         )}
 
-        {latestInbody && segKey && (
+        {latestIBData && segKey && segDataKeys && (
           <div style={{ fontSize: 12, color: '#374151', marginTop: 8, padding: '6px 10px', background: 'rgba(2,189,182,.06)', borderRadius: 8, border: '1px solid rgba(2,189,182,.2)' }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>InBody · {SEG_LABELS[segKey]}</div>
-            <div>Безжировая: <b>{latestInbody.lean_by_segment[segKey].toFixed(2)} кг</b></div>
-            <div>Жировая: <b>{latestInbody.fat_by_segment[segKey].toFixed(2)} кг</b></div>
+            {latestIBData[segDataKeys.ffm] != null && <div>Безжировая: <b>{Number(latestIBData[segDataKeys.ffm]).toFixed(2)} кг</b></div>}
+            {latestIBData[segDataKeys.bfm] != null && <div>Жировая: <b>{Number(latestIBData[segDataKeys.bfm]).toFixed(2)} кг</b></div>}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── InBody block ─────────────────────────────────────────────────────────────
+
+const IB_METRICS: { key: keyof InBodyTest; label: string; unit: string; norms?: [number, number]; goodDir?: 'low' | 'high' }[] = [
+  { key: 'inbody_score', label: 'Оценка',    unit: '',   norms: [70, 90], goodDir: 'high' },
+  { key: 'weight',       label: 'Вес',       unit: 'кг' },
+  { key: 'pbf',          label: 'Жир',       unit: '%',  norms: [18, 28], goodDir: 'low' },
+  { key: 'bfm',          label: 'Жир кг',    unit: 'кг', goodDir: 'low' },
+  { key: 'smm',          label: 'Мышцы',     unit: 'кг', goodDir: 'high' },
+  { key: 'vfl',          label: 'Висц. жир', unit: '',   norms: [1, 9], goodDir: 'low' },
+  { key: 'bmi',          label: 'ИМТ',       unit: '',   norms: [18.5, 24.9] },
+];
+
+function ibColor(val: number, norms?: [number, number], goodDir?: 'low' | 'high'): string {
+  if (!norms) return '#374151';
+  const [lo, hi] = norms;
+  if (val >= lo && val <= hi) return '#16a34a';
+  if (goodDir === 'low' && val > hi) return '#ef4444';
+  if (goodDir === 'high' && val < lo) return '#ef4444';
+  return '#f59e0b';
+}
+
+type IBChartKey = 'weight' | 'smm' | 'pbf';
+const IB_CHART_LINES: { key: IBChartKey; label: string; color: string; dashed?: boolean }[] = [
+  { key: 'weight', label: 'Вес кг', color: '#263CD9', dashed: true },
+  { key: 'smm',    label: 'Мышцы кг', color: '#02BDB6' },
+  { key: 'pbf',    label: '% жира',   color: '#ef4444' },
+];
+
+function InBodyBlock({ tests, onScan }: { tests: InBodyTest[]; onScan: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [ibLines, setIbLines] = useState<IBChartKey[]>(['weight', 'smm', 'pbf']);
+
+  if (tests.length === 0) {
+    return (
+      <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>InBody</span>
+          <button onClick={onScan} style={ibBtnSt}>+ Сканировать</button>
+        </div>
+        <div style={{ color: '#9ca3af', fontSize: 13, marginTop: 8 }}>Нет данных InBody</div>
+      </div>
+    );
+  }
+
+  const last = tests[tests.length - 1];
+  const first = tests[0];
+
+  // Chart
+  const W = 560, H = 140, PL = 40, PR = 12, PT = 12, PB = 28;
+  const iW = W - PL - PR, iH = H - PT - PB;
+
+  function ibChartRange(key: IBChartKey) {
+    let mn = Infinity, mx = -Infinity;
+    for (const t of tests) {
+      const v = t[key];
+      if (v != null) { mn = Math.min(mn, v); mx = Math.max(mx, v); }
+    }
+    if (mn === Infinity) return null;
+    const rng = mx - mn || 1;
+    return { mn: mn - rng * 0.1, mx: mx + rng * 0.1 };
+  }
+
+  function tx(i: number) { return PL + (i / Math.max(tests.length - 1, 1)) * iW; }
+  function ty(v: number, mn: number, mx: number) { return PT + iH - ((v - mn) / (mx - mn)) * iH; }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, marginBottom: 14, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9' }}>
+        <span style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>InBody · {tests.length} тест{tests.length > 1 ? 'ов' : ''}</span>
+        <button onClick={onScan} style={ibBtnSt}>+ Сканировать</button>
+      </div>
+
+      {/* Latest test metrics */}
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>
+          Последний: {fmtDate(last.tested_at)} ({last.source === 'qr' ? 'QR' : 'CSV'})
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '8px 12px' }}>
+          {IB_METRICS.map(m => {
+            const v = last[m.key];
+            if (v == null) return null;
+            return (
+              <div key={String(m.key)} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: ibColor(Number(v), m.norms, m.goodDir), lineHeight: 1.1 }}>
+                  {Number(v).toFixed(m.key === 'inbody_score' || m.key === 'vfl' ? 0 : 1)}{m.unit}
+                </div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{m.label}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Chart (2+ tests) */}
+      {tests.length >= 2 && (
+        <div style={{ padding: '0 16px 12px' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            {IB_CHART_LINES.map(l => (
+              <label key={l.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer',
+                padding: '2px 8px', borderRadius: 20, border: `1.5px solid ${ibLines.includes(l.key) ? l.color : '#e2e6ea'}`,
+                background: ibLines.includes(l.key) ? l.color + '18' : '#f8fafc', color: ibLines.includes(l.key) ? '#1a202c' : '#9ca3af' }}>
+                <input type="checkbox" style={{ display: 'none' }} checked={ibLines.includes(l.key)}
+                  onChange={() => setIbLines(prev => prev.includes(l.key) ? prev.filter(k => k !== l.key) : [...prev, l.key])} />
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: l.color, flexShrink: 0 }} />
+                {l.label}
+              </label>
+            ))}
+          </div>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }}>
+            {[0, 0.5, 1].map((f, i) => <line key={i} x1={PL} x2={W - PR} y1={PT + iH * (1 - f)} y2={PT + iH * (1 - f)} stroke="#e2e6ea" strokeWidth={0.7} />)}
+            {tests.map((t, i) => (
+              <text key={i} x={tx(i)} y={H - 4} textAnchor="middle" fontSize={8} fill="#9ca3af">
+                {fmtShortDate(t.tested_at)}
+              </text>
+            ))}
+            {IB_CHART_LINES.filter(l => ibLines.includes(l.key)).map(l => {
+              const range = ibChartRange(l.key);
+              if (!range) return null;
+              const pathParts = tests.map((t, i) => {
+                const v = t[l.key];
+                if (v == null) return null;
+                return `${i === 0 ? 'M' : 'L'}${tx(i).toFixed(1)},${ty(Number(v), range.mn, range.mx).toFixed(1)}`;
+              }).filter(Boolean).join(' ');
+              return pathParts ? <path key={l.key} d={pathParts} fill="none" stroke={l.color} strokeWidth={2}
+                strokeLinejoin="round" strokeLinecap="round" strokeDasharray={l.dashed ? '5 3' : undefined} /> : null;
+            })}
+            {IB_CHART_LINES.filter(l => ibLines.includes(l.key)).map(l => {
+              const range = ibChartRange(l.key);
+              if (!range) return null;
+              return tests.map((t, i) => {
+                const v = t[l.key];
+                if (v == null) return null;
+                const isLast = i === tests.length - 1;
+                return (
+                  <g key={`${l.key}-${i}`}>
+                    <circle cx={tx(i)} cy={ty(Number(v), range.mn, range.mx)} r={isLast ? 4 : 2.5} fill={l.color} stroke="#fff" strokeWidth={1} />
+                    {isLast && (
+                      <text x={tx(i)} y={ty(Number(v), range.mn, range.mx) - 6} textAnchor="middle" fontSize={8} fontWeight="700" fill={l.color}>
+                        {Number(v).toFixed(1)}
+                      </text>
+                    )}
+                  </g>
+                );
+              });
+            })}
+            {/* Y axis labels — first active metric */}
+            {(() => {
+              const firstKey = IB_CHART_LINES.find(l => ibLines.includes(l.key))?.key;
+              if (!firstKey) return null;
+              const range = ibChartRange(firstKey);
+              if (!range) return null;
+              return [0, 0.5, 1].map((f, i) => {
+                const v = range.mn + f * (range.mx - range.mn);
+                return <text key={i} x={PL - 3} y={PT + iH * (1 - f) + 3} textAnchor="end" fontSize={8} fill="#9ca3af">{v.toFixed(1)}</text>;
+              });
+            })()}
+          </svg>
+        </div>
+      )}
+
+      {/* Expand/collapse table */}
+      <button onClick={() => setExpanded(e => !e)}
+        style={{ width: '100%', padding: '8px 16px', background: '#f8fafc', border: 'none', borderTop: '1px solid #f1f5f9',
+          cursor: 'pointer', fontSize: 12, color: '#6b7280', textAlign: 'left', fontFamily: 'inherit' }}>
+        {expanded ? '▲ Скрыть таблицу' : `▼ Все тесты (${tests.length})`}
+      </button>
+      {expanded && (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="measure-table" style={{ fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th>Дата</th><th>Ист.</th><th>Вес</th><th>Жир кг</th><th>% жира</th>
+                <th>Мышцы</th><th>ИМТ</th><th>Висц.</th><th>Оценка</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...tests].reverse().map(t => {
+                const diff = first.bfm != null && t.bfm != null ? t.bfm - first.bfm : null;
+                return (
+                  <tr key={t.id}>
+                    <td>{fmtDate(t.tested_at)}</td>
+                    <td style={{ color: '#9ca3af' }}>{t.source}</td>
+                    <td>{t.weight?.toFixed(1) ?? '—'}</td>
+                    <td>{t.bfm != null ? <span style={{ color: diff != null ? diffColor(diff) : '#374151' }}>{t.bfm.toFixed(1)}</span> : '—'}</td>
+                    <td>{t.pbf?.toFixed(1) ?? '—'}</td>
+                    <td>{t.smm?.toFixed(1) ?? '—'}</td>
+                    <td>{t.bmi?.toFixed(1) ?? '—'}</td>
+                    <td>{t.vfl?.toFixed(0) ?? '—'}</td>
+                    <td style={{ fontWeight: 600, color: t.inbody_score != null ? ibColor(t.inbody_score, [70, 90], 'high') : '#9ca3af' }}>
+                      {t.inbody_score?.toFixed(0) ?? '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -854,6 +1067,7 @@ export default function ClientPage() {
   const navigate = useNavigate();
   const [client, setClient] = useState<Client | null>(null);
   const [studioResult, setStudioResult] = useState<StudioResult | null>(null);
+  const [inbodyTests, setInbodyTests] = useState<InBodyTest[]>([]);
   const [sendingResult, setSendingResult] = useState(false);
   const [resultError, setResultError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -872,11 +1086,14 @@ export default function ClientPage() {
 
   const reload = useCallback(async () => {
     if (!id) return;
-    const [d, result]: [Client, StudioResult | null] = await Promise.all([
-      apiGet(`/api/measure/clients/${id}`), apiGet(`/api/measure/clients/${id}/results`).then((r: any) => r?.error ? null : r).catch(() => null),
+    const [d, result, ibs]: [Client, StudioResult | null, InBodyTest[]] = await Promise.all([
+      apiGet(`/api/measure/clients/${id}`),
+      apiGet(`/api/measure/clients/${id}/results`).then((r: any) => r?.error ? null : r).catch(() => null),
+      apiGet(`/api/inbody/clients/${id}`).catch(() => []),
     ]);
     setClient(d);
     setStudioResult(result);
+    setInbodyTests(ibs || []);
     setSelectedMId(prev => prev || (d.measurements.at(-1)?.id ?? ''));
   }, [id]);
 
@@ -897,10 +1114,10 @@ export default function ClientPage() {
   const cmLost = first && last ? Math.max(0, Number(first.total_cm) - Number(last.total_cm)) : 0;
   const kgLost = first?.weight != null && last?.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
   const canSendResult = cmLost > 0 || kgLost > 0;
-  const msWithInBody = ms.filter(m => m.inbody != null);
-  const firstFat = msWithInBody[0]?.inbody?.fat_kg ?? null;
-  const lastFat  = msWithInBody[msWithInBody.length - 1]?.inbody?.fat_kg ?? null;
-  const fatKgLost = firstFat != null && lastFat != null ? Math.max(0, firstFat - lastFat) : null;
+  const firstIBFat = inbodyTests[0]?.bfm ?? null;
+  const lastIBFat  = inbodyTests[inbodyTests.length - 1]?.bfm ?? null;
+  const fatKgLost  = firstIBFat != null && lastIBFat != null ? Math.max(0, firstIBFat - lastIBFat) : null;
+  const latestIBData = inbodyTests.length > 0 ? (inbodyTests[inbodyTests.length - 1].data ?? null) : null;
   const selectedM = ms.find(m => m.id === selectedMId) ?? last ?? null;
   const selectedIdx = ms.findIndex(m => m.id === selectedMId);
   const prevM = selectedIdx > 0 ? ms[selectedIdx - 1] : null;
@@ -944,7 +1161,7 @@ export default function ClientPage() {
         <ShareLinkDialog clientId={client.id} onClose={() => setShareLinkDialog(false)} />
       )}
       {zoneDetailKey && (
-        <ZoneDetailPanel zoneKey={zoneDetailKey} ms={ms} onClose={() => setZoneDetailKey(null)} />
+        <ZoneDetailPanel zoneKey={zoneDetailKey} ms={ms} latestIBData={latestIBData} onClose={() => setZoneDetailKey(null)} />
       )}
 
       <div className="measure-client-content">
@@ -1023,6 +1240,7 @@ export default function ClientPage() {
                 В результатах студии: {Number(studioResult.cm_lost).toFixed(0)} см, {Number(studioResult.kg_lost).toFixed(1)} кг ({new Date(studioResult.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}, {studioResult.sent_by})
               </div>}
             </div>
+            <InBodyBlock tests={inbodyTests} onScan={() => setInbodyDialog(true)} />
             {mergedM && <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>Замер №{mergedM.measure_no} · {fmtDate(mergedM.measured_at)}</div>
               <div style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 10px' }}>{mergedM.consultant}{mergedM.note && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>{mergedM.note}</span>}</div>
