@@ -145,7 +145,8 @@ export function buildInbodyRouter(): Router {
     const session = getSession(req);
     if (!session || session.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
     try {
-      const { rows } = req.body as { rows: InBodyRow[] };
+      // Preview only needs dedup fields — client sends lightweight shape
+      const { rows } = req.body as { rows: { inbody_id: string; tested_at: string; phone: string | null }[] };
       if (!Array.isArray(rows) || rows.length === 0) { res.status(400).json({ error: 'rows обязателен' }); return; }
 
       // Check existing (by inbody_id)

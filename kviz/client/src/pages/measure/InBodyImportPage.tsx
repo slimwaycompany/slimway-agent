@@ -20,6 +20,21 @@ export default function InBodyImportPage() {
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Safe fetch: handles non-JSON 413/500 HTML responses
+  async function safePost(url: string, body: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
+    const r = await fetch(url, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    let data: Record<string, unknown> = {};
+    try { data = await r.json(); } catch {
+      const text = await r.text().catch(() => '');
+      data = { error: r.status === 413 ? 'Файл слишком большой для одного запроса' : `Ошибка сервера (HTTP ${r.status})${text ? ': ' + text.slice(0, 120) : ''}` };
+    }
+    return { ok: r.ok, status: r.status, data };
+  }
+
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -31,14 +46,11 @@ export default function InBodyImportPage() {
       if (!parsed.length) { setError('CSV не распарсился — 0 строк. Проверьте формат файла (UTF-8, LookinBody270).'); setLoading(false); return; }
       setRows(parsed);
 
-      const r = await fetch('/kviz/api/inbody/csv-preview', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: parsed }),
-      });
-      const json = await r.json();
-      if (!r.ok) { setError(json.error || 'Ошибка предпросмотра'); return; }
-      setPreview(json);
+      // Preview: send only dedup fields (small payload)
+      const previewRows = parsed.map(r => ({ inbody_id: r.inbody_id, tested_at: r.tested_at, phone: r.phone }));
+      const { ok, data: json } = await safePost('/kviz/api/inbody/csv-preview', { rows: previewRows });
+      if (!ok) { setError(String(json.error || 'Ошибка предпросмотра')); return; }
+      setPreview(json as unknown as Preview);
     } catch (e) { setError(String(e)); }
     finally { setLoading(false); }
   }
@@ -47,14 +59,17 @@ export default function InBodyImportPage() {
     if (!rows) return;
     setLoading(true); setError('');
     try {
-      const r = await fetch('/kviz/api/inbody/csv-import', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows }),
-      });
-      const json = await r.json();
-      if (!r.ok) { setError(json.error || 'Ошибка импорта'); return; }
-      setImportResult(json);
+      const CHUNK = 50;
+      let added = 0, skipped = 0, without_client = 0;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK);
+        const { ok, data: json } = await safePost('/kviz/api/inbody/csv-import', { rows: chunk });
+        if (!ok) { setError(String(json.error || 'Ошибка импорта')); return; }
+        added         += Number(json.added ?? 0);
+        skipped       += Number(json.skipped ?? 0);
+        without_client += Number(json.without_client ?? 0);
+      }
+      setImportResult({ added, skipped, without_client });
     } catch (e) { setError(String(e)); }
     finally { setLoading(false); }
   }
