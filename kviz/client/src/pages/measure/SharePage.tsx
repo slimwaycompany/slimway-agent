@@ -9,12 +9,16 @@ interface Measurement {
   neck?: number; chest?: number; arm_l?: number; arm_r?: number;
   waist?: number; belly?: number; glutes?: number;
   thigh_l?: number; thigh_r?: number; shin_l?: number; shin_r?: number;
-  inbody?: { fat_kg?: number; fat_pct?: number; skeletal_muscle_kg?: number; bmi?: number; weight_kg?: number } | null;
   [key: string]: unknown;
+}
+interface IBTest {
+  tested_at: string; weight: number | null; bfm: number | null; pbf: number | null;
+  smm: number | null; bmi: number | null; inbody_score: number | null;
 }
 interface ShareData {
   name: string;
   measurements: Measurement[];
+  inbody_tests?: IBTest[];
   result: { cm_lost: number; kg_lost: number; fat_kg_lost: number | null } | null;
 }
 
@@ -98,8 +102,8 @@ export default function SharePage() {
   const kgLost = data.result?.kg_lost ?? (first?.weight != null && last?.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0);
   const fatLost = data.result?.fat_kg_lost ?? null;
 
-  const lastInBody = ms.slice().reverse().find(m => m.inbody);
-  const ib = lastInBody?.inbody;
+  const ibs = data.inbody_tests ?? [];
+  const ib = ibs.length > 0 ? ibs[ibs.length - 1] : null;
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'Inter,sans-serif', color: '#1e293b' }}>
@@ -142,14 +146,15 @@ export default function SharePage() {
           <div style={{ background: '#fff', borderRadius: 16, padding: '16px 20px', marginBottom: 16, border: '1px solid #e2e6ea' }}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: '#374151' }}>InBody-оценка</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px', fontSize: 13 }}>
-              {ib.weight_kg != null && <span>Вес: <b>{ib.weight_kg} кг</b></span>}
-              {ib.fat_pct != null && <span>% жира: <b>{ib.fat_pct}%</b></span>}
-              {ib.fat_kg != null && <span>Жировая масса: <b>{ib.fat_kg} кг</b></span>}
-              {ib.skeletal_muscle_kg != null && <span>Мышцы: <b>{ib.skeletal_muscle_kg} кг</b></span>}
+              {ib.weight != null && <span>Вес: <b>{ib.weight} кг</b></span>}
+              {ib.pbf != null && <span>% жира: <b>{ib.pbf}%</b></span>}
+              {ib.bfm != null && <span>Жировая масса: <b>{ib.bfm} кг</b></span>}
+              {ib.smm != null && <span>Мышцы: <b>{ib.smm} кг</b></span>}
               {ib.bmi != null && <span>ИМТ: <b>{ib.bmi}</b></span>}
+              {ib.inbody_score != null && <span>Оценка: <b>{ib.inbody_score}</b></span>}
             </div>
             <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>
-              Замер {fmtDate(lastInBody!.measured_at)}
+              Тест {fmtDate(ib.tested_at)}
             </div>
           </div>
         )}
