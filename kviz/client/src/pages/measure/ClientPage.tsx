@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Component } from 'react';
+import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
@@ -55,7 +56,21 @@ interface InBodyTest {
   weight: number | null; bfm: number | null; pbf: number | null;
   smm: number | null; ffm: number | null; bmi: number | null;
   vfl: number | null; inbody_score: number | null; whr: number | null; bmr: number | null;
-  data: Record<string, unknown> | null; client_id: string | null;
+  data: Record<string, unknown> | null;
+}
+
+// ── Error boundary ─────────────────────────────────────────────────────────────
+class ErrorBlock extends Component<{ children: ReactNode; label: string }, { err: string | null }> {
+  state = { err: null as string | null };
+  static getDerivedStateFromError(e: unknown) { return { err: String(e) }; }
+  render() {
+    if (this.state.err) return (
+      <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, marginBottom: 14, color: '#ef4444', fontSize: 13 }}>
+        Не удалось загрузить: {this.props.label}. <span style={{ color: '#9ca3af' }}>{this.state.err}</span>
+      </div>
+    );
+    return this.props.children;
+  }
 }
 
 function fmtDate(iso: string) {
@@ -859,6 +874,130 @@ function ZoneDetailPanel({ zoneKey, ms, latestIBData, onClose }: { zoneKey: Circ
   );
 }
 
+// ── Unlink button ─────────────────────────────────────────────────────────────
+
+function UnlinkBtn({ testId, onDone }: { testId: string; onDone: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  async function unlink() {
+    setLoading(true);
+    try {
+      await fetch(`/kviz/api/inbody/tests/${testId}/unlink`, { method: 'POST', credentials: 'include' });
+      onDone();
+    } finally { setLoading(false); setConfirm(false); }
+  }
+  if (!confirm) return <button onClick={() => setConfirm(true)} style={{ fontSize: 10, padding: '1px 6px', background: 'none', border: '1px solid #e2e6ea', borderRadius: 4, cursor: 'pointer', color: '#9ca3af', fontFamily: 'inherit' }}>Отвязать</button>;
+  return (
+    <span>
+      <button onClick={unlink} disabled={loading} style={{ fontSize: 10, padding: '1px 6px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, cursor: 'pointer', color: '#ef4444', fontFamily: 'inherit' }}>{loading ? '…' : 'Да'}</button>
+      <button onClick={() => setConfirm(false)} style={{ fontSize: 10, marginLeft: 2, padding: '1px 4px', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>✕</button>
+    </span>
+  );
+}
+
+// ── Link InBody dialog ─────────────────────────────────────────────────────────
+
+interface UnlinkedTest {
+  id: string; inbody_id: string; tested_at: string;
+  gender: string | null; age: number | null; height: number | null;
+  weight: number | null; bfm: number | null; smm: number | null;
+  inbody_score: number | null; source: string;
+}
+
+function LinkInBodyDialog({ clientId, clientPhone, onLinked, onClose }: {
+  clientId: string; clientPhone: string | null; onLinked: () => void; onClose: () => void;
+}) {
+  const [tests, setTests] = useState<UnlinkedTest[]>([]);
+  const [q, setQ] = useState('');
+  const [selected, setSelected] = useState(new Set<string>());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    fetch('/kviz/api/inbody/unlinked-tests', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setTests(Array.isArray(d) ? d : []))
+      .catch(() => setErr('Не удалось загрузить список'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const shown = tests.filter(t => {
+    if (!q) return true;
+    const ql = q.toLowerCase();
+    return t.inbody_id.toLowerCase().includes(ql) || t.tested_at.slice(0, 10).includes(ql);
+  });
+
+  function toggle(id: string) {
+    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+
+  async function link() {
+    if (!selected.size) return;
+    setSaving(true); setErr('');
+    try {
+      const r = await fetch('/kviz/api/inbody/link-to-client', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId, test_ids: [...selected] }),
+      });
+      const json = await r.json();
+      if (!r.ok) { setErr(json.error || 'Ошибка'); return; }
+      onLinked();
+    } catch (e) { setErr(String(e)); }
+    finally { setSaving(false); }
+  }
+
+  if (!clientPhone) return (
+    <div style={overlayS} onClick={onClose}>
+      <div style={modalS} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 700, marginBottom: 10 }}>Привязать InBody</div>
+        <div style={{ color: '#f59e0b', fontSize: 13 }}>У клиента нет номера телефона — привязка невозможна</div>
+        <button onClick={onClose} style={{ ...fbBtnSt, marginTop: 14, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea' }}>Закрыть</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={overlayS} onClick={onClose}>
+      <div style={{ ...modalS, width: 'min(640px,96vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Привязать InBody к клиенту</div>
+        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>Телефон клиента: <b>{clientPhone}</b></div>
+        <input style={{ ...inputS, marginBottom: 10 }} placeholder="Поиск по ID или дате (YYYY-MM-DD)…" value={q} onChange={e => setQ(e.target.value)} />
+        {err && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 8 }}>{err}</div>}
+        {loading && <div style={{ color: '#9ca3af', fontSize: 13 }}>Загрузка…</div>}
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          {!loading && shown.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13, padding: 8 }}>Нет непривязанных тестов</div>}
+          {shown.map(t => (
+            <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8,
+              background: selected.has(t.id) ? 'rgba(2,189,182,.08)' : '#f8fafc',
+              border: `1px solid ${selected.has(t.id) ? '#02BDB6' : '#e2e6ea'}`,
+              marginBottom: 4, cursor: 'pointer' }}>
+              <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} style={{ flexShrink: 0 }} />
+              <div style={{ flex: 1, fontSize: 12 }}>
+                <div style={{ fontWeight: 600 }}>{fmtDate(t.tested_at)} <span style={{ color: '#9ca3af', fontWeight: 400 }}>ID: {t.inbody_id}</span></div>
+                <div style={{ color: '#6b7280' }}>
+                  {t.weight != null && `Вес: ${t.weight.toFixed(1)} кг`}
+                  {t.bfm != null && ` · Жир: ${t.bfm.toFixed(1)} кг`}
+                  {t.smm != null && ` · Мышцы: ${t.smm.toFixed(1)} кг`}
+                  {t.age != null && ` · ${t.age} лет`}
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <button onClick={onClose} style={{ ...fbBtnSt, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea' }}>Отмена</button>
+          <button onClick={link} disabled={saving || !selected.size}
+            style={{ flex: 1, padding: '7px 18px', background: selected.size ? '#02BDB6' : '#e2e6ea', color: selected.size ? '#fff' : '#9ca3af', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: selected.size ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+            {saving ? 'Привязка…' : `Привязать${selected.size ? ` (${selected.size})` : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── InBody block ─────────────────────────────────────────────────────────────
 
 const IB_METRICS: { key: keyof InBodyTest; label: string; unit: string; norms?: [number, number]; goodDir?: 'low' | 'high' }[] = [
@@ -887,7 +1026,7 @@ const IB_CHART_LINES: { key: IBChartKey; label: string; color: string; dashed?: 
   { key: 'pbf',    label: '% жира',   color: '#ef4444' },
 ];
 
-function InBodyBlock({ tests, onScan }: { tests: InBodyTest[]; onScan: () => void }) {
+function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan: () => void; onUnlink: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [ibLines, setIbLines] = useState<IBChartKey[]>(['weight', 'smm', 'pbf']);
 
@@ -1032,7 +1171,7 @@ function InBodyBlock({ tests, onScan }: { tests: InBodyTest[]; onScan: () => voi
             <thead>
               <tr>
                 <th>Дата</th><th>Ист.</th><th>Вес</th><th>Жир кг</th><th>% жира</th>
-                <th>Мышцы</th><th>ИМТ</th><th>Висц.</th><th>Оценка</th>
+                <th>Мышцы</th><th>ИМТ</th><th>Висц.</th><th>Оценка</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -1050,6 +1189,9 @@ function InBodyBlock({ tests, onScan }: { tests: InBodyTest[]; onScan: () => voi
                     <td>{t.vfl?.toFixed(0) ?? '—'}</td>
                     <td style={{ fontWeight: 600, color: t.inbody_score != null ? ibColor(t.inbody_score, [70, 90], 'high') : '#9ca3af' }}>
                       {t.inbody_score?.toFixed(0) ?? '—'}
+                    </td>
+                    <td>
+                      <UnlinkBtn testId={t.id} onDone={onUnlink} />
                     </td>
                   </tr>
                 );
@@ -1079,27 +1221,32 @@ export default function ClientPage() {
   });
   const [cmpFrom, setCmpFrom] = useState('');
   const [cmpTo, setCmpTo] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [printDialog, setPrintDialog] = useState(false);
   const [linkDialog, setLinkDialog] = useState(false);
   const [inbodyDialog, setInbodyDialog] = useState(false);
   const [shareLinkDialog, setShareLinkDialog] = useState(false);
+  const [linkInBodyDialog, setLinkInBodyDialog] = useState(false);
   const [zoneDetailKey, setZoneDetailKey] = useState<CircKey | null>(null);
   const [fbOverrides, setFbOverrides] = useState<Record<string, string>>({}); // mId → fitbase_comment_at
 
   const reload = useCallback(async () => {
     if (!id) return;
-    const [d, result, ibs]: [Client, StudioResult | null, InBodyTest[]] = await Promise.all([
+    const [d, result, ibs] = await Promise.all([
       apiGet(`/api/measure/clients/${id}`),
       apiGet(`/api/measure/clients/${id}/results`).then((r: any) => r?.error ? null : r).catch(() => null),
-      apiGet(`/api/inbody/clients/${id}`).catch(() => []),
+      apiGet(`/api/inbody/clients/${id}`).then((r: unknown) => Array.isArray(r) ? r : []).catch(() => []),
     ]);
-    setClient(d);
-    setStudioResult(result);
-    setInbodyTests(ibs || []);
-    setSelectedMId(prev => prev || (d.measurements.at(-1)?.id ?? ''));
+    if (!d || !Array.isArray(d.measurements)) throw new Error('Не удалось загрузить данные клиента');
+    setClient(d as Client);
+    setStudioResult(result as StudioResult | null);
+    setInbodyTests((ibs as InBodyTest[]) || []);
+    setSelectedMId(prev => prev || ((d as Client).measurements.at(-1)?.id ?? ''));
   }, [id]);
 
-  useEffect(() => { reload().finally(() => setLoading(false)); }, [reload]);
+  useEffect(() => {
+    reload().catch(e => setLoadError(String(e))).finally(() => setLoading(false));
+  }, [reload]);
 
   function saveZones(z: string[]) {
     setZones(z);
@@ -1109,6 +1256,7 @@ export default function ClientPage() {
   function openZoneDetail(key: CircKey) { setZoneDetailKey(key); }
 
   if (loading) return <MeasureLayout active="reports"><div style={{ padding: 32, color: '#9ca3af' }}>Загрузка…</div></MeasureLayout>;
+  if (loadError) return <MeasureLayout active="reports"><div style={{ padding: 32, color: '#ef4444', fontSize: 14 }}>{loadError}</div></MeasureLayout>;
   if (!client) return <MeasureLayout active="reports"><div style={{ padding: 32 }}>Клиент не найден</div></MeasureLayout>;
 
   const ms = client.measurements;
@@ -1165,6 +1313,9 @@ export default function ClientPage() {
       {zoneDetailKey && (
         <ZoneDetailPanel zoneKey={zoneDetailKey} ms={ms} latestIBData={latestIBData} onClose={() => setZoneDetailKey(null)} />
       )}
+      {linkInBodyDialog && (
+        <LinkInBodyDialog clientId={client.id} clientPhone={client.phone} onLinked={() => { setLinkInBodyDialog(false); reload(); }} onClose={() => setLinkInBodyDialog(false)} />
+      )}
 
       <div className="measure-client-content">
         {/* Header */}
@@ -1178,6 +1329,8 @@ export default function ClientPage() {
           )}
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
             onClick={() => setInbodyDialog(true)}>InBody</button>
+          <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
+            onClick={() => setLinkInBodyDialog(true)}>🔗 InBody</button>
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
             onClick={() => setShareLinkDialog(true)}>🔗 Ссылка</button>
           <button className="btn btn-primary" style={{ fontSize: 13, padding: '6px 12px' }}
@@ -1222,7 +1375,7 @@ export default function ClientPage() {
 
         <div className="measure-client-grid">
           <aside className="measure-figure-column">
-            <BodyFigure m={mergedM} prev={prevM} activeZones={zones} zoomKey={zoneDetailKey} onZoneClick={openZoneDetail} />
+            <ErrorBlock label="Фигура"><BodyFigure m={mergedM} prev={prevM} activeZones={zones} zoomKey={zoneDetailKey} onZoneClick={openZoneDetail} /></ErrorBlock>
           </aside>
           <section>
             <div className="measure-lost-card">
@@ -1242,7 +1395,7 @@ export default function ClientPage() {
                 В результатах студии: {Number(studioResult.cm_lost).toFixed(0)} см, {Number(studioResult.kg_lost).toFixed(1)} кг ({new Date(studioResult.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}, {studioResult.sent_by})
               </div>}
             </div>
-            <InBodyBlock tests={inbodyTests} onScan={() => setInbodyDialog(true)} />
+            <ErrorBlock label="InBody"><InBodyBlock tests={inbodyTests} onScan={() => setInbodyDialog(true)} onUnlink={() => reload()} /></ErrorBlock>
             {mergedM && <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>Замер №{mergedM.measure_no} · {fmtDate(mergedM.measured_at)}</div>
               <div style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 10px' }}>{mergedM.consultant}{mergedM.note && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>{mergedM.note}</span>}</div>

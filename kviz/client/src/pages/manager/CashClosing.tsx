@@ -48,6 +48,7 @@ export default function CashClosing({ onClose }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
+  const [actionError, setActionError] = useState('');
 
   const [openingCash, setOpeningCash]     = useState<number | ''>('');
   const [openingManual, setOpeningManual] = useState(false);
@@ -95,13 +96,13 @@ export default function CashClosing({ onClose }: Props) {
   useEffect(() => { loadData(); }, []);
 
   async function sync() {
-    setSyncing(true);
+    setSyncing(true); setActionError('');
     try {
       const r = await fetch('/kviz/api/cash/sync', { method: 'POST', credentials: 'include' });
       const json = await r.json();
-      if (!r.ok) { alert('Ошибка синхронизации: ' + (json.error || r.status)); return; }
+      if (!r.ok) { setActionError('Ошибка синхронизации: ' + (json.error || r.status)); return; }
       await loadData();
-    } catch (e) { alert('Ошибка: ' + e); }
+    } catch (e) { setActionError('Ошибка: ' + e); }
     finally { setSyncing(false); }
   }
 
@@ -154,7 +155,7 @@ export default function CashClosing({ onClose }: Props) {
       if (!r.ok) throw new Error(await r.text());
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (e) { alert('Ошибка сохранения: ' + e); }
+    } catch (e) { setActionError('Ошибка сохранения: ' + e); }
     finally { setSaving(false); }
   }
 
@@ -163,7 +164,7 @@ export default function CashClosing({ onClose }: Props) {
     try {
       // Fetch template as ArrayBuffer
       const resp = await fetch('/kviz/api/cash/closing-template', { credentials: 'include' });
-      if (!resp.ok) { alert('Шаблон Excel не найден на сервере'); return; }
+      if (!resp.ok) { setActionError('Шаблон Excel не найден на сервере'); return; }
       const ab = await resp.arrayBuffer();
       const wb = XLSX.read(new Uint8Array(ab), { type: 'array' });
 
@@ -222,7 +223,7 @@ export default function CashClosing({ onClose }: Props) {
       sh2['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: data.ops.length, c: 6 } });
 
       XLSX.writeFile(wb, `zakrytie-smeny-${data.today}.xlsx`);
-    } catch (e) { alert('Ошибка Excel: ' + e); }
+    } catch (e) { setActionError('Ошибка Excel: ' + e); }
   }
 
   function print() {
@@ -252,6 +253,13 @@ export default function CashClosing({ onClose }: Props) {
           <span style={{ fontSize: 16 }}>⚠️</span>
           <span><b>Тестовый режим</b> — в Fitbase ничего не отправляется</span>
         </div>
+
+        {actionError && (
+          <div style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca', padding: '8px 18px', fontSize: 13, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ flex: 1 }}>{actionError}</span>
+            <button onClick={() => setActionError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#ef4444', padding: 0 }}>✕</button>
+          </div>
+        )}
 
         <div style={S.header}>
           <span style={{ fontWeight: 700, fontSize: 17 }}>Закрытие смены{data?.today ? ` — ${data.today}` : ''}</span>

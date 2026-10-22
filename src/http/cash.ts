@@ -57,7 +57,7 @@ export function buildCashRouter(): Router {
       // Ops from fitbase_operations
       const { data: opsData, error: opsErr } = await supabase
         .from('fitbase_operations')
-        .select('fitbase_id,op_type,op_at,amount,pay_method,client_name,cashier_name,item_name')
+        .select('fitbase_id,op_type,op_at,amount,pay_method,client_name,cashier,item')
         .eq('op_date', today)
         .order('op_at', { ascending: true });
       if (opsErr) throw new Error(opsErr.message);
@@ -81,8 +81,8 @@ export function buildCashRouter(): Router {
         op_type: op.op_type,
         pay_method: op.pay_method ?? '',
         payment_type: op.pay_method ?? '',
-        item_type: op.item_name ?? '',
-        cashier: op.cashier_name ?? '',
+        item_type: op.item ?? '',
+        cashier: op.cashier ?? '',
         client: op.client_name ?? '',
       }));
 
@@ -128,7 +128,7 @@ export function buildCashRouter(): Router {
     try {
       const { data: opsData, error } = await supabase
         .from('fitbase_operations')
-        .select('fitbase_id,op_type,op_at,amount,pay_method,client_name,cashier_name,manager_name,item_name,comment')
+        .select('fitbase_id,op_type,op_at,amount,pay_method,client_name,cashier,manager,item,comment')
         .gte('op_date', from)
         .lte('op_date', to)
         .order('op_at', { ascending: true });
@@ -147,8 +147,8 @@ export function buildCashRouter(): Router {
         if (op.op_type === 'sale')   { isCash ? (cash_sale += amt) : (card_sale += amt); }
         if (op.op_type === 'refund') { isCash ? (cash_refund += amt) : (card_refund += amt); }
         if (op.op_type === 'sale') {
-          const mgr = op.manager_name ?? '—';
-          const csh = op.cashier_name ?? '—';
+          const mgr = op.manager ?? '—';
+          const csh = op.cashier ?? '—';
           const pm  = op.pay_method ?? 'other';
           byManager[mgr] = (byManager[mgr] || 0) + amt;
           byCashier[csh] = (byCashier[csh] || 0) + amt;
@@ -158,8 +158,8 @@ export function buildCashRouter(): Router {
         return {
           id: op.fitbase_id, pay_ts: op.op_at,
           amount: amt, is_refund: op.op_type === 'refund', op_type: op.op_type,
-          payment_type: op.pay_method ?? '', item_type: op.item_name ?? '',
-          cashier: op.cashier_name ?? '—', manager: op.manager_name ?? '—',
+          payment_type: op.pay_method ?? '', item_type: op.item ?? '',
+          cashier: op.cashier ?? '—', manager: op.manager ?? '—',
           client: op.client_name ?? '',
         };
       });

@@ -45,9 +45,9 @@ interface FitbaseOpsRow {
   amount: number;
   pay_method: string | null;
   client_name: string | null;
-  cashier_name: string | null;
-  manager_name: string | null;
-  item_name: string | null;
+  cashier: string | null;
+  manager: string | null;
+  item: string | null;
   comment: string | null;
   raw: Record<string, unknown>;
 }
@@ -97,9 +97,9 @@ function mapStep(s: TillStep): FitbaseOpsRow {
     amount,
     pay_method: s.payment_method?.system_name ?? s.payment_type ?? null,
     client_name: s.client?.full_name ?? null,
-    cashier_name: s.created_by_user?.full_name ?? null,
-    manager_name: s.manager?.full_name ?? null,
-    item_name: (s.item?.name ?? itemType) || null,
+    cashier: s.created_by_user?.full_name ?? null,
+    manager: s.manager?.full_name ?? null,
+    item: (s.item?.name ?? itemType) || null,
     comment: s.comment ?? null,
     raw: s as unknown as Record<string, unknown>,
   };
