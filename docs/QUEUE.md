@@ -71,3 +71,4 @@
 | 22.10.2026 | Claude | 04-11: финал — прод index-DB1n0qCC.js совпадает с локальной сборкой; /health ok; задача 04-2 остаётся ⛔ нужен SQL | ced059b | визуальная проверка UI (1440/1024/375) — на стороне Сергея |
 | 22.10.2026 | Claude | 04-2: SQL выполнен Сергеем; сервер POST /done → limit(1), сообщение «уже сделал(а) X в HH:MM»; тост на клиенте | 4a0e724 | — |
 | 22.10.2026 | Claude | 05: inbody_tests — POST /inbody/qr, GET /inbody/clients/:id, CSV-парсер, импорт, InBodyBlock в карточке, InBody колонка в отчётах, SharePage обновлён | fc718a7, e0ff09e | проверка на проде с реальным CSV — на стороне Сергея |
+| 22.10.2026 | Claude | 05 bugfix: CSV import 413 — express.json({limit:'2mb'}) для csv-import/preview; preview шлёт только id+date+phone; import — пачками по 50 | 2dae0f5 | — |
