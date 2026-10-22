@@ -35,6 +35,7 @@
 | 04-10 | Проверка агента по воронкам (только отчёт, ничего не менять) | `docs/tasks/04-now-list.md#часть-10` | ✅ готово (docs/reports/funnels-check.md) |
 | 04-11 | Финал: проверка прода по всем частям, QUEUE.md | `docs/tasks/04-now-list.md#часть-11` | ✅ готово (ced059b) |
 | 05 | InBody: таблица тестов, импорт CSV, показ в карточке | `docs/tasks/05-inbody-import.md` | ✅ готово (fc718a7, e0ff09e) |
+| 06 | Операции Fitbase в Supabase, закрытие смены по шаблону, приближение зоны | `docs/tasks/06-ops-closing-zoom.md` | 🔧 в работе (Claude, 22.10) |
 
 ## Сделано недавно (для контекста)
 
