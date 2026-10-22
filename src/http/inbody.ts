@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
 
-// Validate actual schema on startup
 supabase.from('inbody_tests').select('id').limit(0)
   .then(({ error }) => error
     ? console.error('[inbody_tests] schema check failed:', error.message)
@@ -16,7 +15,6 @@ function normalizePhone(raw: string): string | null {
   return null;
 }
 
-// Normalize InBody user ID to consistent digits format for dedup
 function normalizeInbodyId(raw: string): string {
   const d = raw.replace(/\D/g, '');
   if (d.length === 11 && d[0] === '8') return '7' + d.slice(1);
@@ -44,7 +42,18 @@ interface InBodyRow {
   bmr?: number | null;
   data?: Record<string, unknown> | null;
   raw?: string | null;
-  client_id?: string | null;
+}
+
+async function knownPhoneDigitsSet(phoneDigits: string[]): Promise<Set<string>> {
+  if (!phoneDigits.length) return new Set();
+  const [{ data: bc }, { data: fcc }] = await Promise.all([
+    supabase.from('body_clients').select('phone_digits').in('phone_digits', phoneDigits),
+    supabase.from('fitbase_clients_cache').select('phone_digits').in('phone_digits', phoneDigits),
+  ]);
+  return new Set([
+    ...(bc  || []).map((c: Record<string, unknown>) => c.phone_digits as string),
+    ...(fcc || []).map((c: Record<string, unknown>) => c.phone_digits as string),
+  ]);
 }
 
 export function buildInbodyRouter(): Router {
@@ -56,7 +65,7 @@ export function buildInbodyRouter(): Router {
     const session = getSession(req);
     if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
     try {
-      const { client_id, inbody } = req.body as Record<string, unknown>;
+      const { inbody } = req.body as Record<string, unknown>;
       const ib = inbody as Record<string, unknown>;
       if (!ib || !ib.measured_at) { res.status(400).json({ error: 'inbody.measured_at обязателен' }); return; }
 
@@ -70,7 +79,6 @@ export function buildInbodyRouter(): Router {
 
       const row: InBodyRow = {
         inbody_id, tested_at, phone, source: 'qr',
-        client_id: client_id ? String(client_id) : null,
         weight: ib.weight_kg != null ? Number(ib.weight_kg) : null,
         bfm:    ib.fat_kg     != null ? Number(ib.fat_kg)    : null,
         pbf:    ib.fat_pct    != null ? Number(ib.fat_pct)   : null,
@@ -111,29 +119,21 @@ export function buildInbodyRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // ── Get all tests for a client ─────────────────────────────────────────────
+  // ── Get all tests for a client (by phone_digits) ──────────────────────────
 
   r.get('/kviz/api/inbody/clients/:clientId', async (req, res) => {
     if (!getSession(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
     try {
       const { clientId } = req.params;
-      // Primary: by client_id; also pick up by phone_digits match
       const { data: client } = await supabase.from('body_clients')
         .select('id, phone_digits').eq('id', clientId).maybeSingle();
-      if (!client) { res.json([]); return; }
+      if (!client || !client.phone_digits) { res.json([]); return; }
 
       const { data: tests, error } = await supabase.from('inbody_tests')
-        .select('id, inbody_id, tested_at, source, gender, age, height, weight, bfm, pbf, smm, ffm, bmi, vfl, inbody_score, whr, bmr, data, client_id')
-        .or(`client_id.eq.${clientId}${client.phone_digits ? `,phone_digits.eq.${client.phone_digits}` : ''}`)
+        .select('id, inbody_id, tested_at, source, gender, age, height, weight, bfm, pbf, smm, ffm, bmi, vfl, inbody_score, whr, bmr, data')
+        .eq('phone_digits', client.phone_digits)
         .order('tested_at', { ascending: true });
       if (error) { res.status(500).json({ error: error.message }); return; }
-
-      // Back-fill client_id for unlinked tests matching by phone
-      const unlinked = (tests || []).filter(t => !t.client_id && client.phone_digits);
-      if (unlinked.length > 0) {
-        const ids = unlinked.map(t => t.id);
-        await supabase.from('inbody_tests').update({ client_id: clientId }).in('id', ids);
-      }
 
       res.json(tests || []);
     } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -145,11 +145,9 @@ export function buildInbodyRouter(): Router {
     const session = getSession(req);
     if (!session || session.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
     try {
-      // Preview only needs dedup fields — client sends lightweight shape
       const { rows } = req.body as { rows: { inbody_id: string; tested_at: string; phone: string | null }[] };
       if (!Array.isArray(rows) || rows.length === 0) { res.status(400).json({ error: 'rows обязателен' }); return; }
 
-      // Check existing (by inbody_id)
       const inbodyIds = [...new Set(rows.map(r => r.inbody_id))];
       const { data: existing } = await supabase.from('inbody_tests')
         .select('inbody_id, tested_at').in('inbody_id', inbodyIds);
@@ -157,16 +155,11 @@ export function buildInbodyRouter(): Router {
       const newRows = rows.filter(r => !existingSet.has(`${r.inbody_id}|${r.tested_at}`));
       const dupRows = rows.filter(r =>  existingSet.has(`${r.inbody_id}|${r.tested_at}`));
 
-      // Check client matches
+      // Check client matches against body_clients + fitbase_clients_cache
       const phoneDigits = [...new Set(rows.map(r => r.phone?.replace(/\D/g, '')).filter(Boolean) as string[])];
-      const { data: clients } = phoneDigits.length
-        ? await supabase.from('body_clients').select('phone_digits').in('phone_digits', phoneDigits)
-        : { data: [] };
-      const clientDigitsSet = new Set((clients || []).map((c: Record<string, unknown>) => c.phone_digits as string));
+      const clientDigitsSet = await knownPhoneDigitsSet(phoneDigits);
       const linked   = rows.filter(r => r.phone && clientDigitsSet.has(r.phone.replace(/\D/g, '')));
       const unlinked = rows.filter(r => !r.phone || !clientDigitsSet.has(r.phone.replace(/\D/g, '')));
-
-      // Unlinked inbody_ids for display
       const unlinkedIds = [...new Set(unlinked.map(r => r.inbody_id))].slice(0, 20);
 
       res.json({
@@ -189,24 +182,8 @@ export function buildInbodyRouter(): Router {
       const { rows } = req.body as { rows: InBodyRow[] };
       if (!Array.isArray(rows) || rows.length === 0) { res.status(400).json({ error: 'rows обязателен' }); return; }
 
-      // Resolve client_ids
-      const phoneDigits = [...new Set(rows.map(r => r.phone?.replace(/\D/g, '')).filter(Boolean) as string[])];
-      const clientMap = new Map<string, string>();
-      if (phoneDigits.length > 0) {
-        const { data: clients } = await supabase.from('body_clients')
-          .select('id, phone_digits').in('phone_digits', phoneDigits);
-        for (const c of (clients || []) as Record<string, unknown>[]) {
-          clientMap.set(String(c.phone_digits), String(c.id));
-        }
-      }
+      const prepared = rows.map(r => ({ ...r, source: 'csv' as const }));
 
-      const prepared = rows.map(r => ({
-        ...r,
-        source: 'csv' as const,
-        client_id: r.phone ? (clientMap.get(r.phone.replace(/\D/g, '')) ?? null) : null,
-      }));
-
-      // Insert in chunks of 50, skip duplicates
       const CHUNK = 50;
       let added = 0, skipped = 0;
       for (let i = 0; i < prepared.length; i += CHUNK) {
@@ -215,61 +192,64 @@ export function buildInbodyRouter(): Router {
           .upsert(chunk, { onConflict: 'inbody_id,tested_at', ignoreDuplicates: true })
           .select('id');
         if (error) { res.status(500).json({ error: error.message, at_chunk: i }); return; }
-        added += (inserted || []).length;
+        added   += (inserted || []).length;
         skipped += chunk.length - (inserted || []).length;
       }
 
-      const withoutClient = prepared.filter(r => !r.client_id).length;
-      res.json({ ok: true, added, skipped, without_client: withoutClient });
+      // Count without any matching client (body_clients + fitbase_clients_cache)
+      const phoneDigits = [...new Set(rows.map(r => r.phone?.replace(/\D/g, '')).filter(Boolean) as string[])];
+      const knownDigits = await knownPhoneDigitsSet(phoneDigits);
+      const without_client = rows.filter(r => !r.phone || !knownDigits.has(r.phone.replace(/\D/g, ''))).length;
+
+      res.json({ ok: true, added, skipped, without_client });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // ── InBody test counts by client_id (for reports table) ──────────────────
+  // ── InBody test counts per client (for reports table) ────────────────────
 
   r.get('/kviz/api/inbody/counts', async (req, res) => {
     if (!getSession(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
     try {
       const ids = String(req.query.client_ids || '').split(',').filter(Boolean);
       if (!ids.length) { res.json({}); return; }
-      const { data, error } = await supabase.from('inbody_tests')
-        .select('client_id').in('client_id', ids);
+
+      // 1. phone_digits for these clients
+      const { data: clients } = await supabase.from('body_clients')
+        .select('id, phone_digits').in('id', ids);
+      const phoneToClient = new Map<string, string>();
+      for (const c of (clients || []) as { id: string; phone_digits: string | null }[]) {
+        if (c.phone_digits) phoneToClient.set(c.phone_digits, c.id);
+      }
+      const phoneDigits = [...phoneToClient.keys()];
+      if (!phoneDigits.length) { res.json({}); return; }
+
+      // 2. count tests per phone_digits
+      const { data: tests, error } = await supabase.from('inbody_tests')
+        .select('phone_digits').in('phone_digits', phoneDigits);
       if (error) { res.status(500).json({ error: error.message }); return; }
+
       const counts: Record<string, number> = {};
-      for (const row of (data || [])) {
-        if (row.client_id) counts[row.client_id] = (counts[row.client_id] || 0) + 1;
+      for (const t of (tests || []) as { phone_digits: string | null }[]) {
+        const cid = t.phone_digits ? phoneToClient.get(t.phone_digits) : undefined;
+        if (cid) counts[cid] = (counts[cid] || 0) + 1;
       }
       res.json(counts);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // ── Unlinked tests (admin) ─────────────────────────────────────────────────
+  // ── Unlinked tests: no matching client in body_clients or fitbase_clients_cache ──
 
   r.get('/kviz/api/inbody/unlinked', async (req, res) => {
     const session = getSession(req);
     if (!session || session.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
     try {
       const { data, error } = await supabase.from('inbody_tests')
-        .select('id, inbody_id, tested_at, phone, weight, bfm, smm, inbody_score, source')
-        .is('client_id', null)
+        .select('id, inbody_id, tested_at, phone, weight, bfm, smm, inbody_score, source, phone_digits')
+        .is('phone', null)
         .order('tested_at', { ascending: false })
         .limit(500);
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data || []);
-    } catch (e) { res.status(500).json({ error: String(e) }); }
-  });
-
-  // ── Link test to client ────────────────────────────────────────────────────
-
-  r.post('/kviz/api/inbody/tests/:id/link', async (req, res) => {
-    const session = getSession(req);
-    if (!session || session.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
-    try {
-      const { client_id } = req.body as Record<string, unknown>;
-      if (!client_id) { res.status(400).json({ error: 'client_id обязателен' }); return; }
-      const { error } = await supabase.from('inbody_tests')
-        .update({ client_id: String(client_id) }).eq('id', req.params.id);
-      if (error) { res.status(500).json({ error: error.message }); return; }
-      res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
