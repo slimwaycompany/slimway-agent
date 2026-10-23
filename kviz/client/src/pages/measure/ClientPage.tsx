@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import type { ReactNode } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
 import { parseInBody } from '../../utils/inbody';
@@ -1542,6 +1542,9 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
 export default function ClientPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  // When navigated from Reports context, skip MeasureLayout wrapper and use navigate(-1) for back
+  const fromReports = (location.state as Record<string,unknown> | null)?.fromReports === true;
   const [client, setClient] = useState<Client | null>(null);
   const [studioResult, setStudioResult] = useState<StudioResult | null>(null);
   const [inbodyTests, setInbodyTests] = useState<InBodyTest[]>([]);
@@ -1588,9 +1591,10 @@ export default function ClientPage() {
 
   function openZoneDetail(key: CircKey) { setZoneDetailKey(key); }
 
-  if (loading) return <MeasureLayout active="reports"><div style={{ padding: 32, color: '#9ca3af' }}>Загрузка…</div></MeasureLayout>;
-  if (loadError) return <MeasureLayout active="reports"><div style={{ padding: 32, color: '#ef4444', fontSize: 14 }}>{loadError}</div></MeasureLayout>;
-  if (!client) return <MeasureLayout active="reports"><div style={{ padding: 32 }}>Клиент не найден</div></MeasureLayout>;
+  const wrap = (inner: React.ReactElement) => fromReports ? inner : <MeasureLayout active="reports">{inner}</MeasureLayout>;
+  if (loading) return wrap(<div style={{ padding: 32, color: '#9ca3af' }}>Загрузка…</div>);
+  if (loadError) return wrap(<div style={{ padding: 32, color: '#ef4444', fontSize: 14 }}>{loadError}</div>);
+  if (!client) return wrap(<div style={{ padding: 32 }}>Клиент не найден</div>);
 
   const ms = client.measurements;
   const first = ms[0], last = ms[ms.length - 1];
@@ -1629,8 +1633,8 @@ export default function ClientPage() {
     finally { setSendingResult(false); }
   }
 
-  return (
-    <MeasureLayout active="reports">
+  const inner = (
+    <>
       {printDialog && ms.length > 0 && (
         <PrintDialog ms={ms} clientId={client.id} onClose={() => setPrintDialog(false)} />
       )}
@@ -1656,7 +1660,7 @@ export default function ClientPage() {
         {/* Header */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
-            onClick={() => navigate('/measure/reports')}>← Отчёты</button>
+            onClick={() => fromReports ? navigate(-1) : navigate('/measure/reports')}>← Назад</button>
           <div style={{ flex: 1, fontWeight: 700, fontSize: 17 }}>{client.name}</div>
           {ms.length > 0 && (
             <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
@@ -1848,6 +1852,7 @@ export default function ClientPage() {
           </section>
         </div>
       </div>
-    </MeasureLayout>
+    </>
   );
+  return wrap(inner);
 }

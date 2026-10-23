@@ -378,23 +378,29 @@ export function buildManagerRouter(): Router {
         byDigits.get(d)!.push(t);
       }
 
-      // Lookup names from body_clients via phone_digits
+      // Lookup names: body_clients first, then fitbase_clients_cache fallback
       const digits = [...byDigits.keys()];
-      const { data: clients } = digits.length
-        ? await supabase.from('body_clients').select('id,name,phone,phone_digits').in('phone_digits', digits)
-        : { data: [] };
+      const [{ data: clients }, { data: fbClients }] = digits.length
+        ? await Promise.all([
+            supabase.from('body_clients').select('id,name,phone,phone_digits').in('phone_digits', digits),
+            supabase.from('fitbase_clients_cache').select('name,phone,phone_digits').in('phone_digits', digits),
+          ])
+        : [{ data: [] }, { data: [] }];
       type ClientRow = { id: string; name: string; phone: string | null; phone_digits: string };
+      type FbRow = { name: string; phone: string | null; phone_digits: string };
       const clientByDigits = new Map((clients ?? [] as ClientRow[]).map((c: ClientRow) => [c.phone_digits, c]));
+      const fbByDigits = new Map((fbClients ?? [] as FbRow[]).map((c: FbRow) => [c.phone_digits, c]));
 
       const rows = [...byDigits.entries()].map(([d, ts]) => {
         const sorted = ts.sort((a, b) => a.tested_at.localeCompare(b.tested_at));
         const first = sorted[0], last = sorted[sorted.length - 1];
         const client = clientByDigits.get(d);
+        const fb = fbByDigits.get(d);
         return {
           phone_digits: d,
           client_id: client?.id ?? null,
-          name: client?.name ?? first.inbody_id,
-          phone: client?.phone ?? first.phone,
+          name: client?.name ?? fb?.name ?? first.inbody_id,
+          phone: client?.phone ?? fb?.phone ?? first.phone,
           count: sorted.length,
           first_date: first.tested_at?.slice(0,10),
           last_date:  last.tested_at?.slice(0,10),

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import MetricsPage from '../MetricsPage';
 import OccupancySection from './OccupancySection';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 
@@ -29,7 +29,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'funnel' | 'occupancy' | 'settings' | 'measures' | 'inbody' | 'mission';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'settings' | 'measures' | 'inbody' | 'mission' | 'migrate-inbody' | 'bulk-results';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -90,23 +90,26 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
   {
     title: 'Клиенты', adminOnly: false,
     items: [
-      { id: 'measures',  label: 'Отчёт по замерам тела', desc: 'Список клиентов, история замеров', adminOnly: false },
-      { id: 'inbody',    label: 'Отчёт по InBody',       desc: 'Клиенты с тестами InBody',         adminOnly: false },
-      { id: 'studio',    label: 'Результаты студии',      desc: 'Итого по всем клиентам',           adminOnly: false },
-      { id: 'occupancy', label: 'Занятия и загруженность', desc: 'Загруженность по часам и дням', adminOnly: true },
+      { id: 'measures',  label: 'Отчёт по замерам тела', desc: 'Список замеров, фильтры, Excel', adminOnly: false },
+      { id: 'inbody',    label: 'Отчёт по InBody',       desc: 'Клиенты с тестами, динамика',   adminOnly: false },
+      { id: 'studio',    label: 'Результаты студии',      desc: 'Счётчики и таблица клиенток',   adminOnly: false },
+      { id: 'occupancy', label: 'Занятия и загруженность', desc: 'Сетка день × час, фильтры', adminOnly: true },
     ],
   },
   {
     title: 'Маркетинг', adminOnly: true,
     items: [
-      { id: 'funnel', label: 'Воронка', desc: 'Лиды, конверсия, источники', adminOnly: true },
+      { id: 'fact-day',   label: 'Факт дня',      desc: 'Что произошло в период', adminOnly: true },
+      { id: 'day-rhythm', label: 'Дневной такт',  desc: 'Судьба лидов периода',   adminOnly: true },
     ],
   },
   {
     title: 'Настройки', adminOnly: true,
     items: [
-      { id: 'settings', label: 'InBody: импорт, пересчёт, без клиента', desc: '', adminOnly: true },
-      { id: 'mission',  label: 'Миссия студии',                         desc: '', adminOnly: true },
+      { id: 'settings',      label: 'InBody: импорт, пересчёт, без клиента', desc: '', adminOnly: true },
+      { id: 'migrate-inbody', label: 'Перенести клиентов InBody в отчёт',    desc: '', adminOnly: true },
+      { id: 'bulk-results',  label: 'Выгрузить все результаты в общий',      desc: '', adminOnly: true },
+      { id: 'mission',       label: 'Миссия студии',                         desc: '', adminOnly: true },
     ],
   },
 ];
@@ -177,16 +180,19 @@ export default function ReportsPage() {
       )}
 
       {/* Sections */}
-      {section === 'shifts'    && <ShiftsSection />}
-      {section === 'tasks'     && <TasksSection isAdmin={isAdmin} />}
-      {section === 'measures'  && <MeasuresSection />}
-      {section === 'inbody'    && <InBodySection />}
-      {section === 'funnel'    && isAdmin && <div style={{ flex: 1, overflow: 'auto', height: 'calc(100vh - 53px)' }}><MetricsPage /></div>}
-      {section === 'sales'     && isAdmin && <SalesSection />}
-      {section === 'occupancy' && isAdmin && <OccupancySection />}
-      {section === 'studio'    && <StudioSection isAdmin={isAdmin} />}
-      {section === 'settings'  && isAdmin && <SettingsSection />}
-      {section === 'mission'   && isAdmin && <MissionSection />}
+      {section === 'shifts'         && <ShiftsSection />}
+      {section === 'tasks'          && <TasksSection isAdmin={isAdmin} />}
+      {section === 'measures'       && <MeasuresSection />}
+      {section === 'inbody'         && <InBodySection />}
+      {section === 'fact-day'       && isAdmin && <FactDaySection />}
+      {section === 'day-rhythm'     && isAdmin && <DayRhythmSection />}
+      {section === 'sales'          && isAdmin && <SalesSection />}
+      {section === 'occupancy'      && isAdmin && <OccupancySection />}
+      {section === 'studio'         && <StudioSection isAdmin={isAdmin} />}
+      {section === 'settings'       && isAdmin && <SettingsSection />}
+      {section === 'migrate-inbody' && isAdmin && <MigrateInBodySection />}
+      {section === 'bulk-results'   && isAdmin && <BulkResultsSection />}
+      {section === 'mission'        && isAdmin && <MissionSection />}
     </div>
   );
 }
@@ -413,21 +419,25 @@ interface StudioRow {
 }
 
 function StudioSection({ isAdmin }: { isAdmin: boolean }) {
-  const [studio, setStudio]     = useState<StudioRow[]>([]);
-  const [loading, setLoading]   = useState(false);
-  const [tvUrl, setTvUrl]       = useState('');
-  const [showTv, setShowTv]     = useState(false);
-  const [copied, setCopied]     = useState(false);
+  const navigate = useNavigate();
+  const [studio, setStudio]       = useState<StudioRow[]>([]);
+  const [totals, setTotals]       = useState<{ cm_lost: number; kg_lost: number; fat_kg_lost: number; clients: number } | null>(null);
+  const [loading, setLoading]     = useState(false);
+  const [tvUrl, setTvUrl]         = useState('');
+  const [copied, setCopied]       = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
       fetch('/kviz/api/reports/studio', { credentials: 'include' }).then(r => r.ok ? r.json() : []),
+      fetch('/kviz/api/results/summary', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null),
       isAdmin
         ? fetch('/kviz/api/results/mission', { credentials: 'include' }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
         : Promise.resolve({}),
-    ]).then(([rows, mission]) => {
+    ]).then(([rows, summary, mission]) => {
       setStudio(rows);
+      if (summary) setTotals(summary);
       if (mission?.display_url) setTvUrl(window.location.origin + mission.display_url);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [isAdmin]);
@@ -439,23 +449,28 @@ function StudioSection({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div style={s.section}>
-      {/* TV preview / link */}
-      {isAdmin && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-          <button style={{ ...s.loadBtn }} onClick={() => setShowTv(v => !v)}>
-            {showTv ? 'Скрыть ТВ' : 'Показать на ТВ'}
-          </button>
-          {tvUrl && (
-            <button style={s.csvBtn} onClick={copyLink}>
-              {copied ? '✓ Скопировано' : 'Скопировать ссылку ТВ'}
-            </button>
-          )}
+      {/* Counters */}
+      {totals && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+          {[
+            { label: 'Сантиметров убрали', val: totals.cm_lost.toFixed(1), unit: 'см', color: '#02BDB6' },
+            { label: 'Килограммов сбросили', val: totals.kg_lost.toFixed(1), unit: 'кг', color: '#263CD9' },
+            { label: 'Жира сожгли', val: totals.fat_kg_lost.toFixed(1), unit: 'кг жира', color: '#22c55e' },
+            { label: 'Клиенток с результатом', val: String(totals.clients), unit: '', color: '#f59e0b' },
+          ].map(c => (
+            <div key={c.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 18px', flex: '1 1 140px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderTop: `3px solid ${c.color}` }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: c.color }}>{c.val} <span style={{ fontSize: 13 }}>{c.unit}</span></div>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{c.label}</div>
+            </div>
+          ))}
         </div>
       )}
 
-      {showTv && tvUrl && (
-        <div style={{ borderRadius: 12, overflow: 'hidden', marginBottom: 20, boxShadow: '0 2px 12px rgba(0,0,0,0.12)', aspectRatio: '16/9', background: '#000' }}>
-          <iframe src={tvUrl.replace(window.location.origin, '')} style={{ width: '100%', height: '100%', border: 'none' }} title="Результаты студии" />
+      {/* Admin: TV link + fullscreen */}
+      {isAdmin && tvUrl && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          <button style={s.csvBtn} onClick={copyLink}>{copied ? '✓ Скопировано' : 'Скопировать ссылку ТВ'}</button>
+          <button style={s.loadBtn} onClick={() => setFullscreen(true)}>Открыть на весь экран</button>
         </div>
       )}
 
@@ -472,8 +487,11 @@ function StudioSection({ isAdmin }: { isAdmin: boolean }) {
             </tr></thead>
             <tbody>
               {studio.map(row => (
-                <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '6px 10px', fontWeight: 600 }}>{row.body_clients?.name ?? '—'}</td>
+                <tr key={row.id} onClick={() => navigate(`/reports/client/${row.client_id}`, { state: { fromReports: true } })}
+                  style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                  <td style={{ padding: '6px 10px', fontWeight: 600, color: '#263CD9' }}>{row.body_clients?.name ?? '—'}</td>
                   <td style={{ padding: '6px 10px', color: '#64748b' }}>{row.body_clients?.phone ?? '—'}</td>
                   <td style={{ padding: '6px 10px', color: '#02BDB6', fontWeight: 700 }}>{row.cm_lost > 0 ? `−${row.cm_lost.toFixed(1)}` : '—'}</td>
                   <td style={{ padding: '6px 10px', color: '#263CD9', fontWeight: 700 }}>{row.kg_lost > 0 ? `−${row.kg_lost.toFixed(1)}` : '—'}</td>
@@ -486,6 +504,17 @@ function StudioSection({ isAdmin }: { isAdmin: boolean }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Fullscreen TV overlay */}
+      {fullscreen && tvUrl && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
+          <button onClick={() => setFullscreen(false)}
+            style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 14, zIndex: 1 }}>
+            ✕ Закрыть
+          </button>
+          <iframe src={tvUrl.replace(window.location.origin, '')} style={{ flex: 1, border: 'none', width: '100%' }} title="Результаты студии" />
         </div>
       )}
     </div>
@@ -920,12 +949,12 @@ interface MeasureRow {
 }
 
 function MeasuresSection() {
+  const navigate = useNavigate();
   const [rows, setRows]         = useState<MeasureRow[]>([]);
   const [loading, setLoading]   = useState(false);
   const [from, setFrom]         = useState(monthStart);
   const [to, setTo]             = useState(today);
   const [clientQ, setClientQ]   = useState('');
-  const [detail, setDetail]     = useState<{ clientId: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -969,8 +998,6 @@ function MeasuresSection() {
     return c.name.toLowerCase().includes(q) || (c.phone || '').includes(q);
   });
 
-  if (detail) return <ClientDetailPanel clientId={detail.clientId} name={detail.name} onClose={() => setDetail(null)} />;
-
   return (
     <div style={s.section}>
       <div style={s.filterRow}>
@@ -985,7 +1012,7 @@ function MeasuresSection() {
       {rows.length === 0 && !loading && <div style={s.empty}>Нет данных за период</div>}
       {filtered.map(c => (
         <button key={c.clientId} style={{ ...s.colItem, width: '100%', borderRadius: 10, marginBottom: 6, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          onClick={() => setDetail({ clientId: c.clientId, name: c.name })}>
+          onClick={() => navigate(`/reports/client/${c.clientId}`, { state: { fromReports: true } })}>
           <div style={{ textAlign: 'left' }}>
             <div style={s.rowTitle}>{c.name}</div>
             <div style={s.rowMeta}>{c.phone ?? ''}{c.phone ? ' · ' : ''}{c.count} замер{c.count === 1 ? '' : c.count < 5 ? 'а' : 'ов'} · последний {new Date(c.lastDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}</div>
@@ -1111,6 +1138,7 @@ interface IbRow {
 }
 
 function InBodySection() {
+  const navigate = useNavigate();
   const [rows, setRows]     = useState<IbRow[]>([]);
   const [totals, setTotals] = useState<{ tests: number; clients: number; bfm_lost: number; smm_gained: number } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1178,10 +1206,12 @@ function InBodySection() {
             </tr></thead>
             <tbody>
               {filtered.map(r => (
-                <tr key={r.phone_digits} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <tr key={r.phone_digits} onClick={() => r.client_id && navigate(`/reports/client/${r.client_id}`, { state: { fromReports: true } })}
+                  style={{ borderBottom: '1px solid #f1f5f9', cursor: r.client_id ? 'pointer' : 'default' }}>
                   <td style={{ padding: '5px 8px' }}>
-                    <div style={{ fontWeight: 600 }}>{r.name}</div>
+                    <div style={{ fontWeight: 600, color: r.client_id ? '#263CD9' : '#1a202c' }}>{r.name}</div>
                     {r.phone && <div style={{ fontSize: 11, color: '#94a3b8' }}>{r.phone}</div>}
+                    {!r.client_id && <div style={{ fontSize: 10, color: '#f59e0b' }}>не найден в базе</div>}
                   </td>
                   <td style={{ padding: '5px 8px', fontWeight: 700 }}>{r.count}</td>
                   <td style={{ padding: '5px 8px', color: '#64748b', whiteSpace: 'nowrap' }}>{r.first_date}</td>
@@ -1282,6 +1312,353 @@ function MissionSection() {
 }
 
 // ── Helpers for edit modal ────────────────────────────────────────────────────
+
+// ── Funnel sections (Факт дня / Дневной такт) ─────────────────────────────────
+
+const todayStr = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
+const weekAgoStr = new Date(Date.now() + 5 * 3600_000 - 7 * 86400_000).toISOString().slice(0, 10);
+const monthAgoStr = new Date(Date.now() + 5 * 3600_000 - 30 * 86400_000).toISOString().slice(0, 10);
+
+interface DrillItem { name?: string | null; source?: string | null; manager?: string | null; date?: string | null; amount?: number | null }
+interface FunnelStep { count: number; pct?: number; amount?: number; items: DrillItem[] }
+
+function DrillModal({ title, items, onClose }: { title: string; items: DrillItem[]; onClose: () => void }) {
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={{ ...s.modal, maxHeight: '80vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{title} ({items.length})</h3>
+          <button style={s.cancelBtn} onClick={onClose}>✕</button>
+        </div>
+        {items.length === 0 && <div style={s.empty}>Нет данных</div>}
+        {items.map((it, i) => (
+          <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+            <div style={{ fontWeight: 600 }}>{it.name ?? '—'}</div>
+            <div style={{ color: '#64748b', marginTop: 2 }}>
+              {[it.source, it.manager, it.date, it.amount != null ? `${it.amount} ₸` : null].filter(Boolean).join(' · ')}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FunnelView({ steps }: { steps: Array<{ label: string; step: FunnelStep }> }) {
+  const [drill, setDrill] = useState<{ label: string; items: DrillItem[] } | null>(null);
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
+        {steps.map(({ label, step }, i) => {
+          const pct = step.pct != null ? step.pct : (i === 0 ? 100 : steps[i - 1].step.count > 0 ? Math.round(100 * step.count / steps[i - 1].step.count) : 0);
+          return (
+            <button key={label} onClick={() => setDrill({ label, items: step.items })}
+              style={{ flex: '1 1 130px', minWidth: 120, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{i + 1}. {label}</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: '#02BDB6' }}>{step.count}</div>
+              {step.amount != null && <div style={{ fontSize: 12, color: '#263CD9', fontWeight: 600 }}>{step.amount.toLocaleString('ru')} ₸</div>}
+              <div style={{ fontSize: 12, color: i === 0 ? '#94a3b8' : pct >= 50 ? '#22c55e' : pct >= 20 ? '#f59e0b' : '#ef4444' }}>
+                {i === 0 ? '100%' : `${pct}% от пред.`}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {drill && <DrillModal title={drill.label} items={drill.items} onClose={() => setDrill(null)} />}
+    </>
+  );
+}
+
+function useFunnelFilters(availSources: string[]) {
+  const [from, setFrom] = useState(todayStr);
+  const [to, setTo]     = useState(todayStr);
+  const [sources, setSources] = useState<string[]>([]);
+  const [manager, setManager] = useState('');
+
+  const QUICK = [
+    { label: 'Все', fn: () => setSources([]) },
+    { label: 'TikTok', fn: () => setSources(availSources.filter(s => /tiktok/i.test(s))) },
+    { label: 'Instagram', fn: () => setSources(availSources.filter(s => /insta/i.test(s))) },
+    { label: 'Блогеры', fn: () => setSources(availSources.filter(s => /блог|blogger|блогер/i.test(s))) },
+  ];
+
+  const filterBar = (
+    <div style={{ ...s.filterRow, flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+      <button style={{ ...s.chip, ...(from === todayStr && to === todayStr ? s.chipActive : {}) }} onClick={() => { setFrom(todayStr); setTo(todayStr); }}>Сегодня</button>
+      <button style={{ ...s.chip, ...(from === weekAgoStr && to === todayStr ? s.chipActive : {}) }} onClick={() => { setFrom(weekAgoStr); setTo(todayStr); }}>Неделя</button>
+      <button style={{ ...s.chip, ...(from === monthAgoStr && to === todayStr ? s.chipActive : {}) }} onClick={() => { setFrom(monthAgoStr); setTo(todayStr); }}>Месяц</button>
+      <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={s.dateInp} />
+      <span style={{ color: '#94a3b8' }}>—</span>
+      <input type="date" value={to} onChange={e => setTo(e.target.value)} style={s.dateInp} />
+    </div>
+  );
+
+  const sourceBar = availSources.length > 0 ? (
+    <div style={{ ...s.filterRow, flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+      {QUICK.map(q => (
+        <button key={q.label} style={s.csvBtn} onClick={q.fn}>{q.label}</button>
+      ))}
+      {availSources.map(src => (
+        <button key={src} onClick={() => setSources(v => v.includes(src) ? v.filter(x => x !== src) : [...v, src])}
+          style={{ ...s.chip, ...(sources.includes(src) ? s.chipActive : {}) }}>
+          {src}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  return { from, to, sources, manager, setManager, filterBar, sourceBar };
+}
+
+function FactDaySection() {
+  const [data, setData]             = useState<Record<string, FunnelStep> | null>(null);
+  const [bySrc, setBySrc]           = useState<Array<{ source: string; count: number }>>([]);
+  const [availSources, setAvailSrc] = useState<string[]>([]);
+  const [availMgr, setAvailMgr]     = useState<string[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [syncing, setSyncing]       = useState(false);
+  const [syncMsg, setSyncMsg]       = useState('');
+  const { from, to, sources, manager, setManager, filterBar, sourceBar } = useFunnelFilters(availSources);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const sp = new URLSearchParams({ from, to });
+      sources.forEach(s => sp.append('sources', s));
+      if (manager) sp.set('manager', manager);
+      const r = await fetch(`/kviz/api/metrics/fact-day?${sp}`, { credentials: 'include' });
+      if (!r.ok) return;
+      const d = await r.json();
+      setData(d.steps);
+      setBySrc(d.by_source ?? []);
+      setAvailSrc(d.availableSources ?? []);
+      setAvailMgr(d.availableManagers ?? []);
+    } catch {} finally { setLoading(false); }
+  }
+
+  async function doSync() {
+    setSyncing(true); setSyncMsg('');
+    try {
+      const r = await fetch('/kviz/api/metrics/sync', { method: 'POST', credentials: 'include' });
+      const d = await r.json();
+      setSyncMsg(r.ok ? `Синхронизировано: лидов ${d.leads ?? '?'}, записей ${d.visits ?? '?'}` : (d.error || 'Ошибка'));
+    } catch (e) { setSyncMsg(String(e)); } finally { setSyncing(false); }
+  }
+
+  const LABELS: Record<string, string> = {
+    leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи на пробное', visited: 'Пришли', sales: 'Продажи',
+  };
+
+  return (
+    <div style={s.section}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '…' : 'Показать'}</button>
+        <button style={s.csvBtn} onClick={doSync} disabled={syncing}>{syncing ? 'Запуск…' : '↺ Обновить Fitbase'}</button>
+        {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
+      </div>
+      {filterBar}
+      {availMgr.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <select value={manager} onChange={e => setManager(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
+            <option value="">Все менеджеры</option>
+            {availMgr.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+      )}
+      {sourceBar}
+      {data && (
+        <>
+          <FunnelView steps={Object.entries(data).map(([k, v]) => ({ label: LABELS[k] ?? k, step: v }))} />
+          {bySrc.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={s.sectionTitle}>По источникам</div>
+              <table style={{ fontSize: 13, borderCollapse: 'collapse' }}>
+                <thead><tr><th style={{ padding: '4px 12px 4px 0', textAlign: 'left', color: '#64748b' }}>Источник</th><th style={{ padding: '4px 0', color: '#64748b' }}>Лидов</th></tr></thead>
+                <tbody>{bySrc.map(r => <tr key={r.source}><td style={{ padding: '3px 12px 3px 0' }}>{r.source}</td><td style={{ fontWeight: 700 }}>{r.count}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+      {!data && !loading && <div style={s.empty}>Нажмите «Показать» для загрузки данных</div>}
+    </div>
+  );
+}
+
+function DayRhythmSection() {
+  const [steps, setSteps]           = useState<Array<{ id: string; label: string; count: number; pct: number; items: DrillItem[] }> | null>(null);
+  const [bySrc, setBySrc]           = useState<Array<{ source: string; count: number }>>([]);
+  const [availSources, setAvailSrc] = useState<string[]>([]);
+  const [availMgr, setAvailMgr]     = useState<string[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [syncing, setSyncing]       = useState(false);
+  const [syncMsg, setSyncMsg]       = useState('');
+  const { from, to, sources, manager, setManager, filterBar, sourceBar } = useFunnelFilters(availSources);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const sp = new URLSearchParams({ from, to });
+      sources.forEach(s => sp.append('sources', s));
+      if (manager) sp.set('manager', manager);
+      const r = await fetch(`/kviz/api/metrics/day-rhythm?${sp}`, { credentials: 'include' });
+      if (!r.ok) return;
+      const d = await r.json();
+      setSteps(d.steps ?? []);
+      setBySrc(d.by_source ?? []);
+      setAvailSrc(d.availableSources ?? []);
+      setAvailMgr(d.availableManagers ?? []);
+    } catch {} finally { setLoading(false); }
+  }
+
+  async function doSync() {
+    setSyncing(true); setSyncMsg('');
+    try {
+      const r = await fetch('/kviz/api/metrics/sync', { method: 'POST', credentials: 'include' });
+      const d = await r.json();
+      setSyncMsg(r.ok ? `Синхронизировано: лидов ${d.leads ?? '?'}, записей ${d.visits ?? '?'}` : (d.error || 'Ошибка'));
+    } catch (e) { setSyncMsg(String(e)); } finally { setSyncing(false); }
+  }
+
+  return (
+    <div style={s.section}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '…' : 'Показать'}</button>
+        <button style={s.csvBtn} onClick={doSync} disabled={syncing}>{syncing ? 'Запуск…' : '↺ Обновить Fitbase'}</button>
+        {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
+      </div>
+      {filterBar}
+      {availMgr.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <select value={manager} onChange={e => setManager(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
+            <option value="">Все менеджеры</option>
+            {availMgr.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+      )}
+      {sourceBar}
+      {steps && (
+        <>
+          <FunnelView steps={steps.map(st => ({ label: st.label, step: { count: st.count, pct: st.pct, items: st.items } }))} />
+          {bySrc.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={s.sectionTitle}>По источникам</div>
+              <table style={{ fontSize: 13, borderCollapse: 'collapse' }}>
+                <thead><tr><th style={{ padding: '4px 12px 4px 0', textAlign: 'left', color: '#64748b' }}>Источник</th><th style={{ padding: '4px 0', color: '#64748b' }}>Лидов</th></tr></thead>
+                <tbody>{bySrc.map(r => <tr key={r.source}><td style={{ padding: '3px 12px 3px 0' }}>{r.source}</td><td style={{ fontWeight: 700 }}>{r.count}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+      {!steps && !loading && <div style={s.empty}>Нажмите «Показать» для загрузки данных</div>}
+    </div>
+  );
+}
+
+// ── Settings: migrate InBody clients ─────────────────────────────────────────
+
+function MigrateInBodySection() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState<{ added: number; already: number } | null>(null);
+  const [error, setError]     = useState('');
+
+  async function migrate() {
+    setLoading(true); setError(''); setResult(null);
+    try {
+      const r = await fetch('/kviz/api/measure/migrate-inbody', { method: 'POST', credentials: 'include' });
+      const d = await r.json();
+      if (!r.ok) { setError(d.error || 'Ошибка'); return; }
+      setResult(d);
+    } catch (e) { setError(String(e)); } finally { setLoading(false); }
+  }
+
+  return (
+    <div style={{ ...s.section, maxWidth: 480 }}>
+      <div style={s.sectionTitle}>Перенести клиентов InBody в отчёт (без дублей)</div>
+      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14 }}>
+        Для каждого телефона из inbody_tests: если клиент уже есть — пропустить; если нет — создать из кэша Fitbase или по номеру.
+      </div>
+      {error && <div style={s.errBox}>{error}</div>}
+      {result && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14 }}>
+          Добавлено: <b>{result.added}</b> · Уже были: <b>{result.already}</b>
+        </div>
+      )}
+      <button style={s.saveBtn} onClick={migrate} disabled={loading}>
+        {loading ? 'Переносим…' : 'Перенести клиентов InBody'}
+      </button>
+    </div>
+  );
+}
+
+// ── Settings: bulk export results ────────────────────────────────────────────
+
+function BulkResultsSection() {
+  const [preview, setPreview]     = useState<{ will_add: number; will_update: number; delta_cm: number; delta_kg: number; delta_fat: number } | null>(null);
+  const [result, setResult]       = useState<{ added: number; updated: number } | null>(null);
+  const [loading, setLoading]     = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError]         = useState('');
+
+  async function loadPreview() {
+    setLoading(true); setError(''); setPreview(null); setResult(null);
+    try {
+      const r = await fetch('/kviz/api/measure/bulk-results/preview', { credentials: 'include' });
+      const d = await r.json();
+      if (!r.ok) { setError(d.error || 'Ошибка'); return; }
+      setPreview(d);
+    } catch (e) { setError(String(e)); } finally { setLoading(false); }
+  }
+
+  async function confirm() {
+    setConfirming(true); setError('');
+    try {
+      const r = await fetch('/kviz/api/measure/bulk-results', { method: 'POST', credentials: 'include' });
+      const d = await r.json();
+      if (!r.ok) { setError(d.error || 'Ошибка'); return; }
+      setResult(d); setPreview(null);
+    } catch (e) { setError(String(e)); } finally { setConfirming(false); }
+  }
+
+  return (
+    <div style={{ ...s.section, maxWidth: 520 }}>
+      <div style={s.sectionTitle}>Выгрузить все результаты в общий</div>
+      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14 }}>
+        Пройти по всем клиентам с замерами и/или InBody, посчитать потери и обновить «Результаты студии».
+      </div>
+      {error && <div style={s.errBox}>{error}</div>}
+      {result && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14 }}>
+          Добавлено: <b>{result.added}</b> · Обновлено: <b>{result.updated}</b>
+        </div>
+      )}
+      {preview && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Предпросмотр</div>
+          <div style={{ fontSize: 13, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
+            <span>Будет добавлено:</span><b>{preview.will_add}</b>
+            <span>Будет обновлено:</span><b>{preview.will_update}</b>
+            {preview.delta_cm !== 0 && <><span>Прирост см:</span><b style={{ color: preview.delta_cm > 0 ? '#22c55e' : '#f59e0b' }}>{preview.delta_cm > 0 ? '+' : ''}{preview.delta_cm.toFixed(1)}</b></>}
+            {preview.delta_kg !== 0 && <><span>Прирост кг:</span><b style={{ color: preview.delta_kg > 0 ? '#22c55e' : '#f59e0b' }}>{preview.delta_kg > 0 ? '+' : ''}{preview.delta_kg.toFixed(1)}</b></>}
+            {preview.delta_fat !== 0 && <><span>Прирост жир кг:</span><b style={{ color: preview.delta_fat > 0 ? '#22c55e' : '#f59e0b' }}>{preview.delta_fat > 0 ? '+' : ''}{preview.delta_fat.toFixed(1)}</b></>}
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <button style={s.saveBtn} onClick={confirm} disabled={confirming}>
+              {confirming ? 'Выгружаем…' : 'Подтвердить выгрузку'}
+            </button>
+            <button style={s.cancelBtn} onClick={() => setPreview(null)}>Отмена</button>
+          </div>
+        </div>
+      )}
+      {!preview && !result && (
+        <button style={s.csvBtn} onClick={loadPreview} disabled={loading}>
+          {loading ? '…' : 'Предпросмотр'}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function MField({ label, children }: { label: string; children: React.ReactNode }) {
   return (

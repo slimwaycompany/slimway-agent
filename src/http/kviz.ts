@@ -93,6 +93,23 @@ function buildRouter(): Router {
     next();
   });
 
+  // Authenticated staff summary (no RESULTS_DISPLAY_KEY required)
+  router.get('/kviz/api/results/summary', async (req, res) => {
+    if (!getSession(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    try {
+      const [{ data: rows }, { data: missionRow }] = await Promise.all([
+        supabase.from('studio_results').select('cm_lost,kg_lost,fat_kg_lost'),
+        supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle(),
+      ]);
+      const totals = (rows || []).reduce((a: Record<string,number>, row) => ({
+        cm_lost: a.cm_lost + Number(row.cm_lost || 0),
+        kg_lost: a.kg_lost + Number(row.kg_lost || 0),
+        fat_kg_lost: a.fat_kg_lost + Number(row.fat_kg_lost || 0),
+      }), { cm_lost: 0, kg_lost: 0, fat_kg_lost: 0 });
+      res.json({ ...totals, clients: (rows || []).length, mission: String(missionRow?.value || '') });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   router.get('/kviz/api/results/mission', async (req, res) => {
     if (getSession(req)?.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return; }
     const { data, error } = await supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle();

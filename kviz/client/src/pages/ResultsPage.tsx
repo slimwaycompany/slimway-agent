@@ -55,7 +55,7 @@ export default function ResultsPage() {
       <section className="results-counters">
         <article className="results-counter"><span className="results-icon">↘</span><strong>{values[0].toFixed(1)}</strong><span>Сантиметров убрали</span><small>см</small></article>
         <article className="results-counter"><span className="results-icon">↓</span><strong>{values[1].toFixed(1)}</strong><span>Килограммов сбросили</span><small>кг</small></article>
-        <article className="results-counter"><span className="results-icon">✦</span><strong>{values[2].toFixed(1)}</strong><span>Жира сожгли</span><small>кг · скоро с InBody</small></article>
+        <article className="results-counter"><span className="results-icon">✦</span><strong>{values[2].toFixed(1)}</strong><span>Жира сожгли</span><small>кг</small></article>
       </section>
       <footer className="results-footer">Клиенток с результатом: <b>{Math.round(values[3])}</b></footer>
     </main>

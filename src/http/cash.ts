@@ -182,20 +182,33 @@ export function buildCashRouter(): Router {
     if (session.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
     const from = String(req.query.from || yekToday());
     const to   = String(req.query.to   || yekToday());
+    const COLS = 'fitbase_id,client_fitbase_id,client_name,client_phone,status,visit_at,visit_date,service,resource,abonement,is_trial';
     try {
-      let q = supabase
-        .from('fitbase_visits')
-        .select('fitbase_id,client_fitbase_id,client_name,client_phone,status,visit_at,visit_date,service,resource,abonement,is_trial')
-        .gte('visit_date', from)
-        .lte('visit_date', to)
-        .order('visit_at', { ascending: true });
+      // Primary: filter by visit_date (populated after sync fix)
+      let q = supabase.from('fitbase_visits').select(COLS)
+        .gte('visit_date', from).lte('visit_date', to).order('visit_at', { ascending: true });
       if (req.query.resource) q = q.eq('resource', req.query.resource as string);
       if (req.query.abonement) q = q.eq('abonement', req.query.abonement as string);
       if (req.query.status !== undefined && req.query.status !== '') q = q.eq('status', Number(req.query.status));
 
-      const { data, error } = await q;
+      // Fallback: legacy rows where visit_date = NULL but visit_at is set
+      let qNull = supabase.from('fitbase_visits').select(COLS)
+        .is('visit_date', null).not('visit_at', 'is', null).order('visit_at', { ascending: true });
+      if (req.query.resource) qNull = qNull.eq('resource', req.query.resource as string);
+      if (req.query.abonement) qNull = qNull.eq('abonement', req.query.abonement as string);
+      if (req.query.status !== undefined && req.query.status !== '') qNull = qNull.eq('status', Number(req.query.status));
+
+      const [{ data, error }, { data: nullData }] = await Promise.all([q, qNull]);
       if (error) throw new Error(error.message);
-      const visits = data || [];
+
+      const yekDateOf = (iso: string) => new Date(new Date(iso).getTime() + 5 * 3600_000).toISOString().slice(0, 10);
+      const fallback = (nullData || []).filter(v => {
+        if (!v.visit_at) return false;
+        const d = yekDateOf(v.visit_at);
+        return d >= from && d <= to;
+      }).map(v => ({ ...v, visit_date: yekDateOf(v.visit_at!) }));
+
+      const visits = [...(data || []), ...fallback];
 
       const resources  = [...new Set(visits.map(v => v.resource).filter(Boolean))] as string[];
       const abonements = [...new Set(visits.map(v => v.abonement).filter(Boolean))] as string[];

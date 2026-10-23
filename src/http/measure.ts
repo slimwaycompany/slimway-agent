@@ -556,5 +556,182 @@ export function buildClientsSyncRoute(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // ── Migrate InBody clients → body_clients (idempotent) ───────────────────────
+  r.post('/kviz/api/measure/migrate-inbody', async (req, res) => {
+    try {
+      const session = getSession(req);
+      if (session?.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
+
+      // Get all unique phone_digits from inbody_tests
+      const { data: ibRows } = await supabase.from('inbody_tests').select('phone_digits,phone').not('phone_digits', 'is', null);
+      const uniqueDigits = [...new Set((ibRows ?? []).map((r: Record<string,unknown>) => r.phone_digits as string).filter(Boolean))];
+      if (!uniqueDigits.length) { res.json({ added: 0, already: 0 }); return; }
+
+      // Existing body_clients by phone_digits
+      const { data: existing } = await supabase.from('body_clients').select('phone_digits').in('phone_digits', uniqueDigits);
+      const existingSet = new Set((existing ?? []).map((c: Record<string,unknown>) => c.phone_digits as string));
+
+      const newDigits = uniqueDigits.filter(d => !existingSet.has(d));
+      if (!newDigits.length) { res.json({ added: 0, already: uniqueDigits.length }); return; }
+
+      // Lookup names from fitbase_clients_cache
+      const { data: fbRows } = await supabase.from('fitbase_clients_cache').select('name,phone,phone_digits').in('phone_digits', newDigits);
+      type FbC = { name: string; phone: string | null; phone_digits: string };
+      const fbMap = new Map((fbRows ?? [] as FbC[]).map((c: FbC) => [c.phone_digits, c]));
+
+      // Build insert rows — one per new phone_digits
+      const phoneByDigits = new Map((ibRows ?? []).map((r: Record<string,unknown>) => [r.phone_digits as string, r.phone as string | null]));
+      const toInsert = newDigits.map(d => {
+        const fb = fbMap.get(d);
+        const phone = fb?.phone ?? phoneByDigits.get(d) ?? null;
+        const name = fb?.name ?? (phone ?? d);
+        return { name, phone };
+      });
+
+      // Insert in batches of 100
+      let added = 0;
+      for (let i = 0; i < toInsert.length; i += 100) {
+        const { error } = await supabase.from('body_clients').insert(toInsert.slice(i, i + 100));
+        if (error) { res.status(500).json({ error: error.message }); return; }
+        added += Math.min(100, toInsert.length - i);
+      }
+      res.json({ added, already: existingSet.size });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Bulk results: calculate losses for all clients ────────────────────────────
+  async function calcAllResults(sentBy: string) {
+    const { data: allClients } = await supabase.from('body_clients').select('id,phone_digits');
+    const clients = (allClients ?? []) as Array<{ id: string; phone_digits: string | null }>;
+    if (!clients.length) return { rows: [], skipped: 0 };
+
+    // All measurements grouped by client_id
+    const { data: allMs } = await supabase.from('body_measurements')
+      .select('client_id,measure_no,measured_at,total_cm,weight').order('measure_no', { ascending: true });
+    const msMap = new Map<string, Array<Record<string,unknown>>>();
+    for (const m of (allMs ?? [])) {
+      const cid = m.client_id as string;
+      if (!msMap.has(cid)) msMap.set(cid, []);
+      msMap.get(cid)!.push(m);
+    }
+
+    // All InBody tests grouped by phone_digits
+    const { data: allIb } = await supabase.from('inbody_tests')
+      .select('phone_digits,tested_at,weight,bfm').order('tested_at', { ascending: true });
+    const ibMap = new Map<string, Array<Record<string,unknown>>>();
+    for (const t of (allIb ?? [])) {
+      const d = t.phone_digits as string | null;
+      if (!d) continue;
+      if (!ibMap.has(d)) ibMap.set(d, []);
+      ibMap.get(d)!.push(t);
+    }
+
+    const rows: Array<{ client_id: string; cm_lost: number; kg_lost: number; fat_kg_lost: number | null; sent_by: string; sent_at: string }> = [];
+    let skipped = 0;
+    const now = new Date().toISOString();
+
+    for (const { id, phone_digits } of clients) {
+      const ms = msMap.get(id) ?? [];
+      const ibTests = phone_digits ? (ibMap.get(phone_digits) ?? []) : [];
+      let cm_lost = 0, kg_lost = 0, fat_kg_lost: number | null = null;
+
+      if (ms.length >= 2) {
+        const first = ms[0], last = ms[ms.length - 1];
+        cm_lost    = Math.max(0, Number(first.total_cm ?? 0) - Number(last.total_cm ?? 0));
+        kg_lost    = first.weight != null && last.weight != null
+          ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
+        // fat: first IB test at or after first measurement date
+        if (ibTests.length >= 2) {
+          const firstDate = String(first.measured_at ?? '').slice(0, 10);
+          const afterFirst = ibTests.filter(t => String(t.tested_at ?? '').slice(0, 10) >= firstDate);
+          const ibRef = afterFirst.length ? afterFirst : ibTests;
+          const ibLast = ibRef[ibRef.length - 1];
+          if (ibRef[0].bfm != null && ibLast.bfm != null)
+            fat_kg_lost = Math.max(0, Number(ibRef[0].bfm) - Number(ibLast.bfm));
+        }
+      } else if (ms.length === 0 && ibTests.length >= 1) {
+        // InBody-only
+        if (ibTests.length >= 2) {
+          const ib0 = ibTests[0], ibN = ibTests[ibTests.length - 1];
+          kg_lost = ib0.weight != null && ibN.weight != null
+            ? Math.max(0, Number(ib0.weight) - Number(ibN.weight)) : 0;
+          fat_kg_lost = ib0.bfm != null && ibN.bfm != null
+            ? Math.max(0, Number(ib0.bfm) - Number(ibN.bfm)) : null;
+        }
+      }
+
+      if (cm_lost <= 0 && kg_lost <= 0 && (fat_kg_lost == null || fat_kg_lost <= 0)) { skipped++; continue; }
+      rows.push({ client_id: id, cm_lost, kg_lost, fat_kg_lost: fat_kg_lost ?? null, sent_by: sentBy, sent_at: now });
+    }
+    return { rows, skipped };
+  }
+
+  r.get('/kviz/api/measure/bulk-results/preview', async (req, res) => {
+    try {
+      const session = getSession(req);
+      if (session?.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
+      const { rows } = await calcAllResults(session.display_name);
+      if (!rows.length) { res.json({ will_add: 0, will_update: 0, delta_cm: 0, delta_kg: 0, delta_fat: 0 }); return; }
+
+      const clientIds = rows.map(r => r.client_id);
+      const { data: existing } = await supabase.from('studio_results').select('client_id,cm_lost,kg_lost,fat_kg_lost').in('client_id', clientIds);
+      const existMap = new Map((existing ?? []).map((e: Record<string,unknown>) => [e.client_id as string, e]));
+
+      let will_add = 0, will_update = 0, delta_cm = 0, delta_kg = 0, delta_fat = 0;
+      for (const r of rows) {
+        const ex = existMap.get(r.client_id);
+        if (!ex) {
+          will_add++;
+          delta_cm  += r.cm_lost;
+          delta_kg  += r.kg_lost;
+          delta_fat += r.fat_kg_lost ?? 0;
+        } else {
+          const changed = Math.abs(Number(ex.cm_lost) - r.cm_lost) > 0.01
+            || Math.abs(Number(ex.kg_lost) - r.kg_lost) > 0.01
+            || Math.abs(Number(ex.fat_kg_lost ?? 0) - (r.fat_kg_lost ?? 0)) > 0.01;
+          if (changed) {
+            will_update++;
+            delta_cm  += r.cm_lost  - Number(ex.cm_lost ?? 0);
+            delta_kg  += r.kg_lost  - Number(ex.kg_lost ?? 0);
+            delta_fat += (r.fat_kg_lost ?? 0) - Number(ex.fat_kg_lost ?? 0);
+          }
+        }
+      }
+      res.json({ will_add, will_update, delta_cm, delta_kg, delta_fat });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/measure/bulk-results', async (req, res) => {
+    try {
+      const session = getSession(req);
+      if (session?.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
+      const { rows } = await calcAllResults(session.display_name);
+      if (!rows.length) { res.json({ added: 0, updated: 0 }); return; }
+
+      const clientIds = rows.map(r => r.client_id);
+      const { data: existing } = await supabase.from('studio_results').select('client_id,cm_lost,kg_lost,fat_kg_lost').in('client_id', clientIds);
+      const existMap = new Map((existing ?? []).map((e: Record<string,unknown>) => [e.client_id as string, e]));
+
+      const toUpsert = rows.filter(r => {
+        const ex = existMap.get(r.client_id);
+        if (!ex) return true;
+        return Math.abs(Number(ex.cm_lost) - r.cm_lost) > 0.01
+          || Math.abs(Number(ex.kg_lost) - r.kg_lost) > 0.01
+          || Math.abs(Number(ex.fat_kg_lost ?? 0) - (r.fat_kg_lost ?? 0)) > 0.01;
+      });
+
+      if (!toUpsert.length) { res.json({ added: 0, updated: 0 }); return; }
+
+      const newIds = new Set(toUpsert.filter(r => !existMap.has(r.client_id)).map(r => r.client_id));
+      let added = 0, updated = 0;
+      for (let i = 0; i < toUpsert.length; i += 100) {
+        const { error } = await supabase.from('studio_results').upsert(toUpsert.slice(i, i + 100), { onConflict: 'client_id' });
+        if (error) { res.status(500).json({ error: error.message }); return; }
+      }
+      for (const r of toUpsert) { if (newIds.has(r.client_id)) added++; else updated++; }
+      res.json({ added, updated });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   return r;
 }

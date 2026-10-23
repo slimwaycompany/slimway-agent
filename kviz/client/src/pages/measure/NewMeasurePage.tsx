@@ -327,8 +327,8 @@ export default function NewMeasurePage() {
             <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { setResult(null); setSelectedClient(null); setQuery(''); setValues({} as Record<FieldKey, string>); }}>
               + Новый замер
             </button>
-            <button className="btn btn-secondary" onClick={() => navigate(`/measure/client/${client.id}`)}>
-              Открыть клиента
+            <button className="btn btn-secondary" onClick={() => navigate(`/reports/client/${client.id}`, { state: { fromReports: true } })}>
+              Перейти в отчёт
             </button>
           </div>
         </div>
