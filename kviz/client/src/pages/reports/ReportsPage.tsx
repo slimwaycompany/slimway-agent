@@ -1,7 +1,8 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import MetricsPage from '../MetricsPage';
 import OccupancySection from './OccupancySection';
+import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'funnel' | 'occupancy';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'funnel' | 'occupancy' | 'settings';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ const BOARD_SECTIONS: { id: Section; icon: string; label: string; desc: string; 
   { id: 'sales',     icon: '💰', label: 'Продажи',         desc: 'Операции Fitbase, разбивка',        adminOnly: true  },
   { id: 'occupancy', icon: '🗓️', label: 'Занятия',         desc: 'Загруженность по часам и дням',    adminOnly: true  },
   { id: 'studio',    icon: '🏅', label: 'Результаты студии', desc: 'Итого по всем клиентам',          adminOnly: true  },
+  { id: 'settings',  icon: '⚙️', label: 'Настройки',        desc: 'Импорт InBody, пересчёт, без клиента', adminOnly: true  },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -147,6 +149,7 @@ export default function ReportsPage() {
       {section === 'sales'     && isAdmin && <SalesSection />}
       {section === 'occupancy' && isAdmin && <OccupancySection />}
       {section === 'studio'    && isAdmin && <StudioSection />}
+      {section === 'settings'  && isAdmin && <SettingsSection />}
     </div>
   );
 }
@@ -600,6 +603,208 @@ function SalesSection() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── Settings section ──────────────────────────────────────────────────────────
+
+async function safePost(url: string, body: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
+  const r = await fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let data: Record<string, unknown> = {};
+  try { data = await r.json(); } catch {
+    data = { error: r.status === 413 ? 'Файл слишком большой' : `HTTP ${r.status}` };
+  }
+  return { ok: r.ok, data };
+}
+
+interface IbPreview { total: number; new: number; duplicates: number; linked: number; unlinked: number; unlinked_ids: string[] }
+interface IbImportResult { added: number; skipped: number; without_client: number }
+interface IbTest { id: string; inbody_id: string; tested_at: string; phone: string | null; phone_digits: string | null; gender: string | null; weight: number | null; bfm: number | null; smm: number | null }
+
+function SettingsSection() {
+  type ParsedRows = ReturnType<typeof parseLookinBodyCSV>;
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [rows, setRows]         = useState<ParsedRows | null>(null);
+  const [preview, setPreview]   = useState<IbPreview | null>(null);
+  const [result, setResult]     = useState<IbImportResult | null>(null);
+  const [recalc, setRecalc]     = useState<{ updated: number } | null>(null);
+  const [unlinked, setUnlinked] = useState<IbTest[] | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return;
+    e.target.value = '';
+    setLoading(true); setError(''); setPreview(null); setResult(null); setRows(null);
+    try {
+      const parsed = parseLookinBodyCSV(await file.text());
+      if (!parsed.length) { setError('CSV не распарсился — 0 строк.'); setLoading(false); return; }
+      setRows(parsed);
+      const { ok, data } = await safePost('/kviz/api/inbody/csv-preview', { rows: parsed.map(r => ({ inbody_id: r.inbody_id, tested_at: r.tested_at, phone: r.phone })) });
+      if (!ok) { setError(String(data.error || 'Ошибка предпросмотра')); return; }
+      setPreview(data as unknown as IbPreview);
+    } catch (e2) { setError(String(e2)); }
+    finally { setLoading(false); }
+  }
+
+  async function doImport() {
+    if (!rows) return;
+    setLoading(true); setError('');
+    try {
+      let added = 0, skipped = 0, without_client = 0;
+      for (let i = 0; i < rows.length; i += 50) {
+        const { ok, data } = await safePost('/kviz/api/inbody/csv-import', { rows: rows.slice(i, i + 50) });
+        if (!ok) { setError(String(data.error || 'Ошибка импорта')); return; }
+        added         += Number(data.added ?? 0);
+        skipped       += Number(data.skipped ?? 0);
+        without_client += Number(data.without_client ?? 0);
+      }
+      setResult({ added, skipped, without_client });
+    } catch (e2) { setError(String(e2)); }
+    finally { setLoading(false); }
+  }
+
+  async function doRecalculate() {
+    setLoading(true); setError(''); setRecalc(null);
+    try {
+      const { ok, data } = await safePost('/kviz/api/inbody/recalculate', {});
+      if (!ok) { setError(String(data.error || 'Ошибка пересчёта')); return; }
+      setRecalc({ updated: Number(data.updated ?? 0) });
+    } catch (e2) { setError(String(e2)); }
+    finally { setLoading(false); }
+  }
+
+  async function loadUnlinked() {
+    setLoading(true); setError('');
+    try {
+      const r = await fetch('/kviz/api/inbody/unlinked-tests', { credentials: 'include' });
+      setUnlinked(r.ok ? await r.json() : []);
+    } catch (e2) { setError(String(e2)); }
+    finally { setLoading(false); }
+  }
+
+  const SS: Record<string, React.CSSProperties> = {
+    block:  { background: '#fff', borderRadius: 12, padding: '16px 20px', marginBottom: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+    title:  { fontWeight: 700, fontSize: 15, marginBottom: 12, color: '#1a202c' },
+    btn:    { padding: '10px 20px', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit', border: 'none', opacity: loading ? 0.7 : 1, width: '100%', marginBottom: 8 },
+    tblKey: { padding: '4px 0', color: '#6b7280', fontSize: 13 },
+    tblVal: { padding: '4px 0', fontWeight: 700, fontSize: 13 },
+  };
+
+  return (
+    <div style={{ ...s.section, maxWidth: 560 }}>
+      {error && <div style={{ ...s.errBox, marginBottom: 16 }}>{error}</div>}
+
+      {/* Import CSV */}
+      <div style={SS.block}>
+        <div style={SS.title}>Импорт InBody CSV</div>
+        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+          Загрузите <b>inbody270_data.csv</b> из LookinBody Web. Файл читается только в браузере.
+        </div>
+        <button style={{ ...SS.btn, background: '#02BDB6', color: '#fff' }} onClick={() => fileRef.current?.click()} disabled={loading}>
+          {loading && !preview && !result ? 'Обработка…' : 'Выбрать файл CSV…'}
+        </button>
+        <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleFile} />
+
+        {preview && !result && (
+          <div style={{ marginTop: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {[
+                  ['Всего строк', preview.total, '#374151'],
+                  ['Новых', preview.new, '#16a34a'],
+                  ['Дублей', preview.duplicates, '#9ca3af'],
+                  ['С клиентом', preview.linked, '#2563eb'],
+                  ['Без клиента', preview.unlinked, preview.unlinked > 0 ? '#f59e0b' : '#9ca3af'],
+                ].map(([label, val, color]) => (
+                  <tr key={String(label)}>
+                    <td style={SS.tblKey}>{label}</td>
+                    <td style={{ ...SS.tblVal, color: String(color) }}>{val}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {preview.unlinked_ids.length > 0 && (
+              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>
+                Без клиента (ID): {preview.unlinked_ids.join(', ')}{preview.unlinked_ids.length === 20 ? ' …' : ''}
+              </div>
+            )}
+            {preview.new > 0 ? (
+              <button style={{ ...SS.btn, background: '#263CD9', color: '#fff', marginTop: 12 }} onClick={doImport} disabled={loading}>
+                {loading ? 'Импорт…' : `Импортировать ${preview.new} новых`}
+              </button>
+            ) : (
+              <div style={{ marginTop: 10, fontSize: 14, color: '#16a34a' }}>Все строки уже в базе</div>
+            )}
+          </div>
+        )}
+
+        {result && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 16px', marginTop: 12 }}>
+            <div style={{ fontWeight: 700, color: '#166534', marginBottom: 8 }}>✓ Импорт завершён</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {[
+                  ['Добавлено', result.added, '#16a34a'],
+                  ['Пропущено', result.skipped, '#9ca3af'],
+                  ['Без клиента', result.without_client, result.without_client > 0 ? '#f59e0b' : '#9ca3af'],
+                ].map(([l, v, c]) => (
+                  <tr key={String(l)}><td style={SS.tblKey}>{l}</td><td style={{ ...SS.tblVal, color: String(c) }}>{v}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <button style={{ ...SS.btn, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', marginTop: 12 }}
+              onClick={() => { setRows(null); setPreview(null); setResult(null); }}>
+              Загрузить ещё
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Recalculate */}
+      <div style={SS.block}>
+        <div style={SS.title}>Пересчёт InBody</div>
+        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+          Пересчитывает числовые поля из сохранённого raw CSV для всех тестов.
+        </div>
+        <button style={{ ...SS.btn, background: '#f8fafc', color: '#374151', border: '1px solid #e2e6ea' }} onClick={doRecalculate} disabled={loading}>
+          Пересчитать InBody (исправить CSV)
+        </button>
+        {recalc && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 14px', fontSize: 14, color: '#166534' }}>
+            ✓ Пересчитано тестов: <b>{recalc.updated}</b>
+          </div>
+        )}
+      </div>
+
+      {/* Unlinked tests */}
+      <div style={SS.block}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={SS.title}>InBody без клиента</div>
+          <button style={{ padding: '6px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+            onClick={loadUnlinked} disabled={loading}>
+            {unlinked === null ? 'Загрузить' : '↺ Обновить'}
+          </button>
+        </div>
+        {unlinked === null && <div style={s.empty}>Нажмите «Загрузить» для просмотра непривязанных тестов</div>}
+        {unlinked !== null && unlinked.length === 0 && <div style={s.empty}>Все тесты привязаны к клиентам</div>}
+        {unlinked !== null && unlinked.length > 0 && (
+          <div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+              Тесты InBody без соответствующего клиента в базе. Привязать можно из карточки клиента.
+            </div>
+            {unlinked.map(t => (
+              <div key={t.id} style={{ padding: '7px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                <span style={{ fontWeight: 600, color: '#263CD9' }}>{t.inbody_id}</span>
+                <span style={{ color: '#6b7280', marginLeft: 10 }}>{t.tested_at?.slice(0, 10) ?? '—'}</span>
+                {t.phone && <span style={{ color: '#64748b', marginLeft: 10 }}>{t.phone}</span>}
+                {t.weight != null && <span style={{ color: '#94a3b8', marginLeft: 10 }}>{t.weight} кг</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

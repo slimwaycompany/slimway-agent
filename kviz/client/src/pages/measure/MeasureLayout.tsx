@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface Props {
-  active: 'new' | 'reports' | 'inbody-import';
+  active: 'new' | 'reports';
   children: React.ReactNode;
 }
 
@@ -53,12 +53,6 @@ export function MeasureLayout({ active, children }: Props) {
             className={`measure-subtab${active === 'reports' ? ' active' : ''}`}
             onClick={() => navigate('/measure/reports')}
           >Отчёты</button>
-          {isAdmin && (
-            <button
-              className={`measure-subtab${active === 'inbody-import' ? ' active' : ''}`}
-              onClick={() => navigate('/measure/inbody-import')}
-            >Импорт InBody</button>
-          )}
           <button
             className="measure-subtab"
             style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#02BDB6,#263CD9)', color: '#fff', border: 'none' }}
