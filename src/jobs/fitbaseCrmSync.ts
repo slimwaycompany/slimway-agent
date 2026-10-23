@@ -74,6 +74,8 @@ async function syncVisits(): Promise<number> {
     const client = v.client as Record<string, unknown> | null ?? null;
     const training = v.training as Record<string, unknown> | null ?? null;
     const manager = v.manager as Record<string, unknown> | null ?? null;
+    const resourceRaw = v.resource as Record<string, unknown> | string | null ?? null;
+    const abonementRaw = v.abonement as Record<string, unknown> | string | null ?? null;
     const startTs = v.start_date ? Number(v.start_date) * 1000 : null;
     const bookedTs = v.created_at ? Number(v.created_at) * 1000 : null;
     return {
@@ -88,6 +90,9 @@ async function syncVisits(): Promise<number> {
       status: v.status != null ? Number(v.status) : null,
       service: (training?.name ?? null) as string | null,
       manager: (manager?.full_name ?? null) as string | null,
+      // resource = аппарат (LPG machine etc), abonement = абонемент
+      resource: typeof resourceRaw === 'string' ? resourceRaw : (resourceRaw?.name as string ?? null),
+      abonement: typeof abonementRaw === 'string' ? abonementRaw : (abonementRaw?.name as string ?? null),
       raw: v,
     };
   });

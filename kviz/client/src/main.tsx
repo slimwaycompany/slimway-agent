@@ -5,7 +5,7 @@ import App from './App';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-  <BrowserRouter basename={window.location.pathname === '/results' ? '/' : '/kviz'}>
+  <BrowserRouter basename={window.location.pathname === '/results' || window.location.pathname.startsWith('/r/') ? '/' : '/kviz'}>
       <App />
     </BrowserRouter>
   </StrictMode>

@@ -93,16 +93,18 @@ export default function CashClosing({ onClose }: Props) {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    (async () => { await loadData(); await sync(true); })();
+  }, []);
 
-  async function sync() {
-    setSyncing(true); setActionError('');
+  async function sync(silent = false) {
+    setSyncing(true); if (!silent) setActionError('');
     try {
       const r = await fetch('/kviz/api/cash/sync', { method: 'POST', credentials: 'include' });
       const json = await r.json();
-      if (!r.ok) { setActionError('Ошибка синхронизации: ' + (json.error || r.status)); return; }
+      if (!r.ok) { if (!silent) setActionError('Ошибка синхронизации: ' + (json.error || r.status)); return; }
       await loadData();
-    } catch (e) { setActionError('Ошибка: ' + e); }
+    } catch (e) { if (!silent) setActionError('Ошибка: ' + e); }
     finally { setSyncing(false); }
   }
 
@@ -273,11 +275,11 @@ export default function CashClosing({ onClose }: Props) {
 
         <div style={S.body}>
           {/* Sync status */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e6ea' }}>
-            <span style={{ fontSize: 13, color: '#6b7280', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e6ea', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#6b7280', flex: 1, minWidth: 0 }}>
               Данные операций: обновлено в <b>{fmtSyncTime(data?.synced_at ?? null)}</b>
             </span>
-            <button onClick={sync} disabled={syncing} style={{ ...S.btnSecondary, fontSize: 12, padding: '4px 12px' }}>
+            <button onClick={() => sync()} disabled={syncing} style={{ ...S.btnSecondary, fontSize: 12, padding: '4px 12px', flexShrink: 0 }}>
               {syncing ? '…' : '↺ Обновить'}
             </button>
           </div>

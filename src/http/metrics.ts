@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
+import { acquireLock, releaseLock } from '../core/lock';
+import { runFitbaseCrmSync } from '../jobs/fitbaseCrmSync';
 
 interface Lead { fitbase_id: string; source: string | null; stage: string | null; status: string | null; manager: string | null; client_fitbase_id: number | null }
 interface Visit { client_fitbase_id: number | null; status: number | null; is_trial: boolean }
@@ -101,20 +103,20 @@ export function buildMetricsRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // Trigger CRM sync (admin only, fires cron endpoint internally)
+  // Trigger CRM sync (admin only, calls job directly)
   router.post('/kviz/api/metrics/sync', async (req: Request, res: Response) => {
     if (!isAdmin(req, res)) return;
-    const secret = process.env.CRON_SECRET;
-    if (!secret) { res.status(503).json({ error: 'CRON_SECRET не задан' }); return; }
     try {
-      const resp = await fetch(`http://localhost:${process.env.PORT || 3000}/run/fitbase-crm-sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ secret }),
-      });
-      const json = await resp.json() as Record<string, unknown>;
-      res.json(json);
-    } catch (e) { res.status(500).json({ error: String(e) }); }
+      const locked = await acquireLock('fitbase-crm-sync', 10 * 60);
+      if (!locked) { res.json({ status: 'already_running' }); return; }
+      const stats = await runFitbaseCrmSync();
+      await releaseLock('fitbase-crm-sync');
+      await supabase.from('sync_state').upsert({ key: 'fitbase_crm_synced_at', value: new Date().toISOString() }, { onConflict: 'key' });
+      res.json({ ok: true, ...stats, synced_at: new Date().toISOString() });
+    } catch (e) {
+      await releaseLock('fitbase-crm-sync').catch(() => {});
+      res.status(500).json({ error: String(e) });
+    }
   });
 
   return router;

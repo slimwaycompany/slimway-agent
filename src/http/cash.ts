@@ -176,6 +176,37 @@ export function buildCashRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // GET occupancy report from fitbase_visits (admin only)
+  r.get('/kviz/api/reports/occupancy', async (req, res) => {
+    const session = getSession(req)!;
+    if (session.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
+    const from = String(req.query.from || yekToday());
+    const to   = String(req.query.to   || yekToday());
+    try {
+      let q = supabase
+        .from('fitbase_visits')
+        .select('fitbase_id,client_fitbase_id,client_name,client_phone,status,visit_at,visit_date,service,resource,abonement,is_trial')
+        .gte('visit_date', from)
+        .lte('visit_date', to)
+        .order('visit_at', { ascending: true });
+      if (req.query.resource) q = q.eq('resource', req.query.resource as string);
+      if (req.query.abonement) q = q.eq('abonement', req.query.abonement as string);
+      if (req.query.status !== undefined && req.query.status !== '') q = q.eq('status', Number(req.query.status));
+
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      const visits = data || [];
+
+      const resources  = [...new Set(visits.map(v => v.resource).filter(Boolean))] as string[];
+      const abonements = [...new Set(visits.map(v => v.abonement).filter(Boolean))] as string[];
+      const statuses   = [...new Set(visits.map(v => String(v.status ?? '')).filter(s => s !== ''))].sort();
+      const total = visits.length;
+      const uniqueClients = new Set(visits.map(v => v.client_fitbase_id).filter(Boolean)).size;
+
+      res.json({ visits, resources, abonements, statuses, total, unique_clients: uniqueClients, from, to });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // GET closing Excel template (binary xlsx)
   r.get('/kviz/api/cash/closing-template', (_req, res) => {
     if (!getSession(_req)) { res.status(401).json({ error: 'Unauthorized' }); return; }

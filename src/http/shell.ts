@@ -304,37 +304,17 @@ export function mountShellRoutes(app: Application): void {
   app.get('/', (req, res) => {
     const session = getSession(req);
     if (!session) { res.redirect(302, '/login'); return; }
-    const isAdmin = session.role === 'admin';
-    const reportsTabBtn = isAdmin
-      ? '<button class="tab-btn" id="tab-btn-reports">📊 Отчёты</button>'
-      : '';
-    const reportsSideFromMeasure = isAdmin
-      ? '<button class="side-btn" id="side-to-reports"><span class="side-text">Отчёты</span></button>'
-      : '';
-    const reportsPane = isAdmin
-      ? '<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button><button class="side-btn" id="side-to-metrics"><span class="side-text">Метрики</span></button></div>'
-      : '';
-    const reportsChoiceBtn = isAdmin
-      ? '<button class="choice-btn" id="choice-reports"><span class="choice-icon">📊</span><span class="choice-label">Отчёты</span></button>'
-      : '';
-    const metricsTabBtn = isAdmin
-      ? '<button class="tab-btn" id="tab-btn-metrics">📈 Метрики</button>'
-      : '';
-    const metricsPane = isAdmin
-      ? '<div class="pane hidden" id="metrics-pane"><button class="side-btn left" id="side-to-reports2"><span class="side-text">Отчёты</span></button></div>'
-      : '';
-    const metricsChoiceBtn = isAdmin
-      ? '<button class="choice-btn" id="choice-metrics"><span class="choice-icon">📈</span><span class="choice-label">Метрики</span></button>'
-      : '';
+    // Reports tab is visible to all roles; Метрики tab is removed (merged into Reports board)
+    const reportsPane = '<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button></div>';
     const html = SHELL_HTML
       .replace('<!--DNAME-->', escapeHtml(session.display_name))
-      .replace('<!--REPORTS_TAB_BTN-->', reportsTabBtn)
-      .replace('<!--REPORTS_SIDE_FROM_MEASURE-->', reportsSideFromMeasure)
+      .replace('<!--REPORTS_TAB_BTN-->', '<button class="tab-btn" id="tab-btn-reports">📊 Отчёты</button>')
+      .replace('<!--REPORTS_SIDE_FROM_MEASURE-->', '<button class="side-btn" id="side-to-reports"><span class="side-text">Отчёты</span></button>')
       .replace('<!--REPORTS_PANE-->', reportsPane)
-      .replace('<!--REPORTS_CHOICE_BTN-->', reportsChoiceBtn)
-      .replace('<!--METRICS_TAB_BTN-->', metricsTabBtn)
-      .replace('<!--METRICS_PANE-->', metricsPane)
-      .replace('<!--METRICS_CHOICE_BTN-->', metricsChoiceBtn);
+      .replace('<!--REPORTS_CHOICE_BTN-->', '<button class="choice-btn" id="choice-reports"><span class="choice-icon">📊</span><span class="choice-label">Отчёты</span></button>')
+      .replace('<!--METRICS_TAB_BTN-->', '')
+      .replace('<!--METRICS_PANE-->', '')
+      .replace('<!--METRICS_CHOICE_BTN-->', '');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   });

@@ -1,37 +1,24 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import MetricsPage from '../MetricsPage';
+import OccupancySection from './OccupancySection';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ShiftRecord {
-  id: string;
-  user_id: string;
-  user_name: string;
-  shift_date: string;
-  started_at: string;
-  ended_at: string | null;
-  status: string;
-  replacing: string | null;
-  comment: string | null;
-  sheet_synced_start: boolean;
-  sheet_synced_end: boolean;
+  id: string; user_id: string; user_name: string; shift_date: string;
+  started_at: string; ended_at: string | null; status: string;
+  replacing: string | null; comment: string | null;
+  sheet_synced_start: boolean; sheet_synced_end: boolean;
 }
-
 interface TaskDone {
-  id: string;
-  template_id: string;
-  task_date: string;
-  done_by: string;
-  done_by_name: string;
-  done_at: string;
+  id: string; template_id: string; task_date: string; done_by: string;
+  done_by_name: string; done_at: string;
   manager_task_templates: { title: string; slot_time: string; category: string };
 }
-
-type ActiveTab = 'shifts' | 'tasks' | 'studio' | 'sales';
-
 interface SalesOp {
   id: number; pay_ts: string; amount: number; is_refund: boolean;
-  payment_type: string; item_type: string; cashier: string; manager: string; client: string;
+  payment_type: string; item_type: string; cashier: string; manager: string; client: string; op_type: string;
 }
 interface SalesData {
   from: string; to: string;
@@ -41,6 +28,8 @@ interface SalesData {
   ops: SalesOp[];
 }
 
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'funnel' | 'occupancy';
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toYekLocal(iso: string | null | undefined): string {
@@ -48,154 +37,154 @@ function toYekLocal(iso: string | null | undefined): string {
   const d = new Date(new Date(iso).getTime() + 5 * 3600_000);
   return d.toISOString().slice(0, 16);
 }
-
 function fromYekLocal(val: string): string {
   if (!val) return '';
   return new Date(new Date(val + ':00Z').getTime() - 5 * 3600_000).toISOString();
 }
-
 function fmtHHMM(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(new Date(iso).getTime() + 5 * 3600_000);
   return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
 }
-
-function fmtDate(iso: string): string {
-  return iso.split('-').reverse().join('.');
-}
-
+function fmtDate(iso: string) { return iso.split('-').reverse().join('.'); }
 function calcHoursNum(s: ShiftRecord): number {
   if (!s.started_at || !s.ended_at) return 0;
   return (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 3_600_000;
 }
-
 function calcHours(s: ShiftRecord): string {
   if (!s.started_at || !s.ended_at) return '—';
   return calcHoursNum(s).toFixed(1);
 }
-
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' });
+}
+function downloadCSV(rows: (string | number)[][], filename: string) {
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
 }
 
 const today = new Date().toISOString().slice(0, 10);
 const monthStart = today.slice(0, 7) + '-01';
+const SHIFT_STATUS: Record<string, string> = { open: 'открыта', closed: 'закрыта', auto_closed: 'авто' };
 
-const SHIFT_STATUS: Record<string, string> = {
-  open: 'открыта', closed: 'закрыта', auto_closed: 'авто',
-};
+// ── Board definition ──────────────────────────────────────────────────────────
+
+const BOARD_SECTIONS: { id: Section; icon: string; label: string; desc: string; adminOnly: boolean }[] = [
+  { id: 'shifts',    icon: '📅', label: 'Смены',           desc: 'Отметки, часы, сотрудники',        adminOnly: false },
+  { id: 'tasks',     icon: '✅', label: 'Личные задачи',   desc: 'Выполнение задач по периоду',       adminOnly: false },
+  { id: 'funnel',    icon: '📈', label: 'Воронки',         desc: 'Лиды, конверсия, источники',        adminOnly: true  },
+  { id: 'sales',     icon: '💰', label: 'Продажи',         desc: 'Операции Fitbase, разбивка',        adminOnly: true  },
+  { id: 'occupancy', icon: '🗓️', label: 'Занятия',         desc: 'Загруженность по часам и дням',    adminOnly: true  },
+  { id: 'studio',    icon: '🏅', label: 'Результаты студии', desc: 'Итого по всем клиентам',          adminOnly: true  },
+];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
-  const [tab, setTab] = useState<ActiveTab>('shifts');
+  const [section, setSection] = useState<Section | null>(() => {
+    try { return (sessionStorage.getItem('reports-section') as Section | null) ?? null; } catch { return null; }
+  });
+  const [role, setRole] = useState<string>('manager');
 
-  // Shifts
+  useEffect(() => {
+    fetch('/kviz/api/me', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d.role) setRole(d.role); })
+      .catch(() => {});
+  }, []);
+
+  function openSection(s: Section) {
+    setSection(s);
+    try { sessionStorage.setItem('reports-section', s); } catch {}
+  }
+  function backToBoard() {
+    setSection(null);
+    try { sessionStorage.removeItem('reports-section'); } catch {}
+  }
+
+  const isAdmin = role === 'admin';
+  const visibleSections = BOARD_SECTIONS.filter(s => !s.adminOnly || isAdmin);
+
+  return (
+    <div style={s.root}>
+      <div style={s.header}>
+        {section ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button style={s.backBtn} onClick={backToBoard}>← Все отчёты</button>
+            <span style={s.title}>{BOARD_SECTIONS.find(b => b.id === section)?.label}</span>
+          </div>
+        ) : (
+          <span style={s.title}>Отчёты</span>
+        )}
+      </div>
+
+      {/* Board */}
+      {!section && (
+        <div style={s.board}>
+          {visibleSections.map(sec => (
+            <button key={sec.id} style={s.boardCard} onClick={() => openSection(sec.id)}>
+              <span style={{ fontSize: 28 }}>{sec.icon}</span>
+              <span style={{ fontWeight: 700, fontSize: 14, color: '#1a202c' }}>{sec.label}</span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>{sec.desc}</span>
+            </button>
+          ))}
+          {/* Замеры — opens measure reports in the measure pane via postMessage */}
+          <button style={s.boardCard} onClick={() => window.parent.postMessage({ type: 'open-measure', path: '/kviz/measure/reports' }, '*')}>
+            <span style={{ fontSize: 28 }}>📏</span>
+            <span style={{ fontWeight: 700, fontSize: 14, color: '#1a202c' }}>Замеры</span>
+            <span style={{ fontSize: 12, color: '#64748b' }}>Список клиентов, отчёты замеров</span>
+          </button>
+        </div>
+      )}
+
+      {/* Sections */}
+      {section === 'shifts'    && isAdmin !== undefined && <ShiftsSection />}
+      {section === 'tasks'     && <TasksSection />}
+      {section === 'funnel'    && isAdmin && <div style={{ flex: 1, overflow: 'auto', height: 'calc(100vh - 53px)' }}><MetricsPage /></div>}
+      {section === 'sales'     && isAdmin && <SalesSection />}
+      {section === 'occupancy' && isAdmin && <OccupancySection />}
+      {section === 'studio'    && isAdmin && <StudioSection />}
+    </div>
+  );
+}
+
+// ── Shifts section ────────────────────────────────────────────────────────────
+
+function ShiftsSection() {
   const [shiftFrom, setShiftFrom] = useState(monthStart);
   const [shiftTo, setShiftTo]     = useState(today);
   const [shifts, setShifts]       = useState<ShiftRecord[]>([]);
-  const [shiftsLoading, setShiftsLoading] = useState(false);
+  const [loading, setLoading]     = useState(false);
   const [editShift, setEditShift] = useState<Partial<ShiftRecord> | null>(null);
-  const [shiftSaving, setShiftSaving] = useState(false);
-  const [shiftError, setShiftError]   = useState<string | null>(null);
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState<string | null>(null);
 
-  // Tasks
-  const [taskFrom, setTaskFrom] = useState(monthStart);
-  const [taskTo, setTaskTo]     = useState(today);
-  const [tasks, setTasks]       = useState<TaskDone[]>([]);
-  const [tasksLoading, setTasksLoading] = useState(false);
-
-  // Studio
-  const [studio, setStudio]           = useState<Record<string, unknown>[]>([]);
-  const [studioLoading, setStudioLoading] = useState(false);
-  const [studioLoaded, setStudioLoaded]   = useState(false);
-
-  // Sales
-  const [salesFrom, setSalesFrom] = useState(today);
-  const [salesTo, setSalesTo]     = useState(today);
-  const [salesData, setSalesData] = useState<SalesData | null>(null);
-  const [salesLoading, setSalesLoading] = useState(false);
-
-  const loadShifts = useCallback(async () => {
-    setShiftsLoading(true);
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
       const r = await fetch(`/kviz/api/shifts?from=${shiftFrom}&to=${shiftTo}`, { credentials: 'include' });
       setShifts(r.ok ? await r.json() : []);
-    } catch {} finally { setShiftsLoading(false); }
+    } catch {} finally { setLoading(false); }
   }, [shiftFrom, shiftTo]);
 
-  const loadTasks = useCallback(async () => {
-    setTasksLoading(true);
-    try {
-      const r = await fetch(`/kviz/api/reports/tasks?from=${taskFrom}&to=${taskTo}`, { credentials: 'include' });
-      setTasks(r.ok ? await r.json() : []);
-    } catch {} finally { setTasksLoading(false); }
-  }, [taskFrom, taskTo]);
-
-  const loadStudio = useCallback(async () => {
-    if (studioLoaded) return;
-    setStudioLoading(true);
-    try {
-      const r = await fetch('/kviz/api/reports/studio', { credentials: 'include' });
-      setStudio(r.ok ? await r.json() : []);
-    } catch {} finally { setStudioLoading(false); setStudioLoaded(true); }
-  }, [studioLoaded]);
-
-  const loadSales = useCallback(async () => {
-    setSalesLoading(true);
-    try {
-      const r = await fetch(`/kviz/api/reports/sales?from=${salesFrom}&to=${salesTo}`, { credentials: 'include' });
-      setSalesData(r.ok ? await r.json() : null);
-    } catch {} finally { setSalesLoading(false); }
-  }, [salesFrom, salesTo]);
-
-  function setSalesPreset(preset: 'today' | 'week' | 'month') {
-    const now = new Date(Date.now() + 5*3600_000);
-    const d = now.toISOString().slice(0, 10);
-    if (preset === 'today') { setSalesFrom(d); setSalesTo(d); return; }
-    if (preset === 'week') {
-      const dow = now.getUTCDay() || 7;
-      const mon = new Date(now.getTime() - (dow - 1) * 86400_000).toISOString().slice(0, 10);
-      setSalesFrom(mon); setSalesTo(d); return;
+  const monthlyTotals = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const sh of shifts) {
+      if (!sh.started_at || !sh.ended_at) continue;
+      const key = `${sh.user_name}|${sh.shift_date.slice(0, 7)}`;
+      map.set(key, (map.get(key) ?? 0) + calcHoursNum(sh));
     }
-    setSalesFrom(d.slice(0, 7) + '-01'); setSalesTo(d);
-  }
-
-  function exportSalesXLSX() {
-    if (!salesData) return;
-    const wb = XLSX.utils.book_new();
-    const t = salesData.totals;
-    const fmtN = (n: number) => Math.round(n);
-    const s1 = [
-      ['Период', `${salesData.from} — ${salesData.to}`],
-      [],
-      ['Продажи наличными', fmtN(t.cash_sale)],
-      ['Продажи по карте', fmtN(t.card_sale)],
-      ['Итого продаж', fmtN(t.cash_sale + t.card_sale)],
-      ['Возвраты наличными', fmtN(t.cash_refund)],
-      ['Возвраты по карте', fmtN(t.card_refund)],
-      ['Итого возвратов', fmtN(t.cash_refund + t.card_refund)],
-      ['Чистые продажи', fmtN(t.cash_sale + t.card_sale - t.cash_refund - t.card_refund)],
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s1), 'Итоги');
-    const mgr = [['Менеджер', 'Сумма'], ...salesData.by_manager.map(m => [m.name, fmtN(m.amount)])];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mgr), 'По менеджеру');
-    const cas = [['Кассир', 'Сумма'], ...salesData.by_cashier.map(c => [c.name, fmtN(c.amount)])];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cas), 'По кассиру');
-    const ops = [['Время', 'Тип', 'Клиент', 'Менеджер', 'Кассир', 'Тип товара', 'Сумма', 'Оплата'],
-      ...salesData.ops.map(o => [
-        new Date(o.pay_ts).toLocaleString('ru', { timeZone: 'Asia/Yekaterinburg' }),
-        o.is_refund ? 'Возврат' : 'Продажа',
-        o.client, o.manager, o.cashier, o.item_type,
-        o.is_refund ? -o.amount : o.amount, o.payment_type,
-      ])];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ops), 'Операции');
-    XLSX.writeFile(wb, `sales-${salesData.from}-${salesData.to}.xlsx`);
-  }
+    return [...map.entries()]
+      .map(([k, h]) => { const [name, month] = k.split('|'); return { name, month, hours: h }; })
+      .sort((a, b) => a.month.localeCompare(b.month) || a.name.localeCompare(b.name));
+  }, [shifts]);
 
   const saveShift = async () => {
     if (!editShift?.id) return;
-    setShiftSaving(true); setShiftError(null);
+    setSaving(true); setError(null);
     try {
       const body: Record<string, unknown> = {};
       if (editShift.started_at !== undefined) body.started_at = editShift.started_at;
@@ -211,305 +200,90 @@ export default function ReportsPage() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Ошибка');
       setEditShift(null);
-      await loadShifts();
-    } catch (e) { setShiftError(String(e)); }
-    finally { setShiftSaving(false); }
+      await load();
+    } catch (e) { setError(String(e)); }
+    finally { setSaving(false); }
   };
-
-  const monthlyTotals = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const sh of shifts) {
-      if (!sh.started_at || !sh.ended_at) continue;
-      const key = `${sh.user_name}|${sh.shift_date.slice(0, 7)}`;
-      map.set(key, (map.get(key) ?? 0) + calcHoursNum(sh));
-    }
-    return [...map.entries()]
-      .map(([k, h]) => { const [name, month] = k.split('|'); return { name, month, hours: h }; })
-      .sort((a, b) => a.month.localeCompare(b.month) || a.name.localeCompare(b.name));
-  }, [shifts]);
-
-  const tasksByPerson = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const t of tasks) map.set(t.done_by_name, (map.get(t.done_by_name) ?? 0) + 1);
-    return [...map.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-  }, [tasks]);
-
-  const exportShiftsCSV = () => {
-    const fmtYek = (iso: string | null) => {
-      if (!iso) return '';
-      const d = new Date(new Date(iso).getTime() + 5 * 3600_000);
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')} ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
-    };
-    const rows = [
-      ['Дата','Сотрудник','Начало','Конец','Часов','Статус','Комментарий','Замена','Таблица'],
-      ...shifts.map(sh => [
-        sh.shift_date, sh.user_name,
-        fmtYek(sh.started_at), fmtYek(sh.ended_at),
-        calcHours(sh), sh.status,
-        sh.comment ?? '', sh.replacing ?? '',
-        sh.sheet_synced_end ? '1' : '0',
-      ]),
-    ];
-    downloadCSV(rows, `shifts_${shiftFrom}_${shiftTo}.csv`);
-  };
-
-  const exportTasksCSV = () => {
-    const rows = [
-      ['Дата','Задача','Слот','Выполнил','Время'],
-      ...tasks.map(t => [
-        t.task_date,
-        t.manager_task_templates?.title ?? '',
-        t.manager_task_templates?.slot_time ?? '',
-        t.done_by_name,
-        fmtTime(t.done_at),
-      ]),
-    ];
-    downloadCSV(rows, `tasks_${taskFrom}_${taskTo}.csv`);
-  };
-
-  function downloadCSV(rows: (string | number)[][], filename: string) {
-    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
-  }
-
-  // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div style={s.root}>
-      <div style={s.header}>
-        <span style={s.title}>Отчёты</span>
+    <div style={s.section}>
+      <div style={s.filterRow}>
+        <input type="date" style={s.dateInp} value={shiftFrom} onChange={e => setShiftFrom(e.target.value)} />
+        <span style={{ color: '#64748b' }}>—</span>
+        <input type="date" style={s.dateInp} value={shiftTo} onChange={e => setShiftTo(e.target.value)} />
+        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
+        {shifts.length > 0 && (
+          <button style={s.csvBtn} onClick={() => {
+            const rows = [
+              ['Дата','Сотрудник','Начало','Конец','Часов','Статус','Замена','Комментарий'],
+              ...shifts.map(sh => [sh.shift_date, sh.user_name, fmtHHMM(sh.started_at), fmtHHMM(sh.ended_at), calcHours(sh), sh.status, sh.replacing ?? '', sh.comment ?? '']),
+            ];
+            downloadCSV(rows, `shifts_${shiftFrom}_${shiftTo}.csv`);
+          }}>CSV</button>
+        )}
       </div>
 
-      <div style={s.tabsBar}>
-        <button style={tabBtnSt(tab === 'shifts')} onClick={() => setTab('shifts')}>Смены</button>
-        <button style={tabBtnSt(tab === 'tasks')} onClick={() => setTab('tasks')}>Задачи</button>
-        <button style={tabBtnSt(tab === 'studio')} onClick={() => { setTab('studio'); loadStudio(); }}>Результаты студии</button>
-        <button style={tabBtnSt(tab === 'sales')} onClick={() => setTab('sales')}>Продажи</button>
-      </div>
+      {shifts.length === 0 && !loading && <div style={s.empty}>Нет данных за период</div>}
 
-      {/* ── Shifts ── */}
-      {tab === 'shifts' && (
-        <div style={s.section}>
-          <div style={s.filterRow}>
-            <input type="date" style={s.dateInp} value={shiftFrom} onChange={e => setShiftFrom(e.target.value)} />
-            <span style={s.dash}>—</span>
-            <input type="date" style={s.dateInp} value={shiftTo} onChange={e => setShiftTo(e.target.value)} />
-            <button style={s.loadBtn} onClick={loadShifts} disabled={shiftsLoading}>{shiftsLoading ? '...' : 'Загрузить'}</button>
-            {shifts.length > 0 && <button style={s.csvBtn} onClick={exportShiftsCSV}>CSV</button>}
-          </div>
-
-          {shifts.length === 0 && !shiftsLoading && <div style={s.empty}>Нет данных за период</div>}
-
-          {shifts.map(sh => (
-            <div key={sh.id} style={shiftRowSt(sh)}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={s.rowTitle}>
-                  {fmtDate(sh.shift_date)} · {sh.user_name}
-                  {sh.replacing && <span style={s.muted}> (замена: {sh.replacing})</span>}
-                </div>
-                <div style={s.rowMeta}>
-                  {fmtHHMM(sh.started_at)} — {fmtHHMM(sh.ended_at)} · {calcHours(sh)} ч
-                  {' · '}{SHIFT_STATUS[sh.status] ?? sh.status}
-                  {sh.ended_at && !sh.sheet_synced_end && <span style={s.warn}> ! не в таблице</span>}
-                </div>
-                {sh.comment && (
-                  <div style={{ ...s.rowMeta, marginTop: 2 }}>{sh.comment}</div>
-                )}
-              </div>
-              <button style={s.editBtn} onClick={() => setEditShift({ ...sh })}>Ред.</button>
+      {shifts.map(sh => (
+        <div key={sh.id} style={shiftRowSt(sh)}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={s.rowTitle}>
+              {fmtDate(sh.shift_date)} · {sh.user_name}
+              {sh.replacing && <span style={s.muted}> (замена: {sh.replacing})</span>}
             </div>
-          ))}
-
-          {monthlyTotals.length > 0 && (
-            <div style={{ marginTop: 24 }}>
-              <div style={s.sectionTitle}>Итого по месяцам</div>
-              {monthlyTotals.map(mt => (
-                <div key={mt.month + mt.name} style={s.totalRow}>
-                  <span>{mt.month} · {mt.name}</span>
-                  <span style={{ fontWeight: 700, color: '#02BDB6' }}>{mt.hours.toFixed(1)} ч</span>
-                </div>
-              ))}
+            <div style={s.rowMeta}>
+              {fmtHHMM(sh.started_at)} — {fmtHHMM(sh.ended_at)} · {calcHours(sh)} ч
+              {' · '}{SHIFT_STATUS[sh.status] ?? sh.status}
+              {sh.ended_at && !sh.sheet_synced_end && <span style={s.warn}> ! не в таблице</span>}
             </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Tasks ── */}
-      {tab === 'tasks' && (
-        <div style={s.section}>
-          <div style={s.filterRow}>
-            <input type="date" style={s.dateInp} value={taskFrom} onChange={e => setTaskFrom(e.target.value)} />
-            <span style={s.dash}>—</span>
-            <input type="date" style={s.dateInp} value={taskTo} onChange={e => setTaskTo(e.target.value)} />
-            <button style={s.loadBtn} onClick={loadTasks} disabled={tasksLoading}>{tasksLoading ? '...' : 'Загрузить'}</button>
-            {tasks.length > 0 && <button style={s.csvBtn} onClick={exportTasksCSV}>CSV</button>}
+            {sh.comment && <div style={{ ...s.rowMeta, marginTop: 2 }}>{sh.comment}</div>}
           </div>
-
-          {tasks.length === 0 && !tasksLoading && <div style={s.empty}>Нет данных за период</div>}
-
-          {tasks.length > 0 && (
-            <>
-              {tasksByPerson.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={s.sectionTitle}>По сотрудникам</div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {tasksByPerson.map(p => (
-                      <div key={p.name} style={s.personChip}>{p.name}: {p.count}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {tasks.map(t => (
-                <div key={t.id} style={s.taskRow}>
-                  <div style={s.taskDate}>{fmtDate(t.task_date)}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={s.rowTitle}>{t.manager_task_templates?.title ?? t.template_id}</div>
-                    <div style={s.rowMeta}>{t.done_by_name} · {fmtTime(t.done_at)}</div>
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
+          <button style={s.editBtn} onClick={() => setEditShift({ ...sh })}>Ред.</button>
         </div>
-      )}
+      ))}
 
-      {/* ── Studio results ── */}
-      {tab === 'studio' && (
-        <div style={s.section}>
-          {studioLoading && <div style={s.empty}>Загрузка...</div>}
-          {!studioLoading && studio.length === 0 && <div style={s.empty}>Нет данных</div>}
-          {studio.map((row, i) => (
-            <div key={String(row.id ?? i)} style={s.studioRow}>
-              {Object.entries(row).filter(([k]) => k !== 'id').map(([k, v]) => (
-                <div key={k} style={s.studioField}>
-                  <span style={s.studioKey}>{k}:</span>
-                  <span style={s.studioVal}>{String(v ?? '—')}</span>
-                </div>
-              ))}
+      {monthlyTotals.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={s.sectionTitle}>Итого по месяцам</div>
+          {monthlyTotals.map(mt => (
+            <div key={mt.month + mt.name} style={s.totalRow}>
+              <span>{mt.month} · {mt.name}</span>
+              <span style={{ fontWeight: 700, color: '#02BDB6' }}>{mt.hours.toFixed(1)} ч</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Sales ── */}
-      {tab === 'sales' && (
-        <div style={s.section}>
-          <div style={s.filterRow}>
-            {(['today','week','month'] as const).map(p => (
-              <button key={p} style={s.csvBtn} onClick={() => setSalesPreset(p)}>
-                {{ today: 'Сегодня', week: 'Неделя', month: 'Месяц' }[p]}
-              </button>
-            ))}
-            <input type="date" style={s.dateInp} value={salesFrom} onChange={e => setSalesFrom(e.target.value)} />
-            <span style={s.dash}>—</span>
-            <input type="date" style={s.dateInp} value={salesTo} onChange={e => setSalesTo(e.target.value)} />
-            <button style={s.loadBtn} onClick={loadSales} disabled={salesLoading}>{salesLoading ? '...' : 'Загрузить'}</button>
-            {salesData && <button style={s.csvBtn} onClick={exportSalesXLSX}>Excel</button>}
-          </div>
-
-          {!salesData && !salesLoading && <div style={s.empty}>Выберите период и нажмите «Загрузить»</div>}
-          {salesLoading && <div style={s.empty}>Загрузка из Fitbase…</div>}
-
-          {salesData && (() => {
-            const t = salesData.totals;
-            const fmt = (n: number) => Math.round(n).toLocaleString('ru');
-            return (
-              <>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-                  {[
-                    { label: 'Продажи нал.', val: t.cash_sale, color: '#02BDB6' },
-                    { label: 'Продажи карта', val: t.card_sale, color: '#263CD9' },
-                    { label: 'Возвраты', val: -(t.cash_refund + t.card_refund), color: '#ef4444' },
-                    { label: 'Итого чисто', val: t.cash_sale + t.card_sale - t.cash_refund - t.card_refund, color: '#22c55e' },
-                  ].map(c => (
-                    <div key={c.label} style={{ background: '#fff', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 130 }}>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>{c.label}</div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: c.color }}>{fmt(c.val)} ₸</div>
-                    </div>
-                  ))}
-                </div>
-
-                {salesData.by_manager.length > 0 && (
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={s.sectionTitle}>По менеджеру клиента</div>
-                    {salesData.by_manager.map(m => (
-                      <div key={m.name} style={s.totalRow}><span>{m.name}</span><span style={{ fontWeight: 700 }}>{fmt(m.amount)} ₸</span></div>
-                    ))}
-                  </div>
-                )}
-
-                {salesData.by_cashier.length > 0 && (
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={s.sectionTitle}>По кассиру</div>
-                    {salesData.by_cashier.map(c => (
-                      <div key={c.name} style={s.totalRow}><span>{c.name}</span><span style={{ fontWeight: 700 }}>{fmt(c.amount)} ₸</span></div>
-                    ))}
-                  </div>
-                )}
-
-                <div style={s.sectionTitle}>Операции ({salesData.ops.length})</div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                    <thead><tr style={{ background: '#f1f5f9' }}>
-                      {['Время','Тип','Клиент','Менеджер','Кассир','Товар','Сумма','Оплата'].map(h => (
-                        <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
-                      ))}
-                    </tr></thead>
-                    <tbody>
-                      {salesData.ops.map(op => (
-                        <tr key={op.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '5px 8px' }}>{new Date(op.pay_ts).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</td>
-                          <td style={{ padding: '5px 8px', color: op.is_refund ? '#ef4444' : '#22c55e' }}>{op.is_refund ? 'Возврат' : 'Продажа'}</td>
-                          <td style={{ padding: '5px 8px' }}>{op.client || '—'}</td>
-                          <td style={{ padding: '5px 8px' }}>{op.manager}</td>
-                          <td style={{ padding: '5px 8px' }}>{op.cashier}</td>
-                          <td style={{ padding: '5px 8px' }}>{op.item_type}</td>
-                          <td style={{ padding: '5px 8px', fontWeight: 600 }}>{op.is_refund ? '-' : ''}{fmt(op.amount)}</td>
-                          <td style={{ padding: '5px 8px' }}>{op.payment_type}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Shift edit modal */}
       {editShift && (
         <div style={s.overlay}>
           <div style={s.modal}>
             <h3 style={s.mh3}>Редактировать смену</h3>
-            {shiftError && <div style={s.errBox}>{shiftError}</div>}
-            <Field label="Начало (Екб)">
+            {error && <div style={s.errBox}>{error}</div>}
+            <MField label="Начало (Екб)">
               <input style={s.inp} type="datetime-local" value={toYekLocal(editShift.started_at)}
                 onChange={e => setEditShift(p => ({ ...p!, started_at: fromYekLocal(e.target.value) }))} />
-            </Field>
-            <Field label="Конец (Екб)">
+            </MField>
+            <MField label="Конец (Екб)">
               <input style={s.inp} type="datetime-local" value={toYekLocal(editShift.ended_at)}
                 onChange={e => setEditShift(p => ({ ...p!, ended_at: e.target.value ? fromYekLocal(e.target.value) : null }))} />
-            </Field>
-            <Field label="Статус">
+            </MField>
+            <MField label="Статус">
               <select style={s.inp} value={editShift.status ?? 'closed'} onChange={e => setEditShift(p => ({ ...p!, status: e.target.value }))}>
                 <option value="open">открыта</option>
                 <option value="closed">закрыта</option>
                 <option value="auto_closed">авто-закрыта</option>
               </select>
-            </Field>
-            <Field label="Замена">
+            </MField>
+            <MField label="Замена">
               <input style={s.inp} value={editShift.replacing ?? ''} onChange={e => setEditShift(p => ({ ...p!, replacing: e.target.value || null }))} />
-            </Field>
-            <Field label="Комментарий">
+            </MField>
+            <MField label="Комментарий">
               <input style={s.inp} value={editShift.comment ?? ''} onChange={e => setEditShift(p => ({ ...p!, comment: e.target.value || null }))} />
-            </Field>
+            </MField>
             <div style={s.mBtns}>
-              <button style={s.cancelBtn} onClick={() => { setEditShift(null); setShiftError(null); }}>Отмена</button>
-              <button style={s.saveBtn} disabled={shiftSaving} onClick={saveShift}>{shiftSaving ? '...' : 'Сохранить'}</button>
+              <button style={s.cancelBtn} onClick={() => { setEditShift(null); setError(null); }}>Отмена</button>
+              <button style={s.saveBtn} disabled={saving} onClick={saveShift}>{saving ? '...' : 'Сохранить'}</button>
             </div>
           </div>
         </div>
@@ -518,7 +292,321 @@ export default function ReportsPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// ── Tasks section ─────────────────────────────────────────────────────────────
+
+function TasksSection() {
+  const [from, setFrom]   = useState(monthStart);
+  const [to, setTo]       = useState(today);
+  const [tasks, setTasks] = useState<TaskDone[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/kviz/api/reports/tasks?from=${from}&to=${to}`, { credentials: 'include' });
+      setTasks(r.ok ? await r.json() : []);
+    } catch {} finally { setLoading(false); }
+  }, [from, to]);
+
+  const byPerson = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of tasks) map.set(t.done_by_name, (map.get(t.done_by_name) ?? 0) + 1);
+    return [...map.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  }, [tasks]);
+
+  return (
+    <div style={s.section}>
+      <div style={s.filterRow}>
+        <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
+        <span style={{ color: '#64748b' }}>—</span>
+        <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
+        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
+        {tasks.length > 0 && (
+          <button style={s.csvBtn} onClick={() => {
+            downloadCSV([
+              ['Дата','Задача','Слот','Выполнил','Время'],
+              ...tasks.map(t => [t.task_date, t.manager_task_templates?.title ?? '', t.manager_task_templates?.slot_time ?? '', t.done_by_name, fmtTime(t.done_at)]),
+            ], `tasks_${from}_${to}.csv`);
+          }}>CSV</button>
+        )}
+      </div>
+      {tasks.length === 0 && !loading && <div style={s.empty}>Нет данных за период</div>}
+      {tasks.length > 0 && (
+        <>
+          {byPerson.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={s.sectionTitle}>По сотрудникам</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {byPerson.map(p => <div key={p.name} style={s.personChip}>{p.name}: {p.count}</div>)}
+              </div>
+            </div>
+          )}
+          {tasks.map(t => (
+            <div key={t.id} style={s.taskRow}>
+              <div style={s.taskDate}>{fmtDate(t.task_date)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={s.rowTitle}>{t.manager_task_templates?.title ?? t.template_id}</div>
+                <div style={s.rowMeta}>{t.done_by_name} · {fmtTime(t.done_at)}</div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Studio section ────────────────────────────────────────────────────────────
+
+function StudioSection() {
+  const [studio, setStudio]   = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch('/kviz/api/reports/studio', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(setStudio)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div style={s.section}>
+      {loading && <div style={s.empty}>Загрузка...</div>}
+      {!loading && studio.length === 0 && <div style={s.empty}>Нет данных</div>}
+      {studio.map((row, i) => (
+        <div key={String(row.id ?? i)} style={s.studioRow}>
+          {Object.entries(row).filter(([k]) => k !== 'id').map(([k, v]) => (
+            <div key={k} style={s.studioField}>
+              <span style={s.studioKey}>{k}:</span>
+              <span style={s.studioVal}>{String(v ?? '—')}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Sales section ─────────────────────────────────────────────────────────────
+
+function SalesSection() {
+  const [from, setFrom]     = useState(today);
+  const [to, setTo]         = useState(today);
+  const [data, setData]     = useState<SalesData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
+
+  // Multi-select filters (empty set = show all)
+  const [filterCashier, setFilterCashier]   = useState<Set<string>>(new Set());
+  const [filterManager, setFilterManager]   = useState<Set<string>>(new Set());
+  const [filterItem, setFilterItem]         = useState<Set<string>>(new Set());
+  const [filterPayMethod, setFilterPayMethod] = useState<Set<string>>(new Set());
+  const [filterOpType, setFilterOpType]     = useState<Set<string>>(new Set());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/kviz/api/reports/sales?from=${from}&to=${to}`, { credentials: 'include' });
+      const d = r.ok ? await r.json() : null;
+      setData(d);
+      // Reset filters when new data loads
+      setFilterCashier(new Set()); setFilterManager(new Set());
+      setFilterItem(new Set()); setFilterPayMethod(new Set()); setFilterOpType(new Set());
+    } catch {} finally { setLoading(false); }
+  }, [from, to]);
+
+  async function syncFB() {
+    setSyncing(true); setSyncMsg('');
+    try {
+      const r = await fetch('/kviz/api/cash/sync', { method: 'POST', credentials: 'include' });
+      const j = await r.json() as Record<string, unknown>;
+      setSyncMsg(r.ok ? `Обновлено в ${new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}` : String(j.error || 'Ошибка'));
+      if (r.ok) await load();
+    } catch (e) { setSyncMsg(String(e)); }
+    finally { setSyncing(false); }
+  }
+
+  function setPreset(preset: 'today' | 'week' | 'month') {
+    const now = new Date(Date.now() + 5 * 3600_000);
+    const d = now.toISOString().slice(0, 10);
+    if (preset === 'today') { setFrom(d); setTo(d); return; }
+    if (preset === 'week') {
+      const dow = now.getUTCDay() || 7;
+      const mon = new Date(now.getTime() - (dow - 1) * 86400_000).toISOString().slice(0, 10);
+      setFrom(mon); setTo(d); return;
+    }
+    setFrom(d.slice(0, 7) + '-01'); setTo(d);
+  }
+
+  function toggleFilter(set: Set<string>, val: string, setFn: (s: Set<string>) => void) {
+    const next = new Set(set);
+    if (next.has(val)) next.delete(val); else next.add(val);
+    setFn(next);
+  }
+
+  const filteredOps = useMemo(() => {
+    if (!data) return [];
+    return data.ops.filter(op =>
+      (filterCashier.size   === 0 || filterCashier.has(op.cashier))   &&
+      (filterManager.size   === 0 || filterManager.has(op.manager))   &&
+      (filterItem.size      === 0 || filterItem.has(op.item_type))    &&
+      (filterPayMethod.size === 0 || filterPayMethod.has(op.payment_type)) &&
+      (filterOpType.size    === 0 || filterOpType.has(op.op_type))
+    );
+  }, [data, filterCashier, filterManager, filterItem, filterPayMethod, filterOpType]);
+
+  const filteredTotals = useMemo(() => {
+    let cash_sale = 0, card_sale = 0, cash_refund = 0, card_refund = 0;
+    for (const op of filteredOps) {
+      const isCash = op.payment_type === 'cash';
+      if (op.op_type === 'sale')   { isCash ? (cash_sale   += op.amount) : (card_sale   += op.amount); }
+      if (op.op_type === 'refund') { isCash ? (cash_refund += op.amount) : (card_refund += op.amount); }
+    }
+    return { cash_sale, card_sale, cash_refund, card_refund };
+  }, [filteredOps]);
+
+  const avail = useMemo(() => {
+    if (!data) return { cashiers: [], managers: [], items: [], payMethods: [], opTypes: [] };
+    return {
+      cashiers:   [...new Set(data.ops.map(o => o.cashier).filter(Boolean))].sort(),
+      managers:   [...new Set(data.ops.map(o => o.manager).filter(Boolean))].sort(),
+      items:      [...new Set(data.ops.map(o => o.item_type).filter(Boolean))].sort(),
+      payMethods: [...new Set(data.ops.map(o => o.payment_type).filter(Boolean))].sort(),
+      opTypes:    [...new Set(data.ops.map(o => o.op_type).filter(Boolean))].sort(),
+    };
+  }, [data]);
+
+  function exportXLSX() {
+    if (!data) return;
+    const wb = XLSX.utils.book_new();
+    const t = filteredTotals;
+    const fmtN = (n: number) => Math.round(n);
+    const s1 = [
+      ['Период', `${data.from} — ${data.to}`],
+      [],
+      ['Продажи наличными', fmtN(t.cash_sale)],
+      ['Продажи по карте', fmtN(t.card_sale)],
+      ['Итого продаж', fmtN(t.cash_sale + t.card_sale)],
+      ['Возвраты', fmtN(t.cash_refund + t.card_refund)],
+      ['Чистые продажи', fmtN(t.cash_sale + t.card_sale - t.cash_refund - t.card_refund)],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s1), 'Итоги');
+    const ops = [['Время', 'Тип', 'Клиент', 'Менеджер', 'Кассир', 'Товар', 'Сумма', 'Оплата'],
+      ...filteredOps.map(o => [
+        new Date(o.pay_ts).toLocaleString('ru', { timeZone: 'Asia/Yekaterinburg' }),
+        o.is_refund ? 'Возврат' : 'Продажа',
+        o.client, o.manager, o.cashier, o.item_type,
+        o.is_refund ? -o.amount : o.amount, o.payment_type,
+      ])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ops), 'Операции');
+    XLSX.writeFile(wb, `sales-${data.from}-${data.to}.xlsx`);
+  }
+
+  const fmt = (n: number) => Math.round(n).toLocaleString('ru');
+
+  function ChipRow({ label, values, active, onToggle }: { label: string; values: string[]; active: Set<string>; onToggle: (v: string) => void }) {
+    if (values.length === 0) return null;
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {values.map(v => (
+            <button key={v} style={{ ...s.chip, ...(active.has(v) ? s.chipActive : {}) }} onClick={() => onToggle(v)}>{v}</button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={s.section}>
+      <div style={s.filterRow}>
+        {(['today','week','month'] as const).map(p => (
+          <button key={p} style={s.csvBtn} onClick={() => setPreset(p)}>
+            {{ today: 'Сегодня', week: 'Неделя', month: 'Месяц' }[p]}
+          </button>
+        ))}
+        <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
+        <span style={{ color: '#64748b' }}>—</span>
+        <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
+        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
+        <button style={{ ...s.csvBtn, background: '#02BDB6', color: '#fff', border: 'none' }}
+          onClick={syncFB} disabled={syncing}>{syncing ? '...' : '↺ Обновить FB'}</button>
+        {data && <button style={s.csvBtn} onClick={exportXLSX}>Excel</button>}
+      </div>
+      {syncMsg && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{syncMsg}</div>}
+
+      {!data && !loading && <div style={s.empty}>Выберите период и нажмите «Загрузить»</div>}
+      {loading && <div style={s.empty}>Загрузка…</div>}
+
+      {data && (
+        <>
+          {/* Filters */}
+          <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px', marginBottom: 16, border: '1px solid #e2e8f0' }}>
+            <ChipRow label="Кассир"    values={avail.cashiers}   active={filterCashier}   onToggle={v => toggleFilter(filterCashier,   v, setFilterCashier)} />
+            <ChipRow label="Менеджер"  values={avail.managers}   active={filterManager}   onToggle={v => toggleFilter(filterManager,   v, setFilterManager)} />
+            <ChipRow label="Товар"     values={avail.items}      active={filterItem}      onToggle={v => toggleFilter(filterItem,      v, setFilterItem)} />
+            <ChipRow label="Оплата"    values={avail.payMethods} active={filterPayMethod} onToggle={v => toggleFilter(filterPayMethod, v, setFilterPayMethod)} />
+            <ChipRow label="Тип"       values={avail.opTypes}    active={filterOpType}    onToggle={v => toggleFilter(filterOpType,    v, setFilterOpType)} />
+            {(filterCashier.size + filterManager.size + filterItem.size + filterPayMethod.size + filterOpType.size) > 0 && (
+              <button style={{ ...s.csvBtn, fontSize: 12, padding: '4px 10px', marginTop: 4 }}
+                onClick={() => { setFilterCashier(new Set()); setFilterManager(new Set()); setFilterItem(new Set()); setFilterPayMethod(new Set()); setFilterOpType(new Set()); }}>
+                Сбросить фильтры
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+            {[
+              { label: 'Продажи нал.', val: filteredTotals.cash_sale, color: '#02BDB6' },
+              { label: 'Продажи карта', val: filteredTotals.card_sale, color: '#263CD9' },
+              { label: 'Возвраты', val: -(filteredTotals.cash_refund + filteredTotals.card_refund), color: '#ef4444' },
+              { label: 'Итого чисто', val: filteredTotals.cash_sale + filteredTotals.card_sale - filteredTotals.cash_refund - filteredTotals.card_refund, color: '#22c55e' },
+              { label: 'Показано операций', val: filteredOps.length, color: '#64748b' },
+            ].map(c => (
+              <div key={c.label} style={{ background: '#fff', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 130 }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>{c.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: c.color }}>{typeof c.val === 'number' && c.label !== 'Показано операций' ? fmt(c.val) + ' ₸' : c.val}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={s.sectionTitle}>Операции ({filteredOps.length})</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr style={{ background: '#f1f5f9' }}>
+                {['Время','Тип','Клиент','Менеджер','Кассир','Товар','Сумма','Оплата'].map(h => (
+                  <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {filteredOps.map(op => (
+                  <tr key={op.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '5px 8px' }}>{new Date(op.pay_ts).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</td>
+                    <td style={{ padding: '5px 8px', color: op.is_refund ? '#ef4444' : '#22c55e' }}>{op.is_refund ? 'Возврат' : 'Продажа'}</td>
+                    <td style={{ padding: '5px 8px' }}>{op.client || '—'}</td>
+                    <td style={{ padding: '5px 8px' }}>{op.manager}</td>
+                    <td style={{ padding: '5px 8px' }}>{op.cashier}</td>
+                    <td style={{ padding: '5px 8px' }}>{op.item_type}</td>
+                    <td style={{ padding: '5px 8px', fontWeight: 600 }}>{op.is_refund ? '-' : ''}{fmt(op.amount)}</td>
+                    <td style={{ padding: '5px 8px' }}>{op.payment_type}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Helpers for edit modal ────────────────────────────────────────────────────
+
+function MField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4, marginTop: 12 }}>{label}</label>
@@ -529,14 +617,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
-const tabBtnSt = (active: boolean): React.CSSProperties => ({
-  padding: '10px 20px', border: 'none', background: 'none', fontFamily: 'inherit',
-  fontSize: 14, fontWeight: active ? 700 : 400,
-  color: active ? '#02BDB6' : '#64748b',
-  borderBottom: active ? '2px solid #02BDB6' : '2px solid transparent',
-  cursor: 'pointer',
-});
-
 const shiftRowSt = (sh: ShiftRecord): React.CSSProperties => ({
   background: sh.ended_at && !sh.sheet_synced_end ? '#fef9f9' : '#fff',
   borderRadius: 10, padding: '10px 12px', marginBottom: 8,
@@ -546,37 +626,40 @@ const shiftRowSt = (sh: ShiftRecord): React.CSSProperties => ({
 });
 
 const s: Record<string, React.CSSProperties> = {
-  root:        { height: '100vh', overflow: 'auto', background: '#f8fafc', fontFamily: "'Manrope',system-ui,sans-serif" },
-  header:      { padding: '14px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 10 },
-  title:       { fontSize: 16, fontWeight: 700 },
-  tabsBar:     { display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#fff' },
-  section:     { padding: '12px 12px 32px' },
-  filterRow:   { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 },
-  dateInp:     { padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
-  dash:        { color: '#64748b', fontSize: 13 },
-  loadBtn:     { padding: '8px 16px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  csvBtn:      { padding: '8px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  empty:       { color: '#94a3b8', fontSize: 13 },
-  rowTitle:    { fontSize: 14, fontWeight: 600, color: '#1a202c' },
-  rowMeta:     { fontSize: 12, color: '#64748b', marginTop: 2 },
-  muted:       { fontWeight: 400, color: '#64748b' },
-  warn:        { color: '#ef4444', marginLeft: 6 },
-  editBtn:     { padding: '5px 12px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 },
-  sectionTitle:{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 },
-  totalRow:    { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9' },
-  taskRow:     { background: '#fff', borderRadius: 10, padding: '8px 12px', marginBottom: 6, display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
-  taskDate:    { fontSize: 12, fontWeight: 600, color: '#64748b', width: 60, flexShrink: 0, paddingTop: 2 },
-  personChip:  { background: '#e0f2fe', color: '#0369a1', borderRadius: 8, padding: '4px 10px', fontSize: 13, fontWeight: 600 },
-  studioRow:   { background: '#fff', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
-  studioField: { display: 'flex', gap: 6, fontSize: 13, padding: '1px 0' },
-  studioKey:   { color: '#64748b', flexShrink: 0 },
-  studioVal:   { color: '#1a202c' },
-  overlay:     { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-  modal:       { background: '#fff', borderRadius: 16, padding: 24, width: 'min(440px,96vw)', maxHeight: '90vh', overflow: 'auto' },
-  mh3:         { fontSize: 16, fontWeight: 700, margin: '0 0 16px' },
-  inp:         { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
-  mBtns:       { display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' },
-  cancelBtn:   { padding: '8px 16px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  saveBtn:     { padding: '8px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  errBox:      { background: '#fef2f2', color: '#ef4444', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
+  root:         { height: '100vh', overflow: 'auto', background: '#f8fafc', fontFamily: "'Manrope',system-ui,sans-serif", display: 'flex', flexDirection: 'column' },
+  header:       { padding: '10px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 10, flexShrink: 0 },
+  title:        { fontSize: 16, fontWeight: 700 },
+  backBtn:      { background: 'none', border: 'none', color: '#263CD9', cursor: 'pointer', fontWeight: 600, fontSize: 14, padding: '4px 0', fontFamily: 'inherit' },
+  board:        { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12, padding: 16 },
+  boardCard:    { background: '#fff', borderRadius: 14, padding: '16px 14px', border: '1.5px solid #e2e8f0', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, textAlign: 'left' as const, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', fontFamily: 'inherit', transition: 'box-shadow .15s,border-color .15s' },
+  section:      { padding: '12px 12px 32px' },
+  filterRow:    { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 },
+  dateInp:      { padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
+  loadBtn:      { padding: '8px 16px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  csvBtn:       { padding: '8px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  chip:         { padding: '3px 10px', border: '1px solid #e2e8f0', borderRadius: 20, fontSize: 12, cursor: 'pointer', background: '#fff', fontFamily: 'inherit', color: '#374151' },
+  chipActive:   { background: '#02BDB6', color: '#fff', borderColor: '#02BDB6' },
+  empty:        { color: '#94a3b8', fontSize: 13, padding: '12px 0' },
+  rowTitle:     { fontSize: 14, fontWeight: 600, color: '#1a202c' },
+  rowMeta:      { fontSize: 12, color: '#64748b', marginTop: 2 },
+  muted:        { fontWeight: 400, color: '#64748b' },
+  warn:         { color: '#ef4444', marginLeft: 6 },
+  editBtn:      { padding: '5px 12px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 },
+  sectionTitle: { fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 },
+  totalRow:     { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9' },
+  taskRow:      { background: '#fff', borderRadius: 10, padding: '8px 12px', marginBottom: 6, display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
+  taskDate:     { fontSize: 12, fontWeight: 600, color: '#64748b', width: 60, flexShrink: 0, paddingTop: 2 },
+  personChip:   { background: '#e0f2fe', color: '#0369a1', borderRadius: 8, padding: '4px 10px', fontSize: 13, fontWeight: 600 },
+  studioRow:    { background: '#fff', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
+  studioField:  { display: 'flex', gap: 6, fontSize: 13, padding: '1px 0' },
+  studioKey:    { color: '#64748b', flexShrink: 0 },
+  studioVal:    { color: '#1a202c' },
+  overlay:      { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+  modal:        { background: '#fff', borderRadius: 16, padding: 24, width: 'min(440px,96vw)', maxHeight: '90vh', overflow: 'auto' },
+  mh3:          { fontSize: 16, fontWeight: 700, margin: '0 0 16px' },
+  inp:          { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
+  mBtns:        { display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' },
+  cancelBtn:    { padding: '8px 16px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  saveBtn:      { padding: '8px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  errBox:       { background: '#fef2f2', color: '#ef4444', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
 };
