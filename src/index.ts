@@ -22,6 +22,7 @@ import { mountShellRoutes }                           from './http/shell';
 import { buildClientsSyncRoute }                      from './http/measure';
 import { buildShiftsAutocloseRoute }                  from './http/shifts';
 import { runFitbaseOps, JOB_NAME as FITBASE_OPS_JOB } from './jobs/fitbaseOps';
+import { runFitbaseCrmSync } from './jobs/fitbaseCrmSync';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -219,6 +220,17 @@ async function handleFitbaseOps(req: express.Request, res: express.Response): Pr
 }
 app.get('/run/fitbase-ops',  handleFitbaseOps);
 app.post('/run/fitbase-ops', handleFitbaseOps);
+
+// fitbase-crm-sync: leads + visits
+async function handleFitbaseCrmSync(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const locked = await acquireLock('fitbase-crm-sync', 10 * 60);
+  if (!locked) { res.json({ status: 'already_running' }); return; }
+  res.status(202).json({ status: 'accepted', job: 'fitbase-crm-sync' });
+  executeJob('fitbase-crm-sync', runFitbaseCrmSync);
+}
+app.get('/run/fitbase-crm-sync',  handleFitbaseCrmSync);
+app.post('/run/fitbase-crm-sync', handleFitbaseCrmSync);
 
 // shifts-autoclose — must be before generic /run/:job
 app.use(buildShiftsAutocloseRoute());
