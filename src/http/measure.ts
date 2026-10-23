@@ -350,30 +350,34 @@ export function buildMeasureRouter(): Router {
     try {
       const session = getSession(req);
       if (!session?.display_name) { res.status(401).json({ error: 'Нет сессии' }); return; }
-      const { data: ms, error: msError } = await supabase.from('body_measurements').select('measure_no,total_cm,weight,measured_at')
-        .eq('client_id', req.params.id).order('measure_no', { ascending: true });
+      const [{ data: ms, error: msError }, { data: clientRow }] = await Promise.all([
+        supabase.from('body_measurements').select('measure_no,total_cm,measured_at')
+          .eq('client_id', req.params.id).order('measure_no', { ascending: true }),
+        supabase.from('body_clients').select('phone_digits').eq('id', req.params.id).maybeSingle(),
+      ]);
       if (msError) { res.status(500).json({ error: msError.message }); return; }
-      if (!ms?.length) { res.status(400).json({ error: 'У клиента пока нет замеров' }); return; }
-      const first = ms[0], last = ms[ms.length - 1];
-      const cmLost = Math.max(0, Number(first.total_cm ?? 0) - Number(last.total_cm ?? 0));
-      const kgLost = first.weight != null && last.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
-      if (cmLost <= 0 && kgLost <= 0) { res.status(400).json({ error: 'Потерь со старта пока нет' }); return; }
-      // fat_kg_lost: auto-calc from InBody (first test after first measurement − last test)
-      let fatKgLost: number | null = null;
-      const { data: clientRow } = await supabase.from('body_clients').select('phone_digits').eq('id', req.params.id).maybeSingle();
+      const firstM = ms?.[0], lastM = ms?.length ? ms[ms.length - 1] : undefined;
+      const cmLost = firstM && lastM ? Math.max(0, Number(firstM.total_cm ?? 0) - Number(lastM.total_cm ?? 0)) : 0;
+      let kgLost = 0, fatKgLost: number | null = null;
       if (clientRow?.phone_digits) {
-        const firstDate = String(ms[0].measured_at ?? '').slice(0, 10);
-        const { data: ibTests } = await supabase.from('inbody_tests')
-          .select('tested_at,bfm').eq('phone_digits', clientRow.phone_digits)
-          .gte('tested_at', firstDate).order('tested_at', { ascending: true });
-        if (ibTests && ibTests.length >= 2) {
-          const ibFirst = ibTests[0], ibLast = ibTests[ibTests.length - 1];
-          if (ibFirst.bfm != null && ibLast.bfm != null) {
+        const firstDate = firstM ? String(firstM.measured_at ?? '').slice(0, 10) : '2000-01-01';
+        const { data: ibAll } = await supabase.from('inbody_tests')
+          .select('tested_at,weight,bfm').eq('phone_digits', clientRow.phone_digits)
+          .order('tested_at', { ascending: true });
+        if (ibAll?.length) {
+          const ibAfterFirst = ibAll.filter((t: Record<string,unknown>) => String(t.tested_at ?? '') >= firstDate);
+          const ibRef = ibAfterFirst.length ? ibAfterFirst : ibAll;
+          const ibFirst = ibRef[0], ibLast = ibRef[ibRef.length - 1];
+          if (ibFirst.weight != null && ibLast.weight != null)
+            kgLost = Math.max(0, Number(ibFirst.weight) - Number(ibLast.weight));
+          if (ibRef.length >= 2 && ibFirst.bfm != null && ibLast.bfm != null)
             fatKgLost = Math.max(0, Number(ibFirst.bfm) - Number(ibLast.bfm));
-          }
         }
       }
-      const row = { client_id: req.params.id, from_measure_no: 1, to_measure_no: last.measure_no,
+      if (cmLost <= 0 && kgLost <= 0 && (fatKgLost == null || fatKgLost <= 0)) {
+        res.status(400).json({ error: 'Потерь со старта пока нет' }); return;
+      }
+      const row = { client_id: req.params.id, from_measure_no: 1, to_measure_no: lastM?.measure_no ?? 0,
         cm_lost: cmLost, kg_lost: kgLost, fat_kg_lost: fatKgLost, sent_by: session.display_name, sent_at: new Date().toISOString() };
       const { data, error } = await supabase.from('studio_results').upsert(row, { onConflict: 'client_id' }).select('*').single();
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -637,27 +641,19 @@ export function buildClientsSyncRoute(): Router {
 
       if (ms.length >= 2) {
         const first = ms[0], last = ms[ms.length - 1];
-        cm_lost    = Math.max(0, Number(first.total_cm ?? 0) - Number(last.total_cm ?? 0));
-        kg_lost    = first.weight != null && last.weight != null
-          ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
-        // fat: first IB test at or after first measurement date
-        if (ibTests.length >= 2) {
-          const firstDate = String(first.measured_at ?? '').slice(0, 10);
-          const afterFirst = ibTests.filter(t => String(t.tested_at ?? '').slice(0, 10) >= firstDate);
-          const ibRef = afterFirst.length ? afterFirst : ibTests;
-          const ibLast = ibRef[ibRef.length - 1];
-          if (ibRef[0].bfm != null && ibLast.bfm != null)
-            fat_kg_lost = Math.max(0, Number(ibRef[0].bfm) - Number(ibLast.bfm));
-        }
-      } else if (ms.length === 0 && ibTests.length >= 1) {
-        // InBody-only
-        if (ibTests.length >= 2) {
-          const ib0 = ibTests[0], ibN = ibTests[ibTests.length - 1];
-          kg_lost = ib0.weight != null && ibN.weight != null
-            ? Math.max(0, Number(ib0.weight) - Number(ibN.weight)) : 0;
-          fat_kg_lost = ib0.bfm != null && ibN.bfm != null
-            ? Math.max(0, Number(ib0.bfm) - Number(ibN.bfm)) : null;
-        }
+        cm_lost = Math.max(0, Number(first.total_cm ?? 0) - Number(last.total_cm ?? 0));
+      }
+
+      // kg and fat always from InBody
+      if (ibTests.length >= 2) {
+        const firstDate = ms[0] ? String(ms[0].measured_at ?? '').slice(0, 10) : '2000-01-01';
+        const afterFirst = ibTests.filter(t => String(t.tested_at ?? '').slice(0, 10) >= firstDate);
+        const ibRef = afterFirst.length ? afterFirst : ibTests;
+        const ib0 = ibRef[0], ibN = ibRef[ibRef.length - 1];
+        if (ib0.weight != null && ibN.weight != null)
+          kg_lost = Math.max(0, Number(ib0.weight) - Number(ibN.weight));
+        if (ib0.bfm != null && ibN.bfm != null)
+          fat_kg_lost = Math.max(0, Number(ib0.bfm) - Number(ibN.bfm));
       }
 
       if (cm_lost <= 0 && kg_lost <= 0 && (fat_kg_lost == null || fat_kg_lost <= 0)) { skipped++; continue; }

@@ -60,7 +60,27 @@
   }
 
   // ── Tab switching ───────────────────────────────────────────────────────────
+  var TAB_HOME = {
+    manager: '/kviz/manager',
+    agent:   '/window',
+    kviz:    '/kviz/',
+    measure: '/kviz/measure/new',
+    reports: '/kviz/reports',
+  };
+  var TAB_FRAME = {
+    manager: 'manager-iframe',
+    agent:   'agent-iframe',
+    kviz:    'kviz-iframe',
+    measure: 'measure-iframe',
+    reports: 'reports-iframe',
+  };
+
   function showTab(name) {
+    if (currentTab === name) {
+      var fr = $(TAB_FRAME[name]);
+      if (fr) fr.src = TAB_HOME[name];
+      return;
+    }
     currentTab = name;
     $('choice-screen').style.display = 'none';
     $('top-bar').style.display = 'flex';

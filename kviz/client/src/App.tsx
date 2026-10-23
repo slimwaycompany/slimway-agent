@@ -6,7 +6,6 @@ import SummaryPage from './pages/SummaryPage';
 import HistoryPage from './pages/HistoryPage';
 import NewPage from './pages/NewPage';
 import NewMeasurePage from './pages/measure/NewMeasurePage';
-import ReportsPage from './pages/measure/ReportsPage';
 import ClientPage from './pages/measure/ClientPage';
 import PrintPage from './pages/measure/PrintPage';
 import ManagerPage from './pages/manager/ManagerPage';
@@ -54,7 +53,7 @@ export default function App() {
       <Route path="/history" element={<RequireAuth><HistoryPage /></RequireAuth>} />
       <Route path="/measure" element={<Navigate to="/measure/new" replace />} />
       <Route path="/measure/new" element={<RequireAuth><NewMeasurePage /></RequireAuth>} />
-      <Route path="/measure/reports" element={<RequireAuth><ReportsPage /></RequireAuth>} />
+      <Route path="/measure/reports" element={<Navigate to="/reports" replace />} />
       <Route path="/measure/client/:id" element={<RequireAuth><ClientPage /></RequireAuth>} />
       <Route path="/measure/print" element={<RequireAuth><PrintPage /></RequireAuth>} />
       <Route path="/measure/inbody-import" element={<RequireAuth><InBodyImportPage /></RequireAuth>} />

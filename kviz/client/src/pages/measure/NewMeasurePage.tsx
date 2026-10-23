@@ -4,7 +4,6 @@ import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
 
 const FIELDS = [
-  { key: 'weight',      label: 'Вес',           unit: 'кг', min: 30,  max: 250, optional: true },
   { key: 'neck',        label: 'Шея',           unit: 'см', min: 10,  max: 200 },
   { key: 'chest',       label: 'Грудь',         unit: 'см', min: 10,  max: 200 },
   { key: 'arm_l',    label: 'Левая рука',     unit: 'см', min: 10,  max: 200 },
@@ -180,7 +179,7 @@ export default function NewMeasurePage() {
 
   function circSum(): number | null {
     let s = 0;
-    for (const f of FIELDS.slice(1)) {
+    for (const f of FIELDS) {
       const v = parseFloat(values[f.key] || '');
       if (isNaN(v)) return null;
       s += v;
@@ -220,10 +219,6 @@ export default function NewMeasurePage() {
     if (prevTotal !== null) text += ` (${fmtDiff(total - prevTotal)} к прошлому`;
     if (startTotal !== null) text += `, ${fmtDiff(total - startTotal)} со старта`;
     if (prevTotal !== null) text += ')';
-    if (m.weight != null) {
-      text += `\nВес: ${Number(m.weight).toFixed(1)} кг`;
-      if (prev?.weight != null) text += ` (${fmtDiff(Number(m.weight) - Number(prev.weight))} к прошлому)`;
-    }
     navigator.clipboard.writeText(text).catch(() => {});
   }
 
@@ -265,7 +260,7 @@ export default function NewMeasurePage() {
     const startTotal = start ? Number(start.total_cm ?? 0) : null;
 
     return (
-      <MeasureLayout active="new">
+      <MeasureLayout>
         <div style={{ padding: '0 16px 80px', maxWidth: 560, margin: '0 auto' }}>
           <div style={{ background: 'linear-gradient(135deg,#02BDB6,#263CD9)', borderRadius: 16, padding: '20px 24px', color: '#fff', marginBottom: 20, textAlign: 'center' }}>
             <div style={{ fontSize: 32, fontWeight: 700 }}>Замер №{m.measure_no} сохранён</div>
@@ -313,13 +308,6 @@ export default function NewMeasurePage() {
             <strong>Итого обхватов: {total.toFixed(1)} см</strong>
             {prevTotal !== null && <span style={{ color: total - prevTotal < 0 ? '#16a34a' : '#f59e0b', marginLeft: 8 }}>{fmtDiff(total - prevTotal)} к прошлому</span>}
             {startTotal !== null && <span style={{ color: total - startTotal < 0 ? '#16a34a' : '#f59e0b', marginLeft: 8 }}>{fmtDiff(total - startTotal)} со старта</span>}
-            {m.weight != null && (
-              <div style={{ marginTop: 6 }}>
-                <strong>Вес: {Number(m.weight).toFixed(1)} кг</strong>
-                {prev?.weight != null && <span style={{ color: Number(m.weight) - Number(prev.weight) < 0 ? '#16a34a' : '#f59e0b', marginLeft: 8 }}>{fmtDiff(Number(m.weight) - Number(prev.weight))} к прошлому</span>}
-                {start?.weight != null && <span style={{ color: Number(m.weight) - Number(start.weight) < 0 ? '#16a34a' : '#f59e0b', marginLeft: 8 }}>{fmtDiff(Number(m.weight) - Number(start.weight))} со старта</span>}
-              </div>
-            )}
           </div>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -336,14 +324,14 @@ export default function NewMeasurePage() {
     );
   }
 
-  const canSave = selectedClient && FIELDS.slice(1).every(f => {
+  const canSave = selectedClient && FIELDS.every(f => {
     const v = parseFloat(values[f.key] || '');
     return !isNaN(v) && v >= f.min && v <= f.max;
   });
   const sum = circSum();
 
   return (
-    <MeasureLayout active="new">
+    <MeasureLayout>
       <div style={{ padding: '0 16px 80px', maxWidth: 560, margin: '0 auto' }}>
 
         {/* Sync button */}

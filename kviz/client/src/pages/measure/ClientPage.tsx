@@ -24,7 +24,6 @@ const BODY_POINTS: { key: CircKey; label: string; x: number; y: number }[] = [
 
 const ALL_ZONES: { key: string; label: string; color: string; isWeight?: boolean }[] = [
   { key: 'total_cm', label: 'Сумма',   color: '#02BDB6' },
-  { key: 'weight',   label: 'Вес',     color: '#263CD9', isWeight: true },
   { key: 'neck',     label: 'Шея',     color: '#f59e0b' },
   { key: 'chest',    label: 'Грудь',   color: '#ec4899' },
   { key: 'arm_l',    label: 'Л.рука',  color: '#8b5cf6' },
@@ -37,7 +36,7 @@ const ALL_ZONES: { key: string; label: string; color: string; isWeight?: boolean
   { key: 'shin_l',   label: 'Л.голень',color: '#64748b' },
   { key: 'shin_r',   label: 'П.голень',color: '#78716c' },
 ];
-const DEFAULT_ZONES = ['total_cm', 'weight'];
+const DEFAULT_ZONES = ['total_cm'];
 const LS_KEY = 'mz_zones';
 
 interface Measurement {
@@ -116,10 +115,9 @@ function BodyFigure({ m, prev, activeZones, activeZone, onZoneClick }: {
       <svg className="figure-leaders" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {BODY_POINTS.map(pt => <line key={pt.key} x1={15 + pt.x * .7} y1={pt.y} x2={sideByKey.get(pt.key) === 'left' ? 27 : 73} y2={rowY.get(pt.key)} stroke="#91a0b7" strokeWidth=".35" />)}
       </svg>
-      {m && BODY_POINTS.map(pt => {
-        const val = m[pt.key] != null ? Number(m[pt.key]) : null;
-        if (val == null) return null;
-        const diff = prev && prev[pt.key] != null ? val - Number(prev[pt.key]) : null;
+      {BODY_POINTS.map(pt => {
+        const val = m?.[pt.key] != null ? Number(m![pt.key]) : null;
+        const diff = val != null && prev && prev[pt.key] != null ? val - Number(prev[pt.key]) : null;
         const active = activeZones.includes(pt.key);
         const zoneColor = ALL_ZONES.find(z => z.key === pt.key)?.color ?? '#02BDB6';
         const side = sideByKey.get(pt.key)!;
@@ -130,7 +128,7 @@ function BodyFigure({ m, prev, activeZones, activeZone, onZoneClick }: {
             style={{ top: `${rowY.get(pt.key)}%`, '--zone-color': zoneColor } as React.CSSProperties}
           >
             <span className="body-callout-label">{pt.label}</span>
-            <strong>{val.toFixed(1)} см</strong>
+            <strong>{val != null ? `${val.toFixed(1)} см` : '—'}</strong>
             {diff !== null && <small style={{ color: diffColor(diff) }}>{fmtDiff(diff)}</small>}
           </div>
         );
@@ -1591,7 +1589,7 @@ export default function ClientPage() {
 
   function openZoneDetail(key: CircKey) { setZoneDetailKey(key); }
 
-  const wrap = (inner: React.ReactElement) => fromReports ? inner : <MeasureLayout active="reports">{inner}</MeasureLayout>;
+  const wrap = (inner: React.ReactElement) => fromReports ? inner : <MeasureLayout>{inner}</MeasureLayout>;
   if (loading) return wrap(<div style={{ padding: 32, color: '#9ca3af' }}>Загрузка…</div>);
   if (loadError) return wrap(<div style={{ padding: 32, color: '#ef4444', fontSize: 14 }}>{loadError}</div>);
   if (!client) return wrap(<div style={{ padding: 32 }}>Клиент не найден</div>);
@@ -1599,13 +1597,16 @@ export default function ClientPage() {
   const ms = client.measurements;
   const first = ms[0], last = ms[ms.length - 1];
   const cmLost = first && last ? Math.max(0, Number(first.total_cm) - Number(last.total_cm)) : 0;
-  const kgLost = first?.weight != null && last?.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
-  const canSendResult = cmLost > 0 || kgLost > 0;
   const firstMAt = ms[0]?.measured_at;
   const firstIBAfterStart = firstMAt ? (inbodyTests.find(t => t.tested_at >= firstMAt) ?? inbodyTests[0]) : inbodyTests[0];
+  const lastIB = inbodyTests[inbodyTests.length - 1];
+  const firstIBWeight = firstIBAfterStart?.weight ?? null;
+  const lastIBWeight  = lastIB?.weight ?? null;
+  const kgLost = firstIBWeight != null && lastIBWeight != null ? Math.max(0, firstIBWeight - lastIBWeight) : null;
   const firstIBFat = firstIBAfterStart?.bfm ?? null;
-  const lastIBFat  = inbodyTests[inbodyTests.length - 1]?.bfm ?? null;
+  const lastIBFat  = lastIB?.bfm ?? null;
   const fatKgLost  = firstIBFat != null && lastIBFat != null ? Math.max(0, firstIBFat - lastIBFat) : null;
+  const canSendResult = cmLost > 0 || (kgLost != null && kgLost > 0) || (fatKgLost != null && fatKgLost > 0);
   const latestIBData = inbodyTests.length > 0 ? (inbodyTests[inbodyTests.length - 1].data ?? null) : null;
   const selectedM = ms.find(m => m.id === selectedMId) ?? last ?? null;
   const selectedIdx = ms.findIndex(m => m.id === selectedMId);
@@ -1667,9 +1668,9 @@ export default function ClientPage() {
               onClick={() => setPrintDialog(true)}>🖨 Бланк</button>
           )}
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
-            onClick={() => setInbodyDialog(true)}>InBody</button>
+            onClick={() => setInbodyDialog(true)}>📷 Скан InBody</button>
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
-            onClick={() => setLinkInBodyDialog(true)}>🔗 InBody</button>
+            onClick={() => setLinkInBodyDialog(true)}>🔗 Привязать InBody</button>
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
             onClick={() => setShareLinkDialog(true)}>🔗 Ссылка</button>
           <button className="btn btn-primary" style={{ fontSize: 13, padding: '6px 12px' }}
@@ -1722,13 +1723,13 @@ export default function ClientPage() {
               <div style={{ fontSize: 12, color: '#64748b' }}>{first && last ? `С замера №${first.measure_no} по №${last.measure_no}` : 'Появится после первого замера'}</div>
               <div className="measure-lost-values">
                 <div className="measure-lost-value"><strong>{cmLost.toFixed(1)}</strong><span>сантиметров</span></div>
-                <div className="measure-lost-value"><strong>{kgLost.toFixed(1)}</strong><span>килограммов</span></div>
-                <div className="measure-lost-value"><strong>{fatKgLost != null ? fatKgLost.toFixed(1) : (studioResult?.fat_kg_lost?.toFixed(1) ?? '—')}</strong><span>жира, кг{fatKgLost == null ? ' · добавьте InBody' : ''}</span></div>
+                <div className="measure-lost-value"><strong>{kgLost != null ? kgLost.toFixed(1) : '—'}</strong><span>килограммов</span></div>
+                <div className="measure-lost-value"><strong>{fatKgLost != null ? fatKgLost.toFixed(1) : '—'}</strong><span>жира, кг</span></div>
               </div>
               <button disabled={!canSendResult || sendingResult} title={!canSendResult ? 'Потерь со старта пока нет' : undefined} onClick={sendStudioResult}>
                 {sendingResult ? 'Отправка…' : studioResult ? 'Обновить результат студии' : 'Отправить в результаты студии'}
               </button>
-              {!canSendResult && <span style={{ marginLeft: 10, fontSize: 12, color: '#64748b' }}>Кнопка станет доступна при снижении суммы обхватов или веса</span>}
+              {!canSendResult && <span style={{ marginLeft: 10, fontSize: 12, color: '#64748b' }}>Кнопка активна при снижении обхватов, веса InBody или жира InBody</span>}
               {resultError && <div style={{ color: '#b91c1c', fontSize: 12, marginTop: 8 }}>{resultError}</div>}
               {studioResult && <div style={{ color: '#047857', fontSize: 12, marginTop: 8 }}>
                 В результатах студии: {Number(studioResult.cm_lost).toFixed(0)} см, {Number(studioResult.kg_lost).toFixed(1)} кг ({new Date(studioResult.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}, {studioResult.sent_by})
@@ -1777,7 +1778,7 @@ export default function ClientPage() {
                   <table className="measure-table">
                     <thead><tr><th>Точка</th><th>№{fromM.measure_no}</th><th>№{toM.measure_no}</th><th>Разница</th></tr></thead>
                     <tbody>
-                      {[{key:'weight',label:'Вес (кг)'}, ...CIRC_KEYS.map(k => ({ key: k, label: ALL_ZONES.find(z => z.key === k)?.label ?? k }))].map(({ key, label }) => {
+                      {CIRC_KEYS.map(k => ({ key: k, label: ALL_ZONES.find(z => z.key === k)?.label ?? k })).map(({ key, label }) => {
                         const a = fromM[key] != null ? Number(fromM[key]) : null;
                         const b = toM[key]   != null ? Number(toM[key])   : null;
                         const d = a != null && b != null ? b - a : null;
@@ -1813,7 +1814,7 @@ export default function ClientPage() {
             <table className="measure-table">
               <thead>
                 <tr>
-                  <th>№</th><th>Дата</th><th>Консультант</th><th>Вес</th>
+                  <th>№</th><th>Дата</th><th>Консультант</th>
                   {CIRC_KEYS.map(k => <th key={k}>{ALL_ZONES.find(z => z.key === k)?.label ?? k}</th>)}
                   <th>∑ см</th><th>Δ пред.</th><th>Δ старт</th><th>Fitbase</th>
                 </tr>
@@ -1830,7 +1831,6 @@ export default function ClientPage() {
                       <td>{m.measure_no}</td>
                       <td>{fmtDate(m.measured_at)}</td>
                       <td style={{ fontSize: 12 }}>{m.consultant}</td>
-                      <td>{m.weight != null ? Number(m.weight).toFixed(1) : '—'}</td>
                       {CIRC_KEYS.map(k => <td key={k}>{m[k] != null ? Number(m[k]).toFixed(1) : '—'}</td>)}
                       <td style={{ fontWeight: 600 }}>{Number(m.total_cm).toFixed(1)}</td>
                       <td style={{ fontWeight: 600, color: dp != null ? diffColor(dp) : '#9ca3af' }}>{dp != null ? fmtDiff(dp) : '—'}</td>

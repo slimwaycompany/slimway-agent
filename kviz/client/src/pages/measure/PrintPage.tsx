@@ -82,8 +82,6 @@ export default function PrintPage() {
     : null;
 
   const totalDelta  = fromM && toM ? Number(toM.total_cm)  - Number(fromM.total_cm)  : null;
-  const weightDelta = fromM && toM && fromM.weight != null && toM.weight != null
-    ? Number(toM.weight) - Number(fromM.weight) : null;
 
   const bellyFrom = fromM ? Number(fromM.belly ?? 0) : null;
   const bellyTo   = toM   ? Number(toM.belly   ?? 0) : null;
@@ -92,7 +90,7 @@ export default function PrintPage() {
     ? `Живот: ${bellyFrom.toFixed(1)} → ${bellyTo.toFixed(1)} (${fmtDiff(bellyTo - bellyFrom)} см)`
     : '';
   const summaryLine2 = totalDelta != null
-    ? `Итого: ${fmtDiff(totalDelta)} см${weightDelta != null ? `, вес ${fmtDiff(weightDelta)} кг` : ''}${daysBetween ? ` за ${daysBetween} дн.` : ''}`
+    ? `Итого: ${fmtDiff(totalDelta)} см${daysBetween ? ` за ${daysBetween} дн.` : ''}`
     : '';
   const summaryLine3 = toM ? `Консультант: ${toM.consultant}` : '';
 
@@ -116,16 +114,10 @@ export default function PrintPage() {
         {client && <Txt x={36} y={12.3} bold size={15}>{client.name}</Txt>}
 
         {/* ДО */}
-        {fromM && <>
-          <Txt x={19.5} y={25.3} size={12} anchor="left">{fmtDateRu(fromM.measured_at)}</Txt>
-          {fromM.weight != null && <Txt x={18} y={29.5} size={13} bold anchor="left">{Number(fromM.weight).toFixed(1)}</Txt>}
-        </>}
+        {fromM && <Txt x={19.5} y={25.3} size={12} anchor="left">{fmtDateRu(fromM.measured_at)}</Txt>}
 
         {/* ПОСЛЕ */}
-        {toM && <>
-          <Txt x={78.5} y={25.3} size={12} anchor="left">{fmtDateRu(toM.measured_at)}</Txt>
-          {toM.weight != null && <Txt x={77} y={29.5} size={13} bold anchor="left">{Number(toM.weight).toFixed(1)}</Txt>}
-        </>}
+        {toM && <Txt x={78.5} y={25.3} size={12} anchor="left">{fmtDateRu(toM.measured_at)}</Txt>}
 
         {/* Measurement rows */}
         {PRINT_ROWS.map(row => {

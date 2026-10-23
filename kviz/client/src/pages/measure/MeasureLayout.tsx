@@ -1,11 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 
 interface Props {
-  active: 'new' | 'reports';
   children: React.ReactNode;
 }
 
-export function MeasureLayout({ active, children }: Props) {
+export function MeasureLayout({ children }: Props) {
   const navigate = useNavigate();
 
   return (
@@ -14,13 +13,9 @@ export function MeasureLayout({ active, children }: Props) {
         <div style={{ maxWidth: 560, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 4, height: 48 }}>
           <span style={{ fontWeight: 700, fontSize: 16, marginRight: 12, color: '#1a1a2e' }}>📏 Замеры</span>
           <button
-            className={`measure-subtab${active === 'new' ? ' active' : ''}`}
+            className="measure-subtab active"
             onClick={() => navigate('/measure/new')}
           >Новый замер</button>
-          <button
-            className={`measure-subtab${active === 'reports' ? ' active' : ''}`}
-            onClick={() => navigate('/measure/reports')}
-          >Отчёты</button>
         </div>
       </div>
       <div>{children}</div>
