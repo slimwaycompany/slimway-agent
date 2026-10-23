@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '../api';
 
-interface FunnelRow { leads: number; in_work: number; booked: number; trial: number; visited: number; bought: number }
+interface FunnelRow { leads: number; in_work: number; trial_booked: number; visited: number; bought: number }
 interface SourceRow extends FunnelRow { source: string }
 interface ManagerRow extends FunnelRow { manager: string }
 interface FunnelData {
@@ -14,12 +14,11 @@ interface FunnelData {
 }
 
 const STAGES: { key: keyof FunnelRow; label: string; color: string }[] = [
-  { key: 'leads',   label: 'Лиды',      color: '#6366f1' },
-  { key: 'in_work', label: 'В работе',  color: '#0ea5e9' },
-  { key: 'booked',  label: 'Записались',color: '#10b981' },
-  { key: 'trial',   label: 'Пробное',   color: '#f59e0b' },
-  { key: 'visited', label: 'Пришли',    color: '#02BDB6' },
-  { key: 'bought',  label: 'Купили',    color: '#263CD9' },
+  { key: 'leads',        label: 'Лиды',               color: '#6366f1' },
+  { key: 'in_work',      label: 'В работе',            color: '#0ea5e9' },
+  { key: 'trial_booked', label: 'Записались на пробное', color: '#10b981' },
+  { key: 'visited',      label: 'Пришли',              color: '#02BDB6' },
+  { key: 'bought',       label: 'Купили',              color: '#263CD9' },
 ];
 
 const SOURCE_SETS: { label: string; values: string[] }[] = [
@@ -41,7 +40,7 @@ function fmtDate(iso: string) {
 
 function FunnelBar({ row, total, color }: { row: FunnelRow; total: number; color?: string }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 4 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 4 }}>
       {STAGES.map(s => {
         const v = row[s.key];
         const barPct = pct(v, total);
@@ -94,9 +93,14 @@ export default function MetricsPage() {
     setSyncing(true); setSyncMsg('');
     try {
       const r = await fetch('/kviz/api/metrics/sync', { method: 'POST', credentials: 'include' });
-      const j = await r.json() as { status?: string };
-      setSyncMsg(j.status === 'accepted' ? 'Синхронизация запущена — данные обновятся через ~30 сек' : JSON.stringify(j));
-      if (j.status === 'accepted') setTimeout(load, 35_000);
+      const j = await r.json() as { ok?: boolean; leads?: number; visits?: number; error?: string };
+      if (j.ok) {
+        const t = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' });
+        setSyncMsg(`Обновлено в ${t} · лидов ${j.leads ?? '?'} · записей ${j.visits ?? '?'}`);
+        await load();
+      } else {
+        setSyncMsg(j.error ?? JSON.stringify(j));
+      }
     } catch (e) { setSyncMsg(String(e)); }
     finally { setSyncing(false); }
   }
@@ -198,14 +202,14 @@ export default function MetricsPage() {
               </div>
 
               {/* Stage header labels */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 4, marginBottom: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 4, marginBottom: 8 }}>
                 {STAGES.map(s => (
                   <div key={s.key} style={{ textAlign: 'center', fontSize: 11, color: '#6b7280', fontWeight: 600 }}>{s.label}</div>
                 ))}
               </div>
 
               {/* Main funnel bars */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 4 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 4 }}>
                 {STAGES.map((s, si) => {
                   const v = data.funnel[s.key];
                   const barH = funnelTotal > 0 ? Math.max(12, (v / funnelTotal) * 120) : 12;

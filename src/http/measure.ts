@@ -350,7 +350,7 @@ export function buildMeasureRouter(): Router {
     try {
       const session = getSession(req);
       if (!session?.display_name) { res.status(401).json({ error: 'Нет сессии' }); return; }
-      const { data: ms, error: msError } = await supabase.from('body_measurements').select('measure_no,total_cm,weight')
+      const { data: ms, error: msError } = await supabase.from('body_measurements').select('measure_no,total_cm,weight,measured_at')
         .eq('client_id', req.params.id).order('measure_no', { ascending: true });
       if (msError) { res.status(500).json({ error: msError.message }); return; }
       if (!ms?.length) { res.status(400).json({ error: 'У клиента пока нет замеров' }); return; }
@@ -358,8 +358,21 @@ export function buildMeasureRouter(): Router {
       const cmLost = Math.max(0, Number(first.total_cm ?? 0) - Number(last.total_cm ?? 0));
       const kgLost = first.weight != null && last.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
       if (cmLost <= 0 && kgLost <= 0) { res.status(400).json({ error: 'Потерь со старта пока нет' }); return; }
-      const body2 = req.body as Record<string, unknown>;
-      const fatKgLost = body2.fat_kg_lost != null ? Number(body2.fat_kg_lost) : null;
+      // fat_kg_lost: auto-calc from InBody (first test after first measurement − last test)
+      let fatKgLost: number | null = null;
+      const { data: clientRow } = await supabase.from('body_clients').select('phone_digits').eq('id', req.params.id).maybeSingle();
+      if (clientRow?.phone_digits) {
+        const firstDate = String(ms[0].measured_at ?? '').slice(0, 10);
+        const { data: ibTests } = await supabase.from('inbody_tests')
+          .select('tested_at,bfm').eq('phone_digits', clientRow.phone_digits)
+          .gte('tested_at', firstDate).order('tested_at', { ascending: true });
+        if (ibTests && ibTests.length >= 2) {
+          const ibFirst = ibTests[0], ibLast = ibTests[ibTests.length - 1];
+          if (ibFirst.bfm != null && ibLast.bfm != null) {
+            fatKgLost = Math.max(0, Number(ibFirst.bfm) - Number(ibLast.bfm));
+          }
+        }
+      }
       const row = { client_id: req.params.id, from_measure_no: 1, to_measure_no: last.measure_no,
         cm_lost: cmLost, kg_lost: kgLost, fat_kg_lost: fatKgLost, sent_by: session.display_name, sent_at: new Date().toISOString() };
       const { data, error } = await supabase.from('studio_results').upsert(row, { onConflict: 'client_id' }).select('*').single();

@@ -4,26 +4,39 @@ import { getSession } from './auth';
 import { acquireLock, releaseLock } from '../core/lock';
 import { runFitbaseCrmSync } from '../jobs/fitbaseCrmSync';
 
-interface Lead { fitbase_id: string; source: string | null; stage: string | null; status: string | null; manager: string | null; client_fitbase_id: number | null }
-interface Visit { client_fitbase_id: number | null; status: number | null; is_trial: boolean }
+interface Lead { fitbase_id: string; source: string | null; stage: string | null; status: string | null; manager: string | null; client_fitbase_id: number | null; client_phone: string | null }
+interface Visit { client_fitbase_id: number | null; status: number | null; is_trial: boolean; client_phone: string | null }
 
 function isAdmin(req: Request, res: Response): boolean {
   if (getSession(req)?.role === 'admin') return true;
   res.status(403).json({ error: 'Только для администратора' }); return false;
 }
 
+function digitsOnly(p: string | null): string | null {
+  if (!p) return null;
+  const d = p.replace(/\D/g, '');
+  return d.length >= 10 ? d.slice(-10) : null;
+}
+
 function buildFunnel(leads: Lead[], visits: Visit[]) {
-  const bookedIds = new Set(visits.filter(v => v.status !== null && [0, 1, 3].includes(v.status)).map(v => v.client_fitbase_id));
-  const visitedIds = new Set(visits.filter(v => v.status === 3).map(v => v.client_fitbase_id));
-  const trialIds = new Set(visits.filter(v => v.is_trial && v.status === 3).map(v => v.client_fitbase_id));
+  // Match by client_fitbase_id OR last-10-digits of phone
+  const trialBookedById   = new Set(visits.filter(v => v.is_trial && v.status !== null && [0,1,3].includes(v.status)).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
+  const trialBookedByPhone = new Set(visits.filter(v => v.is_trial && v.status !== null && [0,1,3].includes(v.status)).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
+  const visitedById        = new Set(visits.filter(v => v.is_trial && v.status === 3).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
+  const visitedByPhone     = new Set(visits.filter(v => v.is_trial && v.status === 3).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
+
+  function matched(id: number | null, phone: string | null, byId: Set<number>, byPhone: Set<string>): boolean {
+    if (id != null && byId.has(id)) return true;
+    const d = digitsOnly(phone);
+    return d != null && byPhone.has(d);
+  }
 
   return {
-    leads:   leads.length,
-    in_work: leads.filter(l => l.status != null && l.status !== '0').length,
-    booked:  leads.filter(l => l.client_fitbase_id != null && bookedIds.has(l.client_fitbase_id)).length,
-    trial:   leads.filter(l => l.client_fitbase_id != null && trialIds.has(l.client_fitbase_id)).length,
-    visited: leads.filter(l => l.client_fitbase_id != null && visitedIds.has(l.client_fitbase_id)).length,
-    bought:  leads.filter(l => l.status === '-1').length,
+    leads:        leads.length,
+    in_work:      leads.filter(l => l.status != null && l.status !== '0').length,
+    trial_booked: leads.filter(l => matched(l.client_fitbase_id, l.client_phone, trialBookedById, trialBookedByPhone)).length,
+    visited:      leads.filter(l => matched(l.client_fitbase_id, l.client_phone, visitedById, visitedByPhone)).length,
+    bought:       leads.filter(l => l.status === '-1').length,
   };
 }
 
@@ -41,7 +54,7 @@ export function buildMetricsRouter(): Router {
 
       let q = supabase
         .from('fitbase_leads')
-        .select('fitbase_id,source,stage,status,manager,client_fitbase_id')
+        .select('fitbase_id,source,stage,status,manager,client_fitbase_id,client_phone')
         .gte('created_date', fromDate)
         .lte('created_date', toDate);
       if (sources.length === 1) q = q.eq('source', sources[0]);
@@ -52,16 +65,13 @@ export function buildMetricsRouter(): Router {
       if (leadsErr) { res.status(500).json({ error: leadsErr.message }); return; }
 
       const allLeads = (leads || []) as Lead[];
-      const clientIds = [...new Set(allLeads.map(l => l.client_fitbase_id).filter((id): id is number => id != null))];
 
-      let allVisits: Visit[] = [];
-      if (clientIds.length > 0) {
-        const { data: v } = await supabase
-          .from('fitbase_visits')
-          .select('client_fitbase_id,status,is_trial')
-          .in('client_fitbase_id', clientIds);
-        allVisits = (v || []) as Visit[];
-      }
+      // Load ALL trial visits — match by client_fitbase_id OR phone
+      const { data: v } = await supabase
+        .from('fitbase_visits')
+        .select('client_fitbase_id,status,is_trial,client_phone')
+        .eq('is_trial', true);
+      const allVisits = (v || []) as Visit[];
 
       const funnel = buildFunnel(allLeads, allVisits);
 
@@ -76,7 +86,7 @@ export function buildMetricsRouter(): Router {
         .sort((a, b) => b[1].length - a[1].length)
         .map(([source, sLeads]) => ({
           source,
-          ...buildFunnel(sLeads, allVisits.filter(v => sLeads.some(l => l.client_fitbase_id === v.client_fitbase_id))),
+          ...buildFunnel(sLeads, allVisits),
         }));
 
       // Breakdown by manager
@@ -90,7 +100,7 @@ export function buildMetricsRouter(): Router {
         .sort((a, b) => b[1].length - a[1].length)
         .map(([mgr, mLeads]) => ({
           manager: mgr,
-          ...buildFunnel(mLeads, allVisits.filter(v => mLeads.some(l => l.client_fitbase_id === v.client_fitbase_id))),
+          ...buildFunnel(mLeads, allVisits),
         }));
 
       // Available sources and managers for filter dropdowns

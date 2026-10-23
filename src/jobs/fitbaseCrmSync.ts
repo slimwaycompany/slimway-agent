@@ -72,12 +72,22 @@ async function syncVisits(): Promise<number> {
   const rows = items.map(visit => {
     const v = visit as Record<string, unknown>;
     const client = v.client as Record<string, unknown> | null ?? null;
-    const training = v.training as Record<string, unknown> | null ?? null;
+    // training, date and time are nested inside the event object
+    const event = v.event as Record<string, unknown> | null ?? null;
+    const training = event?.training as Record<string, unknown> | null ?? null;
     const manager = v.manager as Record<string, unknown> | null ?? null;
     const resourceRaw = v.resource as Record<string, unknown> | string | null ?? null;
     const abonementRaw = v.abonement as Record<string, unknown> | string | null ?? null;
-    const startTs = v.start_date ? Number(v.start_date) * 1000 : null;
+    const dateStr = event?.date as string | null ?? null;         // "2026-10-21"
+    const timeStr = event?.time_start as string | null ?? null;  // "10:00"
     const bookedTs = v.created_at ? Number(v.created_at) * 1000 : null;
+
+    let visit_at: string | null = null;
+    if (dateStr) {
+      const dtStr = timeStr ? `${dateStr}T${timeStr}:00+05:00` : `${dateStr}T00:00:00+05:00`;
+      visit_at = new Date(dtStr).toISOString();
+    }
+
     return {
       fitbase_id: String(v.id),
       client_fitbase_id: client?.id != null ? Number(client.id) : null,
@@ -85,8 +95,8 @@ async function syncVisits(): Promise<number> {
       client_phone: normalizePhone(client?.phone as string | null),
       is_trial: training?.id === TRIAL_TRAINING_ID,
       booked_at: bookedTs ? new Date(bookedTs).toISOString() : null,
-      visit_at: startTs ? new Date(startTs).toISOString() : null,
-      visit_date: startTs ? yekDate(startTs) : null,
+      visit_at,
+      visit_date: dateStr,
       status: v.status != null ? Number(v.status) : null,
       service: (training?.name ?? null) as string | null,
       manager: (manager?.full_name ?? null) as string | null,

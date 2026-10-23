@@ -324,11 +324,20 @@ export function buildManagerRouter(): Router {
 
   r.get('/kviz/api/reports/tasks', async (req, res) => {
     try {
+      const session = getSession(req);
       let q = supabase.from('manager_task_done')
         .select('*, manager_task_templates!inner(title, slot_time, category, weekdays)')
         .order('task_date', { ascending: false }).order('done_at', { ascending: true }).limit(500);
       if (req.query.from) q = q.gte('task_date', String(req.query.from));
       if (req.query.to)   q = q.lte('task_date', String(req.query.to));
+      // manager sees only own tasks; admin can filter by user or see all
+      if (session?.role !== 'admin') {
+        q = q.eq('done_by', session?.login ?? '');
+      } else if (req.query.user) {
+        q = q.eq('done_by_name', String(req.query.user));
+      } else if (req.query.mine === '1') {
+        q = q.eq('done_by', session?.login ?? '');
+      }
       const { data, error } = await q;
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data);
@@ -338,9 +347,74 @@ export function buildManagerRouter(): Router {
   r.get('/kviz/api/reports/studio', async (_req, res) => {
     try {
       const { data, error } = await supabase
-        .from('studio_results').select('*').order('created_at', { ascending: false }).limit(200);
+        .from('studio_results')
+        .select('*, body_clients!inner(name, phone)')
+        .order('sent_at', { ascending: false }).limit(500);
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data ?? []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // InBody report: clients with tests, aggregated (groups by phone_digits)
+  r.get('/kviz/api/reports/inbody', async (req, res) => {
+    try {
+      let q = supabase.from('inbody_tests')
+        .select('id,inbody_id,tested_at,phone,phone_digits,weight,bfm,smm,pbf,inbody_score')
+        .order('tested_at', { ascending: true });
+      if (req.query.from) q = q.gte('tested_at', String(req.query.from));
+      if (req.query.to)   q = q.lte('tested_at', String(req.query.to) + 'T23:59:59');
+      const { data: tests, error } = await q;
+      if (error) { res.status(500).json({ error: error.message }); return; }
+
+      type IbTest = { id: string; inbody_id: string; tested_at: string; phone: string | null; phone_digits: string | null; weight: number | null; bfm: number | null; smm: number | null; pbf: number | null; inbody_score: number | null };
+      const allTests = (tests ?? []) as IbTest[];
+
+      // Group by phone_digits
+      const byDigits = new Map<string, IbTest[]>();
+      for (const t of allTests) {
+        const d = t.phone_digits ?? (t.phone ?? '').replace(/\D/g,'').slice(-10);
+        if (!d) continue;
+        if (!byDigits.has(d)) byDigits.set(d, []);
+        byDigits.get(d)!.push(t);
+      }
+
+      // Lookup names from body_clients via phone_digits
+      const digits = [...byDigits.keys()];
+      const { data: clients } = digits.length
+        ? await supabase.from('body_clients').select('id,name,phone,phone_digits').in('phone_digits', digits)
+        : { data: [] };
+      type ClientRow = { id: string; name: string; phone: string | null; phone_digits: string };
+      const clientByDigits = new Map((clients ?? [] as ClientRow[]).map((c: ClientRow) => [c.phone_digits, c]));
+
+      const rows = [...byDigits.entries()].map(([d, ts]) => {
+        const sorted = ts.sort((a, b) => a.tested_at.localeCompare(b.tested_at));
+        const first = sorted[0], last = sorted[sorted.length - 1];
+        const client = clientByDigits.get(d);
+        return {
+          phone_digits: d,
+          client_id: client?.id ?? null,
+          name: client?.name ?? first.inbody_id,
+          phone: client?.phone ?? first.phone,
+          count: sorted.length,
+          first_date: first.tested_at?.slice(0,10),
+          last_date:  last.tested_at?.slice(0,10),
+          weight_delta: first.weight != null && last.weight != null ? Number(last.weight) - Number(first.weight) : null,
+          bfm_delta:    first.bfm != null    && last.bfm != null    ? Number(last.bfm)   - Number(first.bfm)   : null,
+          smm_delta:    first.smm != null    && last.smm != null    ? Number(last.smm)   - Number(first.smm)   : null,
+          pbf_delta:    first.pbf != null    && last.pbf != null    ? Number(last.pbf)   - Number(first.pbf)   : null,
+          score_first:  first.inbody_score,
+          score_last:   last.inbody_score,
+        };
+      }).sort((a, b) => b.count - a.count);
+
+      const totals = {
+        tests: allTests.length,
+        clients: rows.length,
+        bfm_lost: rows.reduce((s, r) => s + (r.bfm_delta != null && r.bfm_delta < 0 ? -r.bfm_delta : 0), 0),
+        smm_gained: rows.reduce((s, r) => s + (r.smm_delta != null && r.smm_delta > 0 ? r.smm_delta : 0), 0),
+      };
+
+      res.json({ rows, totals, from: req.query.from ?? null, to: req.query.to ?? null });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
