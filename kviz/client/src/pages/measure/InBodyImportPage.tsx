@@ -18,6 +18,7 @@ export default function InBodyImportPage() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [recalcResult, setRecalcResult] = useState<{ updated: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Safe fetch: handles non-JSON 413/500 HTML responses
@@ -51,6 +52,16 @@ export default function InBodyImportPage() {
       const { ok, data: json } = await safePost('/kviz/api/inbody/csv-preview', { rows: previewRows });
       if (!ok) { setError(String(json.error || 'Ошибка предпросмотра')); return; }
       setPreview(json as unknown as Preview);
+    } catch (e) { setError(String(e)); }
+    finally { setLoading(false); }
+  }
+
+  async function doRecalculate() {
+    setLoading(true); setError(''); setRecalcResult(null);
+    try {
+      const { ok, data: json } = await safePost('/kviz/api/inbody/recalculate', {});
+      if (!ok) { setError(String(json.error || 'Ошибка пересчёта')); return; }
+      setRecalcResult({ updated: Number(json.updated ?? 0) });
     } catch (e) { setError(String(e)); }
     finally { setLoading(false); }
   }
@@ -92,12 +103,27 @@ export default function InBodyImportPage() {
         <button
           style={{ padding: '12px 24px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8,
             fontWeight: 600, fontSize: 15, cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit',
-            width: '100%', marginBottom: 16, opacity: loading ? 0.7 : 1 }}
+            width: '100%', marginBottom: 10, opacity: loading ? 0.7 : 1 }}
           onClick={() => fileRef.current?.click()}
           disabled={loading}
         >
           {loading ? 'Обработка…' : 'Выбрать файл CSV…'}
         </button>
+        <button
+          style={{ padding: '10px 24px', background: '#f8fafc', color: '#374151', border: '1px solid #e2e6ea', borderRadius: 8,
+            fontWeight: 600, fontSize: 14, cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit',
+            width: '100%', marginBottom: 16, opacity: loading ? 0.7 : 1 }}
+          onClick={doRecalculate}
+          disabled={loading}
+          title="Пересчитать data и числовые поля для всех CSV-тестов из сохранённого raw"
+        >
+          Пересчитать InBody (исправить CSV)
+        </button>
+        {recalcResult && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 14, color: '#166534' }}>
+            ✓ Пересчитано тестов: <b>{recalcResult.updated}</b>
+          </div>
+        )}
         <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleFile} />
 
         {error && (

@@ -95,9 +95,9 @@ function fmtShortDate(iso: string) {
 
 // ── Body figure ────────────────────────────────────────────────────────────────
 
-function BodyFigure({ m, prev, activeZones, zoomKey, onZoneClick }: {
+function BodyFigure({ m, prev, activeZones, activeZone, onZoneClick }: {
   m: Measurement | null; prev: Measurement | null;
-  activeZones: string[]; zoomKey: CircKey | null; onZoneClick: (key: CircKey) => void;
+  activeZones: string[]; activeZone: CircKey | null; onZoneClick: (key: CircKey) => void;
 }) {
   const leftKeys = new Set<CircKey>(['arm_r', 'thigh_r', 'shin_r']);
   const centerKeys = new Set<CircKey>(['neck', 'chest', 'waist', 'belly', 'glutes']);
@@ -110,12 +110,8 @@ function BodyFigure({ m, prev, activeZones, zoomKey, onZoneClick }: {
   const rows = { left: BODY_POINTS.filter(p => sideByKey.get(p.key) === 'left'), right: BODY_POINTS.filter(p => sideByKey.get(p.key) === 'right') };
   const rowY = new Map<CircKey, number>();
   for (const side of ['left', 'right'] as const) rows[side].forEach((pt, i) => rowY.set(pt.key, 8 + (84 * (i + 1)) / (rows[side].length + 1)));
-  const zoomOy = zoomKey ? (rowY.get(zoomKey) ?? 50) : 50;
-  // Scale: upper zones (neck/chest/arms) → 3.2×; mid → 2.8×; lower (shins) → 3.5×
-  const zoomScale = zoomOy < 32 ? 3.2 : zoomOy > 68 ? 3.5 : 2.8;
   return (
-    <div className={`figure-canvas${zoomKey ? ' figure-zoomed' : ''}`}
-      style={zoomKey ? { '--zoom-oy': `${zoomOy}%`, '--zoom-scale': zoomScale } as React.CSSProperties : {}}>
+    <div className={`figure-canvas${activeZone ? ' figure-blurred' : ''}`}>
       <img className="body-silhouette" src="/kviz/img/body.png" alt="Силуэт фигуры" />
       <svg className="figure-leaders" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {BODY_POINTS.map(pt => <line key={pt.key} x1={15 + pt.x * .7} y1={pt.y} x2={sideByKey.get(pt.key) === 'left' ? 27 : 73} y2={rowY.get(pt.key)} stroke="#91a0b7" strokeWidth=".35" />)}
@@ -130,7 +126,7 @@ function BodyFigure({ m, prev, activeZones, zoomKey, onZoneClick }: {
         return (
           <div key={pt.key}
             onClick={() => onZoneClick(pt.key)}
-            className={`body-callout body-callout-${side} ${active ? 'active' : ''}${zoomKey === pt.key ? ' zoomed-active' : ''}`}
+            className={`body-callout body-callout-${side} ${active ? 'active' : ''}`}
             style={{ top: `${rowY.get(pt.key)}%`, '--zone-color': zoneColor } as React.CSSProperties}
           >
             <span className="body-callout-label">{pt.label}</span>
@@ -778,16 +774,18 @@ const ibBtnSt: React.CSSProperties = { padding: '6px 14px', background: '#eff6ff
 
 type SegKey = 'right_arm' | 'left_arm' | 'trunk' | 'right_leg' | 'left_leg';
 const SEGMENT_MAP: Partial<Record<CircKey, SegKey>> = {
-  arm_r: 'right_arm', arm_l: 'left_arm',
+  neck: 'trunk', arm_r: 'right_arm', arm_l: 'left_arm',
   chest: 'trunk', waist: 'trunk', belly: 'trunk', glutes: 'trunk',
   thigh_r: 'right_leg', thigh_l: 'left_leg',
   shin_r: 'right_leg', shin_l: 'left_leg',
 };
 const SEG_LABELS: Record<SegKey, string> = { right_arm: 'Правая рука', left_arm: 'Левая рука', trunk: 'Туловище', right_leg: 'Правая нога', left_leg: 'Левая нога' };
-const SEG_DATA_KEYS: Record<SegKey, { ffm: string; bfm: string }> = {
-  right_arm: { ffm: 'ffm_ra', bfm: 'bfm_ra' }, left_arm: { ffm: 'ffm_la', bfm: 'bfm_la' },
-  trunk: { ffm: 'ffm_tr', bfm: 'bfm_tr' },
-  right_leg: { ffm: 'ffm_rl', bfm: 'bfm_rl' }, left_leg: { ffm: 'ffm_ll', bfm: 'bfm_ll' },
+const SEG_DATA_KEYS: Record<SegKey, { ffm: string; bfm: string; ffmPct: string; bfmPct: string }> = {
+  right_arm: { ffm: 'ffm_ra', bfm: 'bfm_ra', ffmPct: 'ffm_ra_pct', bfmPct: 'bfm_ra_pct' },
+  left_arm:  { ffm: 'ffm_la', bfm: 'bfm_la', ffmPct: 'ffm_la_pct', bfmPct: 'bfm_la_pct' },
+  trunk:     { ffm: 'ffm_tr', bfm: 'bfm_tr', ffmPct: 'ffm_tr_pct', bfmPct: 'bfm_tr_pct' },
+  right_leg: { ffm: 'ffm_rl', bfm: 'bfm_rl', ffmPct: 'ffm_rl_pct', bfmPct: 'bfm_rl_pct' },
+  left_leg:  { ffm: 'ffm_ll', bfm: 'bfm_ll', ffmPct: 'ffm_ll_pct', bfmPct: 'bfm_ll_pct' },
 };
 
 function ZoneDetailPanel({ zoneKey, ms, latestIBData, onClose }: { zoneKey: CircKey; ms: Measurement[]; latestIBData: Record<string, unknown> | null; onClose: () => void }) {
@@ -834,14 +832,17 @@ function ZoneDetailPanel({ zoneKey, ms, latestIBData, onClose }: { zoneKey: Circ
 
         <div className="zone-panel-history">
           {history.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Нет замеров для этой зоны</div>}
-          {history.map(({ m, prev: p }) => {
+          {history.map(({ m, prev: p }, hi) => {
             const val = Number(m[zoneKey]);
-            const diff = p && p[zoneKey] != null ? val - Number(p[zoneKey]) : null;
+            const diffPrev = p && p[zoneKey] != null ? val - Number(p[zoneKey]) : null;
+            const firstVal = hi > 0 && history[0].m[zoneKey] != null ? Number(history[0].m[zoneKey]) : null;
+            const diffStart = firstVal != null && hi > 0 ? val - firstVal : null;
             return (
               <div key={m.id} className="zone-panel-row">
                 <span className="zone-row-date">№{m.measure_no} · {fmtDate(m.measured_at)}</span>
                 <span className="zone-row-val">{val.toFixed(1)} <span style={{ fontSize: 10, fontWeight: 400 }}>см</span></span>
-                {diff !== null && <span className="zone-row-diff" style={{ color: diffColor(diff) }}>{fmtDiff(diff)}</span>}
+                {diffPrev !== null && <span className="zone-row-diff" style={{ color: diffColor(diffPrev) }}>{fmtDiff(diffPrev)}</span>}
+                {diffStart !== null && <span className="zone-row-diff" style={{ color: diffColor(diffStart), opacity: 0.7 }}>{fmtDiff(diffStart)}</span>}
               </div>
             );
           })}
@@ -865,8 +866,23 @@ function ZoneDetailPanel({ zoneKey, ms, latestIBData, onClose }: { zoneKey: Circ
         {latestIBData && segKey && segDataKeys && (
           <div style={{ fontSize: 12, color: '#374151', marginTop: 8, padding: '6px 10px', background: 'rgba(2,189,182,.06)', borderRadius: 8, border: '1px solid rgba(2,189,182,.2)' }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>InBody · {SEG_LABELS[segKey]}</div>
-            {latestIBData[segDataKeys.ffm] != null && <div>Безжировая: <b>{Number(latestIBData[segDataKeys.ffm]).toFixed(2)} кг</b></div>}
-            {latestIBData[segDataKeys.bfm] != null && <div>Жировая: <b>{Number(latestIBData[segDataKeys.bfm]).toFixed(2)} кг</b></div>}
+            {latestIBData[segDataKeys.ffm] != null && (
+              <div>Безжир.: <b>{Number(latestIBData[segDataKeys.ffm]).toFixed(2)} кг</b>
+                {latestIBData[segDataKeys.ffmPct] != null && <span style={{ color: '#9ca3af', marginLeft: 4 }}>({Number(latestIBData[segDataKeys.ffmPct]).toFixed(1)}%)</span>}
+              </div>
+            )}
+            {latestIBData[segDataKeys.bfm] != null && (
+              <div>Жировая: <b>{Number(latestIBData[segDataKeys.bfm]).toFixed(2)} кг</b>
+                {latestIBData[segDataKeys.bfmPct] != null && <span style={{ color: '#9ca3af', marginLeft: 4 }}>({Number(latestIBData[segDataKeys.bfmPct]).toFixed(1)}%)</span>}
+              </div>
+            )}
+            {segKey === 'trunk' && (
+              <>
+                {latestIBData['vfl'] != null && <div>Висц. жир: <b>{Number(latestIBData['vfl']).toFixed(0)}</b></div>}
+                {latestIBData['whr'] != null && <div>WHR: <b>{Number(latestIBData['whr']).toFixed(2)}</b></div>}
+                {latestIBData['abdomen_circumference'] != null && <div>Окр. живота: <b>{Number(latestIBData['abdomen_circumference']).toFixed(1)} см</b></div>}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1000,17 +1016,36 @@ function LinkInBodyDialog({ clientId, clientPhone, onLinked, onClose }: {
 
 // ── InBody block ─────────────────────────────────────────────────────────────
 
-const IB_METRICS: { key: keyof InBodyTest; label: string; unit: string; norms?: [number, number]; goodDir?: 'low' | 'high' }[] = [
-  { key: 'inbody_score', label: 'Оценка',    unit: '',   norms: [70, 90], goodDir: 'high' },
-  { key: 'weight',       label: 'Вес',       unit: 'кг' },
-  { key: 'pbf',          label: 'Жир',       unit: '%',  norms: [18, 28], goodDir: 'low' },
-  { key: 'bfm',          label: 'Жир кг',    unit: 'кг', goodDir: 'low' },
-  { key: 'smm',          label: 'Мышцы',     unit: 'кг', goodDir: 'high' },
-  { key: 'vfl',          label: 'Висц. жир', unit: '',   norms: [1, 9], goodDir: 'low' },
-  { key: 'bmi',          label: 'ИМТ',       unit: '',   norms: [18.5, 24.9] },
+interface IBMetric {
+  key: keyof InBodyTest;
+  label: string;
+  unit: string;
+  normMin?: string; // key in data for norm min
+  normMax?: string; // key in data for norm max
+  norms?: [number, number]; // static norms fallback
+  goodDir?: 'low' | 'high';
+  decimals?: number;
+}
+
+const IB_METRICS: IBMetric[] = [
+  { key: 'inbody_score', label: 'Оценка',    unit: '',   norms: [70, 90], goodDir: 'high', decimals: 0 },
+  { key: 'weight',       label: 'Вес',       unit: 'кг', normMin: 'weight_min', normMax: 'weight_max' },
+  { key: 'pbf',          label: 'Жир %',     unit: '%',  normMin: 'pbf_min',    normMax: 'pbf_max',  goodDir: 'low' },
+  { key: 'bfm',          label: 'Жир кг',    unit: 'кг', normMin: 'bfm_min',    normMax: 'bfm_max',  goodDir: 'low' },
+  { key: 'smm',          label: 'Мышцы',     unit: 'кг', normMin: 'smm_min',    normMax: 'smm_max',  goodDir: 'high' },
+  { key: 'vfl',          label: 'Висц. жир', unit: '',   norms: [1, 9],         goodDir: 'low', decimals: 0 },
+  { key: 'bmi',          label: 'ИМТ',       unit: '',   normMin: 'bmi_min',    normMax: 'bmi_max' },
 ];
 
-function ibColor(val: number, norms?: [number, number], goodDir?: 'low' | 'high'): string {
+function resolveNorm(m: IBMetric, data: Record<string, unknown> | null): [number, number] | null {
+  if (m.normMin && m.normMax && data) {
+    const lo = data[m.normMin], hi = data[m.normMax];
+    if (typeof lo === 'number' && typeof hi === 'number' && hi > lo) return [lo, hi];
+  }
+  return m.norms ?? null;
+}
+
+function ibColor(val: number, norms: [number, number] | null, goodDir?: 'low' | 'high'): string {
   if (!norms) return '#374151';
   const [lo, hi] = norms;
   if (val >= lo && val <= hi) return '#16a34a';
@@ -1019,16 +1054,298 @@ function ibColor(val: number, norms?: [number, number], goodDir?: 'low' | 'high'
   return '#f59e0b';
 }
 
-type IBChartKey = 'weight' | 'smm' | 'pbf';
-const IB_CHART_LINES: { key: IBChartKey; label: string; color: string; dashed?: boolean }[] = [
-  { key: 'weight', label: 'Вес кг', color: '#263CD9', dashed: true },
-  { key: 'smm',    label: 'Мышцы кг', color: '#02BDB6' },
-  { key: 'pbf',    label: '% жира',   color: '#ef4444' },
+type IBChartKey = 'weight' | 'smm' | 'bfm' | 'pbf' | 'tbw' | 'inbody_score';
+const IB_CHART_LINES: { key: IBChartKey; label: string; color: string; dashed?: boolean; dataKey?: string }[] = [
+  { key: 'weight',       label: 'Вес кг',      color: '#263CD9', dashed: true },
+  { key: 'smm',          label: 'Мышцы кг',    color: '#02BDB6' },
+  { key: 'bfm',          label: 'Жир кг',      color: '#ef4444' },
+  { key: 'pbf',          label: '% жира',      color: '#f97316' },
+  { key: 'tbw',          label: 'Вода л',      color: '#06b6d4', dataKey: 'tbw' },
+  { key: 'inbody_score', label: 'Оценка',      color: '#8b5cf6' },
 ];
+
+// ── InBody Full Sheet popup ────────────────────────────────────────────────────
+
+function ibBarPct(val: number, lo: number, hi: number): number {
+  // Normalize val to % position on bar: lo=25%, hi=75%
+  const span = hi - lo;
+  if (span <= 0) return 50;
+  const extra = span * 0.5; // 50% padding on each side
+  const total = span + 2 * extra;
+  return Math.max(2, Math.min(98, ((val - (lo - extra)) / total) * 100));
+}
+
+function NormBar({ val, lo, hi, goodDir, unit = '' }: { val: number | null; lo: number | null; hi: number | null; goodDir?: 'low' | 'high'; unit?: string }) {
+  if (val == null || lo == null || hi == null) return <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>;
+  const pct = ibBarPct(val, lo, hi);
+  const color = ibColor(val, [lo, hi], goodDir);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 4, position: 'relative', overflow: 'visible' }}>
+        <div style={{ position: 'absolute', left: '25%', right: '25%', height: '100%', background: '#dcfce7', borderRadius: 2 }} />
+        <div style={{ position: 'absolute', left: `${pct}%`, top: -2, width: 12, height: 12, background: color, borderRadius: '50%', transform: 'translateX(-50%)', border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 40, textAlign: 'right' }}>{val.toFixed(1)}{unit}</span>
+    </div>
+  );
+}
+
+function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; firstTest: InBodyTest | null; onClose: () => void }) {
+  const [selIdx, setSelIdx] = useState(tests.length - 1);
+  const [compare, setCompare] = useState(false);
+  const t = tests[selIdx] ?? tests[tests.length - 1];
+  const d = t?.data as Record<string, unknown> | null ?? null;
+  const f = firstTest?.data as Record<string, unknown> | null ?? null;
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  if (!t) return null;
+
+  function n(key: string): number | null {
+    const v = d?.[key];
+    return typeof v === 'number' ? v : null;
+  }
+  function fn(key: string): number | null {
+    const v = f?.[key];
+    return typeof v === 'number' ? v : null;
+  }
+  function diff(a: number | null, b: number | null): string {
+    if (a == null || b == null) return '';
+    const d = b - a;
+    return (d >= 0 ? '+' : '') + d.toFixed(1);
+  }
+  function diffColor2(a: number | null, b: number | null, goodDir?: 'low' | 'high'): string {
+    if (a == null || b == null) return '#9ca3af';
+    const d = b - a;
+    if (d === 0) return '#9ca3af';
+    if (goodDir === 'low') return d > 0 ? '#ef4444' : '#16a34a';
+    if (goodDir === 'high') return d > 0 ? '#16a34a' : '#ef4444';
+    return '#374151';
+  }
+
+  const score = t.inbody_score;
+  const scoreColor = score != null ? ibColor(score, [70, 90], 'high') : '#9ca3af';
+
+  function Row({ label, val, unit = '', normMin, normMax, goodDir, fKey }: {
+    label: string; val: number | null; unit?: string;
+    normMin?: string; normMax?: string; goodDir?: 'low' | 'high'; fKey?: string;
+  }) {
+    const lo = normMin ? n(normMin) : null;
+    const hi = normMax ? n(normMax) : null;
+    const fVal = fKey ? fn(fKey) : null;
+    return (
+      <tr>
+        <td style={{ padding: '4px 8px', fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap' }}>{label}</td>
+        <td style={{ padding: '4px 8px', fontSize: 13, fontWeight: 700, color: val != null && lo != null && hi != null ? ibColor(val, [lo, hi], goodDir) : '#374151' }}>
+          {val != null ? val.toFixed(1) + unit : '—'}
+        </td>
+        <td style={{ padding: '4px 8px', fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+          {lo != null && hi != null ? `${lo.toFixed(1)}–${hi.toFixed(1)}` : ''}
+        </td>
+        {compare && <td style={{ padding: '4px 8px', fontSize: 12, fontWeight: 600, color: diffColor2(fVal, val, goodDir) }}>
+          {diff(fVal, val)}
+        </td>}
+      </tr>
+    );
+  }
+
+  function SegRow({ label, ffm, bfm }: { label: string; ffm: string; bfm: string }) {
+    const ffmV = n(ffm), bfmV = n(bfm);
+    const ffmF = fn(ffm), bfmF = fn(bfm);
+    return (
+      <tr>
+        <td style={{ padding: '3px 6px', fontSize: 11, color: '#6b7280' }}>{label}</td>
+        <td style={{ padding: '3px 6px', fontSize: 12, fontWeight: 600, color: '#02BDB6' }}>
+          {ffmV != null ? ffmV.toFixed(2) : '—'}{compare && ffmF != null && ffmV != null ? <span style={{ fontSize: 10, color: diffColor2(ffmF, ffmV, 'high'), marginLeft: 3 }}>{diff(ffmF, ffmV)}</span> : null}
+        </td>
+        <td style={{ padding: '3px 6px', fontSize: 12, fontWeight: 600, color: '#f97316' }}>
+          {bfmV != null ? bfmV.toFixed(2) : '—'}{compare && bfmF != null && bfmV != null ? <span style={{ fontSize: 10, color: diffColor2(bfmF, bfmV, 'low'), marginLeft: 3 }}>{diff(bfmF, bfmV)}</span> : null}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: 14, width: 'min(860px,96vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 12px 48px rgba(0,0,0,.3)' }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid #e2e6ea', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+          <div style={{ fontSize: 28, fontWeight: 800, color: scoreColor, minWidth: 56 }}>
+            {score != null ? score.toFixed(0) : '—'}<span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af', marginLeft: 2 }}>pts</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Полный лист InBody</div>
+            <select value={selIdx} onChange={e => setSelIdx(Number(e.target.value))}
+              style={{ fontSize: 12, border: '1px solid #e2e6ea', borderRadius: 6, padding: '2px 6px', fontFamily: 'inherit', marginTop: 2 }}>
+              {tests.map((t, i) => <option key={t.id} value={i}>{fmtDate(t.tested_at)} ({t.source})</option>)}
+            </select>
+          </div>
+          {firstTest && firstTest.id !== t.id && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} />
+              Сравнить с первым
+            </label>
+          )}
+          <button onClick={onClose} style={{ fontSize: 22, background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {/* Left column */}
+          <div>
+            {/* Body composition */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Состав тела</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr><th style={{ padding: '3px 8px', fontSize: 11, color: '#9ca3af', textAlign: 'left', fontWeight: 400 }}>Показатель</th><th style={{ textAlign: 'left', padding: '3px 8px', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Значение</th><th style={{ textAlign: 'left', padding: '3px 8px', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Норма</th>{compare && <th style={{ padding: '3px 8px', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Δ</th>}</tr></thead>
+                <tbody>
+                  <Row label="Вода (л)" val={n('tbw')} normMin="tbw_min" normMax="tbw_max" fKey="tbw" goodDir="high" />
+                  <Row label="Белок (кг)" val={n('protein')} normMin="protein_min" normMax="protein_max" fKey="protein" goodDir="high" />
+                  <Row label="Минералы (кг)" val={n('minerals')} normMin="minerals_min" normMax="minerals_max" fKey="minerals" goodDir="high" />
+                  <Row label="Жир (кг)" val={n('bfm')} normMin="bfm_min" normMax="bfm_max" fKey="bfm" goodDir="low" />
+                  <Row label="Вес (кг)" val={n('weight')} normMin="weight_min" normMax="weight_max" fKey="weight" />
+                </tbody>
+              </table>
+            </div>
+
+            {/* Muscle–fat analysis */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Мышцы–жир</div>
+              {([
+                { label: 'Вес (кг)', val: n('weight'), lo: n('weight_min'), hi: n('weight_max'), fKey: 'weight' },
+                { label: 'Мышцы кг', val: n('smm'), lo: n('smm_min'), hi: n('smm_max'), goodDir: 'high' as const, fKey: 'smm' },
+                { label: 'Жир кг', val: n('bfm'), lo: n('bfm_min'), hi: n('bfm_max'), goodDir: 'low' as const, fKey: 'bfm' },
+              ]).map(({ label, val, lo, hi, goodDir, fKey }) => (
+                <div key={label} style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                    <span style={{ color: '#6b7280' }}>{label}</span>
+                    {compare && fn(fKey) != null && val != null && <span style={{ fontSize: 11, color: diffColor2(fn(fKey), val, goodDir) }}>{diff(fn(fKey), val)}</span>}
+                  </div>
+                  <NormBar val={val} lo={lo} hi={hi} goodDir={goodDir} />
+                </div>
+              ))}
+            </div>
+
+            {/* Obesity */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Ожирение</div>
+              {([
+                { label: 'ИМТ', val: n('bmi'), lo: n('bmi_min'), hi: n('bmi_max'), fKey: 'bmi' },
+                { label: '% жира', val: n('pbf'), lo: n('pbf_min'), hi: n('pbf_max'), goodDir: 'low' as const, fKey: 'pbf' },
+              ]).map(({ label, val, lo, hi, goodDir, fKey }) => (
+                <div key={label} style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                    <span style={{ color: '#6b7280' }}>{label}</span>
+                    {compare && fn(fKey) != null && val != null && <span style={{ fontSize: 11, color: diffColor2(fn(fKey), val, goodDir) }}>{diff(fn(fKey), val)}</span>}
+                  </div>
+                  <NormBar val={val} lo={lo} hi={hi} goodDir={goodDir} />
+                </div>
+              ))}
+            </div>
+
+            {/* Segments */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 6 }}>Сегменты (кг)</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  <th style={{ padding: '3px 6px', fontSize: 11, color: '#9ca3af', textAlign: 'left', fontWeight: 400 }}>Зона</th>
+                  <th style={{ padding: '3px 6px', fontSize: 11, color: '#02BDB6', textAlign: 'left', fontWeight: 600 }}>Безжир.</th>
+                  <th style={{ padding: '3px 6px', fontSize: 11, color: '#f97316', textAlign: 'left', fontWeight: 600 }}>Жир</th>
+                </tr></thead>
+                <tbody>
+                  <SegRow label="Правая рука" ffm="ffm_ra" bfm="bfm_ra" />
+                  <SegRow label="Левая рука"  ffm="ffm_la" bfm="bfm_la" />
+                  <SegRow label="Туловище"    ffm="ffm_tr" bfm="bfm_tr" />
+                  <SegRow label="Правая нога" ffm="ffm_rl" bfm="bfm_rl" />
+                  <SegRow label="Левая нога"  ffm="ffm_ll" bfm="bfm_ll" />
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Right column */}
+          <div>
+            <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Контроль и цели</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  {[
+                    { label: 'Идеальный вес', key: 'target_weight', unit: ' кг' },
+                    { label: 'Контроль веса', key: 'weight_control', unit: ' кг' },
+                    { label: 'Контроль жира', key: 'bfm_control', unit: ' кг' },
+                    { label: 'Контроль мышц', key: 'ffm_control', unit: ' кг' },
+                  ].map(({ label, key, unit }) => (
+                    <tr key={key}>
+                      <td style={{ padding: '3px 0', fontSize: 12, color: '#6b7280' }}>{label}</td>
+                      <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: '#374151' }}>
+                        {n(key) != null ? n(key)!.toFixed(1) + unit : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Дополнительно</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  {[
+                    { label: 'Висц. жир (ед.)', key: 'vfl', unit: '' },
+                    { label: 'Талия/бёдра (WHR)', key: 'whr', unit: '' },
+                    { label: 'Окр. живота (см)', key: 'abdomen_circumference', unit: '' },
+                    { label: 'Степень ожирения', key: 'obesity_degree', unit: '%' },
+                    { label: 'ИСМ (SMI)', key: 'smi', unit: '' },
+                    { label: 'Безжировая масса', key: 'ffm', unit: ' кг' },
+                  ].map(({ label, key, unit }) => {
+                    const val = key === 'ffm' ? t.ffm : n(key);
+                    return (
+                      <tr key={key}>
+                        <td style={{ padding: '3px 0', fontSize: 12, color: '#6b7280' }}>{label}</td>
+                        <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: '#374151' }}>
+                          {val != null ? val.toFixed(key === 'vfl' || key === 'smi' ? 0 : 2) + unit : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ background: 'rgba(2,189,182,.06)', border: '1px solid rgba(2,189,182,.2)', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Обмен веществ</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: '3px 0', fontSize: 12, color: '#6b7280' }}>Базальный метаболизм</td>
+                    <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: '#374151' }}>
+                      {t.bmr != null ? `${t.bmr.toFixed(0)} ккал` : '—'}
+                      {n('bmr_min') != null && n('bmr_max') != null && <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 4 }}>({n('bmr_min')!.toFixed(0)}–{n('bmr_max')!.toFixed(0)})</span>}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '3px 0', fontSize: 12, color: '#6b7280' }}>Рекомендуемые ккал</td>
+                    <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: '#374151' }}>
+                      {n('recommended_kcal') != null ? `${n('recommended_kcal')!.toFixed(0)} ккал` : '—'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan: () => void; onUnlink: () => void }) {
   const [expanded, setExpanded] = useState(false);
-  const [ibLines, setIbLines] = useState<IBChartKey[]>(['weight', 'smm', 'pbf']);
+  const [ibLines, setIbLines] = useState<IBChartKey[]>(['weight', 'smm', 'bfm']);
+  const [fullSheet, setFullSheet] = useState(false);
 
   if (tests.length === 0) {
     return (
@@ -1050,10 +1367,13 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
   const iW = W - PL - PR, iH = H - PT - PB;
 
   function ibChartRange(key: IBChartKey) {
+    const line = IB_CHART_LINES.find(l => l.key === key);
     let mn = Infinity, mx = -Infinity;
     for (const t of tests) {
-      const v = t[key];
-      if (v != null) { mn = Math.min(mn, v); mx = Math.max(mx, v); }
+      const v = line?.dataKey
+        ? (t.data as Record<string,unknown> | null)?.[line.dataKey]
+        : t[key as keyof InBodyTest];
+      if (v != null) { mn = Math.min(mn, Number(v)); mx = Math.max(mx, Number(v)); }
     }
     if (mn === Infinity) return null;
     const rng = mx - mn || 1;
@@ -1066,26 +1386,40 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
   return (
     <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, marginBottom: 14, overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9' }}>
+      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>InBody · {tests.length} тест{tests.length > 1 ? 'ов' : ''}</span>
-        <button onClick={onScan} style={ibBtnSt}>+ Сканировать</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setFullSheet(true)} style={{ ...ibBtnSt, background: 'rgba(2,189,182,.08)', color: '#02BDB6', border: '1px solid rgba(2,189,182,.3)' }}>Полный лист</button>
+          <button onClick={onScan} style={ibBtnSt}>+ Сканировать</button>
+        </div>
       </div>
+      {fullSheet && <InBodyFullSheet tests={tests} firstTest={tests[0] ?? null} onClose={() => setFullSheet(false)} />}
 
-      {/* Latest test metrics */}
+      {/* Latest test metrics with norms and arrows */}
       <div style={{ padding: '12px 16px' }}>
         <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>
           Последний: {fmtDate(last.tested_at)} ({last.source === 'qr' ? 'QR' : 'CSV'})
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '8px 12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '8px 12px' }}>
           {IB_METRICS.map(m => {
             const v = last[m.key];
             if (v == null) return null;
+            const norm = resolveNorm(m, last.data);
+            const col = ibColor(Number(v), norm, m.goodDir);
+            const prev = tests.length > 1 ? tests[tests.length - 2][m.key] : null;
+            let arrow = '';
+            if (prev != null) {
+              const d = Number(v) - Number(prev);
+              if (Math.abs(d) > 0.05) arrow = d > 0 ? ' ↑' : ' ↓';
+            }
+            const decimals = m.decimals ?? 1;
             return (
               <div key={String(m.key)} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 18, fontWeight: 700, color: ibColor(Number(v), m.norms, m.goodDir), lineHeight: 1.1 }}>
-                  {Number(v).toFixed(m.key === 'inbody_score' || m.key === 'vfl' ? 0 : 1)}{m.unit}
+                <div style={{ fontSize: 17, fontWeight: 700, color: col, lineHeight: 1.1 }}>
+                  {Number(v).toFixed(decimals)}{m.unit}<span style={{ fontSize: 11, color: col }}>{arrow}</span>
                 </div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{m.label}</div>
+                {norm && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>{norm[0].toFixed(1)}–{norm[1].toFixed(1)}</div>}
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{m.label}</div>
               </div>
             );
           })}
@@ -1118,7 +1452,7 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
               const range = ibChartRange(l.key);
               if (!range) return null;
               const pathParts = tests.map((t, i) => {
-                const v = t[l.key];
+                const v = l.dataKey ? (t.data as Record<string,unknown> | null)?.[l.dataKey] : t[l.key as keyof InBodyTest];
                 if (v == null) return null;
                 return `${i === 0 ? 'M' : 'L'}${tx(i).toFixed(1)},${ty(Number(v), range.mn, range.mx).toFixed(1)}`;
               }).filter(Boolean).join(' ');
@@ -1129,7 +1463,7 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
               const range = ibChartRange(l.key);
               if (!range) return null;
               return tests.map((t, i) => {
-                const v = t[l.key];
+                const v = l.dataKey ? (t.data as Record<string,unknown> | null)?.[l.dataKey] : t[l.key as keyof InBodyTest];
                 if (v == null) return null;
                 const isLast = i === tests.length - 1;
                 return (
@@ -1144,7 +1478,6 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
                 );
               });
             })}
-            {/* Y axis labels — first active metric */}
             {(() => {
               const firstKey = IB_CHART_LINES.find(l => ibLines.includes(l.key))?.key;
               if (!firstKey) return null;
@@ -1264,7 +1597,9 @@ export default function ClientPage() {
   const cmLost = first && last ? Math.max(0, Number(first.total_cm) - Number(last.total_cm)) : 0;
   const kgLost = first?.weight != null && last?.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0;
   const canSendResult = cmLost > 0 || kgLost > 0;
-  const firstIBFat = inbodyTests[0]?.bfm ?? null;
+  const firstMAt = ms[0]?.measured_at;
+  const firstIBAfterStart = firstMAt ? (inbodyTests.find(t => t.tested_at >= firstMAt) ?? inbodyTests[0]) : inbodyTests[0];
+  const firstIBFat = firstIBAfterStart?.bfm ?? null;
   const lastIBFat  = inbodyTests[inbodyTests.length - 1]?.bfm ?? null;
   const fatKgLost  = firstIBFat != null && lastIBFat != null ? Math.max(0, firstIBFat - lastIBFat) : null;
   const latestIBData = inbodyTests.length > 0 ? (inbodyTests[inbodyTests.length - 1].data ?? null) : null;
@@ -1375,7 +1710,7 @@ export default function ClientPage() {
 
         <div className="measure-client-grid">
           <aside className="measure-figure-column">
-            <ErrorBlock label="Фигура"><BodyFigure m={mergedM} prev={prevM} activeZones={zones} zoomKey={zoneDetailKey} onZoneClick={openZoneDetail} /></ErrorBlock>
+            <ErrorBlock label="Фигура"><BodyFigure m={mergedM} prev={prevM} activeZones={zones} activeZone={zoneDetailKey} onZoneClick={openZoneDetail} /></ErrorBlock>
           </aside>
           <section>
             <div className="measure-lost-card">
