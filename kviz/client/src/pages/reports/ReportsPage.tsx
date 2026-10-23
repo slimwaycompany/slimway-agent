@@ -29,7 +29,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'funnel' | 'occupancy' | 'settings';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'funnel' | 'occupancy' | 'settings' | 'measures' | 'inbody' | 'mission';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -71,17 +71,48 @@ const today = new Date().toISOString().slice(0, 10);
 const monthStart = today.slice(0, 7) + '-01';
 const SHIFT_STATUS: Record<string, string> = { open: 'открыта', closed: 'закрыта', auto_closed: 'авто' };
 
-// ── Board definition ──────────────────────────────────────────────────────────
+// ── Board definition (columns layout) ────────────────────────────────────────
 
-const BOARD_SECTIONS: { id: Section; icon: string; label: string; desc: string; adminOnly: boolean }[] = [
-  { id: 'shifts',    icon: '📅', label: 'Смены',           desc: 'Отметки, часы, сотрудники',        adminOnly: false },
-  { id: 'tasks',     icon: '✅', label: 'Личные задачи',   desc: 'Выполнение задач по периоду',       adminOnly: false },
-  { id: 'funnel',    icon: '📈', label: 'Воронки',         desc: 'Лиды, конверсия, источники',        adminOnly: true  },
-  { id: 'sales',     icon: '💰', label: 'Продажи',         desc: 'Операции Fitbase, разбивка',        adminOnly: true  },
-  { id: 'occupancy', icon: '🗓️', label: 'Занятия',         desc: 'Загруженность по часам и дням',    adminOnly: true  },
-  { id: 'studio',    icon: '🏅', label: 'Результаты студии', desc: 'Итого по всем клиентам',          adminOnly: true  },
-  { id: 'settings',  icon: '⚙️', label: 'Настройки',        desc: 'Импорт InBody, пересчёт, без клиента', adminOnly: true  },
+const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section; label: string; desc: string; adminOnly: boolean }[] }[] = [
+  {
+    title: 'Менеджер', adminOnly: false,
+    items: [
+      { id: 'tasks',  label: 'Задачи',   desc: 'Выполнение задач по периоду', adminOnly: false },
+      { id: 'shifts', label: 'Смены',    desc: 'Отметки, часы, сотрудники',   adminOnly: false },
+    ],
+  },
+  {
+    title: 'Продажи', adminOnly: true,
+    items: [
+      { id: 'sales',  label: 'Отчёт по продажам', desc: 'Операции Fitbase, разбивка', adminOnly: true },
+    ],
+  },
+  {
+    title: 'Клиенты', adminOnly: false,
+    items: [
+      { id: 'measures',  label: 'Отчёт по замерам тела', desc: 'Список клиентов, история замеров', adminOnly: false },
+      { id: 'inbody',    label: 'Отчёт по InBody',       desc: 'Клиенты с тестами InBody',         adminOnly: false },
+      { id: 'studio',    label: 'Результаты студии',      desc: 'Итого по всем клиентам',           adminOnly: false },
+      { id: 'occupancy', label: 'Занятия и загруженность', desc: 'Загруженность по часам и дням', adminOnly: true },
+    ],
+  },
+  {
+    title: 'Маркетинг', adminOnly: true,
+    items: [
+      { id: 'funnel', label: 'Воронка', desc: 'Лиды, конверсия, источники', adminOnly: true },
+    ],
+  },
+  {
+    title: 'Настройки', adminOnly: true,
+    items: [
+      { id: 'settings', label: 'InBody: импорт, пересчёт, без клиента', desc: '', adminOnly: true },
+      { id: 'mission',  label: 'Миссия студии',                         desc: '', adminOnly: true },
+    ],
+  },
 ];
+
+// flat list for header title lookup
+const ALL_SECTIONS = REPORT_COLUMNS.flatMap(c => c.items);
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -98,9 +129,9 @@ export default function ReportsPage() {
       .catch(() => {});
   }, []);
 
-  function openSection(s: Section) {
-    setSection(s);
-    try { sessionStorage.setItem('reports-section', s); } catch {}
+  function openSection(sec: Section) {
+    setSection(sec);
+    try { sessionStorage.setItem('reports-section', sec); } catch {}
   }
   function backToBoard() {
     setSection(null);
@@ -108,7 +139,6 @@ export default function ReportsPage() {
   }
 
   const isAdmin = role === 'admin';
-  const visibleSections = BOARD_SECTIONS.filter(s => !s.adminOnly || isAdmin);
 
   return (
     <div style={s.root}>
@@ -116,40 +146,47 @@ export default function ReportsPage() {
         {section ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button style={s.backBtn} onClick={backToBoard}>← Все отчёты</button>
-            <span style={s.title}>{BOARD_SECTIONS.find(b => b.id === section)?.label}</span>
+            <span style={s.title}>{ALL_SECTIONS.find(b => b.id === section)?.label}</span>
           </div>
         ) : (
           <span style={s.title}>Отчёты</span>
         )}
       </div>
 
-      {/* Board */}
+      {/* Board — column layout */}
       {!section && (
         <div style={s.board}>
-          {visibleSections.map(sec => (
-            <button key={sec.id} style={s.boardCard} onClick={() => openSection(sec.id)}>
-              <span style={{ fontSize: 28 }}>{sec.icon}</span>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#1a202c' }}>{sec.label}</span>
-              <span style={{ fontSize: 12, color: '#64748b' }}>{sec.desc}</span>
-            </button>
-          ))}
-          {/* Замеры — opens measure reports in the measure pane via postMessage */}
-          <button style={s.boardCard} onClick={() => window.parent.postMessage({ type: 'open-measure', path: '/kviz/measure/reports' }, '*')}>
-            <span style={{ fontSize: 28 }}>📏</span>
-            <span style={{ fontWeight: 700, fontSize: 14, color: '#1a202c' }}>Замеры</span>
-            <span style={{ fontSize: 12, color: '#64748b' }}>Список клиентов, отчёты замеров</span>
-          </button>
+          {REPORT_COLUMNS
+            .filter(col => !col.adminOnly || isAdmin)
+            .map(col => {
+              const items = col.items.filter(it => !it.adminOnly || isAdmin);
+              if (!items.length) return null;
+              return (
+                <div key={col.title} style={s.column}>
+                  <div style={s.colTitle}>{col.title}</div>
+                  {items.map(it => (
+                    <button key={it.id} style={s.colItem} onClick={() => openSection(it.id)}>
+                      <span style={s.colItemLabel}>{it.label}</span>
+                      {it.desc && <span style={s.colItemDesc}>{it.desc}</span>}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
         </div>
       )}
 
       {/* Sections */}
-      {section === 'shifts'    && isAdmin !== undefined && <ShiftsSection />}
-      {section === 'tasks'     && <TasksSection />}
+      {section === 'shifts'    && <ShiftsSection />}
+      {section === 'tasks'     && <TasksSection isAdmin={isAdmin} />}
+      {section === 'measures'  && <MeasuresSection />}
+      {section === 'inbody'    && <InBodySection />}
       {section === 'funnel'    && isAdmin && <div style={{ flex: 1, overflow: 'auto', height: 'calc(100vh - 53px)' }}><MetricsPage /></div>}
       {section === 'sales'     && isAdmin && <SalesSection />}
       {section === 'occupancy' && isAdmin && <OccupancySection />}
-      {section === 'studio'    && isAdmin && <StudioSection />}
+      {section === 'studio'    && <StudioSection isAdmin={isAdmin} />}
       {section === 'settings'  && isAdmin && <SettingsSection />}
+      {section === 'mission'   && isAdmin && <MissionSection />}
     </div>
   );
 }
@@ -297,19 +334,21 @@ function ShiftsSection() {
 
 // ── Tasks section ─────────────────────────────────────────────────────────────
 
-function TasksSection() {
-  const [from, setFrom]   = useState(monthStart);
-  const [to, setTo]       = useState(today);
-  const [tasks, setTasks] = useState<TaskDone[]>([]);
+function TasksSection({ isAdmin }: { isAdmin: boolean }) {
+  const [from, setFrom]     = useState(monthStart);
+  const [to, setTo]         = useState(today);
+  const [tasks, setTasks]   = useState<TaskDone[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/kviz/api/reports/tasks?from=${from}&to=${to}`, { credentials: 'include' });
+      const mine = !isAdmin || !showAll ? '&mine=1' : '';
+      const r = await fetch(`/kviz/api/reports/tasks?from=${from}&to=${to}${mine}`, { credentials: 'include' });
       setTasks(r.ok ? await r.json() : []);
     } catch {} finally { setLoading(false); }
-  }, [from, to]);
+  }, [from, to, isAdmin, showAll]);
 
   const byPerson = useMemo(() => {
     const map = new Map<string, number>();
@@ -324,6 +363,12 @@ function TasksSection() {
         <span style={{ color: '#64748b' }}>—</span>
         <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
         <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
+        {isAdmin && (
+          <button style={{ ...s.csvBtn, background: showAll ? '#263CD9' : undefined, color: showAll ? '#fff' : undefined, borderColor: showAll ? '#263CD9' : undefined }}
+            onClick={() => setShowAll(v => !v)}>
+            {showAll ? 'Все' : 'Мои'}
+          </button>
+        )}
         {tasks.length > 0 && (
           <button style={s.csvBtn} onClick={() => {
             downloadCSV([
@@ -361,33 +406,88 @@ function TasksSection() {
 
 // ── Studio section ────────────────────────────────────────────────────────────
 
-function StudioSection() {
-  const [studio, setStudio]   = useState<Record<string, unknown>[]>([]);
-  const [loading, setLoading] = useState(false);
+interface StudioRow {
+  id: string; client_id: string; cm_lost: number; kg_lost: number;
+  fat_kg_lost: number | null; sent_by: string; sent_at: string;
+  body_clients: { name: string; phone: string | null };
+}
+
+function StudioSection({ isAdmin }: { isAdmin: boolean }) {
+  const [studio, setStudio]     = useState<StudioRow[]>([]);
+  const [loading, setLoading]   = useState(false);
+  const [tvUrl, setTvUrl]       = useState('');
+  const [showTv, setShowTv]     = useState(false);
+  const [copied, setCopied]     = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    fetch('/kviz/api/reports/studio', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : [])
-      .then(setStudio)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+    Promise.all([
+      fetch('/kviz/api/reports/studio', { credentials: 'include' }).then(r => r.ok ? r.json() : []),
+      isAdmin
+        ? fetch('/kviz/api/results/mission', { credentials: 'include' }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+        : Promise.resolve({}),
+    ]).then(([rows, mission]) => {
+      setStudio(rows);
+      if (mission?.display_url) setTvUrl(window.location.origin + mission.display_url);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [isAdmin]);
+
+  async function copyLink() {
+    await navigator.clipboard.writeText(tvUrl);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
     <div style={s.section}>
+      {/* TV preview / link */}
+      {isAdmin && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          <button style={{ ...s.loadBtn }} onClick={() => setShowTv(v => !v)}>
+            {showTv ? 'Скрыть ТВ' : 'Показать на ТВ'}
+          </button>
+          {tvUrl && (
+            <button style={s.csvBtn} onClick={copyLink}>
+              {copied ? '✓ Скопировано' : 'Скопировать ссылку ТВ'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {showTv && tvUrl && (
+        <div style={{ borderRadius: 12, overflow: 'hidden', marginBottom: 20, boxShadow: '0 2px 12px rgba(0,0,0,0.12)', aspectRatio: '16/9', background: '#000' }}>
+          <iframe src={tvUrl.replace(window.location.origin, '')} style={{ width: '100%', height: '100%', border: 'none' }} title="Результаты студии" />
+        </div>
+      )}
+
       {loading && <div style={s.empty}>Загрузка...</div>}
       {!loading && studio.length === 0 && <div style={s.empty}>Нет данных</div>}
-      {studio.map((row, i) => (
-        <div key={String(row.id ?? i)} style={s.studioRow}>
-          {Object.entries(row).filter(([k]) => k !== 'id').map(([k, v]) => (
-            <div key={k} style={s.studioField}>
-              <span style={s.studioKey}>{k}:</span>
-              <span style={s.studioVal}>{String(v ?? '—')}</span>
-            </div>
-          ))}
+
+      {studio.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ background: '#f1f5f9' }}>
+              {['Клиент','Телефон','−см','−кг','−жир кг','Отправил','Дата'].map(h => (
+                <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {studio.map(row => (
+                <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '6px 10px', fontWeight: 600 }}>{row.body_clients?.name ?? '—'}</td>
+                  <td style={{ padding: '6px 10px', color: '#64748b' }}>{row.body_clients?.phone ?? '—'}</td>
+                  <td style={{ padding: '6px 10px', color: '#02BDB6', fontWeight: 700 }}>{row.cm_lost > 0 ? `−${row.cm_lost.toFixed(1)}` : '—'}</td>
+                  <td style={{ padding: '6px 10px', color: '#263CD9', fontWeight: 700 }}>{row.kg_lost > 0 ? `−${row.kg_lost.toFixed(1)}` : '—'}</td>
+                  <td style={{ padding: '6px 10px', color: '#22c55e', fontWeight: 700 }}>{row.fat_kg_lost != null && row.fat_kg_lost > 0 ? `−${row.fat_kg_lost.toFixed(1)}` : '—'}</td>
+                  <td style={{ padding: '6px 10px', color: '#64748b' }}>{row.sent_by}</td>
+                  <td style={{ padding: '6px 10px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                    {new Date(row.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -809,6 +909,378 @@ function SettingsSection() {
   );
 }
 
+// ── Measures section ──────────────────────────────────────────────────────────
+
+interface MeasureRow {
+  id: string; client_id: string; measure_no: number; measured_at: string;
+  weight: number | null; total_cm: number; consultant: string;
+  body_clients: { name: string; phone: string | null };
+  studio_result?: { cm_lost: number; kg_lost: number } | null;
+  [key: string]: unknown;
+}
+
+function MeasuresSection() {
+  const [rows, setRows]         = useState<MeasureRow[]>([]);
+  const [loading, setLoading]   = useState(false);
+  const [from, setFrom]         = useState(monthStart);
+  const [to, setTo]             = useState(today);
+  const [clientQ, setClientQ]   = useState('');
+  const [detail, setDetail]     = useState<{ clientId: string; name: string } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/kviz/api/measure/measurements?from=${from}&to=${to}`, { credentials: 'include' });
+      setRows(r.ok ? await r.json() : []);
+    } catch {} finally { setLoading(false); }
+  }, [from, to]);
+
+  // Group by client
+  const clients = useMemo(() => {
+    const map = new Map<string, { clientId: string; name: string; phone: string | null; count: number; lastDate: string; totalCm: number; cmLost?: number }>();
+    for (const r of rows) {
+      const key = r.client_id;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, {
+          clientId: key,
+          name: r.body_clients?.name ?? '—',
+          phone: r.body_clients?.phone ?? null,
+          count: 1,
+          lastDate: r.measured_at,
+          totalCm: r.total_cm,
+          cmLost: r.studio_result?.cm_lost,
+        });
+      } else {
+        existing.count++;
+        if (r.measured_at > existing.lastDate) {
+          existing.lastDate = r.measured_at;
+          existing.totalCm = r.total_cm;
+        }
+        if (r.studio_result?.cm_lost) existing.cmLost = r.studio_result.cm_lost;
+      }
+    }
+    return [...map.values()].sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+  }, [rows]);
+
+  const filtered = clients.filter(c => {
+    if (!clientQ) return true;
+    const q = clientQ.toLowerCase();
+    return c.name.toLowerCase().includes(q) || (c.phone || '').includes(q);
+  });
+
+  if (detail) return <ClientDetailPanel clientId={detail.clientId} name={detail.name} onClose={() => setDetail(null)} />;
+
+  return (
+    <div style={s.section}>
+      <div style={s.filterRow}>
+        <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
+        <span style={{ color: '#64748b' }}>—</span>
+        <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
+        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
+        {rows.length > 0 && (
+          <input style={{ ...s.dateInp, width: 160 }} placeholder="Поиск клиента…" value={clientQ} onChange={e => setClientQ(e.target.value)} />
+        )}
+      </div>
+      {rows.length === 0 && !loading && <div style={s.empty}>Нет данных за период</div>}
+      {filtered.map(c => (
+        <button key={c.clientId} style={{ ...s.colItem, width: '100%', borderRadius: 10, marginBottom: 6, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+          onClick={() => setDetail({ clientId: c.clientId, name: c.name })}>
+          <div style={{ textAlign: 'left' }}>
+            <div style={s.rowTitle}>{c.name}</div>
+            <div style={s.rowMeta}>{c.phone ?? ''}{c.phone ? ' · ' : ''}{c.count} замер{c.count === 1 ? '' : c.count < 5 ? 'а' : 'ов'} · последний {new Date(c.lastDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}</div>
+          </div>
+          {c.cmLost != null && c.cmLost > 0 && <div style={{ color: '#02BDB6', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>−{c.cmLost.toFixed(1)} см</div>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Client detail panel ────────────────────────────────────────────────────────
+
+interface ClientMeasurement {
+  id: string; measure_no: number; measured_at: string;
+  weight: number | null; total_cm: number;
+  neck?: number | null; chest?: number | null; waist?: number | null; belly?: number | null;
+  glutes?: number | null; arm_l?: number | null; arm_r?: number | null;
+  thigh_l?: number | null; thigh_r?: number | null;
+}
+interface ClientResult { cm_lost: number; kg_lost: number; fat_kg_lost: number | null; sent_by: string; sent_at: string }
+
+function ClientDetailPanel({ clientId, name, onClose }: { clientId: string; name: string; onClose: () => void }) {
+  const [measurements, setMeasurements] = useState<ClientMeasurement[]>([]);
+  const [result, setResult]             = useState<ClientResult | null>(null);
+  const [loading, setLoading]           = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`/kviz/api/measure/measurements?client_id=${clientId}`, { credentials: 'include' }).then(r => r.ok ? r.json() : []),
+      fetch(`/kviz/api/measure/clients/${clientId}/results`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([ms, res]) => {
+      setMeasurements((ms as ClientMeasurement[]).sort((a: ClientMeasurement, b: ClientMeasurement) => a.measured_at.localeCompare(b.measured_at)));
+      if (Array.isArray(res) && res.length > 0) setResult(res[0]);
+      else if (res && !Array.isArray(res)) setResult(res);
+    }).finally(() => setLoading(false));
+  }, [clientId]);
+
+  const first = measurements[0];
+  const last  = measurements[measurements.length - 1];
+  const cmDelta = first && last ? last.total_cm - first.total_cm : null;
+  const kgDelta = first?.weight != null && last?.weight != null ? last.weight - first.weight : null;
+
+  return (
+    <div style={s.section}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <button style={s.backBtn} onClick={onClose}>← Назад</button>
+        <span style={s.title}>{name}</span>
+      </div>
+
+      {loading && <div style={s.empty}>Загрузка...</div>}
+
+      {!loading && (
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {/* Measurements table */}
+          <div style={{ flex: '2 1 320px', overflowX: 'auto' }}>
+            <div style={s.sectionTitle}>Замеры ({measurements.length})</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr style={{ background: '#f1f5f9' }}>
+                {['№','Дата','Вес','Сумма см','Талия','Живот','Ягодицы'].map(h => (
+                  <th key={h} style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {measurements.map(m => (
+                  <tr key={m.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '5px 8px' }}>{m.measure_no}</td>
+                    <td style={{ padding: '5px 8px', whiteSpace: 'nowrap' }}>{new Date(m.measured_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}</td>
+                    <td style={{ padding: '5px 8px' }}>{m.weight != null ? `${m.weight} кг` : '—'}</td>
+                    <td style={{ padding: '5px 8px', fontWeight: 600 }}>{m.total_cm} см</td>
+                    <td style={{ padding: '5px 8px' }}>{m.waist ?? '—'}</td>
+                    <td style={{ padding: '5px 8px' }}>{m.belly ?? '—'}</td>
+                    <td style={{ padding: '5px 8px' }}>{m.glutes ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {cmDelta != null && (
+              <div style={{ marginTop: 10, fontSize: 13, color: '#64748b' }}>
+                Изменение: <b style={{ color: cmDelta < 0 ? '#02BDB6' : '#f59e0b' }}>{cmDelta < 0 ? `−${Math.abs(cmDelta).toFixed(1)}` : `+${cmDelta.toFixed(1)}`} см</b>
+                {kgDelta != null && <>, <b style={{ color: kgDelta < 0 ? '#22c55e' : '#f59e0b' }}>{kgDelta < 0 ? `−${Math.abs(kgDelta).toFixed(1)}` : `+${kgDelta.toFixed(1)}`} кг</b></>}
+              </div>
+            )}
+          </div>
+
+          {/* Result summary */}
+          <div style={{ flex: '1 1 200px' }}>
+            <div style={s.sectionTitle}>Результат студии</div>
+            {result ? (
+              <div style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[
+                  { label: '−см', val: result.cm_lost > 0 ? `${result.cm_lost.toFixed(1)} см` : '—', color: '#02BDB6' },
+                  { label: '−кг', val: result.kg_lost > 0 ? `${result.kg_lost.toFixed(1)} кг` : '—', color: '#263CD9' },
+                  { label: '−жир кг', val: result.fat_kg_lost != null && result.fat_kg_lost > 0 ? `${result.fat_kg_lost.toFixed(1)} кг` : '—', color: '#22c55e' },
+                ].map(({ label, val, color }) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 13, color: '#64748b' }}>{label}</span>
+                    <span style={{ fontSize: 20, fontWeight: 800, color }}>{val}</span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                  {result.sent_by} · {new Date(result.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                </div>
+              </div>
+            ) : (
+              <div style={s.empty}>Результат ещё не отправлен на ТВ</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── InBody section ────────────────────────────────────────────────────────────
+
+interface IbRow {
+  phone_digits: string; client_id: string | null; name: string; phone: string | null;
+  count: number; first_date: string; last_date: string;
+  weight_delta: number | null; bfm_delta: number | null; smm_delta: number | null;
+  score_first: number | null; score_last: number | null;
+}
+
+function InBodySection() {
+  const [rows, setRows]     = useState<IbRow[]>([]);
+  const [totals, setTotals] = useState<{ tests: number; clients: number; bfm_lost: number; smm_gained: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [from, setFrom]     = useState(monthStart);
+  const [to, setTo]         = useState(today);
+  const [q, setQ]           = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/kviz/api/reports/inbody?from=${from}&to=${to}`, { credentials: 'include' });
+      if (r.ok) { const d = await r.json(); setRows(d.rows ?? []); setTotals(d.totals ?? null); }
+    } catch {} finally { setLoading(false); }
+  }, [from, to]);
+
+  const filtered = rows.filter(r => {
+    if (!q) return true;
+    return r.name.toLowerCase().includes(q.toLowerCase()) || (r.phone || '').includes(q);
+  });
+
+  function fmtDelta(v: number | null, inverted = false) {
+    if (v == null) return '—';
+    const good = inverted ? v < 0 : v > 0;
+    const color = good ? '#22c55e' : v === 0 ? '#94a3b8' : '#f59e0b';
+    return <span style={{ color, fontWeight: 700 }}>{v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}</span>;
+  }
+
+  return (
+    <div style={s.section}>
+      <div style={s.filterRow}>
+        <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
+        <span style={{ color: '#64748b' }}>—</span>
+        <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
+        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
+        {rows.length > 0 && (
+          <input style={{ ...s.dateInp, width: 160 }} placeholder="Поиск…" value={q} onChange={e => setQ(e.target.value)} />
+        )}
+      </div>
+
+      {totals && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+          {[
+            { label: 'Тестов', val: totals.tests, color: '#64748b' },
+            { label: 'Клиентов', val: totals.clients, color: '#263CD9' },
+            { label: 'Жира потеряно', val: `${totals.bfm_lost.toFixed(1)} кг`, color: '#22c55e' },
+            { label: 'Мышц набрано', val: `${totals.smm_gained.toFixed(1)} кг`, color: '#02BDB6' },
+          ].map(c => (
+            <div key={c.label} style={{ background: '#fff', borderRadius: 10, padding: '8px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 110 }}>
+              <div style={{ fontSize: 11, color: '#64748b' }}>{c.label}</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: c.color }}>{c.val}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rows.length === 0 && !loading && <div style={s.empty}>Нет данных за период</div>}
+
+      {filtered.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead><tr style={{ background: '#f1f5f9' }}>
+              {['Клиент','Тестов','1й тест','Посл.','Δ вес','Δ жир','Δ мышцы','Балл'].map(h => (
+                <th key={h} style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {filtered.map(r => (
+                <tr key={r.phone_digits} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '5px 8px' }}>
+                    <div style={{ fontWeight: 600 }}>{r.name}</div>
+                    {r.phone && <div style={{ fontSize: 11, color: '#94a3b8' }}>{r.phone}</div>}
+                  </td>
+                  <td style={{ padding: '5px 8px', fontWeight: 700 }}>{r.count}</td>
+                  <td style={{ padding: '5px 8px', color: '#64748b', whiteSpace: 'nowrap' }}>{r.first_date}</td>
+                  <td style={{ padding: '5px 8px', color: '#64748b', whiteSpace: 'nowrap' }}>{r.last_date}</td>
+                  <td style={{ padding: '5px 8px' }}>{fmtDelta(r.weight_delta, true)}</td>
+                  <td style={{ padding: '5px 8px' }}>{fmtDelta(r.bfm_delta, true)}</td>
+                  <td style={{ padding: '5px 8px' }}>{fmtDelta(r.smm_delta, false)}</td>
+                  <td style={{ padding: '5px 8px' }}>
+                    {r.score_first != null && r.score_last != null
+                      ? <span>{r.score_first} → <b style={{ color: r.score_last > r.score_first ? '#22c55e' : '#f59e0b' }}>{r.score_last}</b></span>
+                      : r.score_last ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Mission section ───────────────────────────────────────────────────────────
+
+function MissionSection() {
+  const [mission, setMission]   = useState('');
+  const [tvUrl, setTvUrl]       = useState('');
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [saved, setSaved]       = useState(false);
+  const [error, setError]       = useState('');
+  const [copied, setCopied]     = useState(false);
+
+  useEffect(() => {
+    fetch('/kviz/api/results/mission', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : {})
+      .then(d => { setMission(d.mission ?? ''); if (d.display_url) setTvUrl(window.location.origin + d.display_url); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      const r = await fetch('/kviz/api/results/mission', {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setError(d.error || 'Ошибка'); return; }
+      setSaved(true); setTimeout(() => setSaved(false), 2000);
+    } catch (e) { setError(String(e)); }
+    finally { setSaving(false); }
+  }
+
+  async function copyLink() {
+    await navigator.clipboard.writeText(tvUrl);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div style={{ ...s.section, maxWidth: 480 }}>
+      {loading && <div style={s.empty}>Загрузка...</div>}
+      {!loading && (
+        <>
+          <div style={s.sectionTitle}>Миссия студии</div>
+          <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 10 }}>
+            Текст отображается на экране с результатами.
+          </div>
+          {error && <div style={s.errBox}>{error}</div>}
+          <textarea
+            style={{ ...s.inp, height: 120, resize: 'vertical', marginBottom: 12 }}
+            value={mission}
+            maxLength={500}
+            onChange={e => setMission(e.target.value)}
+            placeholder="Текст миссии студии (до 500 символов)"
+          />
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            <button style={s.saveBtn} onClick={save} disabled={saving}>
+              {saving ? '...' : saved ? '✓ Сохранено' : 'Сохранить'}
+            </button>
+            {tvUrl && (
+              <button style={s.csvBtn} onClick={copyLink}>
+                {copied ? '✓ Скопировано' : 'Скопировать ссылку ТВ'}
+              </button>
+            )}
+          </div>
+          {tvUrl && (
+            <div style={{ fontSize: 12, color: '#94a3b8', wordBreak: 'break-all' }}>
+              Ссылка для ТВ: {tvUrl}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Helpers for edit modal ────────────────────────────────────────────────────
 
 function MField({ label, children }: { label: string; children: React.ReactNode }) {
@@ -835,8 +1307,12 @@ const s: Record<string, React.CSSProperties> = {
   header:       { padding: '10px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 10, flexShrink: 0 },
   title:        { fontSize: 16, fontWeight: 700 },
   backBtn:      { background: 'none', border: 'none', color: '#263CD9', cursor: 'pointer', fontWeight: 600, fontSize: 14, padding: '4px 0', fontFamily: 'inherit' },
-  board:        { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12, padding: 16 },
-  boardCard:    { background: '#fff', borderRadius: 14, padding: '16px 14px', border: '1.5px solid #e2e8f0', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, textAlign: 'left' as const, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', fontFamily: 'inherit', transition: 'box-shadow .15s,border-color .15s' },
+  board:        { display: 'flex', alignItems: 'flex-start', padding: 0, overflowX: 'auto' },
+  column:       { minWidth: 180, flex: '1 0 180px', borderRight: '1px solid #e2e8f0', paddingBottom: 24 },
+  colTitle:     { padding: '12px 16px 8px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.06em' },
+  colItem:      { display: 'block', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid #f1f5f9', textAlign: 'left' as const, padding: '9px 16px', cursor: 'pointer', fontFamily: 'inherit' },
+  colItemLabel: { display: 'block', fontSize: 14, fontWeight: 600, color: '#1a202c' },
+  colItemDesc:  { display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 },
   section:      { padding: '12px 12px 32px' },
   filterRow:    { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 },
   dateInp:      { padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
