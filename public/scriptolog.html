@@ -768,13 +768,14 @@ function setVar(varName, value) {
 function renderActions(node) {
   const raw     = getNodeText(node);
   const missing = hasMissingVars(raw);
+  const empty   = !raw || raw.includes('TODO');
   const isRef   = node.kind === 'reference' || node.kind === 'bot';
   const el      = document.getElementById('nc-actions');
   let html = '';
   if (!isRef) {
-    html += `<button class="act-btn act-insert" ${missing?'disabled':''} onclick="doInsert()">📤 Вставить в чат</button>`;
+    html += `<button class="act-btn act-insert" ${(missing||empty)?'disabled':''} onclick="doInsert()">📤 Вставить в чат</button>`;
   }
-  html += `<button class="act-btn act-copy" onclick="doCopy()">${isRef?'📋 Копировать':'📋'}</button>`;
+  html += `<button class="act-btn act-copy" ${empty?'disabled':''} onclick="doCopy()">${isRef?'📋 Копировать':'📋'}</button>`;
   if (!isRef) {
     html += `<button class="act-btn act-dalye" onclick="doDalye()">Далее →</button>`;
   }

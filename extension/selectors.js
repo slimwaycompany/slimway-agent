@@ -20,23 +20,35 @@ const SEL = {
 
   // Активный диалог в списке слева
   activeDialog: '[class*="_active_"]',
+
+  // Иконка/название канала в заголовке диалога
+  channelLabel: '[class*="_channel_"], [class*="_source_"], [class*="_integration_"]',
 };
 
-// Каналы: искать слова в тексте шапки
+// Каналы: искать слова в тексте; порядок важен — 'max' после остальных
 const CHANNEL_KEYWORDS = [
   ['whatsapp',   'whatsapp'],
   ['instagram',  'instagram'],
   ['telegram',   'telegram'],
   ['вконтакте',  'vk'],
   ['vkontakte',  'vk'],
-  [' vk ',       'vk'],
+  [' vk',        'vk'],
   ['max',        'max'],
+  ['viber',      'viber'],
 ];
 
 function detectChannel(headerText) {
   const t = (headerText || '').toLowerCase();
   for (const [kw, ch] of CHANNEL_KEYWORDS) {
     if (t.includes(kw)) return ch;
+  }
+  // Fallback: scan dedicated channel label elements
+  const labelEl = document.querySelector(SEL.channelLabel);
+  if (labelEl) {
+    const lt = labelEl.textContent.toLowerCase();
+    for (const [kw, ch] of CHANNEL_KEYWORDS) {
+      if (lt.includes(kw)) return ch;
+    }
   }
   return 'unknown';
 }

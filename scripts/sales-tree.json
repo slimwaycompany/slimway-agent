@@ -1,287 +1,767 @@
 {
-  "_note": "Перенести из docs/sales-tree.md. Этот файл — заглушка. Узлы пустые до заполнения.",
   "constants": {
     "Адрес": "ул. Ахмета Байтурсынова, 2, НП14, ЖК Qazyna",
     "Телефон": "8 701 490 60 90"
   },
-  "rules": "Отвечаем в течение 5 минут с 9:00 до 21:30. После 21:30 — в очередь, ответ утром. Не пишем ночью (21:30–09:00). Обращение на «ты».",
   "blocks": [
     { "id": 1, "title": "Вход", "intro": "Первое сообщение — выбор входа" },
-    { "id": 2, "title": "Выявление потребности", "intro": "" },
-    { "id": 3, "title": "Презентация и запись", "intro": "" },
-    { "id": 4, "title": "Напоминание и подтверждение", "intro": "" },
-    { "id": 5, "title": "Справочник: программы и условия", "intro": "Только для справки менеджера" },
-    { "id": 6, "title": "Работа с возражениями", "intro": "" },
-    { "id": 7, "title": "Повторный контакт", "intro": "" }
+    { "id": 2, "title": "Выявление", "intro": "Четыре вопроса по одному: цель, опыт, ограничения, удобное время" },
+    { "id": 3, "title": "Точка записи", "intro": "Предлагаем два конкретных времени, отрабатываем возражения" },
+    { "id": 4, "title": "Подтверждение визита", "intro": "Подтверждаем накануне, при молчании звоним, при неявке предлагаем новые даты" },
+    { "id": 5, "title": "Пробное", "intro": "Справочник консультанта на месте. Только для чтения, не для отправки в чат." },
+    { "id": 6, "title": "Продажа после пробного", "intro": "Впервые звучат варианты и стоимость — лично, с опорой на замер" },
+    { "id": 7, "title": "Молчание, отказ, реактивация", "intro": "Касания без давления, выход без обиды, возврат без предлогов" }
   ],
   "nodes": {
     "1.0": {
       "id": "1.0", "block": 1, "title": "Автоответ",
       "kind": "bot",
-      "text": "Привет! Я менеджер студии SlimWay. Скоро свяжусь с тобой. Наш адрес: {Адрес}",
-      "variants": null, "answers": [], "fitbase": [], "pending": false
+      "variants": [
+        {
+          "label": "Стандартный",
+          "text": "Здравствуйте! Спасибо, что написали в SlimWay. Менеджер ответит в течение 5 минут. А пока подскажите, как к Вам обращаться?"
+        },
+        {
+          "label": "После 22:00",
+          "text": "Здравствуйте! Мы уже отдыхаем и ответим с 8:00. Напишите, пожалуйста, как к Вам обращаться и что хотели бы изменить в фигуре — утром сразу подберём время."
+        }
+      ],
+      "answers": [],
+      "fitbase": ["Лид в «Новые заявки», источник по каналу"],
+      "pending": false
     },
     "1.1": {
       "id": "1.1", "block": 1, "title": "Стандартный вход",
       "kind": "chat",
-      "text": "Привет! Меня зовут {Менеджер}, я менеджер студии SlimWay 💚\n\nУвидела твой запрос — расскажи, что интересует?",
       "variants": null,
+      "text": "Здравствуйте, {Имя}! Я {Менеджер}, менеджер SlimWay. Подскажите, какая у Вас цель: снизить вес, убрать объёмы в проблемных зонах или подтянуть тело?",
       "answers": [
-        { "label": "Хочет узнать больше", "next": "2.1", "reply": null, "fact": null, "note": null },
-        { "label": "Сразу спрашивает цену", "next": "1.3", "reply": null, "fact": null, "note": null }
+        { "label": "Называет цель", "next": "2.1", "reply": null, "fact": "цель", "note": null },
+        { "label": "Сразу спрашивает цену", "next": "1.3", "reply": null, "fact": null, "note": null },
+        { "label": "Не отвечает", "next": "7.1", "reply": null, "fact": null, "note": null }
       ],
-      "fitbase": [], "pending": false
+      "fitbase": [],
+      "pending": false
     },
     "1.2": {
-      "id": "1.2", "block": 1, "title": "Вход «+» / Информация",
+      "id": "1.2", "block": 1, "title": "Вход «+», «инфо», «подробнее»",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "Здравствуйте! Я {Менеджер} из SlimWay. Коротко: мы помогаем снизить вес и убрать объёмы на аппаратах VacuActiv, InfraShape, InfraStep и RollShape, без ударной нагрузки на суставы. Сеанс от 30 минут. Первый визит — бесплатный замер тела на InBody и пробное занятие. Как к Вам обращаться и какая у Вас цель?",
+      "answers": [
+        { "label": "Отвечает", "next": "2.1", "reply": null, "fact": null, "note": null },
+        { "label": "Спрашивает цену", "next": "1.3", "reply": null, "fact": null, "note": null },
+        { "label": "Молчит", "next": "7.1", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
     },
     "1.3": {
-      "id": "1.3", "block": 1, "title": "Вход «Цена»",
+      "id": "1.3", "block": 1, "title": "Цена в первом сообщении",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "Здравствуйте! Я {Менеджер}, SlimWay. Стоимость зависит от программы, а её подбираем под задачу: кому-то нужно убрать объёмы, кому-то снизить вес и подтянуть кожу. Чтобы не гадать, первый визит у нас бесплатный: замер на InBody и пробное занятие. Подскажите, какая у Вас цель?",
+      "answers": [
+        { "label": "Называет цель", "next": "2.1", "reply": null, "fact": "цель", "note": null },
+        { "label": "Настаивает на цене", "next": "3.3", "reply": null, "fact": null, "note": null },
+        { "label": "Молчит", "next": "7.1", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
     },
     "1.4": {
-      "id": "1.4", "block": 1, "title": "Вход «Рекомендация»",
+      "id": "1.4", "block": 1, "title": "Пришла по рекомендации",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [
-        { "label": "Ответила", "next": "2.1", "reply": null, "fact": { "key": "referrer_name", "from_input": true }, "note": null }
+      "variants": null,
+      "text": "Как приятно! А кто Вас порекомендовал? Хотим сказать ей спасибо. И подскажите, какая у Вас цель?",
+      "answers": [
+        { "label": "Называет подругу и цель", "next": "2.1", "reply": null, "fact": "рекомендатель", "note": "Имя рекомендателя в карточку" }
       ],
-      "fitbase": [], "pending": true
+      "fitbase": ["Тег «рекомендация», имя рекомендателя в карточку"],
+      "pending": false
     },
     "1.5": {
-      "id": "1.5", "block": 1, "title": "Вход «Аппарат»",
+      "id": "1.5", "block": 1, "title": "Пришла с конкретным аппаратом",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "{Аппарат} отлично подходит для {задача аппарата}. Чтобы понять, нужен ли Вам только он или лучше сочетание, сначала смотрим замер. Какая у Вас основная цель?",
+      "answers": [
+        { "label": "Отвечает", "next": "2.1", "reply": null, "fact": "цель", "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
     },
     "1.6": {
-      "id": "1.6", "block": 1, "title": "Вход «Утром»",
+      "id": "1.6", "block": 1, "title": "Ответила утром на ночное сообщение",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "Доброе утро, {Имя}! Это {Менеджер} из SlimWay. Вы писали нам вечером — подскажите, какая у Вас цель, и я подберу удобное время для бесплатного замера.",
+      "answers": [
+        { "label": "Отвечает", "next": "2.1", "reply": null, "fact": null, "note": null },
+        { "label": "Молчит", "next": "7.1", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
     },
     "2.1": {
-      "id": "2.1", "block": 2, "title": "Цель клиентки",
+      "id": "2.1", "block": 2, "title": "Реакция на цель + опыт",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
       "variants": null,
+      "text": "Поняла Вас, {Имя}. С такой задачей к нам приходят чаще всего. Подскажите, Вы раньше уже занимались — фитнес, аппараты, что-то дома?",
       "answers": [
-        { "label": "Снизить вес", "next": "2.2", "reply": null, "fact": { "key": "goal", "value": "weight" }, "note": null },
-        { "label": "Убрать объёмы", "next": "2.2", "reply": null, "fact": { "key": "goal", "value": "volume" }, "note": null },
-        { "label": "Подтянуть тело", "next": "2.2", "reply": null, "fact": { "key": "goal", "value": "tone" }, "note": null },
-        { "label": "Другое", "next": "2.2", "reply": null, "fact": { "key": "goal", "from_input": true }, "note": null }
+        { "label": "Не занималась", "next": "2.2", "reply": null, "fact": null, "note": null },
+        { "label": "Занималась, без результата / ушла", "next": "2.3", "reply": null, "fact": null, "note": null },
+        { "label": "Сейчас ходит в другой клуб", "next": "2.4", "reply": null, "fact": null, "note": null },
+        { "label": "Занималась у нас раньше", "next": "2.5", "reply": null, "fact": null, "note": null }
       ],
-      "fitbase": [], "pending": true
+      "fitbase": ["Цель в карточку"],
+      "pending": false
     },
     "2.2": {
-      "id": "2.2", "block": 2, "title": "Опыт",
+      "id": "2.2", "block": 2, "title": "Новичок",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
       "variants": null,
+      "text": "Это даже плюс: начнём с правильной нагрузки, без перегруза. У нас нет прыжков и тяжёлых весов, а консультант рядом на каждом сеансе. Есть ли что-то, что мешает активным тренировкам: колени, спина, давление?",
       "answers": [
-        { "label": "Не занималась", "next": "2.6", "reply": null, "fact": { "key": "experience", "value": "none" }, "note": null },
-        { "label": "Занималась, нет результата", "next": "2.3", "reply": null, "fact": { "key": "experience", "value": "no_result" }, "note": null },
-        { "label": "У конкурента", "next": "2.4", "reply": null, "fact": { "key": "experience", "value": "at_competitor" }, "note": null },
-        { "label": "Бывший клиент SlimWay", "next": "2.5", "reply": null, "fact": { "key": "experience", "value": "former_client" }, "note": null }
+        { "label": "Ограничений нет", "next": "2.7", "reply": null, "fact": null, "note": null },
+        { "label": "Есть ограничения", "next": "2.6", "reply": null, "fact": null, "note": null }
       ],
-      "fitbase": [], "pending": true
+      "fitbase": [],
+      "pending": false
     },
     "2.3": {
-      "id": "2.3", "block": 2, "title": "Причина отсутствия результата",
+      "id": "2.3", "block": 2, "title": "Был опыт без результата",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
       "variants": null,
+      "text": "А что тогда не сработало? Спрашиваю, чтобы не повторить ту же историю.",
       "answers": [
-        { "label": "Сама без тренера", "next": "2.6", "reply": "TODO", "fact": { "key": "experience_fail_reason", "value": "solo" }, "note": null },
-        { "label": "Тяжело / болело", "next": "2.6", "reply": "TODO", "fact": { "key": "experience_fail_reason", "value": "hard_pain" }, "note": null },
-        { "label": "Нет времени", "next": "2.6", "reply": "TODO", "fact": { "key": "experience_fail_reason", "value": "no_time" }, "note": null },
-        { "label": "Другое", "next": "2.6", "reply": null, "fact": { "key": "experience_fail_reason", "from_input": true }, "note": null }
+        { "label": "«Не было результата»", "next": "2.6", "reply": "Чаще всего потому, что результат никто не измерял. У нас замер на InBody в начале и повторный через месяц — видно цифрами, что меняется.", "fact": null, "note": null },
+        { "label": "«Никто не помогал»", "next": "2.6", "reply": "У нас консультант ведёт Вас на каждом сеансе и следит за нагрузкой.", "fact": null, "note": null },
+        { "label": "«Было тяжело, болело»", "next": "2.6", "reply": "У нас без ударной нагрузки, интенсивность подбираем под Вас.", "fact": null, "note": null },
+        { "label": "«Не было времени ходить»", "next": "2.6", "reply": "Сеанс от 30 минут, работаем с 8 до 22 без выходных.", "fact": null, "note": null }
       ],
-      "fitbase": [], "pending": true
+      "fitbase": ["Тег «был опыт», причина в комментарий"],
+      "pending": false
     },
     "2.4": {
-      "id": "2.4", "block": 2, "title": "Дата окончания у конкурента",
+      "id": "2.4", "block": 2, "title": "Сейчас ходит к конкуренту",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
       "variants": null,
+      "text": "Понятно. А что там не устраивает? И когда заканчивается абонемент?",
       "answers": [
-        { "label": "Указала дату", "next": "2.6", "reply": null, "fact": { "key": "competitor_end_date", "from_input": true }, "note": null },
-        { "label": "Нет даты", "next": "2.6", "reply": null, "fact": null, "note": null }
+        { "label": "Называет боль и дату", "next": "2.6", "reply": null, "fact": "дата окончания абонемента", "note": "Ответить по шаблонам 2.3, дату в карточку" },
+        { "label": "«Всё устраивает, просто смотрю»", "next": "2.6", "reply": "Хорошо, тогда просто сравните: замер и пробное у нас бесплатные.", "fact": null, "note": null }
       ],
-      "fitbase": [], "pending": true
+      "fitbase": ["Тег «у конкурента», дата окончания абонемента в карточку"],
+      "pending": false
     },
     "2.5": {
-      "id": "2.5", "block": 2, "title": "Бывший клиент",
+      "id": "2.5", "block": 2, "title": "Бывшая клиентка",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "Рады, что вернулись! Давайте сделаем новый замер и сравним с тем, что было. Что изменилось с тех пор, какая сейчас задача?",
+      "answers": [
+        { "label": "Отвечает", "next": "2.7", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": ["Найти старую карточку, не создавать дубль"],
+      "pending": false
     },
     "2.6": {
       "id": "2.6", "block": 2, "title": "Ограничения",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
       "variants": null,
+      "text": "Есть ли что-то, что мешает активным тренировкам: колени, спина, давление, недавние операции?",
       "answers": [
-        { "label": "Нет ограничений", "next": "2.7", "reply": "TODO", "fact": { "key": "limitations", "value": "none" }, "note": null },
-        { "label": "Колени / спина", "next": "2.7", "reply": "TODO", "fact": { "key": "limitations", "value": "joints" }, "note": null },
-        { "label": "Нужно разрешение врача", "next": "2.7", "reply": "TODO", "fact": { "key": "limitations", "value": "doctor" }, "note": null },
-        { "label": "Другое", "next": "2.7", "reply": null, "fact": { "key": "limitations", "from_input": true }, "note": null }
+        { "label": "Нет", "next": "2.7", "reply": null, "fact": null, "note": null },
+        { "label": "Колени, спина", "next": "2.7", "reply": "У нас нет ударной нагрузки: ни прыжков, ни бега, ни тяжёлых весов. Нагрузку подберём под Вас, консультант посмотрит на пробном. Если боль сильная, лучше заранее показаться врачу.", "fact": "ограничения", "note": null },
+        { "label": "Беременность, операция, серьёзный диагноз", "next": null, "reply": "Чтобы ничего не навредило, сначала нужно разрешение врача. Когда будет — напишите, подберём время.", "fact": "нужно разрешение врача", "note": "Конец ветки — Fitbase: тег «нужно разрешение врача», задача +14 дней" }
       ],
-      "fitbase": [], "pending": true
+      "fitbase": ["Ограничения в карточку, консультант видит перед пробным"],
+      "pending": false
     },
     "2.7": {
       "id": "2.7", "block": 2, "title": "Удобное время",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
       "variants": null,
+      "text": "И последнее: Вам удобнее приходить утром, днём или вечером?",
       "answers": [
-        { "label": "Утро", "next": "3.1", "reply": null, "fact": { "key": "time_of_day", "value": "morning" }, "note": null },
-        { "label": "День", "next": "3.1", "reply": null, "fact": { "key": "time_of_day", "value": "afternoon" }, "note": null },
-        { "label": "Вечер", "next": "3.1", "reply": null, "fact": { "key": "time_of_day", "value": "evening" }, "note": null },
-        { "label": "Только выходные", "next": "3.1", "reply": null, "fact": { "key": "time_of_day", "value": "weekends" }, "note": null }
+        { "label": "Называет часть дня", "next": "3.1", "reply": null, "fact": "удобное время", "note": null },
+        { "label": "«Работаю допоздна», «нет времени»", "next": "3.6", "reply": null, "fact": null, "note": null },
+        { "label": "«Только выходные»", "next": "3.1", "reply": null, "fact": "только выходные", "note": "Предложить окна на субботу и воскресенье" },
+        { "label": "Дневное время (12:00–17:00)", "next": "3.1", "reply": "Днём у нас как раз действует выгодная программа — расскажу на замере.", "fact": "удобно днём", "note": null }
       ],
-      "fitbase": [], "pending": true
+      "fitbase": [],
+      "pending": false
     },
     "3.1": {
-      "id": "3.1", "block": 3, "title": "Приглашение на пробное",
+      "id": "3.1", "block": 3, "title": "Предложение записи",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
       "variants": null,
+      "text": "{Имя}, по Вашей задаче лучше всего начать с бесплатного замера на InBody и пробного сеанса. Это около 40 минут, и Вы сразу увидите свои цифры: жир, мышцы, воду по зонам. Вам удобнее {Время1} или {Время2}?",
       "answers": [
-        { "label": "Согласна", "next": "3.2", "reply": null, "fact": null, "note": null },
-        { "label": "Возражение: цена", "next": "3.3", "reply": null, "fact": null, "note": null },
-        { "label": "Возражение: время", "next": "3.5", "reply": null, "fact": null, "note": null },
-        { "label": "Другое возражение", "next": "3.4", "reply": null, "fact": null, "note": null }
+        { "label": "Выбирает время", "next": "3.2", "reply": null, "fact": null, "note": null },
+        { "label": "«Сколько стоит?»", "next": "3.3", "reply": null, "fact": null, "note": null },
+        { "label": "«Посоветуюсь с мужем»", "next": "3.4", "reply": null, "fact": null, "note": null },
+        { "label": "«Пока хожу в другой клуб»", "next": "3.5", "reply": null, "fact": null, "note": null },
+        { "label": "«Нет времени»", "next": "3.6", "reply": null, "fact": null, "note": null },
+        { "label": "«Аппараты не работают?»", "next": "3.7", "reply": null, "fact": null, "note": null },
+        { "label": "«Подумаю»", "next": "3.8", "reply": null, "fact": null, "note": null },
+        { "label": "«Далеко ехать»", "next": "3.9", "reply": null, "fact": null, "note": null },
+        { "label": "Жёсткое «нет»", "next": "7.4", "reply": null, "fact": null, "note": null },
+        { "label": "Молчит", "next": "7.1", "reply": null, "fact": null, "note": null }
       ],
-      "fitbase": ["Этап: Первичный контакт"], "pending": true
+      "fitbase": [],
+      "pending": false
     },
     "3.2": {
-      "id": "3.2", "block": 3, "title": "Запись на пробное",
+      "id": "3.2", "block": 3, "title": "Запись",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md — использует {Время1}, {Время2}, {Время}",
       "variants": null,
-      "answers": [
-        { "label": "Выбрала время", "next": "4.1", "reply": null, "fact": null, "note": null }
-      ],
-      "fitbase": ["Этап: Записался на пробную", "Создать задачу: подтверждение визита"], "pending": true
+      "text": "Отлично, записала Вас на {Дата}, {Время}. Вас встретит {Консультант}. Адрес: {Адрес}. Возьмите удобную одежду, воду и приходите за 10 минут. Если что-то изменится — просто напишите, перенесём.",
+      "answers": [],
+      "fitbase": ["Этап «Записался на пробную», визит в расписании → переход к 4.1"],
+      "pending": false
     },
     "3.3": {
-      "id": "3.3", "block": 3, "title": "Возражение: дорого",
+      "id": "3.3", "block": 3, "title": "«Сколько стоит?»",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "Стоимость зависит от программы, а её подбираем по замеру. Есть рассрочка Kaspi 0-0-12, без переплат. Замер и пробное бесплатные и ни к чему не обязывают. {Время1} или {Время2}?",
+      "answers": [
+        { "label": "Выбирает время", "next": "3.2", "reply": null, "fact": null, "note": null },
+        { "label": "«Ну хотя бы примерно»", "next": "3.3.1", "reply": null, "fact": null, "note": null },
+        { "label": "«Если дорого, не пойду»", "next": "3.3.2", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
     },
     "3.3.1": {
-      "id": "3.3.1", "block": 3, "title": "Возражение: дорого — продолжение",
+      "id": "3.3.1", "block": 3, "title": "Настаивает на цифре",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
       "variants": null,
+      "text": "Понимаю, хочется сразу ориентир. Давайте я наберу Вас на 2 минуты и расскажу про варианты — по телефону понятнее. Сейчас удобно?",
       "answers": [
-        { "label": "Готова", "next": "3.2", "reply": "TODO", "fact": null, "note": null }
+        { "label": "Звонок принят", "next": "3.2", "reply": null, "fact": null, "note": "По телефону варианты и выбор времени" },
+        { "label": "«Не люблю звонки»", "next": "3.2", "reply": "Хорошо! Тогда на месте покажу все варианты, и если не подойдёт, Вы просто уйдёте с бесплатным замером. Записать на {Время1}?", "fact": null, "note": null }
       ],
-      "fitbase": [], "pending": true
+      "fitbase": [],
+      "pending": false
+    },
+    "3.3.2": {
+      "id": "3.3.2", "block": 3, "title": "Боится, что дорого",
+      "kind": "chat",
+      "variants": null,
+      "text": "Справедливо. Поэтому первый визит и бесплатный: Вы ничего не теряете, а решение принимаете уже по цифрам и ощущениям. Плюс рассрочка 0-0-12 делает платёж небольшим. {Время1} или {Время2}?",
+      "answers": [
+        { "label": "Выбирает время", "next": "3.2", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": ["Тег «чувствительна к цене» — на пробном акцент на рассрочке"],
+      "pending": false
     },
     "3.4": {
-      "id": "3.4", "block": 3, "title": "Возражение: другое",
+      "id": "3.4", "block": 3, "title": "«Посоветуюсь с мужем»",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "Конечно, это правильно. А чтобы разговор был предметным, приходите сначала на замер: покажете мужу не «какие-то аппараты», а свои цифры и как прошёл сеанс. {Время1} или {Время2}?",
+      "answers": [
+        { "label": "Выбирает время", "next": "3.2", "reply": null, "fact": null, "note": null },
+        { "label": "«Муж против трат»", "next": "3.1", "reply": "Замер и пробное бесплатные — тратить ничего не нужно. А решать будете потом, вместе.", "fact": null, "note": null },
+        { "label": "«Сначала поговорю»", "next": "3.10", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
     },
     "3.5": {
-      "id": "3.5", "block": 3, "title": "Возражение: нет времени",
+      "id": "3.5", "block": 3, "title": "«Пока хожу в другой клуб»",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "Так даже удобно: приходите на замер сейчас и получите точку отсчёта. А пробное поставим на день, когда там закончится абонемент. Какого числа он заканчивается?",
+      "answers": [
+        { "label": "Называет дату", "next": "3.2", "reply": null, "fact": "дата окончания абонемента", "note": "Замер в ближайшие дни + пробное на следующий день после окончания" },
+        { "label": "«Не хочу совмещать»", "next": "3.2", "reply": null, "fact": null, "note": "Пробное на дату окончания, напоминание за 2 дня" },
+        { "label": "«Не помню дату»", "next": null, "reply": "Посмотрите, когда будет минутка, а я завтра напомню.", "fact": null, "note": "Fitbase: задача +1 день" }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "3.6": {
+      "id": "3.6", "block": 3, "title": "«Нет времени» / «Работаю допоздна»",
+      "kind": "chat",
+      "variants": null,
+      "text": "Мы работаем с 8 до 22 без выходных, сеанс от 30 минут. Можно утром до работы, вечером после или в выходной. Что Вам ближе?",
+      "answers": [
+        { "label": "Называет вариант", "next": "3.1", "reply": null, "fact": "удобное время", "note": "Окна под выбранный вариант" },
+        { "label": "«График плавающий»", "next": "3.2", "reply": "Поставим на ближайшее окно, а если сменится — перенесём за пару часов, это нормально.", "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "3.7": {
+      "id": "3.7", "block": 3, "title": "«Аппараты вообще работают?»",
+      "kind": "chat",
+      "variants": null,
+      "text": "Справедливый вопрос. Аппараты не заменяют движение: у нас это сочетание лёгкого кардио и аппаратного воздействия на проблемные зоны. Поэтому и делаем замер в начале и повторный через месяц — результат видно цифрами. Проверить можно бесплатно: {Время1} или {Время2}?",
+      "answers": [
+        { "label": "«Там тоже обещали»", "next": "3.1", "reply": "Разница в том, что там Вы занимались сами. У нас консультант рядом на каждом сеансе и следит за прогрессом по замерам.", "fact": null, "note": null },
+        { "label": "«Хочу живые тренировки»", "next": "3.1", "reply": "У нас формат с аппаратами и лёгким кардио, без силовых. Если интересно сравнить — приходите на пробное.", "fact": null, "note": "Или 7.4 если отказ окончательный" }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "3.8": {
+      "id": "3.8", "block": 3, "title": "«Подумаю» без причины",
+      "kind": "chat",
+      "variants": null,
+      "text": "Конечно. Подскажите, что важнее взвесить: время, результат или стоимость? Хочу помочь, а не торопить.",
+      "answers": [
+        { "label": "Время", "next": "3.6", "reply": null, "fact": null, "note": null },
+        { "label": "Результат", "next": "3.7", "reply": null, "fact": null, "note": null },
+        { "label": "Стоимость", "next": "3.3", "reply": null, "fact": null, "note": null },
+        { "label": "«Просто подумаю»", "next": "3.10", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "3.9": {
+      "id": "3.9", "block": 3, "title": "«Далеко ехать»",
+      "kind": "chat",
+      "variants": null,
+      "text": "Понимаю. Мы на Байтурсынова, 2, в ЖК Qazyna. Откуда Вам удобнее добираться — из дома или с работы? Подберу время, когда по пути.",
+      "answers": [
+        { "label": "Подходит", "next": "3.1", "reply": null, "fact": null, "note": null },
+        { "label": "Неудобно совсем", "next": "7.4", "reply": null, "fact": "причина отказа: локация", "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "3.10": {
+      "id": "3.10", "block": 3, "title": "Бронь со сроком",
+      "kind": "chat",
+      "variants": null,
+      "text": "Договорились! Я тогда придержу Вам {Время1} до завтрашнего вечера, чтобы окно не заняли. Напишу завтра в обед, хорошо?",
+      "answers": [
+        { "label": "«Хорошо»", "next": "3.1", "reply": null, "fact": null, "note": "Fitbase: задача на завтра 13:00" },
+        { "label": "Молчит", "next": "7.1", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": ["Задача на завтра 13:00"],
+      "pending": false
     },
     "4.1": {
-      "id": "4.1", "block": 4, "title": "Подтверждение записи",
+      "id": "4.1", "block": 4, "title": "Подтверждение",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md — использует {Дата}, {Время}, {Адрес}",
       "variants": null,
+      "text": "{Имя}, добрый день! Это {Менеджер} из SlimWay. Ждём Вас {Дата} в {Время} на замер и пробное. Всё в силе?",
       "answers": [
-        { "label": "Подтвердила", "next": "4.2", "reply": null, "fact": null, "note": null },
-        { "label": "Перенос", "next": "3.2", "reply": null, "fact": null, "note": null }
+        { "label": "«Да»", "next": "4.2", "reply": null, "fact": null, "note": null },
+        { "label": "Просит перенести", "next": "4.3", "reply": null, "fact": null, "note": null },
+        { "label": "Отменяет", "next": "4.4", "reply": null, "fact": null, "note": null },
+        { "label": "Молчит 3 часа", "next": "4.5", "reply": null, "fact": null, "note": "Позвонить; не дозвонились → 4.5" }
       ],
-      "fitbase": ["Этап: Визит подтверждён"], "pending": true
+      "fitbase": ["Этап «Визит подтверждён» при положительном ответе"],
+      "pending": false
     },
     "4.2": {
-      "id": "4.2", "block": 4, "title": "День визита: напоминание",
+      "id": "4.2", "block": 4, "title": "Напоминание в день визита",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "{Имя}, ждём Вас сегодня в {Время}. Адрес: {Адрес}. Если задерживаетесь — напишите, подождём.",
+      "answers": [
+        { "label": "Пришла", "next": "5.1", "reply": null, "fact": null, "note": null },
+        { "label": "Не пришла", "next": "4.6", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "4.3": {
+      "id": "4.3", "block": 4, "title": "Перенос",
+      "kind": "chat",
+      "variants": null,
+      "text": "Конечно, перенесём. Вам удобнее {Время1} или {Время2}?",
+      "answers": [
+        { "label": "Выбрала", "next": "3.2", "reply": null, "fact": null, "note": null },
+        { "label": "«Потом напишу»", "next": "3.10", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "4.4": {
+      "id": "4.4", "block": 4, "title": "Отмена",
+      "kind": "chat",
+      "variants": null,
+      "text": "Поняла. Подскажите, что изменилось? Если дело во времени — подберём другое, если появились сомнения — отвечу на любой вопрос.",
+      "answers": [
+        { "label": "Время", "next": "4.3", "reply": null, "fact": null, "note": null },
+        { "label": "Сомнения", "next": "3.3", "reply": null, "fact": null, "note": "Узел 3.3–3.9 по теме сомнения" },
+        { "label": "«Передумала»", "next": "7.4", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "4.5": {
+      "id": "4.5", "block": 4, "title": "Молчит перед визитом",
+      "kind": "chat",
+      "variants": null,
+      "text": "{Имя}, не смогла до Вас дозвониться. Визит {Дата} в {Время} держу за Вами — просто ответьте «да», если всё в силе.",
+      "answers": [
+        { "label": "Ответила", "next": "4.1", "reply": null, "fact": null, "note": null },
+        { "label": "Молчит (визит прошёл)", "next": "4.6", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "4.6": {
+      "id": "4.6", "block": 4, "title": "Не пришла",
+      "kind": "chat",
+      "variants": null,
+      "text": "{Имя}, мы Вас ждали сегодня. Надеюсь, всё в порядке? Давайте перенесём на удобное время: {Время1} или {Время2}?",
+      "answers": [
+        { "label": "Выбрала", "next": "3.2", "reply": null, "fact": null, "note": "Fitbase: обратно в «Записался на пробную»" },
+        { "label": "Назвала причину", "next": "4.3", "reply": null, "fact": null, "note": null },
+        { "label": "Молчит", "next": "4.7", "reply": null, "fact": null, "note": "Fitbase: этап «Не пришел на пробную», задача «узнать причину»" }
+      ],
+      "fitbase": ["Этап «Не пришел на пробную» при молчании"],
+      "pending": false
     },
     "4.7": {
-      "id": "4.7", "block": 4, "title": "Касание: +1/+3 дня",
+      "id": "4.7", "block": 4, "title": "Повторное касание после неявки",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
+      "night": true,
       "variants": [
-        { "label": "+1 день", "text": "TODO" },
-        { "label": "+3 дня", "text": "TODO" }
+        {
+          "label": "+1 день",
+          "text": "{Имя}, бесплатный замер и пробное по-прежнему за Вами. Подскажите, когда будет удобнее?"
+        },
+        {
+          "label": "+3 дня",
+          "text": "{Имя}, не хочу надоедать. Если что-то смутило или изменились планы — напишите, разберёмся. А если просто закрутилась — подберу время за минуту."
+        }
       ],
-      "answers": [], "fitbase": [], "pending": true
+      "answers": [
+        { "label": "Ответила", "next": "4.3", "reply": null, "fact": null, "note": null },
+        { "label": "Молчит", "next": "7.1", "reply": null, "fact": null, "note": "С шага «+7 дней»" }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "4.8": {
+      "id": "4.8", "block": 4, "title": "Вторая неявка",
+      "kind": "chat",
+      "variants": null,
+      "text": "{Имя}, вижу, что сейчас не получается выбраться — это нормально. Не буду бронировать заранее: когда будете готовы, просто напишите «хочу на замер», и я подберу ближайшее окно.",
+      "answers": [],
+      "fitbase": ["Транзитный этап менеджера, задача +14 дней → 7.5"],
+      "pending": false
+    },
+    "5.1": {
+      "id": "5.1", "block": 5, "title": "Встреча",
+      "kind": "reference",
+      "variants": null,
+      "text": "{Имя}, здравствуйте! Я {Консультант}, рада Вас видеть. Проходите, сначала сделаем замер, потом сеанс, а в конце вместе посмотрим, как двигаться к Вашей цели. Займёт около 40 минут.",
+      "answers": [],
+      "fitbase": ["Отметить визит в Fitbase"],
+      "pending": false
+    },
+    "5.2": {
+      "id": "5.2", "block": 5, "title": "Короткое интервью",
+      "kind": "reference",
+      "variants": null,
+      "text": "Вопросы до замера (уточнить из карточки, не спрашивать заново):\n\n• «Вы писали, что хотите {цель}. К какому сроку хотелось бы увидеть изменения? Есть событие — отпуск, праздник?»\n• «Что для Вас будет знаком, что всё получается: цифра на весах, размер одежды, отражение в зеркале?»\n• Ограничения из карточки: «Как сейчас колено/спина?»\n\nОтветы клиентки — аргументы для 6.1, записать их.",
+      "answers": [],
+      "fitbase": [],
+      "pending": false
+    },
+    "5.3": {
+      "id": "5.3", "block": 5, "title": "Замер InBody",
+      "kind": "reference",
+      "variants": null,
+      "text": "Встаньте босиком на платформу, возьмитесь за ручки. Это 30 секунд.",
+      "answers": [],
+      "fitbase": [],
+      "pending": false
+    },
+    "5.4": {
+      "id": "5.4", "block": 5, "title": "Разбор замера",
+      "kind": "reference",
+      "variants": null,
+      "text": "Правило: 2–3 цифры, связанные с целью клиентки, без запугивания и без диагнозов.\n\nСмотрите, {Имя}: вот Ваш процент жира, вот висцеральный — это жир вокруг органов, именно он отвечает за живот. А вот мышечная масса — её важно сохранить, чтобы уходил именно жир, а не мышцы. Через месяц повторим замер и сравним эти же цифры.",
+      "answers": [],
+      "fitbase": ["Результаты замера в карточку — база для повторного замера"],
+      "pending": false
+    },
+    "5.5": {
+      "id": "5.5", "block": 5, "title": "Сеанс",
+      "kind": "reference",
+      "variants": null,
+      "text": "Консультант рядом, спрашивает об ощущениях в середине и в конце.\n\nПри ограничениях: нагрузку снижает, говорит клиентке вслух — «Я поставила мягче из-за колена».\n\nНичего не продаёт во время сеанса.",
+      "answers": [],
+      "fitbase": [],
+      "pending": false
+    },
+    "5.6": {
+      "id": "5.6", "block": 5, "title": "Мостик к продаже",
+      "kind": "reference",
+      "variants": null,
+      "text": "Как Вам ощущения?",
+      "answers": [
+        { "label": "Понравилось", "next": "6.1", "reply": "Здорово! Тогда давайте посмотрим, как дойти до {цель} к {срок из 5.2}.", "fact": null, "note": null },
+        { "label": "Нейтрально", "next": "6.1", "reply": "А что хотелось бы иначе? Учтём в программе.", "fact": null, "note": null },
+        { "label": "Не понравилось", "next": "6.9", "reply": null, "fact": null, "note": null },
+        { "label": "Плохое самочувствие", "next": null, "reply": null, "fact": null, "note": "Не продавать, проследить за состоянием, предложить обратиться к врачу, Fitbase: комментарий, касание +1 день" }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "6.1": {
+      "id": "6.1", "block": 6, "title": "Рекомендация программы",
+      "kind": "reference",
+      "variants": null,
+      "text": "{Имя}, по Вашему замеру и цели я бы рекомендовала {Программа А}: 2–3 раза в неделю, {аппараты под задачу}, повторный замер через месяц. Если хочется мягче по графику — есть {Программа Б}. Обе можно оформить в рассрочку Kaspi 0-0-12. Какая Вам ближе?",
+      "answers": [
+        { "label": "Выбирает", "next": "6.2", "reply": null, "fact": null, "note": null },
+        { "label": "«Дорого»", "next": "6.3", "reply": null, "fact": null, "note": null },
+        { "label": "«Подумаю»", "next": "6.4", "reply": null, "fact": null, "note": null },
+        { "label": "«Посоветуюсь с мужем»", "next": "6.5", "reply": null, "fact": null, "note": null },
+        { "label": "«Начну позже»", "next": "6.6", "reply": null, "fact": null, "note": null },
+        { "label": "«Можно ещё одно пробное?»", "next": "6.7", "reply": null, "fact": null, "note": null },
+        { "label": "«Сравню с другими студиями»", "next": "6.8", "reply": null, "fact": null, "note": null },
+        { "label": "«Не моё»", "next": "6.9", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": true
+    },
+    "6.2": {
+      "id": "6.2", "block": 6, "title": "Оформление",
+      "kind": "reference",
+      "variants": null,
+      "text": "Отлично! Оформляем сразу или в рассрочку? И давайте сразу запишем первые сеансы — какие дни Вам удобны?",
+      "answers": [],
+      "fitbase": ["Абонемент, сеансы в расписании, этап «Оплатил»", "После оплаты → 7.6"],
+      "pending": false
+    },
+    "6.3": {
+      "id": "6.3", "block": 6, "title": "«Дорого»",
+      "kind": "reference",
+      "variants": null,
+      "text": "Понимаю. Давайте посмотрим иначе: в рассрочке 0-0-12 это {платёж в месяц} — примерно как {бытовое сравнение}. А ещё можно начать с {Программа Б}, она короче. Что для Вас удобнее?",
+      "answers": [
+        { "label": "Подходит рассрочка", "next": "6.2", "reply": null, "fact": null, "note": null },
+        { "label": "Подходит программа короче", "next": "6.2", "reply": null, "fact": null, "note": null },
+        { "label": "Может приходить днём 12:00–17:00", "next": "6.2", "reply": null, "fact": null, "note": "Предложить дневную программу" },
+        { "label": "Всё равно дорого", "next": "6.4", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "6.4": {
+      "id": "6.4", "block": 6, "title": "«Подумаю»",
+      "kind": "reference",
+      "variants": null,
+      "text": "Конечно, решение важное. Подскажите, что хочется взвесить: график, результат или бюджет?",
+      "answers": [
+        { "label": "График", "next": "6.2", "reply": null, "fact": null, "note": "Подобрать дни на месте" },
+        { "label": "Результат", "next": "6.1", "reply": null, "fact": null, "note": "Вернуться к цифрам замера и сроку из 5.2" },
+        { "label": "Бюджет", "next": "6.3", "reply": null, "fact": null, "note": null },
+        { "label": "«Просто подумать»", "next": "6.10", "reply": null, "fact": null, "note": "Условия держу до {дата, +2 дня}; Fitbase: этап «Принимает решение (Дожим)»" }
+      ],
+      "fitbase": ["Этап «Принимает решение (Дожим)» при уходе думать"],
+      "pending": false
+    },
+    "6.5": {
+      "id": "6.5", "block": 6, "title": "«Посоветуюсь с мужем»",
+      "kind": "reference",
+      "variants": null,
+      "text": "Правильно. Давайте я отправлю Вам в WhatsApp короткое резюме: Ваш замер, программу и условия — мужу будет проще. Когда удобно созвониться, чтобы ответить на вопросы, если появятся — завтра днём или вечером?",
+      "answers": [],
+      "fitbase": ["Отправить фото бланка InBody + 3–4 строки резюме без давления", "Этап «Принимает решение (Дожим)», задача на время созвона → 6.10"],
+      "pending": false
+    },
+    "6.6": {
+      "id": "6.6", "block": 6, "title": "«Начну позже»",
+      "kind": "reference",
+      "variants": null,
+      "text": "Хорошо. С какой даты хотели бы начать? Давайте сразу закрепим её и первые сеансы — так и окна будут за Вами, и не потеряется настрой.",
+      "answers": [
+        { "label": "Называет дату", "next": "6.2", "reply": null, "fact": null, "note": "Оформление с отложенным стартом" },
+        { "label": "Не знает дату", "next": "6.4", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [],
+      "pending": false
+    },
+    "6.7": {
+      "id": "6.7", "block": 6, "title": "«Можно ещё одно пробное?»",
+      "kind": "reference",
+      "variants": null,
+      "text": "{По правилам студии: вариант второго визита или ответ, почему одного достаточно.} Главное, что Вы уже увидели — замер и сеанс. Через месяц сравним цифры, и результат будет видно.",
+      "answers": [],
+      "fitbase": [],
+      "pending": true
+    },
+    "6.8": {
+      "id": "6.8", "block": 6, "title": "«Сравню с другими»",
+      "kind": "reference",
+      "variants": null,
+      "text": "Конечно, это разумно. Когда будете сравнивать, обратите внимание на три вещи: измеряют ли результат, есть ли консультант на каждом сеансе и подходит ли нагрузка при Ваших {ограничениях}. Если что-то захотите уточнить — пишите.",
+      "answers": [],
+      "fitbase": ["Тег «сравнивает», касание +3 дня → 6.10"],
+      "pending": false
+    },
+    "6.9": {
+      "id": "6.9", "block": 6, "title": "«Не моё»",
+      "kind": "reference",
+      "variants": null,
+      "text": "Спасибо за честность. Подскажите, что не понравилось? Это поможет нам стать лучше.",
+      "answers": [],
+      "fitbase": ["Причину в Fitbase → 7.4"],
+      "pending": false
     },
     "6.10": {
-      "id": "6.10", "block": 6, "title": "Касание: повторный интерес",
+      "id": "6.10", "block": 6, "title": "Дожим после пробного",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "night": true,
+      "variants": [
+        {
+          "label": "через 3 часа после визита",
+          "text": "{Имя}, как самочувствие после сеанса? Обычно на следующий день приятная лёгкость."
+        },
+        {
+          "label": "в оговорённое время",
+          "text": "{Имя}, как и договаривались — удалось обсудить? Какой вариант ближе?"
+        },
+        {
+          "label": "+1 день после срока",
+          "text": "Условия по {Программа А} держу до конца дня. Подтвердить за Вами?"
+        },
+        {
+          "label": "+3 дня",
+          "text": "Польза: отзыв клиентки с похожей задачей и её цифры замера (с разрешения)."
+        },
+        {
+          "label": "+7 дней",
+          "text": "Не буду надоедать. Ваш замер у нас сохранён — когда будете готовы, начнём с того же места."
+        }
+      ],
+      "answers": [
+        { "label": "Любой ответ", "next": "6.1", "reply": null, "fact": null, "note": "Или сразу 6.2 если готова оформить" }
+      ],
+      "fitbase": [],
+      "pending": false
     },
     "7.1": {
-      "id": "7.1", "block": 7, "title": "Касание: серия шагов",
+      "id": "7.1", "block": 7, "title": "Цепочка при молчании до записи",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "night": true,
+      "variants": [
+        {
+          "label": "Шаг 1 (+1 час)",
+          "text": "{Имя}, кстати, на этой неделе есть свободные окна {утром/вечером}. Если удобно, придержу Вам время."
+        },
+        {
+          "label": "Шаг 2 (вечер того же дня)",
+          "text": "Не отвлекаю. Вам удобнее, чтобы я написала завтра?"
+        },
+        {
+          "label": "Шаг 3 (+1 день)",
+          "text": "Польза: короткое видео, как проходит замер InBody, или отзыв клиентки с похожей целью."
+        },
+        {
+          "label": "Шаг 4 (+3 дня)",
+          "text": "{Имя}, остался вопрос, который мешает решиться? Отвечу честно."
+        },
+        {
+          "label": "Шаг 5 (+7 дней)",
+          "text": "Не буду надоедать. Бесплатный замер и пробное всегда в силе — напишите, когда будет удобно."
+        }
+      ],
+      "answers": [
+        { "label": "Ответила на любом шаге", "next": "3.1", "reply": null, "fact": null, "note": null },
+        { "label": "После шага 5 — молчит", "next": "7.5", "reply": null, "fact": null, "note": "Fitbase: транзитный этап менеджера" }
+      ],
+      "fitbase": [],
+      "pending": false
     },
     "7.2": {
-      "id": "7.2", "block": 7, "title": "DND — не беспокоить",
+      "id": "7.2", "block": 7, "title": "«Не пишите мне»",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "Поняла, больше не побеспокою. Если когда-нибудь захотите — просто напишите. Хорошего дня!",
+      "answers": [],
+      "fitbase": ["Тег «не беспокоить», цепочки и реактивация отключены. Конец."],
+      "pending": false
     },
     "7.3": {
-      "id": "7.3", "block": 7, "title": "Вернулась через время",
+      "id": "7.3", "block": 7, "title": "Ответила через несколько дней",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "variants": null,
+      "text": "{Имя}, рада, что написали! Предложение в силе: бесплатный замер и пробное. Вам удобнее {Время1} или {Время2}?",
+      "answers": [
+        { "label": "Отвечает", "next": "3.1", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": ["Вернуть карточку из транзитного этапа в работу → 3.1"],
+      "pending": false
     },
     "7.4": {
-      "id": "7.4", "block": 7, "title": "Отказ",
+      "id": "7.4", "block": 7, "title": "Жёсткое «нет»",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
       "variants": null,
-      "answers": [
-        { "label": "Цена", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "price" }, "note": null },
-        { "label": "Формат", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "format" }, "note": null },
-        { "label": "Время", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "time" }, "note": null },
-        { "label": "Локация", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "location" }, "note": null },
-        { "label": "Ушла к конкуренту", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "competitor" }, "note": null },
-        { "label": "Без причины", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "none" }, "note": null }
-      ],
-      "fitbase": [], "pending": true
+      "text": "Спасибо, что честно сказали. Если когда-нибудь захотите просто узнать свои цифры — бесплатный замер всегда в силе. Хорошего дня!",
+      "answers": [],
+      "fitbase": ["Отказ с причиной из списка: цена, формат, время, локация, ушла к конкуренту, без причины", "Причина «ушла к конкуренту» или «время» → 7.5 через 30–45 дней. Иначе — через 60 дней."],
+      "pending": false
     },
     "7.5": {
-      "id": "7.5", "block": 7, "title": "Касание: два варианта",
+      "id": "7.5", "block": 7, "title": "Реактивация",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
+      "night": true,
       "variants": [
-        { "label": "Вариант 1", "text": "TODO" },
-        { "label": "Вариант 2", "text": "TODO" }
+        {
+          "label": "Не была на замере",
+          "text": "{Имя}, здравствуйте! Это {Менеджер} из SlimWay. Как дела с тренировками? Если захотите сравнить — бесплатный замер у нас в силе."
+        },
+        {
+          "label": "Была на замере",
+          "text": "{Имя}, Ваш замер от {дата} у нас сохранён. Хотите сделать повторный бесплатно и посмотреть, что изменилось?"
+        }
       ],
-      "answers": [], "fitbase": [], "pending": true
+      "answers": [
+        { "label": "Ответила", "next": "3.1", "reply": null, "fact": null, "note": null },
+        { "label": "Молчит", "next": null, "reply": null, "fact": null, "note": "Больше не пишем, кроме сезонных поводов не чаще раза в 2 месяца" }
+      ],
+      "fitbase": [],
+      "pending": false
     },
     "7.6": {
-      "id": "7.6", "block": 7, "title": "Касание: по строкам",
+      "id": "7.6", "block": 7, "title": "После покупки",
       "kind": "chat",
-      "text": "TODO: текст из docs/sales-tree.md",
-      "variants": null, "answers": [], "fitbase": [], "pending": true
+      "night": true,
+      "variants": [
+        {
+          "label": "День оплаты",
+          "text": "{Имя}, поздравляю с началом! Ваши первые сеансы: {даты}. Если что-то поменяется — пишите."
+        },
+        {
+          "label": "После первых 3 сеансов",
+          "text": "Как ощущения после первых сеансов? Всё ли комфортно по нагрузке?"
+        },
+        {
+          "label": "Через месяц",
+          "text": "Приглашение на повторный замер InBody, сравнение цифр с первым."
+        },
+        {
+          "label": "После хорошего замера",
+          "text": "Можно попросить пару слов о том, как Вам у нас?"
+        },
+        {
+          "label": "Пропуск 2 сеансов подряд",
+          "text": "{Имя}, давно Вас не видели. Всё в порядке? Подберём удобное время."
+        },
+        {
+          "label": "За 2 недели до конца абонемента",
+          "text": "Разбор прогресса по замерам и предложение продолжить."
+        }
+      ],
+      "answers": [],
+      "fitbase": ["Подруга с тегом «рекомендация» получает спасибо и бонус по правилам студии"],
+      "pending": true
     }
-  },
-  "fitbase_tags": {
-    "_note": "TODO: перенести из docs/sales-tree.md раздел «Fitbase, теги, таймеры»"
   }
 }

@@ -8,7 +8,8 @@
     "build:kviz": "npm --prefix kviz/client install && npm --prefix kviz/client run build",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "import:trial-state": "tsx scripts/importTrialState.ts"
+    "import:trial-state": "tsx scripts/importTrialState.ts",
+    "check-tree": "node scripts/check-tree.js"
   },
   "engines": {
     "node": ">=22"
