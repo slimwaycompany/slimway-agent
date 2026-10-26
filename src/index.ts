@@ -23,6 +23,7 @@ import { buildClientsSyncRoute }                      from './http/measure';
 import { buildShiftsAutocloseRoute }                  from './http/shifts';
 import { runFitbaseOps, JOB_NAME as FITBASE_OPS_JOB } from './jobs/fitbaseOps';
 import { runFitbaseCrmSync } from './jobs/fitbaseCrmSync';
+import { mountScriptologRoutes } from './http/scriptolog';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -347,13 +348,14 @@ async function insertRun(
   });
 }
 
-// ── Shell, window, kviz ───────────────────────────────────────────────────────
+// ── Shell, window, kviz, scriptolog ──────────────────────────────────────────
 
 // Raise body limit only for InBody CSV endpoints — must come BEFORE global express.json()
 app.use('/kviz/api/inbody/csv-preview', express.json({ limit: '2mb' }));
 app.use('/kviz/api/inbody/csv-import',  express.json({ limit: '2mb' }));
 app.use(express.json());
 mountShellRoutes(app);
+mountScriptologRoutes(app);
 mountKvizRoutes(app);
 mountWindowRoutes(app);
 

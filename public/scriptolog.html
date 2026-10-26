@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Скриптолог SlimWay</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--brand:#02BDB6;--accent:#263CD9;--red:#ef4444;--yellow:#f59e0b;--green:#22c55e;--gray:#94a3b8;
+  --bg:#eef2f7;--glass:rgba(255,255,255,0.6);--border:rgba(255,255,255,0.7);--shadow:0 2px 16px rgba(2,49,100,0.08)}
+html,body{height:100%;font-family:'Manrope',system-ui,sans-serif;background:var(--bg);color:#1a202c;font-size:14px}
+body{overflow-x:hidden}
+.blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:.15;pointer-events:none;z-index:0}
+.b1{width:400px;height:400px;background:var(--brand);top:-150px;right:-100px}
+.b2{width:350px;height:350px;background:var(--accent);bottom:-100px;left:-80px}
+
+/* ── Screens ─────────────────────────────────── */
+.screen{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+.screen.hidden{display:none!important}
+.card{background:var(--glass);backdrop-filter:blur(18px) saturate(140%);border:1px solid var(--border);
+  border-radius:20px;box-shadow:var(--shadow);padding:32px 28px;width:300px;text-align:center}
+.card .logo{width:44px;height:44px;margin:0 auto 12px;border-radius:12px;
+  background:linear-gradient(135deg,var(--brand),var(--accent));
+  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px}
+.card h1{font-size:20px;font-weight:700;margin-bottom:4px}
+.card .sub{font-size:12px;color:#64748b;margin-bottom:22px}
+input[type=text],input[type=password],input[type=tel]{width:100%;padding:10px 12px;margin-bottom:10px;
+  border:1.5px solid var(--border);border-radius:10px;background:rgba(255,255,255,0.8);
+  font-size:14px;font-family:inherit;outline:none;color:#1a202c;transition:border-color .15s}
+input:focus{border-color:var(--brand)}
+.btn{width:100%;padding:11px;border:none;border-radius:10px;
+  background:linear-gradient(135deg,var(--brand),var(--accent));
+  color:#fff;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.88}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.err{margin-top:10px;font-size:12px;color:var(--red);min-height:18px}
+
+/* ── App shell ───────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
+#app.hidden{display:none!important}
+
+/* ── Status bar ──────────────────────────────── */
+#status-bar{padding:6px 12px;font-size:12px;font-weight:600;
+  background:rgba(255,255,255,0.5);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:6px;flex-shrink:0}
+#status-dot{width:8px;height:8px;border-radius:50%;background:var(--gray);flex-shrink:0}
+#status-dot.ok{background:var(--green)}
+#status-dot.warn{background:var(--yellow)}
+
+/* ── Client card ─────────────────────────────── */
+#client-card{background:var(--glass);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);
+  padding:10px 12px;flex-shrink:0}
+#cc-row1{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+#cc-name{font-size:14px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;padding:2px 7px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap}
+.chip-blue{background:rgba(2,189,182,0.12);color:var(--brand)}
+.chip-gray{background:#f1f5f9;color:#64748b}
+.chip-yellow{background:rgba(245,158,11,0.12);color:var(--yellow)}
+.chip-green{background:rgba(34,197,94,0.12);color:var(--green)}
+.chip-red{background:rgba(239,68,68,0.12);color:var(--red)}
+.chip-purple{background:rgba(38,60,217,0.12);color:var(--accent)}
+#cc-phone-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:12px;color:#64748b}
+#cc-facts{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:2px}
+#cc-mgr-row{font-size:11px;color:#94a3b8;display:flex;align-items:center;gap:4px}
+.icon-btn{background:none;border:none;cursor:pointer;font-size:13px;padding:2px 3px;opacity:.6;transition:opacity .15s}
+.icon-btn:hover{opacity:1}
+.small-btn{padding:3px 8px;font-size:11px;border:1.5px solid var(--border);border-radius:8px;
+  background:rgba(255,255,255,0.7);cursor:pointer;font-family:inherit;font-weight:600;transition:background .15s}
+.small-btn:hover{background:rgba(2,189,182,0.08)}
+.small-btn.brand{border-color:rgba(2,189,182,0.4);color:var(--brand)}
+
+/* ── Tabs ────────────────────────────────────── */
+.tabs-nav{display:flex;gap:2px;padding:6px 8px;background:rgba(255,255,255,0.45);
+  border-bottom:1px solid var(--border);flex-shrink:0}
+.tab-btn{background:none;border:none;cursor:pointer;padding:5px 9px;border-radius:8px;
+  font-size:12px;font-weight:600;font-family:inherit;color:#64748b;transition:background .12s,color .12s;white-space:nowrap}
+.tab-btn:hover{background:rgba(2,189,182,0.08);color:#1a202c}
+.tab-btn.active{background:rgba(2,189,182,0.13);color:var(--brand)}
+
+/* ── Tab content ─────────────────────────────── */
+.tab-content{flex:1;overflow-y:auto;padding:10px 10px;display:none}
+.tab-content.active{display:block}
+
+/* ── Search ──────────────────────────────────── */
+.search-row{position:relative;margin-bottom:8px}
+.search-row input{width:100%;padding:8px 32px 8px 10px;border:1.5px solid var(--border);
+  border-radius:10px;background:rgba(255,255,255,0.8);font-size:13px;font-family:inherit;outline:none;margin-bottom:0}
+.search-row input:focus{border-color:var(--brand)}
+.search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;font-size:14px;color:#94a3b8;padding:2px}
+#search-results{background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--border);
+  border-radius:10px;max-height:200px;overflow-y:auto;margin-top:4px;box-shadow:var(--shadow)}
+.search-item{padding:8px 10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.5);font-size:13px}
+.search-item:last-child{border-bottom:none}
+.search-item:hover{background:rgba(2,189,182,0.06)}
+.search-item .sid{font-weight:700;color:var(--brand);margin-right:6px}
+
+/* ── Info messages ───────────────────────────── */
+.info-msg{text-align:center;color:#94a3b8;font-size:13px;padding:32px 16px;line-height:1.5}
+.hint{font-size:12px;color:#94a3b8;margin-bottom:8px}
+.section-title{font-size:13px;font-weight:700;margin-bottom:10px;color:#475569}
+
+/* ── Start screen ────────────────────────────── */
+#start-screen{padding:4px 0}
+.entry-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.entry-btn{background:var(--glass);backdrop-filter:blur(8px);border:1.5px solid var(--border);
+  border-radius:12px;padding:10px 8px;cursor:pointer;text-align:center;font-family:inherit;
+  transition:background .12s,border-color .12s}
+.entry-btn:hover{background:rgba(2,189,182,0.08);border-color:rgba(2,189,182,0.35)}
+.entry-btn .eid{font-size:12px;font-weight:700;color:var(--brand);margin-bottom:3px}
+.entry-btn .etitle{font-size:12px;color:#1a202c;line-height:1.3}
+
+/* ── Breadcrumb ──────────────────────────────── */
+#breadcrumb{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:8px;padding:4px 0}
+.bc-item{font-size:11px;color:var(--brand);cursor:pointer;font-weight:600}
+.bc-item:hover{text-decoration:underline}
+.bc-sep{font-size:11px;color:#cbd5e1}
+
+/* ── Night warning ───────────────────────────── */
+.warning-msg{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;
+  padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:8px}
+
+/* ── Node card ───────────────────────────────── */
+#node-card{background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--border);
+  border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+#nc-header{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+#nc-title{font-size:14px;font-weight:700;flex:1}
+#nc-variants{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap}
+.variant-btn{padding:4px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;
+  font-family:inherit;cursor:pointer;background:rgba(255,255,255,0.7);font-weight:600;transition:all .12s}
+.variant-btn.active{background:rgba(2,189,182,0.12);border-color:rgba(2,189,182,0.4);color:var(--brand)}
+.node-text{font-size:14px;line-height:1.6;white-space:pre-wrap;margin-bottom:10px;
+  background:rgba(255,255,255,0.5);border-radius:10px;padding:10px;border:1px solid var(--border)}
+.var-missing{background:rgba(239,68,68,0.12);border-radius:4px;padding:0 3px;color:var(--red);font-weight:600}
+.var-filled{background:rgba(2,189,182,0.1);border-radius:4px;padding:0 3px;color:var(--brand);font-weight:600}
+
+/* Variable inputs */
+#nc-vars{background:rgba(255,255,255,0.4);border-radius:10px;padding:8px 10px;margin-bottom:10px;
+  border:1px solid var(--border)}
+.var-row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.var-row:last-child{margin-bottom:0}
+.var-label{font-size:12px;color:#64748b;font-weight:600;min-width:90px;flex-shrink:0}
+.var-row input{flex:1;padding:5px 8px;border:1.5px solid var(--border);border-radius:8px;
+  background:rgba(255,255,255,0.8);font-size:13px;font-family:inherit;outline:none;margin-bottom:0}
+.var-row input:focus{border-color:var(--brand)}
+.var-row input.missing{border-color:rgba(239,68,68,0.5);background:rgba(239,68,68,0.04)}
+#nc-time-picker{margin-bottom:10px}
+.time-pick-row{display:flex;gap:6px}
+.time-pick-btn{flex:1;padding:6px;border:1.5px solid var(--border);border-radius:8px;
+  font-size:12px;font-family:inherit;cursor:pointer;background:rgba(255,255,255,0.7);font-weight:600;transition:all .12s}
+.time-pick-btn.selected{background:rgba(2,189,182,0.12);border-color:rgba(2,189,182,0.4);color:var(--brand)}
+
+/* Action buttons */
+.action-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.act-btn{padding:8px 14px;border:none;border-radius:10px;font-size:13px;font-weight:600;
+  font-family:inherit;cursor:pointer;transition:opacity .12s}
+.act-btn:disabled{opacity:.4;cursor:not-allowed}
+.act-insert{background:linear-gradient(135deg,var(--brand),var(--accent));color:#fff}
+.act-insert:hover:not(:disabled){opacity:.88}
+.act-copy{background:rgba(255,255,255,0.8);border:1.5px solid var(--border);color:#475569}
+.act-copy:hover{background:rgba(2,189,182,0.06)}
+.act-dalye{background:rgba(255,255,255,0.8);border:1.5px solid rgba(2,189,182,0.4);color:var(--brand)}
+.act-dalye:hover{background:rgba(2,189,182,0.08)}
+.act-back{background:rgba(255,255,255,0.6);border:1.5px solid var(--border);color:#94a3b8;font-size:12px;padding:6px 10px}
+.act-back:hover{color:#64748b}
+.act-jump{background:rgba(255,255,255,0.6);border:1.5px solid var(--border);color:#64748b;font-size:12px;padding:6px 10px}
+
+/* Fitbase hints */
+#nc-fitbase{background:rgba(38,60,217,0.05);border:1px solid rgba(38,60,217,0.15);border-radius:10px;
+  padding:8px 10px;margin-bottom:10px}
+#nc-fitbase .fb-title{font-size:11px;font-weight:700;color:var(--accent);margin-bottom:4px}
+#nc-fitbase .fb-item{font-size:12px;color:#475569;line-height:1.5}
+
+/* Answers */
+#nc-answers{border-top:1px solid var(--border);padding-top:10px;margin-top:4px}
+#nc-answer-buttons{display:flex;flex-direction:column;gap:5px}
+.ans-btn{padding:8px 10px;background:rgba(255,255,255,0.7);border:1.5px solid var(--border);
+  border-radius:10px;cursor:pointer;font-size:13px;font-family:inherit;text-align:left;
+  transition:background .12s,border-color .12s;font-weight:500}
+.ans-btn:hover{background:rgba(2,189,182,0.07);border-color:rgba(2,189,182,0.3)}
+.ans-note{font-size:11px;color:#94a3b8;display:block;margin-top:2px}
+
+/* Reply after answer */
+#nc-reply{border-top:1px solid var(--border);padding-top:10px;margin-top:4px}
+#nc-reply-insert{margin-top:8px;padding:7px 14px;border:none;border-radius:10px;
+  background:linear-gradient(135deg,var(--brand),var(--accent));color:#fff;
+  font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
+
+/* Fact input (inline) */
+.fact-input-row{display:flex;align-items:center;gap:6px;margin-top:6px}
+.fact-input-row input{flex:1;padding:5px 8px;border:1.5px solid var(--border);border-radius:8px;
+  background:rgba(255,255,255,0.8);font-size:13px;font-family:inherit;outline:none;margin-bottom:0}
+
+/* Objections / Reference lists */
+.node-list-item{background:var(--glass);backdrop-filter:blur(8px);border:1px solid var(--border);
+  border-radius:10px;padding:10px;margin-bottom:6px;cursor:pointer;transition:background .12s}
+.node-list-item:hover{background:rgba(2,189,182,0.06)}
+.nli-id{font-size:11px;font-weight:700;color:var(--brand);margin-bottom:3px}
+.nli-title{font-size:13px;font-weight:600}
+.nli-preview{font-size:12px;color:#64748b;margin-top:2px;overflow:hidden;text-overflow:ellipsis;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.nli-ref-text{font-size:13px;line-height:1.6;white-space:pre-wrap;margin-top:6px;color:#475569}
+.block-title{font-size:12px;font-weight:700;color:#475569;margin:12px 0 6px;text-transform:uppercase;letter-spacing:.05em}
+
+/* History */
+.hist-item{border-left:3px solid var(--border);padding:6px 0 6px 10px;margin-bottom:8px}
+.hist-item.insert{border-left-color:var(--brand)}
+.hist-item.answer{border-left-color:var(--green)}
+.hist-item.fact{border-left-color:var(--yellow)}
+.hist-meta{font-size:11px;color:#94a3b8;margin-bottom:3px}
+.hist-text{font-size:13px;color:#1a202c;line-height:1.4}
+
+/* Dialog overlays */
+.dialog-wrap{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+  background:rgba(238,242,247,0.7);backdrop-filter:blur(4px)}
+.dialog-wrap.open{display:flex}
+.dialog-card{background:var(--glass);backdrop-filter:blur(18px);border:1px solid var(--border);
+  border-radius:16px;padding:20px;width:300px;box-shadow:var(--shadow)}
+.dialog-card h3{font-size:16px;font-weight:700;margin-bottom:14px}
+.row-btns{display:flex;gap:8px;margin-top:10px}
+.row-btns button{flex:1}
+
+/* Misc */
+.pending-note{font-size:11px;color:var(--yellow);margin-bottom:6px}
+.ref-block{background:var(--glass);backdrop-filter:blur(8px);border:1px solid var(--border);
+  border-radius:10px;padding:12px;margin-bottom:8px}
+.ref-block .rb-title{font-size:13px;font-weight:700;margin-bottom:6px;color:#1a202c}
+.ref-block .rb-text{font-size:13px;color:#475569;line-height:1.6;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="blob b1"></div>
+<div class="blob b2"></div>
+
+<!-- Login -->
+<div id="login-screen" class="screen">
+  <div class="card">
+    <div class="logo">SW</div>
+    <h1>Скриптолог</h1>
+    <p class="sub">SlimWay</p>
+    <input type="text" id="l-login" placeholder="Логин" autocomplete="username" autocapitalize="none">
+    <input type="password" id="l-pw" placeholder="Пароль" autocomplete="current-password">
+    <button class="btn" id="l-btn">Войти</button>
+    <div class="err" id="l-err"></div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app" class="hidden">
+  <div id="status-bar">
+    <span id="status-dot"></span>
+    <span id="status-text">Загрузка...</span>
+  </div>
+
+  <div id="client-card" style="display:none">
+    <div id="cc-row1">
+      <span id="cc-name">—</span>
+      <span id="cc-channel" class="chip chip-blue"></span>
+      <span id="cc-status-badge" class="chip" style="display:none"></span>
+    </div>
+    <div id="cc-phone-row">
+      <span id="cc-phone" style="color:#64748b;font-size:12px">нет телефона</span>
+      <button id="bind-phone-btn" class="small-btn brand" style="display:none">📱 Привязать</button>
+    </div>
+    <div id="cc-facts"></div>
+    <div id="cc-mgr-row">
+      <span id="cc-mgr-label">Менеджер:</span>
+      <span id="cc-mgr-val" style="font-weight:600;color:#475569">—</span>
+      <button class="icon-btn" id="mgr-edit-btn" title="Изменить менеджера">✏️</button>
+    </div>
+  </div>
+
+  <div class="tabs-nav">
+    <button class="tab-btn active" data-tab="script">Скрипт</button>
+    <button class="tab-btn" data-tab="objections">Возражения</button>
+    <button class="tab-btn" data-tab="reference">Справочник</button>
+    <button class="tab-btn" data-tab="history">История</button>
+  </div>
+
+  <!-- Tab: Script -->
+  <div id="tab-script" class="tab-content active">
+    <div class="search-row">
+      <input type="text" id="search-input" placeholder="Поиск по ID или тексту…">
+      <button class="search-clear" id="search-clear" style="display:none">✕</button>
+      <div id="search-results" style="display:none"></div>
+    </div>
+
+    <div id="no-client-msg" class="info-msg">
+      👆 Открой диалог в Fitbase Chat<br>
+      <span style="font-size:11px">Панель подключится автоматически</span>
+    </div>
+
+    <div id="start-screen" style="display:none">
+      <p class="hint" style="margin-bottom:8px">С чего начнём?</p>
+      <div class="entry-grid" id="entry-buttons"></div>
+      <div style="margin-top:8px">
+        <button class="small-btn" id="btn-change-entry" style="width:100%">🔀 Сменить узел</button>
+      </div>
+    </div>
+
+    <div id="breadcrumb" style="display:none"></div>
+    <div id="night-warning" class="warning-msg" style="display:none">🌙 Ночью не пишем. Отправь утром (с 9:00).</div>
+
+    <div id="node-card" style="display:none">
+      <div id="nc-header">
+        <span id="nc-id" class="chip chip-gray"></span>
+        <span id="nc-title"></span>
+        <span id="nc-pending" class="chip chip-yellow" style="display:none">уточняется</span>
+      </div>
+      <div id="nc-variants" style="display:none"></div>
+      <div class="node-text" id="nc-text"></div>
+      <div id="nc-vars" style="display:none"></div>
+      <div id="nc-time-picker" style="display:none">
+        <p class="hint">Выбери слот для {Время}:</p>
+        <div class="time-pick-row">
+          <button class="time-pick-btn" id="time-pick-1" data-slot="1"></button>
+          <button class="time-pick-btn" id="time-pick-2" data-slot="2"></button>
+        </div>
+      </div>
+      <div class="action-row" id="nc-actions"></div>
+      <div id="nc-fitbase" style="display:none">
+        <div class="fb-title">Не забудь в Fitbase:</div>
+        <div id="nc-fitbase-items"></div>
+      </div>
+      <div id="nc-answers" style="display:none">
+        <p class="hint">Что ответила клиентка?</p>
+        <div id="nc-answer-buttons"></div>
+      </div>
+      <div id="nc-reply" style="display:none">
+        <p class="hint">Готовый ответ:</p>
+        <div class="node-text" id="nc-reply-text"></div>
+        <button id="nc-reply-insert" class="act-btn act-insert">Вставить ответ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Objections -->
+  <div id="tab-objections" class="tab-content">
+    <p class="section-title">Быстрый переход</p>
+    <div id="obj-list"></div>
+  </div>
+
+  <!-- Tab: Reference -->
+  <div id="tab-reference" class="tab-content">
+    <div id="ref-content"></div>
+  </div>
+
+  <!-- Tab: History -->
+  <div id="tab-history" class="tab-content">
+    <div id="history-list" class="info-msg">Нет истории</div>
+  </div>
+</div>
+
+<!-- Bind phone dialog -->
+<div id="bind-dialog" class="dialog-wrap">
+  <div class="dialog-card">
+    <h3>📱 Привязать телефон</h3>
+    <input type="tel" id="bind-input" placeholder="+7 ___ ___ __ __">
+    <div class="err" id="bind-err"></div>
+    <div class="row-btns">
+      <button class="btn" id="bind-ok" style="width:auto;flex:1">Привязать</button>
+      <button class="small-btn" id="bind-cancel" style="flex:1">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manager edit dialog -->
+<div id="mgr-dialog" class="dialog-wrap">
+  <div class="dialog-card">
+    <h3>✏️ Имя менеджера</h3>
+    <input type="text" id="mgr-input" placeholder="Имя менеджера">
+    <div class="row-btns">
+      <button class="btn" id="mgr-ok" style="width:auto;flex:1">Сохранить</button>
+      <button class="small-btn" id="mgr-cancel" style="flex:1">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Fact input dialog -->
+<div id="fact-dialog" class="dialog-wrap">
+  <div class="dialog-card">
+    <h3 id="fact-dialog-title">Введите значение</h3>
+    <input type="text" id="fact-input" placeholder="">
+    <div class="row-btns">
+      <button class="btn" id="fact-ok" style="width:auto;flex:1">Сохранить</button>
+      <button class="small-btn" id="fact-cancel" style="flex:1">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SERVER = location.origin; // https://slimway-agent.onrender.com
+
+// ── State ──────────────────────────────────────
+const S = {
+  token:      null,
+  manager:    '',
+  tree:       null,   // {blocks, nodes, constants, rules, fitbase_tags}
+  client:     null,   // from API
+  events:     [],
+  history:    [],     // [nodeId, ...]
+  nodeId:     null,
+  phase:      'card', // 'card' | 'awaiting_answer' | 'showing_reply'
+  replyPending: null, // {text, next, factKey, factValue}
+  vars:       {},     // current filled vars
+  variant:    0,
+  chatReady:  false,
+  embedded:   window.parent !== window,
+};
+
+// Night nodes (касания)
+const NIGHT_NODES = new Set(['4.7','6.10','7.1','7.5','7.6']);
+function isNight() {
+  const h = new Date().getHours() * 60 + new Date().getMinutes();
+  return h >= 21*60+30 || h < 9*60;
+}
+
+// ── Boot ───────────────────────────────────────
+function boot() {
+  bindUI();
+  const saved = sessionStorage.getItem('sw_token');
+  if (saved) { S.token = saved; showApp(); loadTree(); }
+  else if (S.embedded) {
+    window.parent.postMessage({type:'ready'}, '*');
+    window.addEventListener('message', onParentMsg);
+    setTimeout(() => { if (!S.token) showLogin(); }, 2500);
+  } else {
+    showLogin();
+  }
+}
+
+function onParentMsg(e) {
+  // Accept only from chrome-extension:// origins (origin is null for extension pages in some browsers)
+  const ok = e.origin === 'null' || e.origin === null || (typeof e.origin === 'string' && e.origin.startsWith('chrome-extension://'));
+  if (!ok) return;
+  const d = e.data;
+  if (!d || typeof d !== 'object') return;
+  if (d.type === 'auth' && d.token)        { S.token = d.token; sessionStorage.setItem('sw_token', d.token); showApp(); loadTree(); }
+  if (d.type === 'client')                  onClientData(d);
+  if (d.type === 'manager' && d.name)       { S.manager = d.name; sessionStorage.setItem('sw_mgr', d.name); renderMgr(); }
+  if (d.type === 'chat-status')             updateChatStatus(d.ready);
+}
+
+// ── Login ──────────────────────────────────────
+function showLogin() { document.getElementById('login-screen').classList.remove('hidden'); }
+function showApp()   { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); }
+
+function doLogin() {
+  const login = document.getElementById('l-login').value.trim();
+  const pw    = document.getElementById('l-pw').value;
+  const errEl = document.getElementById('l-err');
+  const btnEl = document.getElementById('l-btn');
+  errEl.textContent = ''; btnEl.disabled = true;
+  api('POST', '/api/scriptolog/login', {login, password: pw})
+    .then(d => {
+      S.token = d.token;
+      S.manager = d.display_name || '';
+      sessionStorage.setItem('sw_token', d.token);
+      sessionStorage.setItem('sw_mgr', S.manager);
+      // Tell extension to store token
+      if (S.embedded) window.parent.postMessage({type:'login', token: d.token}, '*');
+      showApp();
+      loadTree();
+    })
+    .catch(e => { errEl.textContent = e.message || 'Ошибка входа'; btnEl.disabled = false; });
+}
+
+// ── API helper ─────────────────────────────────
+function api(method, url, body) {
+  const headers = {'Content-Type': 'application/json'};
+  if (S.token) headers['Authorization'] = 'Bearer ' + S.token;
+  return fetch(SERVER + url, {method, headers, body: body ? JSON.stringify(body) : undefined})
+    .then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.status); return d; }));
+}
+
+// ── Tree & client loading ──────────────────────
+function loadTree() {
+  api('GET', '/api/scriptolog/tree')
+    .then(tree => {
+      S.tree = tree;
+      renderObjections();
+      renderReference();
+      // Restore manager from session
+      if (!S.manager) {
+        S.manager = sessionStorage.getItem('sw_mgr') || '';
+        renderMgr();
+      }
+    })
+    .catch(e => console.error('tree load:', e));
+}
+
+function onClientData(d) {
+  // d = {type:'client', name, phone, channel}
+  if (!S.token) return;
+  setStatus(false, '🔄 Загружаю клиентку…');
+  api('POST', '/api/scriptolog/client', {name: d.name, phone: d.phone || null, channel: d.channel || 'unknown'})
+    .then(r => {
+      S.client  = r.client;
+      S.events  = r.events || [];
+      S.vars    = (r.client.vars && typeof r.client.vars === 'object') ? {...r.client.vars} : {};
+      S.history = [];
+      S.nodeId  = r.client.current_node || null;
+      S.phase   = 'card';
+      renderClientCard();
+      renderHistory();
+      if (S.nodeId) showNode(S.nodeId);
+      else          showStartScreen();
+      setStatus(true, '✅ Чат подключён');
+      document.getElementById('no-client-msg').style.display = 'none';
+    })
+    .catch(e => { setStatus(false, '⚠ Ошибка загрузки: ' + e.message); });
+}
+
+// ── Status bar ─────────────────────────────────
+function setStatus(ok, text) {
+  document.getElementById('status-text').textContent = text;
+  const dot = document.getElementById('status-dot');
+  dot.className = ok ? 'ok' : '';
+}
+function updateChatStatus(ready) {
+  S.chatReady = !!ready;
+  if (ready) {
+    if (!S.client) setStatus(false, '👆 Открой диалог в Fitbase Chat');
+    else           setStatus(true,  '✅ Чат подключён');
+  } else {
+    setStatus(false, '⚠ Не нашёл поле ввода — сообщи Сергею');
+  }
+}
+
+// ── Client card ────────────────────────────────
+function renderClientCard() {
+  const c = S.client;
+  if (!c) { document.getElementById('client-card').style.display = 'none'; return; }
+  document.getElementById('client-card').style.display = '';
+  document.getElementById('cc-name').textContent = c.name || '—';
+  document.getElementById('cc-channel').textContent = c.channel || '?';
+  if (c.phone) {
+    document.getElementById('cc-phone').textContent = c.phone;
+    document.getElementById('bind-phone-btn').style.display = 'none';
+  } else {
+    document.getElementById('cc-phone').textContent = 'нет телефона';
+    document.getElementById('bind-phone-btn').style.display = '';
+  }
+  // Status badge
+  const sb = document.getElementById('cc-status-badge');
+  if (c.status && c.status !== 'active') {
+    sb.style.display = '';
+    const labels = {booked:'записана',refused:'отказала',dnd:'не беспокоить'};
+    const colors  = {booked:'chip-green',refused:'chip-red',dnd:'chip-gray'};
+    sb.textContent = labels[c.status] || c.status;
+    sb.className = 'chip ' + (colors[c.status] || 'chip-gray');
+  } else {
+    sb.style.display = 'none';
+  }
+  // Facts chips
+  renderFacts();
+  renderMgr();
+}
+
+function renderFacts() {
+  const el = document.getElementById('cc-facts');
+  if (!S.client) { el.innerHTML = ''; return; }
+  const FACT_LABELS = {
+    goal: {weight:'снизить вес',volume:'убрать объёмы',tone:'подтянуть тело'},
+    experience: {none:'нет опыта',no_result:'без результата',at_competitor:'у конкурента',former_client:'бывш. клиент'},
+    limitations: {none:'без ограничений',joints:'колени/спина',doctor:'нужен врач'},
+    time_of_day: {morning:'утро',afternoon:'день',evening:'вечер',weekends:'выходные'},
+  };
+  const facts = S.client.facts || {};
+  let html = '';
+  for (const [k,v] of Object.entries(facts)) {
+    if (!v) continue;
+    let label = String(v);
+    if (FACT_LABELS[k] && FACT_LABELS[k][v]) label = FACT_LABELS[k][v];
+    if (k === 'competitor_end_date') label = 'до ' + v;
+    if (k === 'referrer_name')       label = 'от ' + v;
+    if (k === 'refusal_reason')      label = '❌ ' + ({price:'цена',format:'формат',time:'время',location:'место',competitor:'конкурент',none:'без причины'}[v] || v);
+    html += `<span class="chip chip-blue" style="font-size:11px">${esc(label)}</span>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderMgr() {
+  const mgr = S.manager || S.client?.last_manager || S.client?.first_manager || '—';
+  document.getElementById('cc-mgr-val').textContent = mgr;
+  S.manager = S.manager || (S.client?.last_manager ?? '') || '';
+}
+
+// ── Start screen (entry point selection) ───────
+function showStartScreen() {
+  document.getElementById('start-screen').style.display  = '';
+  document.getElementById('node-card').style.display     = 'none';
+  document.getElementById('breadcrumb').style.display    = 'none';
+  document.getElementById('night-warning').style.display = 'none';
+  buildEntryButtons();
+}
+
+function buildEntryButtons() {
+  const ENTRIES = [
+    {id:'1.1', label:'Стандартный вход'},
+    {id:'1.2', label:'«+» / Информация'},
+    {id:'1.3', label:'Цена'},
+    {id:'1.4', label:'Рекомендация'},
+    {id:'1.5', label:'Аппарат'},
+    {id:'1.6', label:'Утром'},
+    {id:'7.3', label:'Вернулась'},
+  ];
+  const el  = document.getElementById('entry-buttons');
+  el.innerHTML = ENTRIES.map(e =>
+    `<button class="entry-btn" onclick="selectEntry('${e.id}')">
+      <div class="eid">${e.id}</div>
+      <div class="etitle">${esc(e.label)}</div>
+    </button>`
+  ).join('');
+}
+
+function selectEntry(nodeId) {
+  if (!S.client) return;
+  S.history = [];
+  logEvent({event_type:'start', node_id:nodeId, manager:S.manager});
+  showNode(nodeId);
+}
+
+// ── Node rendering ─────────────────────────────
+function showNode(nodeId) {
+  if (!S.tree) return;
+  const node = S.tree.nodes[nodeId];
+  if (!node) { alert('Узел ' + nodeId + ' не найден'); return; }
+
+  S.nodeId  = nodeId;
+  S.phase   = 'card';
+  S.variant = 0;
+
+  document.getElementById('start-screen').style.display  = 'none';
+  document.getElementById('node-card').style.display     = '';
+  document.getElementById('nc-answers').style.display    = 'none';
+  document.getElementById('nc-reply').style.display      = 'none';
+  document.getElementById('no-client-msg').style.display = 'none';
+
+  // Night warning
+  document.getElementById('night-warning').style.display = (NIGHT_NODES.has(nodeId) && isNight()) ? '' : 'none';
+
+  // Header
+  document.getElementById('nc-id').textContent    = nodeId;
+  document.getElementById('nc-title').textContent = node.title || '';
+  document.getElementById('nc-pending').style.display = node.pending ? '' : 'none';
+
+  // Variants
+  renderVariants(node);
+  // Text + vars
+  renderNodeText(node);
+  // Action buttons
+  renderActions(node);
+  // Fitbase hints
+  renderFitbase(node);
+  // Breadcrumb
+  renderBreadcrumb();
+}
+
+function getNodeText(node) {
+  if (node.variants && node.variants.length > 0 && S.variant < node.variants.length)
+    return node.variants[S.variant].text || '';
+  return node.text || '';
+}
+
+function renderVariants(node) {
+  const el = document.getElementById('nc-variants');
+  if (!node.variants || node.variants.length === 0) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.innerHTML = node.variants.map((v,i) =>
+    `<button class="variant-btn${i===S.variant?' active':''}" onclick="selectVariant(${i})">${esc(v.label)}</button>`
+  ).join('');
+}
+
+function selectVariant(i) {
+  S.variant = i;
+  const node = S.tree?.nodes[S.nodeId];
+  if (!node) return;
+  renderVariants(node);
+  renderNodeText(node);
+  renderActions(node);
+}
+
+// Parse {VAR} tokens from text
+function parseVars(text) {
+  const found = [];
+  const re = /\{([^}]+)\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (!found.includes(m[1])) found.push(m[1]);
+  }
+  return found;
+}
+
+// Returns true if any required var is missing
+function hasMissingVars(text) {
+  if (!S.tree) return false;
+  const consts = S.tree.constants || {};
+  return parseVars(text).some(v => !consts[v] && !S.vars[v]);
+}
+
+function fillText(text) {
+  if (!S.tree) return text;
+  const consts = S.tree.constants || {};
+  return text.replace(/\{([^}]+)\}/g, (_, v) => {
+    if (consts[v]) return consts[v];
+    if (S.vars[v]) return S.vars[v];
+    return `{${v}}`;
+  });
+}
+
+function renderNodeText(node) {
+  const raw  = getNodeText(node);
+  const el   = document.getElementById('nc-text');
+  const vars = parseVars(raw);
+  const consts = S.tree?.constants || {};
+  // Render with highlighted vars
+  let html = esc(raw).replace(/\{([^}]+)\}/g, (_, v) => {
+    if (consts[v])   return `<span class="var-filled">{${esc(v)}}</span>`;
+    if (S.vars[v])   return `<span class="var-filled">${esc(S.vars[v])}</span>`;
+    return `<span class="var-missing">{${esc(v)}}</span>`;
+  });
+  el.innerHTML = html;
+
+  // Var inputs
+  const inputVars = vars.filter(v => !consts[v] && v !== 'Время'); // Время handled separately
+  const varsEl = document.getElementById('nc-vars');
+  if (inputVars.length === 0) { varsEl.style.display = 'none'; }
+  else {
+    varsEl.style.display = '';
+    varsEl.innerHTML = inputVars.map(v =>
+      `<div class="var-row">
+        <span class="var-label">{${esc(v)}}</span>
+        <input type="text" value="${esc(S.vars[v]||'')}" class="var-input${S.vars[v]?'':' missing'}"
+          data-var="${esc(v)}" placeholder="введи…"
+          oninput="setVar('${v}', this.value)">
+      </div>`
+    ).join('');
+  }
+
+  // Time picker: if text has {Время} and both {Время1},{Время2} are filled
+  const tp = document.getElementById('nc-time-picker');
+  if (vars.includes('Время') && S.vars['Время1'] && S.vars['Время2']) {
+    tp.style.display = '';
+    const b1 = document.getElementById('time-pick-1');
+    const b2 = document.getElementById('time-pick-2');
+    b1.textContent = S.vars['Время1'];
+    b2.textContent = S.vars['Время2'];
+    b1.classList.toggle('selected', S.vars['Время'] === S.vars['Время1']);
+    b2.classList.toggle('selected', S.vars['Время'] === S.vars['Время2']);
+  } else {
+    tp.style.display = 'none';
+  }
+}
+
+function setVar(varName, value) {
+  S.vars[varName] = value;
+  const node = S.tree?.nodes[S.nodeId];
+  if (node) { renderNodeText(node); renderActions(node); }
+  // Persist vars to client
+  if (S.client) {
+    api('POST', '/api/scriptolog/event', {client_id: S.client.id, event_type: 'insert', node_id: S.nodeId, vars: {[varName]: value}, manager: S.manager})
+      .catch(() => {});
+  }
+}
+
+function renderActions(node) {
+  const raw     = getNodeText(node);
+  const missing = hasMissingVars(raw);
+  const isRef   = node.kind === 'reference' || node.kind === 'bot';
+  const el      = document.getElementById('nc-actions');
+  let html = '';
+  if (!isRef) {
+    html += `<button class="act-btn act-insert" ${missing?'disabled':''} onclick="doInsert()">📤 Вставить в чат</button>`;
+  }
+  html += `<button class="act-btn act-copy" onclick="doCopy()">${isRef?'📋 Копировать':'📋'}</button>`;
+  if (!isRef) {
+    html += `<button class="act-btn act-dalye" onclick="doDalye()">Далее →</button>`;
+  }
+  if (S.history.length > 0) {
+    html += `<button class="act-btn act-back" onclick="goBack()">← Назад</button>`;
+  }
+  html += `<button class="act-btn act-jump" onclick="openSearch()">🔀</button>`;
+  el.innerHTML = html;
+}
+
+function renderFitbase(node) {
+  const el = document.getElementById('nc-fitbase');
+  if (!node.fitbase || node.fitbase.length === 0) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  document.getElementById('nc-fitbase-items').innerHTML =
+    node.fitbase.map(f => `<div class="fb-item">· ${esc(f)}</div>`).join('');
+}
+
+// ── Actions ────────────────────────────────────
+function doInsert() {
+  const node = S.tree?.nodes[S.nodeId];
+  if (!node) return;
+  const raw  = getNodeText(node);
+  const text = fillText(raw);
+  if (hasMissingVars(raw)) return;
+
+  sendToExtension({type:'insert', text});
+  logEvent({event_type:'insert', node_id:S.nodeId, text, manager:S.manager, vars:S.vars});
+}
+
+function doCopy() {
+  const node = S.tree?.nodes[S.nodeId];
+  if (!node) return;
+  const raw  = getNodeText(node);
+  const text = fillText(raw);
+  navigator.clipboard?.writeText(text).catch(() => {});
+  const node2 = S.tree?.nodes[S.nodeId];
+  if (node2?.kind !== 'reference' && node2?.kind !== 'bot')
+    logEvent({event_type:'copy', node_id:S.nodeId, text, manager:S.manager});
+}
+
+function doDalye() {
+  const node = S.tree?.nodes[S.nodeId];
+  if (!node) return;
+  logEvent({event_type:'sent', node_id:S.nodeId, manager:S.manager});
+  S.phase = 'awaiting_answer';
+  renderAnswerButtons(node);
+}
+
+function renderAnswerButtons(node) {
+  const el = document.getElementById('nc-answers');
+  el.style.display = '';
+  if (!node.answers || node.answers.length === 0) {
+    document.getElementById('nc-answer-buttons').innerHTML = '<p style="font-size:12px;color:#94a3b8">Нет вариантов ответа — перейди к следующему узлу вручную.</p>';
+    return;
+  }
+  document.getElementById('nc-answer-buttons').innerHTML = node.answers.map((a, i) => {
+    let html = `<button class="ans-btn" onclick="selectAnswer(${i})">${esc(a.label)}`;
+    if (a.note) html += `<span class="ans-note">${esc(a.note)}</span>`;
+    html += '</button>';
+    return html;
+  }).join('');
+}
+
+function selectAnswer(idx) {
+  const node   = S.tree?.nodes[S.nodeId];
+  const answer = node?.answers?.[idx];
+  if (!answer) return;
+
+  // Handle fact from answer
+  const factObj = answer.fact;
+  if (factObj) {
+    if (factObj.from_input) {
+      // Need text input
+      openFactDialog(factObj.key, (val) => {
+        logEvent({event_type:'answer', node_id: answer.next || S.nodeId, manager:S.manager,
+                  fact_key: factObj.key, fact_value: val,
+                  status: answerStatus(answer.next)});
+        proceedAfterAnswer(answer);
+      });
+      return;
+    } else {
+      logEvent({event_type:'answer', node_id: answer.next || S.nodeId, manager:S.manager,
+                fact_key: factObj.key, fact_value: factObj.value,
+                status: answerStatus(answer.next)});
+    }
+  } else {
+    logEvent({event_type:'answer', node_id: answer.next || S.nodeId, manager:S.manager,
+              status: answerStatus(answer.next)});
+  }
+  proceedAfterAnswer(answer);
+}
+
+function answerStatus(nextNode) {
+  if (nextNode === '3.2') return 'booked';
+  if (nextNode === null && S.nodeId === '7.4') return 'refused';
+  if (S.nodeId === '7.2') return 'dnd';
+  return null;
+}
+
+function proceedAfterAnswer(answer) {
+  document.getElementById('nc-answers').style.display = 'none';
+  if (answer.reply) {
+    S.replyPending = {text: answer.reply, next: answer.next};
+    S.phase = 'showing_reply';
+    const replyEl = document.getElementById('nc-reply');
+    replyEl.style.display = '';
+    document.getElementById('nc-reply-text').innerHTML = esc(answer.reply).replace(/\n/g,'<br>');
+    return;
+  }
+  if (answer.next) {
+    navigateTo(answer.next);
+  } else {
+    // End of branch
+    S.nodeId = null;
+    showStartScreen();
+  }
+}
+
+function doReplyInsert() {
+  if (!S.replyPending) return;
+  sendToExtension({type:'insert', text: S.replyPending.text});
+  logEvent({event_type:'insert', node_id:S.nodeId, text:S.replyPending.text, manager:S.manager});
+  const next = S.replyPending.next;
+  S.replyPending = null;
+  document.getElementById('nc-reply').style.display = 'none';
+  if (next) navigateTo(next);
+  else      showStartScreen();
+}
+
+function navigateTo(nodeId) {
+  if (S.nodeId) S.history.push(S.nodeId);
+  logEvent({event_type:'jump', node_id:nodeId, manager:S.manager});
+  showNode(nodeId);
+}
+
+function goBack() {
+  const prev = S.history.pop();
+  if (!prev) return;
+  logEvent({event_type:'back', node_id:prev, manager:S.manager});
+  showNode(prev);
+}
+
+// ── Breadcrumb ──────────────────────────────────
+function renderBreadcrumb() {
+  const el = document.getElementById('breadcrumb');
+  if (S.history.length === 0) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.innerHTML = S.history.slice(-5).map((id, i, arr) =>
+    `<span class="bc-item" onclick="jumpFromBreadcrumb('${id}')">${id}</span>${i<arr.length-1?'<span class="bc-sep">›</span>':''}`
+  ).join('') + `<span class="bc-sep">›</span><span style="font-size:11px;color:#1a202c;font-weight:600">${S.nodeId}</span>`;
+}
+
+function jumpFromBreadcrumb(nodeId) {
+  const idx = S.history.lastIndexOf(nodeId);
+  if (idx >= 0) S.history = S.history.slice(0, idx);
+  logEvent({event_type:'jump', node_id:nodeId, manager:S.manager});
+  showNode(nodeId);
+}
+
+// ── Time picker ────────────────────────────────
+function pickTime(slot) {
+  const key = slot === 1 ? 'Время1' : 'Время2';
+  S.vars['Время'] = S.vars[key] || '';
+  const node = S.tree?.nodes[S.nodeId];
+  if (node) { renderNodeText(node); renderActions(node); }
+}
+
+// ── Tabs ───────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.toggle('active', el.id === 'tab-' + tab));
+  if (tab === 'history') renderHistory();
+}
+
+// ── Objections tab ─────────────────────────────
+function renderObjections() {
+  if (!S.tree) return;
+  const OBJ_IDS = ['3.3','3.3.1','3.4','3.5','6.3','6.4','6.5','6.6','6.7','6.8','6.9'];
+  const el = document.getElementById('obj-list');
+  el.innerHTML = OBJ_IDS.map(id => {
+    const node = S.tree.nodes[id];
+    if (!node) return '';
+    return `<div class="node-list-item" onclick="jumpToNodeDirect('${id}')">
+      <div class="nli-id">${id}</div>
+      <div class="nli-title">${esc(node.title||'')}</div>
+      <div class="nli-preview">${esc((node.text||'').slice(0,80))}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+}
+
+// ── Reference tab ──────────────────────────────
+function renderReference() {
+  if (!S.tree) return;
+  const REF_IDS = ['1.0','5.1','5.2','5.3','5.4','5.5','6.1','6.2','6.3','6.4','6.5','6.6','6.7','6.8','6.9'];
+  const el = document.getElementById('ref-content');
+  let html = '';
+  // Rules
+  if (S.tree.rules) {
+    html += `<div class="ref-block"><div class="rb-title">📋 Правила и стандарты</div><div class="rb-text">${esc(S.tree.rules)}</div></div>`;
+  }
+  // Reference nodes
+  REF_IDS.forEach(id => {
+    const node = S.tree.nodes[id];
+    if (!node) return;
+    html += `<div class="ref-block">
+      <div class="rb-title"><span style="color:var(--brand);font-size:12px;margin-right:6px">${id}</span>${esc(node.title||'')}</div>
+      <div class="rb-text" style="font-size:12px">${esc(node.text||'').slice(0,300)}${(node.text||'').length>300?'…':''}</div>
+      <button class="small-btn" style="margin-top:6px" onclick="copyRefNode('${id}')">📋 Копировать</button>
+    </div>`;
+  });
+  // Fitbase tags
+  if (S.tree.fitbase_tags && !S.tree.fitbase_tags._note) {
+    html += `<div class="ref-block"><div class="rb-title">🏷 Fitbase теги и таймеры</div><div class="rb-text">${esc(JSON.stringify(S.tree.fitbase_tags, null, 2))}</div></div>`;
+  }
+  el.innerHTML = html || '<p class="info-msg">Справочник пуст — нужен docs/sales-tree.md</p>';
+}
+
+function copyRefNode(id) {
+  const node = S.tree?.nodes[id];
+  if (!node) return;
+  navigator.clipboard?.writeText(fillText(node.text||'')).catch(() => {});
+}
+
+// ── History tab ────────────────────────────────
+function renderHistory() {
+  const el = document.getElementById('history-list');
+  if (!S.events || S.events.length === 0) { el.innerHTML = '<p class="info-msg">Нет событий</p>'; return; }
+  const TYPE_LABELS = {insert:'вставлено',copy:'скопировано',sent:'отправлено',answer:'ответ',fact:'факт',jump:'переход',back:'назад',start:'начало',merge:'слияние'};
+  el.innerHTML = S.events.slice(0, 50).map(ev => {
+    const d = new Date(ev.created_at);
+    const time = d.toLocaleTimeString('ru', {hour:'2-digit',minute:'2-digit'});
+    const date = d.toLocaleDateString('ru', {day:'2-digit',month:'2-digit'});
+    let txt = '';
+    if (ev.text)                         txt = ev.text.slice(0, 60) + (ev.text.length > 60 ? '…' : '');
+    else if (ev.fact_key && ev.fact_value) txt = `${ev.fact_key}: ${ev.fact_value}`;
+    else if (ev.node_id)                  txt = `→ ${ev.node_id}`;
+    return `<div class="hist-item ${ev.event_type||''}">
+      <div class="hist-meta">${date} ${time} · ${ev.manager||'?'} · ${TYPE_LABELS[ev.event_type]||ev.event_type}${ev.node_id?' · '+ev.node_id:''}</div>
+      ${txt ? `<div class="hist-text">${esc(txt)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Search ─────────────────────────────────────
+function openSearch() {
+  const inp = document.getElementById('search-input');
+  inp.focus();
+}
+
+function doSearch(q) {
+  const el = document.getElementById('search-results');
+  const clearBtn = document.getElementById('search-clear');
+  if (!q || !S.tree) { el.style.display = 'none'; clearBtn.style.display = 'none'; return; }
+  clearBtn.style.display = '';
+  const ql = q.toLowerCase();
+  const results = Object.values(S.tree.nodes).filter(n =>
+    n.id.toLowerCase().includes(ql) || (n.title||'').toLowerCase().includes(ql) || (n.text||'').toLowerCase().includes(ql)
+  ).slice(0, 12);
+  if (results.length === 0) { el.innerHTML = '<div class="search-item" style="color:#94a3b8">Ничего не найдено</div>'; el.style.display = ''; return; }
+  el.innerHTML = results.map(n =>
+    `<div class="search-item" onclick="jumpToNodeDirect('${n.id}')">
+      <span class="sid">${n.id}</span>${esc(n.title||'')}
+    </div>`
+  ).join('');
+  el.style.display = '';
+}
+
+function jumpToNodeDirect(nodeId) {
+  document.getElementById('search-results').style.display = 'none';
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-clear').style.display = 'none';
+  if (!S.client) { alert('Сначала открой диалог в Fitbase Chat'); return; }
+  if (S.nodeId) S.history.push(S.nodeId);
+  switchTab('script');
+  logEvent({event_type:'jump', node_id:nodeId, manager:S.manager});
+  showNode(nodeId);
+}
+
+// ── Phone binding ──────────────────────────────
+function openBindDialog() {
+  document.getElementById('bind-dialog').classList.add('open');
+  document.getElementById('bind-input').value = '';
+  document.getElementById('bind-err').textContent = '';
+  document.getElementById('bind-input').focus();
+}
+
+function doBindPhone() {
+  const phone = document.getElementById('bind-input').value.trim();
+  const errEl = document.getElementById('bind-err');
+  errEl.textContent = '';
+  if (!phone) { errEl.textContent = 'Введите номер'; return; }
+  api('POST', '/api/scriptolog/bind-phone', {client_id: S.client.id, phone})
+    .then(r => {
+      S.client = r.client;
+      S.vars   = {...(r.client.vars||{})};
+      renderClientCard();
+      document.getElementById('bind-dialog').classList.remove('open');
+    })
+    .catch(e => { errEl.textContent = e.message; });
+}
+
+// ── Fact input dialog ───────────────────────────
+let factDialogCb = null;
+function openFactDialog(key, cb) {
+  factDialogCb = cb;
+  document.getElementById('fact-dialog-title').textContent = 'Введите: ' + key;
+  document.getElementById('fact-input').value = '';
+  document.getElementById('fact-dialog').classList.add('open');
+  document.getElementById('fact-input').focus();
+}
+function doFactOk() {
+  const val = document.getElementById('fact-input').value.trim();
+  document.getElementById('fact-dialog').classList.remove('open');
+  if (factDialogCb) { factDialogCb(val); factDialogCb = null; }
+}
+
+// ── Manager edit ───────────────────────────────
+function openMgrDialog() {
+  document.getElementById('mgr-input').value = S.manager;
+  document.getElementById('mgr-dialog').classList.add('open');
+  document.getElementById('mgr-input').focus();
+}
+function doMgrOk() {
+  const val = document.getElementById('mgr-input').value.trim();
+  S.manager = val;
+  sessionStorage.setItem('sw_mgr', val);
+  if (S.embedded) window.parent.postMessage({type:'manager-update', name: val}, '*');
+  renderMgr();
+  document.getElementById('mgr-dialog').classList.remove('open');
+}
+
+// ── Send to extension ──────────────────────────
+function sendToExtension(msg) {
+  if (S.embedded) window.parent.postMessage(msg, '*');
+}
+
+// ── Log event ──────────────────────────────────
+function logEvent(payload) {
+  if (!S.client) return;
+  const body = {client_id: S.client.id, ...payload};
+  // Update local status optimistically
+  if (payload.status && payload.status !== S.client.status) {
+    S.client = {...S.client, status: payload.status};
+    renderClientCard();
+  }
+  if (payload.fact_key) {
+    S.client = {...S.client, facts: {...(S.client.facts||{}), [payload.fact_key]: payload.fact_value}};
+    renderFacts();
+  }
+  api('POST', '/api/scriptolog/event', body).then(r => {
+    if (r.ok) S.events.unshift({...body, created_at: new Date().toISOString()});
+  }).catch(() => {});
+}
+
+// ── Escape HTML ────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Bind UI events ─────────────────────────────
+function bindUI() {
+  // Login
+  document.getElementById('l-btn').addEventListener('click', doLogin);
+  document.getElementById('l-pw').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  document.getElementById('l-login').addEventListener('keydown', e => { if(e.key==='Enter') { e.preventDefault(); document.getElementById('l-pw').focus(); }});
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+  // Client card
+  document.getElementById('bind-phone-btn').addEventListener('click', openBindDialog);
+  document.getElementById('mgr-edit-btn').addEventListener('click', openMgrDialog);
+
+  // Change entry
+  document.getElementById('btn-change-entry')?.addEventListener('click', () => {
+    S.history = []; S.nodeId = null; showStartScreen();
+  });
+
+  // Search
+  document.getElementById('search-input').addEventListener('input', e => doSearch(e.target.value));
+  document.getElementById('search-clear').addEventListener('click', () => {
+    document.getElementById('search-input').value = '';
+    doSearch('');
+  });
+  // Close search on click outside
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.search-row')) {
+      document.getElementById('search-results').style.display = 'none';
+    }
+  });
+
+  // Time pickers
+  document.getElementById('time-pick-1').addEventListener('click', () => pickTime(1));
+  document.getElementById('time-pick-2').addEventListener('click', () => pickTime(2));
+
+  // Reply insert
+  document.getElementById('nc-reply-insert').addEventListener('click', doReplyInsert);
+
+  // Bind dialog
+  document.getElementById('bind-ok').addEventListener('click', doBindPhone);
+  document.getElementById('bind-cancel').addEventListener('click', () => document.getElementById('bind-dialog').classList.remove('open'));
+  document.getElementById('bind-input').addEventListener('keydown', e => { if(e.key==='Enter') doBindPhone(); });
+
+  // Manager dialog
+  document.getElementById('mgr-ok').addEventListener('click', doMgrOk);
+  document.getElementById('mgr-cancel').addEventListener('click', () => document.getElementById('mgr-dialog').classList.remove('open'));
+  document.getElementById('mgr-input').addEventListener('keydown', e => { if(e.key==='Enter') doMgrOk(); });
+
+  // Fact dialog
+  document.getElementById('fact-ok').addEventListener('click', doFactOk);
+  document.getElementById('fact-cancel').addEventListener('click', () => { document.getElementById('fact-dialog').classList.remove('open'); factDialogCb = null; });
+  document.getElementById('fact-input').addEventListener('keydown', e => { if(e.key==='Enter') doFactOk(); });
+}
+
+// Start
+boot();
+</script>
+</body>
+</html>

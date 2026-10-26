@@ -1,0 +1,287 @@
+{
+  "_note": "Перенести из docs/sales-tree.md. Этот файл — заглушка. Узлы пустые до заполнения.",
+  "constants": {
+    "Адрес": "ул. Ахмета Байтурсынова, 2, НП14, ЖК Qazyna",
+    "Телефон": "8 701 490 60 90"
+  },
+  "rules": "Отвечаем в течение 5 минут с 9:00 до 21:30. После 21:30 — в очередь, ответ утром. Не пишем ночью (21:30–09:00). Обращение на «ты».",
+  "blocks": [
+    { "id": 1, "title": "Вход", "intro": "Первое сообщение — выбор входа" },
+    { "id": 2, "title": "Выявление потребности", "intro": "" },
+    { "id": 3, "title": "Презентация и запись", "intro": "" },
+    { "id": 4, "title": "Напоминание и подтверждение", "intro": "" },
+    { "id": 5, "title": "Справочник: программы и условия", "intro": "Только для справки менеджера" },
+    { "id": 6, "title": "Работа с возражениями", "intro": "" },
+    { "id": 7, "title": "Повторный контакт", "intro": "" }
+  ],
+  "nodes": {
+    "1.0": {
+      "id": "1.0", "block": 1, "title": "Автоответ",
+      "kind": "bot",
+      "text": "Привет! Я менеджер студии SlimWay. Скоро свяжусь с тобой. Наш адрес: {Адрес}",
+      "variants": null, "answers": [], "fitbase": [], "pending": false
+    },
+    "1.1": {
+      "id": "1.1", "block": 1, "title": "Стандартный вход",
+      "kind": "chat",
+      "text": "Привет! Меня зовут {Менеджер}, я менеджер студии SlimWay 💚\n\nУвидела твой запрос — расскажи, что интересует?",
+      "variants": null,
+      "answers": [
+        { "label": "Хочет узнать больше", "next": "2.1", "reply": null, "fact": null, "note": null },
+        { "label": "Сразу спрашивает цену", "next": "1.3", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [], "pending": false
+    },
+    "1.2": {
+      "id": "1.2", "block": 1, "title": "Вход «+» / Информация",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "1.3": {
+      "id": "1.3", "block": 1, "title": "Вход «Цена»",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "1.4": {
+      "id": "1.4", "block": 1, "title": "Вход «Рекомендация»",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [
+        { "label": "Ответила", "next": "2.1", "reply": null, "fact": { "key": "referrer_name", "from_input": true }, "note": null }
+      ],
+      "fitbase": [], "pending": true
+    },
+    "1.5": {
+      "id": "1.5", "block": 1, "title": "Вход «Аппарат»",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "1.6": {
+      "id": "1.6", "block": 1, "title": "Вход «Утром»",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "2.1": {
+      "id": "2.1", "block": 2, "title": "Цель клиентки",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null,
+      "answers": [
+        { "label": "Снизить вес", "next": "2.2", "reply": null, "fact": { "key": "goal", "value": "weight" }, "note": null },
+        { "label": "Убрать объёмы", "next": "2.2", "reply": null, "fact": { "key": "goal", "value": "volume" }, "note": null },
+        { "label": "Подтянуть тело", "next": "2.2", "reply": null, "fact": { "key": "goal", "value": "tone" }, "note": null },
+        { "label": "Другое", "next": "2.2", "reply": null, "fact": { "key": "goal", "from_input": true }, "note": null }
+      ],
+      "fitbase": [], "pending": true
+    },
+    "2.2": {
+      "id": "2.2", "block": 2, "title": "Опыт",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null,
+      "answers": [
+        { "label": "Не занималась", "next": "2.6", "reply": null, "fact": { "key": "experience", "value": "none" }, "note": null },
+        { "label": "Занималась, нет результата", "next": "2.3", "reply": null, "fact": { "key": "experience", "value": "no_result" }, "note": null },
+        { "label": "У конкурента", "next": "2.4", "reply": null, "fact": { "key": "experience", "value": "at_competitor" }, "note": null },
+        { "label": "Бывший клиент SlimWay", "next": "2.5", "reply": null, "fact": { "key": "experience", "value": "former_client" }, "note": null }
+      ],
+      "fitbase": [], "pending": true
+    },
+    "2.3": {
+      "id": "2.3", "block": 2, "title": "Причина отсутствия результата",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null,
+      "answers": [
+        { "label": "Сама без тренера", "next": "2.6", "reply": "TODO", "fact": { "key": "experience_fail_reason", "value": "solo" }, "note": null },
+        { "label": "Тяжело / болело", "next": "2.6", "reply": "TODO", "fact": { "key": "experience_fail_reason", "value": "hard_pain" }, "note": null },
+        { "label": "Нет времени", "next": "2.6", "reply": "TODO", "fact": { "key": "experience_fail_reason", "value": "no_time" }, "note": null },
+        { "label": "Другое", "next": "2.6", "reply": null, "fact": { "key": "experience_fail_reason", "from_input": true }, "note": null }
+      ],
+      "fitbase": [], "pending": true
+    },
+    "2.4": {
+      "id": "2.4", "block": 2, "title": "Дата окончания у конкурента",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null,
+      "answers": [
+        { "label": "Указала дату", "next": "2.6", "reply": null, "fact": { "key": "competitor_end_date", "from_input": true }, "note": null },
+        { "label": "Нет даты", "next": "2.6", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": [], "pending": true
+    },
+    "2.5": {
+      "id": "2.5", "block": 2, "title": "Бывший клиент",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "2.6": {
+      "id": "2.6", "block": 2, "title": "Ограничения",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null,
+      "answers": [
+        { "label": "Нет ограничений", "next": "2.7", "reply": "TODO", "fact": { "key": "limitations", "value": "none" }, "note": null },
+        { "label": "Колени / спина", "next": "2.7", "reply": "TODO", "fact": { "key": "limitations", "value": "joints" }, "note": null },
+        { "label": "Нужно разрешение врача", "next": "2.7", "reply": "TODO", "fact": { "key": "limitations", "value": "doctor" }, "note": null },
+        { "label": "Другое", "next": "2.7", "reply": null, "fact": { "key": "limitations", "from_input": true }, "note": null }
+      ],
+      "fitbase": [], "pending": true
+    },
+    "2.7": {
+      "id": "2.7", "block": 2, "title": "Удобное время",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null,
+      "answers": [
+        { "label": "Утро", "next": "3.1", "reply": null, "fact": { "key": "time_of_day", "value": "morning" }, "note": null },
+        { "label": "День", "next": "3.1", "reply": null, "fact": { "key": "time_of_day", "value": "afternoon" }, "note": null },
+        { "label": "Вечер", "next": "3.1", "reply": null, "fact": { "key": "time_of_day", "value": "evening" }, "note": null },
+        { "label": "Только выходные", "next": "3.1", "reply": null, "fact": { "key": "time_of_day", "value": "weekends" }, "note": null }
+      ],
+      "fitbase": [], "pending": true
+    },
+    "3.1": {
+      "id": "3.1", "block": 3, "title": "Приглашение на пробное",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null,
+      "answers": [
+        { "label": "Согласна", "next": "3.2", "reply": null, "fact": null, "note": null },
+        { "label": "Возражение: цена", "next": "3.3", "reply": null, "fact": null, "note": null },
+        { "label": "Возражение: время", "next": "3.5", "reply": null, "fact": null, "note": null },
+        { "label": "Другое возражение", "next": "3.4", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": ["Этап: Первичный контакт"], "pending": true
+    },
+    "3.2": {
+      "id": "3.2", "block": 3, "title": "Запись на пробное",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md — использует {Время1}, {Время2}, {Время}",
+      "variants": null,
+      "answers": [
+        { "label": "Выбрала время", "next": "4.1", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": ["Этап: Записался на пробную", "Создать задачу: подтверждение визита"], "pending": true
+    },
+    "3.3": {
+      "id": "3.3", "block": 3, "title": "Возражение: дорого",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "3.3.1": {
+      "id": "3.3.1", "block": 3, "title": "Возражение: дорого — продолжение",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null,
+      "answers": [
+        { "label": "Готова", "next": "3.2", "reply": "TODO", "fact": null, "note": null }
+      ],
+      "fitbase": [], "pending": true
+    },
+    "3.4": {
+      "id": "3.4", "block": 3, "title": "Возражение: другое",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "3.5": {
+      "id": "3.5", "block": 3, "title": "Возражение: нет времени",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "4.1": {
+      "id": "4.1", "block": 4, "title": "Подтверждение записи",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md — использует {Дата}, {Время}, {Адрес}",
+      "variants": null,
+      "answers": [
+        { "label": "Подтвердила", "next": "4.2", "reply": null, "fact": null, "note": null },
+        { "label": "Перенос", "next": "3.2", "reply": null, "fact": null, "note": null }
+      ],
+      "fitbase": ["Этап: Визит подтверждён"], "pending": true
+    },
+    "4.2": {
+      "id": "4.2", "block": 4, "title": "День визита: напоминание",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "4.7": {
+      "id": "4.7", "block": 4, "title": "Касание: +1/+3 дня",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": [
+        { "label": "+1 день", "text": "TODO" },
+        { "label": "+3 дня", "text": "TODO" }
+      ],
+      "answers": [], "fitbase": [], "pending": true
+    },
+    "6.10": {
+      "id": "6.10", "block": 6, "title": "Касание: повторный интерес",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "7.1": {
+      "id": "7.1", "block": 7, "title": "Касание: серия шагов",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "7.2": {
+      "id": "7.2", "block": 7, "title": "DND — не беспокоить",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "7.3": {
+      "id": "7.3", "block": 7, "title": "Вернулась через время",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    },
+    "7.4": {
+      "id": "7.4", "block": 7, "title": "Отказ",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null,
+      "answers": [
+        { "label": "Цена", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "price" }, "note": null },
+        { "label": "Формат", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "format" }, "note": null },
+        { "label": "Время", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "time" }, "note": null },
+        { "label": "Локация", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "location" }, "note": null },
+        { "label": "Ушла к конкуренту", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "competitor" }, "note": null },
+        { "label": "Без причины", "next": null, "reply": null, "fact": { "key": "refusal_reason", "value": "none" }, "note": null }
+      ],
+      "fitbase": [], "pending": true
+    },
+    "7.5": {
+      "id": "7.5", "block": 7, "title": "Касание: два варианта",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": [
+        { "label": "Вариант 1", "text": "TODO" },
+        { "label": "Вариант 2", "text": "TODO" }
+      ],
+      "answers": [], "fitbase": [], "pending": true
+    },
+    "7.6": {
+      "id": "7.6", "block": 7, "title": "Касание: по строкам",
+      "kind": "chat",
+      "text": "TODO: текст из docs/sales-tree.md",
+      "variants": null, "answers": [], "fitbase": [], "pending": true
+    }
+  },
+  "fitbase_tags": {
+    "_note": "TODO: перенести из docs/sales-tree.md раздел «Fitbase, теги, таймеры»"
+  }
+}

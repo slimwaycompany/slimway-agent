@@ -43,10 +43,15 @@ function parseToken(token: string): TokenPayload | null {
 }
 
 export function getSession(req: express.Request): TokenPayload | null {
+  // Cookie first
   const header = req.headers.cookie || '';
   const part   = header.split(';').map(s => s.trim()).find(s => s.startsWith(COOKIE_NAME + '='));
-  const token  = part ? part.slice(COOKIE_NAME.length + 1) : null;
-  return token ? parseToken(token) : null;
+  const cookieToken = part ? part.slice(COOKIE_NAME.length + 1) : null;
+  if (cookieToken) { const s = parseToken(cookieToken); if (s) return s; }
+  // Bearer (for extension iframe that cannot send cookies)
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) return parseToken(auth.slice(7));
+  return null;
 }
 
 // Legacy helpers — kept for callers not yet updated to getSession

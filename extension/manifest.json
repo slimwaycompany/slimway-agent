@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Скриптолог SlimWay",
+  "version": "1.0.0",
+  "description": "Дерево скриптов продаж для менеджеров SlimWay",
+  "permissions": ["sidePanel", "storage", "tabs", "activeTab"],
+  "host_permissions": [
+    "https://chat.easychat.ru/*",
+    "https://slimway.fitbase.io/*",
+    "https://slimway-agent.onrender.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chat.easychat.ru/*"],
+      "js": ["selectors.js", "easychat.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://slimway.fitbase.io/*"],
+      "js": ["fitbase.js"],
+      "all_frames": false,
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Скриптолог SlimWay"
+  }
+}
