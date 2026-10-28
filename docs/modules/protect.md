@@ -6,11 +6,20 @@
 Безопасность системы и данных: доступы, секреты, персональные данные клиентов (ИИН, удостоверения, фото), резервные копии, мониторинг «жив ли сервис».
 
 ## Где код
-- (дополнить по мере задач)
+- `src/http/auth.ts` — `makeToken`, `getSession`, `requireAuth`, `requireAdmin`; rate limiter 10 попыток / 15 мин по IP+логину
+- `src/db/supabase.ts` — клиент Supabase с `service_role` (единственный способ доступа к базе)
+- `src/http/crm.ts` — RPC `crm_checkout`, `crm_refund`, `crm_shift_expected_cash` (execute отозван у anon/authenticated)
+- `kviz/client/src/pages/crm/ClientsPage.tsx` — маскировка ИИН в списках, запись в `crm_audit_log` при просмотре анкеты
 
 ## Таблицы
-- `crm_audit_log` — журнал действий CRM (включая просмотр ИИН, `view_pii`)
-- `job_runs` — запуски задач (для мониторинга)
+- `crm_audit_log` — журнал действий CRM (включая `view_pii` при просмотре ИИН/удостоверения)
+- `job_runs` — запуски задач (для мониторинга «жив ли агент»)
+
+## Где лежат персональные данные
+- `crm_clients` — ИИН, id_issued_by, id_valid_until, birth_date, photo_path (bucket `crm-client-photos` приватный)
+- `fitbase_clients_cache` — phone, name (из Fitbase); phone хранится в формате `+7XXXXXXXXXX`
+- `script_clients` — phone (7XXXXXXXXXX), facts jsonb (цель, опыт, ограничения); vars jsonb
+- `qualify_sessions` — имя и телефон клиента
 
 ## Ключевые решения
 - Все таблицы с RLS без политик, доступ только с сервера через `service_role`. Функции `crm_checkout` / `crm_refund` / `crm_shift_expected_cash` — execute отозван у anon и authenticated.

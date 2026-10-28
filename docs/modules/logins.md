@@ -6,21 +6,26 @@
 Вход сотрудников, личные логины, роли и права, данные сотрудников. Сейчас — вход в рабочее окно; дальше — окно сотрудников для CRM (консультанты в расписании, кассиры, менеджеры).
 
 ## Где код
-- middleware входа и `/login` — (дополнить путь в `src/http`)
-- вход в панели скриптолога по Bearer-токену — `/api/scriptolog/*`
+- `src/http/auth.ts` — `makeToken`, `getSession`, `requireAuth`; rate limiter (10 попыток / 15 мин); cookie `swtoken`; поддержка Bearer-токена для iframe расширения
+- `src/http/shell.ts` — страница `/login`, `POST /kviz/api/login` (проверяет `app_check_login`), `/kviz/api/me`, `/kviz/api/logout`
+- `src/http/scriptolog.ts` — Bearer-токен (вход в панели расширения, cookie в iframe ненадёжны)
 
 ## Таблицы
-- `app_users` — логин, `display_name`, роль `admin` / `manager`; пароль проверяет функция БД `app_check_login`
+- `app_users` — id, login, `display_name`, роль `admin` / `manager`; пароль проверяет функция БД `app_check_login(login, password)` (bcrypt внутри Postgres)
 
 ## Ключевые решения
 - Личные логины вместо общего пароля: Вера, Назерке, Ангелина, admin (= Сергей). Залогиненный пользователь — автор везде (квалификация, замеры, задачи менеджера, кассир в CRM).
-- Cookie сессии: `Path=/`, HttpOnly, Secure, SameSite=Lax, 30 дней. Один middleware на всё; `/api/*` без входа → 401 JSON.
-- Права в CRM: только админ — Настройки, скидки, смена цены, возвраты, бонусы, изменение остатка смены. Проверка прав — на сервере.
-- Менеджер клиента сейчас = кассир, который продал.
+- Cookie `swtoken`: HMAC-SHA256 подпись (ключ: `WINDOW_SECRET || CRON_SECRET`), 30 дней, HttpOnly, Secure, SameSite=Lax.
+- `/api/*` без входа → 401 JSON. Прямой заход на `/window`, `/kviz/*` → редирект на `/`. Внутри iframe своего входа нет — шлёт `postMessage({ type: 'auth-required' })`.
+- Права в CRM: только admin — Настройки, скидки, смена цены, возвраты, бонусы, изменение остатка смены. Проверка прав — на сервере (`requireAdmin`).
+- Rate limiter: 10 неудачных попыток по IP/логину за 15 мин → блокировка.
 
 ## Сделано
-### до 28.10.2026 · см. git log
-- Личные логины `app_users`, роли admin / manager.
+### до 28.10.2026 · 20f59e9 · личные логины + rate limiter
+- Личные логины `app_users`, роли admin / manager, rate limiter в памяти сервера.
+
+### до 28.10.2026 · 948e2f0 · Bearer для скриптолога
+- Bearer-токен для iframe расширения (cookie в iframe расширения Chrome ненадёжны).
 
 ## Открытые баги
 - (нет известных)
