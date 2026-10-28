@@ -14,6 +14,9 @@ import AdminReportsPage from './pages/reports/ReportsPage';
 import ResultsPage from './pages/ResultsPage';
 import SharePage from './pages/measure/SharePage';
 import InBodyImportPage from './pages/measure/InBodyImportPage';
+import PlaceholderPage from './pages/crm/PlaceholderPage';
+import SettingsPage from './pages/crm/SettingsPage';
+import ClientsPage from './pages/crm/ClientsPage';
 import { isEmbedded } from './utils/iframe';
 import './index.css';
 
@@ -62,6 +65,11 @@ export default function App() {
       <Route path="/reports" element={<RequireAuth><AdminReportsPage /></RequireAuth>} />
       <Route path="/reports/client/:id" element={<RequireAuth><ClientPage /></RequireAuth>} />
       <Route path="/metrics" element={<Navigate to="/reports" replace />} />
+      <Route path="/crm/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
+      <Route path="/crm/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
+      <Route path="/crm/schedule" element={<RequireAuth><PlaceholderPage title="Расписание" /></RequireAuth>} />
+      <Route path="/crm/funnel" element={<RequireAuth><PlaceholderPage title="Воронка" /></RequireAuth>} />
+      <Route path="/crm/cashier" element={<RequireAuth><PlaceholderPage title="Касса" /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

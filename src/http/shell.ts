@@ -202,10 +202,15 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
     <div class="tabs">
       <button class="tab-btn" id="tab-btn-manager">👔 Менеджер<span class="tbadge" id="badge-tab-manager">0</span></button>
       <button class="tab-btn active" id="tab-btn-agent">🐕 Агент<span class="tbadge" id="badge-tab-agent">0</span></button>
+      <button class="tab-btn" id="tab-btn-schedule">📅 Расписание</button>
+      <button class="tab-btn" id="tab-btn-clients">👥 Клиенты</button>
+      <button class="tab-btn" id="tab-btn-funnel">📈 Воронка</button>
+      <button class="tab-btn" id="tab-btn-cashier">💰 Касса</button>
       <button class="tab-btn" id="tab-btn-kviz">📝 <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
       <button class="tab-btn" id="tab-btn-measure">📏 Замеры</button>
       <!--REPORTS_TAB_BTN-->
       <!--METRICS_TAB_BTN-->
+      <!--SETTINGS_TAB_BTN-->
     </div>
     <button class="logout-btn" id="logout-btn"><!--DNAME--> · Выйти</button>
   </div>
@@ -242,8 +247,13 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       </button>
       <!--REPORTS_SIDE_FROM_MEASURE-->
     </div>
+    <div class="pane hidden" id="schedule-pane"></div>
+    <div class="pane hidden" id="clients-pane"></div>
+    <div class="pane hidden" id="funnel-pane"></div>
+    <div class="pane hidden" id="cashier-pane"></div>
     <!--REPORTS_PANE-->
     <!--METRICS_PANE-->
+    <!--SETTINGS_PANE-->
   </div>
 </div>
 
@@ -263,6 +273,22 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
         <span class="choice-icon">🐕</span>
         <span class="choice-label">Агент</span>
       </button>
+      <button class="choice-btn" id="choice-schedule">
+        <span class="choice-icon">📅</span>
+        <span class="choice-label">Расписание</span>
+      </button>
+      <button class="choice-btn" id="choice-clients">
+        <span class="choice-icon">👥</span>
+        <span class="choice-label">Клиенты</span>
+      </button>
+      <button class="choice-btn" id="choice-funnel">
+        <span class="choice-icon">📈</span>
+        <span class="choice-label">Воронка</span>
+      </button>
+      <button class="choice-btn" id="choice-cashier">
+        <span class="choice-icon">💰</span>
+        <span class="choice-label">Касса</span>
+      </button>
       <button class="choice-btn" id="choice-kviz">
         <span class="cbadge" id="badge-choice-kviz">0</span>
         <span class="choice-icon">📝</span>
@@ -274,6 +300,7 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       </button>
       <!--REPORTS_CHOICE_BTN-->
       <!--METRICS_CHOICE_BTN-->
+      <!--SETTINGS_CHOICE_BTN-->
     </div>
   </div>
 </div>
@@ -304,8 +331,11 @@ export function mountShellRoutes(app: Application): void {
   app.get('/', (req, res) => {
     const session = getSession(req);
     if (!session) { res.redirect(302, '/login'); return; }
-    // Reports tab is visible to all roles; Метрики tab is removed (merged into Reports board)
+    const isAdmin = session.role === 'admin';
     const reportsPane = '<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button></div>';
+    const settingsBtn  = isAdmin ? '<button class="tab-btn" id="tab-btn-settings">⚙️ Настройки</button>' : '';
+    const settingsPane = isAdmin ? '<div class="pane hidden" id="settings-pane"></div>' : '';
+    const settingsCh   = isAdmin ? '<button class="choice-btn" id="choice-settings"><span class="choice-icon">⚙️</span><span class="choice-label">Настройки</span></button>' : '';
     const html = SHELL_HTML
       .replace('<!--DNAME-->', escapeHtml(session.display_name))
       .replace('<!--REPORTS_TAB_BTN-->', '<button class="tab-btn" id="tab-btn-reports">📊 Отчёты</button>')
@@ -314,7 +344,10 @@ export function mountShellRoutes(app: Application): void {
       .replace('<!--REPORTS_CHOICE_BTN-->', '<button class="choice-btn" id="choice-reports"><span class="choice-icon">📊</span><span class="choice-label">Отчёты</span></button>')
       .replace('<!--METRICS_TAB_BTN-->', '')
       .replace('<!--METRICS_PANE-->', '')
-      .replace('<!--METRICS_CHOICE_BTN-->', '');
+      .replace('<!--METRICS_CHOICE_BTN-->', '')
+      .replace('<!--SETTINGS_TAB_BTN-->', settingsBtn)
+      .replace('<!--SETTINGS_PANE-->', settingsPane)
+      .replace('<!--SETTINGS_CHOICE_BTN-->', settingsCh);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   });

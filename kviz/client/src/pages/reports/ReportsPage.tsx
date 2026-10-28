@@ -29,7 +29,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'settings' | 'measures' | 'inbody' | 'mission' | 'migrate-inbody' | 'bulk-results';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,15 +101,6 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
     items: [
       { id: 'fact-day',   label: 'Факт дня',      desc: 'Что произошло в период', adminOnly: true },
       { id: 'day-rhythm', label: 'Дневной такт',  desc: 'Судьба лидов периода',   adminOnly: true },
-    ],
-  },
-  {
-    title: 'Настройки', adminOnly: true,
-    items: [
-      { id: 'settings',      label: 'InBody: импорт, пересчёт, без клиента', desc: '', adminOnly: true },
-      { id: 'migrate-inbody', label: 'Перенести клиентов InBody в отчёт',    desc: '', adminOnly: true },
-      { id: 'bulk-results',  label: 'Выгрузить все результаты в общий',      desc: '', adminOnly: true },
-      { id: 'mission',       label: 'Миссия студии',                         desc: '', adminOnly: true },
     ],
   },
 ];
@@ -189,10 +180,6 @@ export default function ReportsPage() {
       {section === 'sales'          && isAdmin && <SalesSection />}
       {section === 'occupancy'      && isAdmin && <OccupancySection />}
       {section === 'studio'         && <StudioSection isAdmin={isAdmin} />}
-      {section === 'settings'       && isAdmin && <SettingsSection />}
-      {section === 'migrate-inbody' && isAdmin && <MigrateInBodySection />}
-      {section === 'bulk-results'   && isAdmin && <BulkResultsSection />}
-      {section === 'mission'        && isAdmin && <MissionSection />}
     </div>
   );
 }
