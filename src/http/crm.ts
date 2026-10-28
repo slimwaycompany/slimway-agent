@@ -17,10 +17,11 @@ function requireAdmin(req: Request, res: Response): boolean {
   if (s.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return false; }
   return true;
 }
+// crm_* tables store phone as 7XXXXXXXXXX (no + prefix)
 function normalizePhone(raw: string): string | null {
   let d = raw.replace(/\D/g, '');
   if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1);
-  if (d.length === 11 && d[0] === '7') return '+' + d;
+  if (d.length === 11 && d[0] === '7') return d;
   return null;
 }
 function iinToDob(iin: string): string | null {
@@ -140,6 +141,80 @@ function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+// ── Fitbase import (background job, single instance) ─────────────────────────
+
+interface ImportJob {
+  status: 'running' | 'done' | 'error';
+  total: number; processed: number;
+  added: number; updated: number; skipped: number;
+  errors: string[];
+}
+let fitbaseImportJob: ImportJob | null = null;
+
+async function runFitbaseImport(): Promise<void> {
+  const job = fitbaseImportJob!;
+  try {
+    const { data: cache } = await supabase.from('fitbase_clients_cache').select('fitbase_client_id,phone,name');
+    job.total = (cache || []).length;
+
+    const { data: existing } = await supabase.from('crm_clients')
+      .select('id,fitbase_client_id,phone').eq('is_deleted', false);
+    const byFitId = new Map<string, string>();
+    const existingPhones = new Set<string>();
+    for (const c of existing || []) {
+      if (c.fitbase_client_id) byFitId.set(String(c.fitbase_client_id), c.id);
+      if (c.phone) existingPhones.add(c.phone);
+    }
+
+    const toInsert: Record<string, unknown>[] = [];
+    for (const c of cache || []) {
+      const fitId = String(c.fitbase_client_id || '');
+      const fullName = String(c.name || '').trim();
+      const phone = c.phone ? (normalizePhone(c.phone) ?? null) : null;
+      if (!fullName) {
+        job.skipped++; job.processed++;
+        if (job.errors.length < 20) job.errors.push(`${fitId}: пустое имя`);
+        continue;
+      }
+      const existingId = fitId ? byFitId.get(fitId) : null;
+      if (existingId) {
+        await supabase.from('crm_clients').update({ fitbase_client_id: fitId || null }).eq('id', existingId);
+        job.updated++; job.processed++;
+      } else {
+        if (phone && existingPhones.has(phone)) {
+          job.skipped++; job.processed++;
+          if (job.errors.length < 20) job.errors.push(`${fitId}: телефон уже есть`);
+          continue;
+        }
+        toInsert.push({
+          branch_id: BRANCH_ID, full_name: fullName, phone,
+          fitbase_client_id: fitId || null,
+          source: 'fitbase_import', status: 'active', is_deleted: false,
+          profile_complete: false, created_by: 'fitbase_import',
+        });
+        if (phone) existingPhones.add(phone);
+      }
+    }
+
+    // Batch insert (100 at a time to stay within memory and Supabase limits)
+    for (let i = 0; i < toInsert.length; i += 100) {
+      const batch = toInsert.slice(i, i + 100);
+      const { error } = await supabase.from('crm_clients').insert(batch);
+      if (error) {
+        job.skipped += batch.length;
+        if (job.errors.length < 20) job.errors.push(error.message);
+      } else {
+        job.added += batch.length;
+      }
+      job.processed += batch.length;
+    }
+    job.status = 'done';
+  } catch (e) {
+    job.status = 'error';
+    if (job.errors.length < 20) job.errors.push(String(e));
+  }
 }
 
 export function buildCrmRouter(): Router {
@@ -876,49 +951,22 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  r.post('/kviz/api/crm/clients/fitbase-import', async (req, res) => {
+  r.post('/kviz/api/crm/clients/fitbase-import', (req, res) => {
     if (!requireAdmin(req, res)) return;
-    let imported = 0, updated = 0, skipped = 0;
-    const skipReasons: string[] = [];
-    try {
-      // Load source data from fitbase_clients_cache
-      const { data: cache } = await supabase.from('fitbase_clients_cache').select('fitbase_client_id,phone,name');
-      const total = (cache || []).length;
-      // Build dedup maps from existing crm_clients
-      const { data: existing } = await supabase.from('crm_clients')
-        .select('id,fitbase_client_id,phone').eq('is_deleted', false);
-      const byFitId = new Map<string, string>();
-      const existingPhones = new Set<string>();
-      for (const c of existing || []) {
-        if (c.fitbase_client_id) byFitId.set(String(c.fitbase_client_id), c.id);
-        if (c.phone) existingPhones.add(c.phone);
-      }
-      for (const c of cache || []) {
-        const fitId = String(c.fitbase_client_id || '');
-        const fullName = String(c.name || '').trim();
-        const phone = c.phone ? (normalizePhone(c.phone) ?? c.phone) : null;
-        if (!fullName) { skipped++; skipReasons.push(`${fitId}: пустое имя`); continue; }
-        const existingId = fitId ? byFitId.get(fitId) : null;
-        if (existingId) {
-          // Update: ensure fitbase_client_id and name are current
-          await supabase.from('crm_clients').update({ fitbase_client_id: fitId || null }).eq('id', existingId);
-          updated++;
-        } else {
-          if (phone && existingPhones.has(phone)) {
-            skipped++; skipReasons.push(`${fitId}: телефон уже есть`); continue;
-          }
-          const { error } = await supabase.from('crm_clients').insert({
-            branch_id: BRANCH_ID, full_name: fullName, phone,
-            fitbase_client_id: fitId || null,
-            source: 'fitbase_import', status: 'active', is_deleted: false,
-            profile_complete: false, created_by: 'fitbase_import',
-          });
-          if (error) { skipped++; skipReasons.push(`${fitId}: ${error.message}`); }
-          else { if (phone) existingPhones.add(phone); imported++; }
-        }
-      }
-      res.json({ total, imported, updated, skipped, skip_reasons: skipReasons.slice(0, 10) });
-    } catch (e) { res.status(500).json({ error: String(e), imported, updated, skipped }); }
+    if (fitbaseImportJob?.status === 'running') {
+      res.status(409).json({ error: 'Импорт уже идёт', ...fitbaseImportJob }); return;
+    }
+    fitbaseImportJob = { status: 'running', total: 0, processed: 0, added: 0, updated: 0, skipped: 0, errors: [] };
+    res.json({ status: 'started' });
+    runFitbaseImport().catch(e => {
+      if (fitbaseImportJob) { fitbaseImportJob.status = 'error'; fitbaseImportJob.errors.push(String(e)); }
+    });
+  });
+
+  r.get('/kviz/api/crm/clients/fitbase-import/status', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!fitbaseImportJob) { res.json({ status: 'idle' }); return; }
+    res.json(fitbaseImportJob);
   });
 
   r.post('/kviz/api/crm/clients', async (req, res) => {

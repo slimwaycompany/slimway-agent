@@ -38,7 +38,12 @@
 - Параметр RPC `crm_shift_expected_cash` передаётся как `{ shift_id: uuid }`.
 
 ## Сделано
-### 28.10.2026 · — · Этап 2: UI кассы, API смены/продаж/жизненного цикла
+### 28.10.2026 · (следующий) · фикс shift_date + async импорт + phone format
+- **Смена открывается**: Сергей добавил `crm_cash_shifts.shift_date date not null default (now() at time zone 'Asia/Yekaterinburg')::date`, код уже передавал это поле.
+- **Импорт Fitbase — фоновая задача**: POST `/fitbase-import` запускает фоновый импорт и сразу возвращает `{status:'started'}`. GET `/fitbase-import/status` возвращает прогресс `{status, total, processed, added, updated, skipped, errors}`. Повторный запуск пока идёт — 409. Вставка пачками по 100. Фронт опрашивает раз в 2 сек, показывает прогресс-бар.
+- **Phone format fix**: `normalizePhone` в crm.ts теперь возвращает `7XXXXXXXXXX` (без +) — соответствует правилу CLAUDE.md для crm_* таблиц.
+
+### 28.10.2026 · 9574ebf · Этап 2: UI кассы, API смены/продаж/жизненного цикла
 - **Сервер** (`src/http/crm.ts`): 19 новых эндпоинтов — смена (current/open/close/expected-cash), движения, продажи списком и детально, checkout, refund, баланс клиента, планы клиента, balance-ops, promo validate, lifecycle trigger.
 - **Жизненный цикл** (`src/index.ts`): `GET/POST /run/crm-lifecycle` (CRON_SECRET) — активация `not_activated`, истечение `active` планов.
 - **KassaPage** (`kviz/client/src/pages/crm/KassaPage.tsx`): экраны `ShiftClosed` / `ShiftOpen` / `SaleScreen` / `done`. Открытие смены (admin может переопределить остаток), движения наличных, список продаж, полный экран продажи (выбор клиента, вкладки Абонементы/Услуги/Товары/Депозит/Бонусы, корзина, скидки, оплата), возврат (admin).
@@ -52,7 +57,9 @@
 - Ждём отчёт.
 
 ## Открытые баги
-- Точные имена параметров RPC `crm_checkout` / `crm_refund` не верифицированы (нет прямого доступа к DB). Если RPC вернёт ошибку о параметрах — нужно уточнить имена у Сергея из описания функции в Supabase SQL Editor.
+- Точные имена параметров RPC `crm_checkout` / `crm_refund` не верифицированы. Если вернёт ошибку о параметрах — уточнить у Сергея из описания функции в Supabase SQL Editor.
+- Не проверено: существуют ли в `crm_cash_shifts` колонки `opening_cash_overridden` и `close_comment`; в `crm_client_plans` — `freeze_used`. Если нет — insert/select упадут с ошибкой PostgreSQL. SQL для проверки: `select column_name from information_schema.columns where table_name in ('crm_cash_shifts','crm_client_plans') order by table_name,ordinal_position;`
+- Phone format migration: если в crm_clients уже есть записи с форматом `+7XXXXXXXXXX` (старый код), их нужно исправить: `UPDATE crm_clients SET phone = regexp_replace(phone, '^\+', '') WHERE phone LIKE '+%';`
 
 ## Следующее
 - Проверка на проде: открытие/закрытие смены, продажа тестовому клиенту «ТЕСТ Тестов», возврат.

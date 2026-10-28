@@ -446,34 +446,78 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
 
 // ── Fitbase import ─────────────────────────────────────────────────────────────
 
+interface ImportJobState {
+  status: 'idle' | 'running' | 'done' | 'error';
+  total?: number; processed?: number;
+  added?: number; updated?: number; skipped?: number;
+  errors?: string[];
+}
+
 function FitbaseImport({ onDone }: { onDone: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult]   = useState<{ imported: number; skipped: number; total: number } | null>(null);
-  const [error, setError]     = useState('');
+  const [job, setJob]   = useState<ImportJobState>({ status: 'idle' });
+  const [error, setError] = useState('');
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  async function pollStatus() {
+    try {
+      const r = await fetch('/kviz/api/crm/clients/fitbase-import/status', { credentials: 'include' });
+      const d: ImportJobState = await r.json().catch(() => ({ status: 'error' as const }));
+      setJob(d);
+      if (d.status === 'done') { if (timerRef.current) clearInterval(timerRef.current); onDone(); }
+      if (d.status === 'error') { if (timerRef.current) clearInterval(timerRef.current); setError(d.errors?.[0] || 'Ошибка импорта'); }
+    } catch {}
+  }
 
   async function run() {
-    setLoading(true); setError(''); setResult(null);
+    setError(''); setJob({ status: 'running', total: 0, processed: 0, added: 0, updated: 0, skipped: 0 });
     try {
       const r = await fetch('/kviz/api/crm/clients/fitbase-import', { method: 'POST', credentials: 'include' });
-      const d = await r.json();
-      if (!r.ok) { setError(d.error || 'Ошибка импорта'); return; }
-      setResult(d); onDone();
-    } catch (e) { setError(String(e)); }
-    finally { setLoading(false); }
+      const d = await r.json().catch(() => null);
+      if (!r.ok && r.status !== 409) {
+        setJob({ status: 'idle' });
+        setError(d?.error || `Сервер вернул ошибку (${r.status}), попробуйте ещё раз`);
+        return;
+      }
+    } catch {
+      setJob({ status: 'idle' });
+      setError('Не удалось запустить импорт. Попробуйте ещё раз.');
+      return;
+    }
+    timerRef.current = setInterval(pollStatus, 2000);
+    pollStatus();
   }
+
+  const running = job.status === 'running';
+  const pct = (job.total || 0) > 0 ? Math.round(((job.processed || 0) / job.total!) * 100) : 0;
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 16, marginBottom: 12 }}>
       <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Импорт из Fitbase</div>
       <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Загрузит всех клиентов из Fitbase. Дубли (по fitbase_client_id) пропускаются.</div>
       {error && <div style={{ background: '#fef2f2', color: '#ef4444', padding: '6px 10px', borderRadius: 6, fontSize: 12, marginBottom: 8 }}>{error}</div>}
-      {result && (
-        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13 }}>
-          Всего: {result.total} · Импортировано: <b>{result.imported}</b> · Пропущено: {result.skipped}
+      {running && (
+        <div style={{ marginBottom: 10 }}>
+          {(job.total || 0) > 0 ? (
+            <>
+              <div style={{ background: '#e2e8f0', borderRadius: 4, height: 6, overflow: 'hidden', marginBottom: 4 }}>
+                <div style={{ background: '#02BDB6', height: '100%', width: `${pct}%`, transition: 'width 0.5s' }} />
+              </div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>{job.processed} / {job.total} ({pct}%)</div>
+            </>
+          ) : (
+            <div style={{ fontSize: 12, color: '#64748b' }}>Загрузка данных…</div>
+          )}
         </div>
       )}
-      <button style={{ padding: '8px 16px', background: '#263CD9', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: loading ? 0.7 : 1 }} onClick={run} disabled={loading}>
-        {loading ? 'Импортируем…' : 'Запустить импорт'}
+      {job.status === 'done' && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13 }}>
+          Всего: {job.total} · Добавлено: <b>{job.added}</b> · Обновлено: {job.updated} · Пропущено: {job.skipped}
+        </div>
+      )}
+      <button style={{ padding: '8px 16px', background: '#263CD9', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: running ? 'default' : 'pointer', fontFamily: 'inherit', opacity: running ? 0.7 : 1 }} onClick={run} disabled={running}>
+        {running ? 'Импортируем…' : 'Запустить импорт'}
       </button>
     </div>
   );
