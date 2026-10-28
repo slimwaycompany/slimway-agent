@@ -1,9 +1,24 @@
 # slimway-agent
 
-Сервер агентов SlimWay. Этап 1А: агент пробных в DRY-режиме.
+Сервер студии SlimWay: агент воронки Fitbase, рабочее окно для сотрудников, скриптолог для чата и своя CRM (касса, клиенты, расписание), на которую студия позже переедет с Fitbase.
 
-Стек: Node.js 20, TypeScript, Express, Supabase, nodemailer.
-Хостинг: Render (free web service, будится через cron-job.org).
+Стек: Node.js 20, TypeScript, Express, Supabase (Postgres), React (Vite) для вкладок, nodemailer.
+Хостинг: Render (free web service, будится через cron-job.org). Адрес: https://slimway-agent.onrender.com
+
+---
+
+## Где что описано
+
+| Файл | Что там |
+|---|---|
+| `CLAUDE.md` / `AGENTS.md` | Правила проекта для ИИ-агентов (одинаковые). Читать первым. |
+| `docs/STATE.md` | Карта модулей: статус, последнее изменение, какой чат отвечает |
+| `docs/modules/*.md` | Подробно по каждому модулю: где код, таблицы, решения, что сделано, баги, что дальше |
+| `docs/QUEUE.md` | Очередь задач и журнал |
+| `docs/tasks/` | Полные ТЗ |
+| `docs/crm-reference-map.md` | Сводка по старой SlimWay CRM и Frappe CRM (только идеи) |
+| `docs/sales-tree.md` | Дерево скриптов продаж (исходник для скриптолога) |
+| `extension/README.md` | Установка расширения «Скриптолог» для менеджеров |
 
 ---
 
@@ -18,7 +33,7 @@ npm start
 
 ---
 
-## 1. Переменные окружения
+## Переменные окружения
 
 | Переменная | Описание |
 |---|---|
@@ -26,129 +41,60 @@ npm start
 | `FITBASE_CLUB` | Клуб Fitbase (default: `slimway`) |
 | `SUPABASE_URL` | URL проекта Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service Role ключ Supabase |
-| `CRON_SECRET` | Секрет для аутентификации cron-запросов |
+| `CRON_SECRET` | Секрет для cron-запросов |
 | `AGENT_USER_ID` | ID пользователя «AI agent» в Fitbase (default: `40`) |
-| `TASK_RESPONSIBLE_IDS` | Ответственные за задачи через запятую (default: `33,39,35`) |
-| `TRIAL_AGENT_DRY_RUN` | `true` — не писать в Fitbase, только логировать (default: `true`) |
-| `ALERT_EMAIL` | Адрес для алертов (default: `sergey.revnivcev@gmail.com`) |
-| `SMTP_USER` | Gmail-аккаунт для отправки писем |
-| `SMTP_PASS` | Пароль приложения Gmail |
-| `WINDOW_PASSWORD` | Пароль для входа в окно помощника `/window` |
-| `WINDOW_SECRET` | Секрет для подписи cookie (если не задан — используется `CRON_SECRET`) |
-| `WATCH_REG_SCOPE` | Область проверки записей: `all` (все занятия) или `trial` (только пробные, default: `all`) |
+| `TASK_RESPONSIBLE_IDS` | Ответственные за задачи через запятую |
+| `TRIAL_AGENT_DRY_RUN`, `BUDGET_DRY_RUN`, `INACTIVE_DRY_RUN` | `true` — ничего не писать в Fitbase, только логировать |
+| `WATCH_RULES`, `WATCH_REG_SCOPE` | Правила и область проверки овчарки |
+| `ALERT_EMAIL`, `SMTP_USER`, `SMTP_PASS` | Письма-алерты |
+| `SHIFTS_SHEET_WEBHOOK_URL`, `SHIFTS_SHEET_SECRET` | Выгрузка отметок смены в Google Таблицу |
+| `RESULTS_DISPLAY_KEY` | Ключ экрана результатов студии (ТВ) |
 
 ---
 
-## 2. Расписание cron-job.org
+## Расписание cron-job.org
 
-Все запросы используют заголовок `X-Cron-Secret: <CRON_SECRET>` или параметр `?key=<CRON_SECRET>`.
+Все запросы с заголовком `X-Cron-Secret: <CRON_SECRET>` или параметром `?key=<CRON_SECRET>`. Время — Asia/Yekaterinburg (UTC+5).
 
-| Время (Almaty) | Расписание (UTC) | URL | Назначение |
-|---|---|---|---|
-| 07:25 ежедневно | `25 2 * * *` | `GET /health` | Разбудить Render |
-| Каждые 5 мин, 08:00–22:30 | `*/5 3-17 * * *` | `GET /run/watch?key=...` | Овчарка: тревоги |
-| 08:00 ежедневно | `0 3 * * *` | `GET /run/watch-brief?key=...` | Утренний брифинг |
-| Каждые 5 мин, пн–пт 07:30–22:30 | настройте в cron-job.org | `GET /run/trial?key=...` | Агент пробных |
-| Каждые 5 мин, сб–вс 07:30–21:00 | настройте в cron-job.org | `GET /run/trial?key=...` | Агент пробных (выходные) |
-| Каждые 10 мин в рабочем окне | | `GET /health` | Не давать Render уснуть |
-| 22:25 пн–пт | `25 17 * * 1-5` | `GET /run/daily-summary?key=...` | Ежедневная сводка |
-| 20:55 сб–вс | `55 15 * * 0,6` | `GET /run/daily-summary?key=...` | Ежедневная сводка (выходные) |
-
-> Сервер сам проверяет рабочее окно. `/run/watch` использует 08:00–22:30 / 08:00–21:00 (Asia/Almaty).
-> Запросы вне окна возвращают `{"status":"skipped"}` и записываются в `job_runs` со статусом `skipped`.
-
----
-
-## 3. Окно помощника `/window`
-
-### Открыть окно
-
-```
-https://<your-render-url>/window
-```
-
-### Вход
-Введите пароль из переменной `WINDOW_PASSWORD`. Токен сохраняется в httpOnly-cookie на 30 дней.
-
-### Включить уведомления браузера
-Нажмите кнопку **«Уведомления»** в правом верхнем углу и разрешите в браузере. Уведомления появляются для тревог уровней `urgent` и `important`. Для `urgent` дополнительно играет звуковой сигнал (можно отключить кнопкой **«Звук»** — настройка сохраняется в localStorage).
-
-### Блоки страницы
-- **Сейчас важно** — активные тревоги, отсортированы по уровню и времени. Кнопка «Принято» скрывает тревогу из активного списка, но не удаляет из базы.
-- **План на сегодня** — расписание занятий на текущий день со статусами.
-- **Лента** — последние 50 событий агента за сегодня (без телефонов и полных фамилий).
-
-### Уровни тревог
-| Уровень | Цвет | Правила |
+| Время | URL | Назначение |
 |---|---|---|
-| `urgent` | Красный | NEW_LEAD, NEW_LEAD_NO_TASK, CARD_FREE, NO_CHECKIN_30M, SYSTEM |
-| `important` | Оранжевый | NO_TASK, TASK_TOO_FAR, TASK_OVERDUE, UNCONFIRMED_3H, CANCELLED |
-| `info` | Синий | PURCHASE, BRIEF, TRIAL_SOON |
+| 07:25, 07:35, 07:45, 07:55 | `GET /health` | Разбудить Render |
+| каждые 5 мин, 08:00–22:00 | `GET /run/trial` | Агент пробных |
+| каждые 5 мин в рабочее время | `GET /run/watch` | Овчарка: тревоги |
+| 08:00 | `GET /run/watch-brief` | Утренний брифинг |
+| 8, 10, …, 22 ч | `GET /run/budget` | Бюджет карточек |
+| 22:25 пн–пт, 20:55 сб–вс | `GET /run/daily-summary` | Ежедневная сводка |
+
+Сервер сам проверяет рабочее окно: запросы вне окна возвращают `{"status":"skipped"}` и пишутся в `job_runs`.
 
 ---
 
-## 3. API
+## Рабочее окно
 
-```
-GET  /health              — проверка живости: { ok: true, time: "..." }
-GET  /run/:job            — запуск задачи (X-Cron-Secret или ?key=)
-POST /run/:job            — то же, POST-вариант
-```
-
-Ответы:
-- `202 { status: "accepted" }` — задача принята, выполняется в фоне
-- `200 { status: "already_running" }` — задача уже идёт (блокировка)
-- `200 { status: "skipped" }` — вне рабочего окна
-- `401` — неверный секрет
-- `404` — неизвестная задача
+- `/login` — вход по личному логину (`app_users`, роли admin / manager).
+- `/` — вкладки: Менеджер → Агент → Расписание → Клиенты → Воронка → Касса → Квалификация → Замеры → Отчёты → Настройки (только admin).
+- Подробности по каждой вкладке — `docs/modules/`.
 
 ---
 
-## 4. Перенос памяти агента
+## API (служебное)
 
-1. Из Google Таблицы экспортировать лист `trial_state` как CSV.
-2. Положить файл в `./import/trial_state.csv` (папка в `.gitignore`).
-3. Запустить:
-
-```bash
-npm run import:trial-state
+```
+GET  /health      — проверка живости
+GET  /run/:job    — запуск задачи (X-Cron-Secret или ?key=)
+POST /run/:job    — то же
 ```
 
-Скрипт выполняет upsert в `agent_state` и `agent_acted` — безопасно запускать повторно.
+Ответы: `202 accepted` — принята; `200 already_running` — уже идёт; `200 skipped` — вне окна; `401` — неверный секрет; `404` — неизвестная задача.
 
 ---
 
-## 5. DRY-режим и сравнение решений
+## DRY-режим
 
-В DRY-режиме (`TRIAL_AGENT_DRY_RUN=true`) сервер:
-- **Не пишет** в Fitbase (нет переходов, задач, комментариев)
-- Пишет события в `agent_events` с `dry=true` и текстом `[DRY] Перевёл бы ...`
-
-Сравнение с Apps Script:
-- Сервер: `SELECT * FROM agent_events WHERE dry=true ORDER BY created_at DESC`
-- Apps Script: лист `trial_log` в Google Таблице
+При `*_DRY_RUN=true` сервер не пишет в Fitbase, а пишет события в `agent_events` с `dry=true` и текстом `[DRY] Перевёл бы ...`.
 
 ---
 
-## 6. Переключение на боевой режим
+## Деплой
 
-**Шаг 1 — Отключить Apps Script:**
-```javascript
-// В Apps Script: Config → TRIAL_AGENT_DRY_RUN → "true"
-// Удалить триггеры: Setup.removeTrialTriggers()
-```
-
-**Шаг 2 — Включить сервер в боевом режиме:**
-```
-TRIAL_AGENT_DRY_RUN=false   # в Render → Environment
-```
-
----
-
-## 7. Деплой на Render
-
-```bash
-git push -u origin main
-```
-
-Render подхватит `render.yaml` автоматически при подключении репозитория.
+`git push origin main` → Render подхватывает автоматически (`render.yaml`). Проверять результат на живом сайте.
