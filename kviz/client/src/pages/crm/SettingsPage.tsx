@@ -4,10 +4,10 @@ import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface DeviceType { code: string; name: string; sort: number }
-interface Device { id: string; branch_id: string; type_code: string; number: string; default_phase: number | null; session_minutes: number | null; status: string; notes: string | null }
-interface Plan { id: string; kind: string; name: string; description: string | null; price: number; is_promo: boolean; is_free_booking: boolean; validity_days: number | null; extra_days: number | null; freeze_days: number | null; guest_visits: number | null; auto_activate_days: number | null; max_deferred_start_days: number | null; is_active: boolean; sort: number }
-interface PlanItem { id: string; plan_id: string; device_type_code: string; phase: number | null; sessions: number; sort: number }
-interface Supplier { id: string; name: string; phone: string | null; notes: string | null; is_active: boolean }
+interface Device { id: string; branch_id: string; type_code: string; number: string; default_phase: string | null; session_minutes: number | null; status: string; notes: string | null }
+interface Plan { id: string; kind: string; name: string; description: string | null; price: number; is_promo: boolean; is_free_booking: boolean; validity_days: number | null; extra_days: number | null; freeze_days: number | null; guest_visits: number | null; auto_activate_days: number | null; max_deferred_start_days: number | null; is_active: boolean; is_system: boolean; sort: number; items?: PlanItem[] }
+interface PlanItem { id: string; plan_id: string; device_type_code: string; phase: string | null; sessions: number; sort: number }
+interface Supplier { id: string; name: string; phone: string | null; link: string | null; notes: string | null; is_active: boolean }
 interface Product { id: string; name: string; barcode: string | null; is_active: boolean; stock: number; retail_price: number | null }
 interface Supply { id: string; product_id: string; supplier_id: string | null; quantity: number; remaining: number; purchase_price: number; retail_price: number | null; supplied_at: string; notes: string | null; created_by: string }
 interface PromoCode { id: string; code: string; discount_type: string; discount_value: number; max_uses: number | null; max_uses_per_client: number | null; uses_count: number; expires_at: string | null; applies_to_all: boolean; is_active: boolean }
@@ -28,7 +28,12 @@ async function api(method: string, url: string, body?: unknown) {
 
 function fmtPrice(n: number) { return n.toLocaleString('ru-RU') + ' ₸'; }
 
-// ── Shared modal ───────────────────────────────────────────────────────────────
+const PHASE_LABELS: Record<string, string> = { active: 'Активная', finishing: 'Завершающая' };
+const STATUS_LABELS: Record<string, string> = { working: 'Работает', repair: 'В ремонте', disabled: 'Отключен', broken: 'Неисправен' };
+const STATUS_COLORS: Record<string, string> = { working: '#16a34a', repair: '#f59e0b', disabled: '#94a3b8', broken: '#ef4444' };
+const PM_KIND_LABELS: Record<string, string> = { cash: 'нал', cashless: 'безнал', deposit: 'депозит', bonus: 'бонус' };
+
+// ── Shared UI ──────────────────────────────────────────────────────────────────
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -44,6 +49,20 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+function ConfirmModal({ message, onConfirm, onClose }: { message: string; onConfirm: () => void; onClose: () => void }) {
+  return (
+    <div style={S.overlay} onClick={onClose}>
+      <div style={{ ...S.modal, maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 15, lineHeight: 1.6, marginBottom: 20, color: '#1a202c' }}>{message}</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button style={S.cancelBtn} onClick={onClose}>Отмена</button>
+          <button style={{ ...S.saveBtn, background: '#ef4444' }} onClick={onConfirm}>Удалить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 12 }}>
@@ -53,14 +72,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function ArchiveToggle({ show, onToggle }: { show: boolean; onToggle: () => void }) {
+  return (
+    <button style={{ ...S.csvBtn, fontSize: 12, padding: '4px 10px' }} onClick={onToggle}>
+      {show ? 'Скрыть архив' : 'Показать архив'}
+    </button>
+  );
+}
+
 // ── Device Types & Devices ─────────────────────────────────────────────────────
 
 function DevicesSection() {
-  const [types, setTypes]   = useState<DeviceType[]>([]);
+  const [types, setTypes]     = useState<DeviceType[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [editType, setEditType]   = useState<DeviceType | null | 'new'>(null);
+  const [editType, setEditType]     = useState<DeviceType | null | 'new'>(null);
   const [editDevice, setEditDevice] = useState<Device | null | 'new'>(null);
-  const [err, setErr]   = useState('');
+  const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [nextNum, setNextNum] = useState<number | null>(null);
+  const [err, setErr]     = useState('');
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -71,41 +101,52 @@ function DevicesSection() {
     setTypes(Array.isArray(t) ? t : []);
     setDevices(Array.isArray(d) ? d : []);
   }, []);
-
   useEffect(() => { load(); }, [load]);
 
+  async function fetchNextNum(typeCode: string) {
+    if (!typeCode) { setNextNum(null); return; }
+    const r = await fetch(`/kviz/api/crm/devices/next-number?type_code=${typeCode}`, { credentials: 'include' }).then(r => r.json());
+    setNextNum(r.next ?? null);
+  }
+
   async function saveType(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setErr(''); setLoading(true);
+    e.preventDefault(); setErr(''); setLoading(true);
     const fd = new FormData(e.currentTarget);
     const body = { code: fd.get('code'), name: fd.get('name'), sort: Number(fd.get('sort') || 0) };
-    const url = editType === 'new' ? '/kviz/api/crm/device-types' : `/kviz/api/crm/device-types/${(editType as DeviceType).code}`;
-    const method = editType === 'new' ? 'POST' : 'PATCH';
-    const { ok, data } = await api(method, url, body);
+    const { ok, data } = await api(editType === 'new' ? 'POST' : 'PATCH',
+      editType === 'new' ? '/kviz/api/crm/device-types' : `/kviz/api/crm/device-types/${(editType as DeviceType).code}`, body);
     setLoading(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
     setEditType(null); load();
   }
 
-  async function deleteType(code: string) {
-    if (!confirm('Удалить тип аппарата?')) return;
-    const { ok, data } = await api('DELETE', `/kviz/api/crm/device-types/${code}`);
-    if (!ok) { alert(data.error || 'Ошибка'); return; }
-    load();
-  }
-
   async function saveDevice(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setErr(''); setLoading(true);
+    e.preventDefault(); setErr(''); setLoading(true);
     const fd = new FormData(e.currentTarget);
-    const body = { type_code: fd.get('type_code'), number: fd.get('number'), default_phase: fd.get('default_phase') || null, session_minutes: fd.get('session_minutes') || null, status: fd.get('status'), notes: fd.get('notes') || null };
-    const url = editDevice === 'new' ? '/kviz/api/crm/devices' : `/kviz/api/crm/devices/${(editDevice as Device).id}`;
-    const method = editDevice === 'new' ? 'POST' : 'PATCH';
-    const { ok, data } = await api(method, url, body);
+    const body = {
+      type_code: fd.get('type_code'), number: fd.get('number'),
+      default_phase: fd.get('default_phase') || null,
+      session_minutes: fd.get('session_minutes') || null,
+      status: fd.get('status'), notes: fd.get('notes') || null,
+    };
+    const { ok, data } = await api(
+      editDevice === 'new' ? 'POST' : 'PATCH',
+      editDevice === 'new' ? '/kviz/api/crm/devices' : `/kviz/api/crm/devices/${(editDevice as Device).id}`,
+      body,
+    );
     setLoading(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
-    setEditDevice(null); load();
+    setEditDevice(null); setNextNum(null); load();
   }
+
+  async function doDelete(kind: 'type' | 'device', id: string) {
+    const url = kind === 'type' ? `/kviz/api/crm/device-types/${id}` : `/kviz/api/crm/devices/${id}`;
+    const { ok, data } = await api('DELETE', url);
+    if (!ok) { alert(data.error || 'Ошибка'); } else load();
+    setConfirm(null);
+  }
+
+  const visibleDevices = showArchived ? devices : devices.filter(d => d.status !== 'disabled');
 
   return (
     <div style={S.section}>
@@ -117,10 +158,10 @@ function DevicesSection() {
         {types.map(t => (
           <div key={t.code} style={S.row}>
             <span style={{ fontWeight: 600 }}>{t.name}</span>
-            <span style={S.meta}>код: {t.code} · порядок: {t.sort}</span>
+            <span style={S.meta}>код: {t.code}</span>
             <div style={S.rowActions}>
               <button style={S.editBtn} onClick={() => setEditType(t)}>✎</button>
-              <button style={S.delBtn} onClick={() => deleteType(t.code)}>✕</button>
+              <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить тип «${t.name}» навсегда?`, action: () => doDelete('type', t.code) })}>Удалить</button>
             </div>
           </div>
         ))}
@@ -129,19 +170,41 @@ function DevicesSection() {
 
       <div style={{ ...S.subheader, marginTop: 24 }}>
         <span style={S.subTitle}>Аппараты</span>
-        <button style={S.addBtn} onClick={() => setEditDevice('new')}>+ Добавить</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ArchiveToggle show={showArchived} onToggle={() => setShowArchived(p => !p)} />
+          <button style={S.addBtn} onClick={() => { setNextNum(null); setEditDevice('new'); }}>+ Добавить</button>
+        </div>
       </div>
       <div style={S.list}>
-        {devices.map(d => (
-          <div key={d.id} style={S.row}>
-            <span style={{ fontWeight: 600 }}>#{d.number}</span>
-            <span style={S.meta}>{d.type_code}{d.session_minutes ? ` · ${d.session_minutes} мин` : ''} · {d.status}</span>
-            <div style={S.rowActions}>
-              <button style={S.editBtn} onClick={() => setEditDevice(d)}>✎</button>
+        {visibleDevices.map(d => {
+          const typeName = types.find(t => t.code === d.type_code)?.name ?? d.type_code;
+          const isArchived = d.status === 'disabled';
+          return (
+            <div key={d.id} style={{ ...S.row, opacity: isArchived ? 0.6 : 1 }}>
+              <div>
+                <span style={{ fontWeight: 600 }}>{typeName} №{d.number}</span>
+                <span style={S.meta}>
+                  {d.default_phase ? PHASE_LABELS[d.default_phase] ?? d.default_phase : '—'}
+                  {d.session_minutes ? ` · ${d.session_minutes} мин` : ''}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: STATUS_COLORS[d.status] ?? '#94a3b8', padding: '2px 7px', borderRadius: 6, background: '#f8fafc', border: `1px solid ${STATUS_COLORS[d.status] ?? '#e2e8f0'}` }}>
+                  {STATUS_LABELS[d.status] ?? d.status}
+                </span>
+                <div style={S.rowActions}>
+                  <button style={S.editBtn} onClick={() => setEditDevice(d)}>✎</button>
+                  {!isArchived
+                    ? <button style={S.editBtn} onClick={() => api('PATCH', `/kviz/api/crm/devices/${d.id}`, { status: 'disabled' }).then(load)}>В архив</button>
+                    : <button style={S.editBtn} onClick={() => api('PATCH', `/kviz/api/crm/devices/${d.id}`, { status: 'working' }).then(load)}>Вернуть</button>
+                  }
+                  <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить аппарат «${typeName} №${d.number}» навсегда?`, action: () => doDelete('device', d.id) })}>Удалить</button>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
-        {!devices.length && <div style={S.empty}>Аппараты не добавлены</div>}
+          );
+        })}
+        {!visibleDevices.length && <div style={S.empty}>Аппараты не добавлены</div>}
       </div>
 
       {editType && (
@@ -166,41 +229,53 @@ function DevicesSection() {
       )}
 
       {editDevice && (
-        <Modal title={editDevice === 'new' ? 'Новый аппарат' : 'Редактировать аппарат'} onClose={() => { setEditDevice(null); setErr(''); }}>
+        <Modal title={editDevice === 'new' ? 'Новый аппарат' : 'Редактировать аппарат'} onClose={() => { setEditDevice(null); setErr(''); setNextNum(null); }}>
           <form onSubmit={saveDevice}>
             {err && <div style={S.errBox}>{err}</div>}
-            <Field label="Тип">
-              <select style={S.inp} name="type_code" required defaultValue={editDevice === 'new' ? '' : (editDevice as Device).type_code}>
+            <Field label="Тип аппарата *">
+              <select style={S.inp} name="type_code" required
+                defaultValue={editDevice === 'new' ? '' : (editDevice as Device).type_code}
+                onChange={e => { if (editDevice === 'new') fetchNextNum(e.target.value); }}>
                 <option value="">— выбрать —</option>
                 {types.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
               </select>
             </Field>
-            <Field label="Номер">
-              <input style={S.inp} name="number" required defaultValue={editDevice === 'new' ? '' : (editDevice as Device).number} />
+            <Field label={`Номер *${nextNum != null ? ` (следующий свободный: ${nextNum})` : ''}`}>
+              <input style={S.inp} name="number" required
+                defaultValue={editDevice === 'new' ? (nextNum ?? '') : (editDevice as Device).number}
+                value={editDevice === 'new' && nextNum != null ? nextNum : undefined}
+                onChange={() => {}} />
             </Field>
             <Field label="Фаза по умолчанию">
-              <input style={S.inp} name="default_phase" type="number" defaultValue={editDevice === 'new' ? '' : ((editDevice as Device).default_phase ?? '')} />
+              <select style={S.inp} name="default_phase" defaultValue={editDevice === 'new' ? '' : ((editDevice as Device).default_phase ?? '')}>
+                <option value="">— не указана —</option>
+                <option value="active">Активная</option>
+                <option value="finishing">Завершающая</option>
+              </select>
             </Field>
             <Field label="Минут сеанса">
               <input style={S.inp} name="session_minutes" type="number" defaultValue={editDevice === 'new' ? '' : ((editDevice as Device).session_minutes ?? '')} />
             </Field>
             <Field label="Статус">
-              <select style={S.inp} name="status" defaultValue={editDevice === 'new' ? 'active' : (editDevice as Device).status}>
-                <option value="active">Активен</option>
-                <option value="inactive">Неактивен</option>
-                <option value="maintenance">На обслуживании</option>
+              <select style={S.inp} name="status" defaultValue={editDevice === 'new' ? 'working' : (editDevice as Device).status}>
+                <option value="working">Работает</option>
+                <option value="repair">В ремонте</option>
+                <option value="disabled">Отключен</option>
+                <option value="broken">Неисправен</option>
               </select>
             </Field>
             <Field label="Заметки">
               <input style={S.inp} name="notes" defaultValue={editDevice === 'new' ? '' : ((editDevice as Device).notes ?? '')} />
             </Field>
             <div style={S.mBtns}>
-              <button type="button" style={S.cancelBtn} onClick={() => { setEditDevice(null); setErr(''); }}>Отмена</button>
+              <button type="button" style={S.cancelBtn} onClick={() => { setEditDevice(null); setErr(''); setNextNum(null); }}>Отмена</button>
               <button type="submit" style={S.saveBtn} disabled={loading}>{loading ? '…' : 'Сохранить'}</button>
             </div>
           </form>
         </Modal>
       )}
+
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.action} onClose={() => setConfirm(null)} />}
     </div>
   );
 }
@@ -208,51 +283,83 @@ function DevicesSection() {
 // ── Plans (abonements or services) ─────────────────────────────────────────────
 
 function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
-  const [plans, setPlans]   = useState<Plan[]>([]);
-  const [items, setItems]   = useState<Record<string, PlanItem[]>>({});
-  const [types, setTypes]   = useState<DeviceType[]>([]);
-  const [editPlan, setEditPlan]   = useState<Plan | null | 'new'>(null);
-  const [editItem, setEditItem]   = useState<{ planId: string; item: PlanItem | 'new' } | null>(null);
-  const [openItems, setOpenItems] = useState<string | null>(null);
-  const [err, setErr]   = useState('');
+  const [plans, setPlans]     = useState<Plan[]>([]);
+  const [types, setTypes]     = useState<DeviceType[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [editPlan, setEditPlan] = useState<Plan | null | 'new'>(null);
+  const [localItems, setLocalItems] = useState<Array<{ device_type_code: string; phase: string; sessions: number }>>([]);
+  const [confirm, setConfirm]  = useState<{ message: string; action: () => void } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [err, setErr]     = useState('');
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    const [p, t] = await Promise.all([
+    const [p, t, d] = await Promise.all([
       fetch(`/kviz/api/crm/plans?kind=${kind}`, { credentials: 'include' }).then(r => r.json()),
       fetch('/kviz/api/crm/device-types', { credentials: 'include' }).then(r => r.json()),
+      fetch('/kviz/api/crm/devices', { credentials: 'include' }).then(r => r.json()),
     ]);
     setPlans(Array.isArray(p) ? p : []);
     setTypes(Array.isArray(t) ? t : []);
+    setDevices(Array.isArray(d) ? d : []);
   }, [kind]);
-
   useEffect(() => { load(); }, [load]);
 
-  async function loadItems(planId: string) {
-    const d = await fetch(`/kviz/api/crm/plans/${planId}/items`, { credentials: 'include' }).then(r => r.json());
-    setItems(prev => ({ ...prev, [planId]: Array.isArray(d) ? d : [] }));
+  function openEdit(plan: Plan | 'new') {
+    setErr('');
+    if (plan === 'new') {
+      setLocalItems([]);
+    } else {
+      setLocalItems((plan.items || []).map(it => ({ device_type_code: it.device_type_code, phase: it.phase || 'active', sessions: it.sessions })));
+    }
+    setEditPlan(plan);
   }
 
-  async function toggleItems(planId: string) {
-    if (openItems === planId) { setOpenItems(null); return; }
-    setOpenItems(planId);
-    if (!items[planId]) await loadItems(planId);
+  function defaultPhaseForType(typeCode: string): string {
+    const d = devices.find(dev => dev.type_code === typeCode && dev.default_phase);
+    return d?.default_phase || 'active';
+  }
+
+  function addItem() {
+    const firstType = types[0];
+    if (!firstType) return;
+    setLocalItems(prev => [...prev, { device_type_code: firstType.code, phase: defaultPhaseForType(firstType.code), sessions: 12 }]);
+  }
+
+  function updateItem(i: number, field: string, value: string | number) {
+    setLocalItems(prev => {
+      const next = [...prev];
+      if (field === 'device_type_code') {
+        next[i] = { ...next[i], device_type_code: String(value), phase: defaultPhaseForType(String(value)) };
+      } else {
+        next[i] = { ...next[i], [field]: value };
+      }
+      return next;
+    });
+  }
+
+  function removeItem(i: number) {
+    setLocalItems(prev => prev.filter((_, idx) => idx !== i));
   }
 
   async function savePlan(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setErr(''); setLoading(true);
+    e.preventDefault(); setErr(''); setLoading(true);
     const fd = new FormData(e.currentTarget);
     const body: Record<string, unknown> = {
       kind, name: fd.get('name'), description: fd.get('description') || null,
-      price: Number(fd.get('price') || 0), is_promo: fd.get('is_promo') === 'on',
-      is_free_booking: fd.get('is_free_booking') === 'on',
-      validity_days: fd.get('validity_days') || null, extra_days: fd.get('extra_days') || null,
-      freeze_days: fd.get('freeze_days') || null, guest_visits: fd.get('guest_visits') || null,
+      price: Number(fd.get('price') || 0),
+      is_promo: fd.get('is_promo') === 'on', is_free_booking: fd.get('is_free_booking') === 'on',
+      validity_days: fd.get('validity_days') || null,
+      extra_days: Number(fd.get('extra_days') || 0),
+      freeze_days: Number(fd.get('freeze_days') || 0),
+      guest_visits: Number(fd.get('guest_visits') || 0),
+      auto_activate_days: fd.get('auto_activate_days') || null,
+      max_deferred_start_days: Number(fd.get('max_deferred_start_days') || 0),
       sort: Number(fd.get('sort') || 0),
+      items: localItems,
     };
     if (editPlan !== 'new') body.is_active = fd.get('is_active') === 'on';
-    const url = editPlan === 'new' ? '/kviz/api/crm/plans' : `/kviz/api/crm/plans/${(editPlan as Plan).id}`;
+    const url    = editPlan === 'new' ? '/kviz/api/crm/plans' : `/kviz/api/crm/plans/${(editPlan as Plan).id}`;
     const method = editPlan === 'new' ? 'POST' : 'PATCH';
     const { ok, data } = await api(method, url, body);
     setLoading(false);
@@ -260,95 +367,94 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
     setEditPlan(null); load();
   }
 
-  async function saveItem(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!editItem) return;
-    setErr(''); setLoading(true);
-    const fd = new FormData(e.currentTarget);
-    const body = { device_type_code: fd.get('device_type_code'), phase: fd.get('phase') || null, sessions: Number(fd.get('sessions') || 0), sort: Number(fd.get('sort') || 0) };
-    let ok: boolean, data: Record<string, unknown>;
-    if (editItem.item === 'new') {
-      ({ ok, data } = await api('POST', `/kviz/api/crm/plans/${editItem.planId}/items`, body));
-    } else {
-      ({ ok, data } = await api('PATCH', `/kviz/api/crm/plan-items/${(editItem.item as PlanItem).id}`, body));
-    }
-    setLoading(false);
-    if (!ok) { setErr(data.error || 'Ошибка'); return; }
-    setEditItem(null); loadItems(editItem.planId);
+  async function doArchive(plan: Plan) {
+    await api('PATCH', `/kviz/api/crm/plans/${plan.id}`, { is_active: !plan.is_active });
+    load();
   }
 
-  async function deleteItem(planId: string, itemId: string) {
-    if (!confirm('Удалить позицию?')) return;
-    const { ok, data } = await api('DELETE', `/kviz/api/crm/plan-items/${itemId}`);
-    if (!ok) { alert(data.error || 'Ошибка'); return; }
-    loadItems(planId);
+  async function doDelete(plan: Plan) {
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/plans/${plan.id}`);
+    if (!ok) alert(data.error || 'Ошибка'); else load();
+    setConfirm(null);
   }
 
   const title = kind === 'abonement' ? 'Абонементы' : 'Услуги';
+  const visible = showArchived ? plans : plans.filter(p => p.is_active);
 
   return (
     <div style={S.section}>
       <div style={S.subheader}>
         <span style={S.subTitle}>{title}</span>
-        <button style={S.addBtn} onClick={() => setEditPlan('new')}>+ Добавить</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ArchiveToggle show={showArchived} onToggle={() => setShowArchived(p => !p)} />
+          <button style={S.addBtn} onClick={() => openEdit('new')}>+ Добавить</button>
+        </div>
       </div>
       <div style={S.list}>
-        {plans.map(p => (
-          <div key={p.id}>
-            <div style={S.row}>
-              <div>
-                <span style={{ fontWeight: 600 }}>{p.name}</span>
-                {!p.is_active && <span style={S.badge}>архив</span>}
-                <span style={S.meta}>{fmtPrice(p.price)}{p.validity_days ? ` · ${p.validity_days} дн` : ''}</span>
+        {visible.map(p => {
+          const compStr = (p.items || []).map(it => {
+            const tn = types.find(t => t.code === it.device_type_code)?.name ?? it.device_type_code;
+            const ph = it.phase === 'active' ? 'акт.' : it.phase === 'finishing' ? 'зав.' : (it.phase ?? '');
+            return `${tn} ${it.sessions}${ph ? ` (${ph})` : ''}`;
+          }).join(' · ');
+          return (
+            <div key={p.id} style={{ ...S.row, opacity: p.is_active ? 1 : 0.6, flexDirection: 'column', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div>
+                  <span style={{ fontWeight: 600 }}>{p.name}</span>
+                  {!p.is_active && <span style={S.badge}>архив</span>}
+                  {p.is_promo  && <span style={{ ...S.badge, background: '#fef3c7', color: '#92400e' }}>Акция</span>}
+                  <span style={S.meta}>{fmtPrice(p.price)}{p.validity_days ? ` · ${p.validity_days} дн` : ''}</span>
+                </div>
+                <div style={S.rowActions}>
+                  {!p.is_system && <button style={S.editBtn} onClick={() => openEdit(p)}>✎</button>}
+                  {!p.is_system && (
+                    <button style={S.editBtn} onClick={() => doArchive(p)}>
+                      {p.is_active ? 'В архив' : 'Восстановить'}
+                    </button>
+                  )}
+                  {!p.is_system && (
+                    <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить «${p.name}» навсегда?`, action: () => doDelete(p) })}>
+                      Удалить
+                    </button>
+                  )}
+                </div>
               </div>
-              <div style={S.rowActions}>
-                {kind === 'abonement' && (
-                  <button style={S.editBtn} onClick={() => toggleItems(p.id)}>
-                    {openItems === p.id ? '▲' : '▼'} позиции
-                  </button>
-                )}
-                <button style={S.editBtn} onClick={() => setEditPlan(p)}>✎</button>
-              </div>
+              {compStr && <span style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{compStr}</span>}
             </div>
-            {openItems === p.id && kind === 'abonement' && (
-              <div style={{ paddingLeft: 16, paddingBottom: 8, background: '#f8fafc', borderRadius: 8, marginBottom: 4 }}>
-                {(items[p.id] || []).map(it => (
-                  <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-                    <span>{types.find(t => t.code === it.device_type_code)?.name ?? it.device_type_code}</span>
-                    {it.phase != null && <span style={S.meta}>фаза {it.phase}</span>}
-                    <span style={S.meta}>{it.sessions} сеансов</span>
-                    <button style={S.editBtn} onClick={() => setEditItem({ planId: p.id, item: it })}>✎</button>
-                    <button style={S.delBtn} onClick={() => deleteItem(p.id, it.id)}>✕</button>
-                  </div>
-                ))}
-                {!(items[p.id] || []).length && <div style={S.empty}>Нет позиций</div>}
-                <button style={{ ...S.addBtn, marginTop: 6 }} onClick={() => setEditItem({ planId: p.id, item: 'new' })}>+ Позиция</button>
-              </div>
-            )}
-          </div>
-        ))}
-        {!plans.length && <div style={S.empty}>Нет записей</div>}
+          );
+        })}
+        {!visible.length && <div style={S.empty}>Нет записей</div>}
       </div>
 
       {editPlan && (
-        <Modal title={editPlan === 'new' ? `Новый ${title.slice(0, -1).toLowerCase()}` : 'Редактировать'} onClose={() => { setEditPlan(null); setErr(''); }}>
-          <form onSubmit={savePlan} style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+        <Modal
+          title={editPlan === 'new'
+            ? (kind === 'abonement' ? 'Новый абонемент' : 'Новая услуга')
+            : 'Редактировать'}
+          onClose={() => { setEditPlan(null); setErr(''); }}
+        >
+          <form onSubmit={savePlan} style={{ maxHeight: '78vh', overflowY: 'auto', paddingRight: 4 }}>
             {err && <div style={S.errBox}>{err}</div>}
-            <Field label="Название"><input style={S.inp} name="name" required defaultValue={editPlan === 'new' ? '' : (editPlan as Plan).name} /></Field>
-            <Field label="Описание"><textarea style={{ ...S.inp, height: 60, resize: 'vertical' }} name="description" defaultValue={editPlan === 'new' ? '' : ((editPlan as Plan).description ?? '')} /></Field>
-            <Field label="Цена (₸)"><input style={S.inp} name="price" type="number" min="0" defaultValue={editPlan === 'new' ? 0 : (editPlan as Plan).price} /></Field>
-            {kind === 'abonement' && <>
-              <Field label="Дней действия"><input style={S.inp} name="validity_days" type="number" defaultValue={editPlan === 'new' ? '' : ((editPlan as Plan).validity_days ?? '')} /></Field>
-              <Field label="Бонусных дней"><input style={S.inp} name="extra_days" type="number" defaultValue={editPlan === 'new' ? '' : ((editPlan as Plan).extra_days ?? '')} /></Field>
-              <Field label="Заморозка (дней)"><input style={S.inp} name="freeze_days" type="number" defaultValue={editPlan === 'new' ? '' : ((editPlan as Plan).freeze_days ?? '')} /></Field>
-              <Field label="Гостевых визитов"><input style={S.inp} name="guest_visits" type="number" defaultValue={editPlan === 'new' ? '' : ((editPlan as Plan).guest_visits ?? '')} /></Field>
-            </>}
-            <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+            <Field label="Название *"><input style={S.inp} name="name" required defaultValue={editPlan === 'new' ? '' : (editPlan as Plan).name} /></Field>
+            <Field label="Описание"><textarea style={{ ...S.inp, height: 56, resize: 'vertical' }} name="description" defaultValue={editPlan === 'new' ? '' : ((editPlan as Plan).description ?? '')} /></Field>
+            <Field label="Цена (₸) *"><input style={S.inp} name="price" type="number" min="0" required defaultValue={editPlan === 'new' ? 0 : (editPlan as Plan).price} /></Field>
+            <Field label="Срок действия (дней)"><input style={S.inp} name="validity_days" type="number" min="1" placeholder="не ограничен" defaultValue={editPlan === 'new' ? '' : ((editPlan as Plan).validity_days ?? '')} /></Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field label="Доп. срок (дней)"><input style={S.inp} name="extra_days" type="number" min="0" defaultValue={editPlan === 'new' ? 0 : ((editPlan as Plan).extra_days ?? 0)} /></Field>
+              <Field label="Заморозка (дней)"><input style={S.inp} name="freeze_days" type="number" min="0" defaultValue={editPlan === 'new' ? 0 : ((editPlan as Plan).freeze_days ?? 0)} /></Field>
+              <Field label="Гостевых визитов"><input style={S.inp} name="guest_visits" type="number" min="0" defaultValue={editPlan === 'new' ? 0 : ((editPlan as Plan).guest_visits ?? 0)} /></Field>
+              <Field label="Макс. отложенный старт (дн)"><input style={S.inp} name="max_deferred_start_days" type="number" min="0" defaultValue={editPlan === 'new' ? 0 : ((editPlan as Plan).max_deferred_start_days ?? 0)} /></Field>
+            </div>
+            <Field label="Автоактивация через (дней, пусто = по первому посещению)">
+              <input style={S.inp} name="auto_activate_days" type="number" min="0" placeholder="пусто" defaultValue={editPlan === 'new' ? '' : ((editPlan as Plan).auto_activate_days ?? '')} />
+            </Field>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
               <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-                <input type="checkbox" name="is_promo" defaultChecked={editPlan !== 'new' && (editPlan as Plan).is_promo} /> Акционный
+                <input type="checkbox" name="is_promo" defaultChecked={editPlan !== 'new' && (editPlan as Plan).is_promo} /> Акция
               </label>
               <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-                <input type="checkbox" name="is_free_booking" defaultChecked={editPlan !== 'new' && (editPlan as Plan).is_free_booking} /> Бесплатная запись
+                <input type="checkbox" name="is_free_booking" defaultChecked={editPlan !== 'new' && (editPlan as Plan).is_free_booking} /> Бесплатная — запись без кассы
               </label>
               {editPlan !== 'new' && (
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
@@ -357,6 +463,36 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
               )}
             </div>
             <Field label="Порядок"><input style={S.inp} name="sort" type="number" defaultValue={editPlan === 'new' ? 0 : (editPlan as Plan).sort} /></Field>
+
+            {/* Состав */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label style={{ ...S.label, margin: 0 }}>Состав{kind === 'abonement' ? ' *' : ''}</label>
+                <button type="button" style={{ ...S.addBtn, fontSize: 12, padding: '3px 10px' }} onClick={addItem}>+ Аппарат</button>
+              </div>
+              {localItems.length === 0 && (
+                <div style={{ color: '#94a3b8', fontSize: 13 }}>
+                  {kind === 'abonement' ? 'Добавьте хотя бы 1 аппарат' : 'Нет аппаратов (необязательно)'}
+                </div>
+              )}
+              {localItems.map((it, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                  <select style={{ ...S.inp, padding: '7px 8px' }} value={it.device_type_code}
+                    onChange={e => updateItem(i, 'device_type_code', e.target.value)}>
+                    {types.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
+                  </select>
+                  <select style={{ ...S.inp, padding: '7px 8px', minWidth: 120 }} value={it.phase}
+                    onChange={e => updateItem(i, 'phase', e.target.value)}>
+                    <option value="active">Активная</option>
+                    <option value="finishing">Завершающая</option>
+                  </select>
+                  <input style={{ ...S.inp, width: 64, padding: '7px 8px', textAlign: 'center' }} type="number" min="1"
+                    value={it.sessions} onChange={e => updateItem(i, 'sessions', Number(e.target.value))} />
+                  <button type="button" style={S.delBtn} onClick={() => removeItem(i)}>✕</button>
+                </div>
+              ))}
+            </div>
+
             <div style={S.mBtns}>
               <button type="button" style={S.cancelBtn} onClick={() => { setEditPlan(null); setErr(''); }}>Отмена</button>
               <button type="submit" style={S.saveBtn} disabled={loading}>{loading ? '…' : 'Сохранить'}</button>
@@ -365,26 +501,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
         </Modal>
       )}
 
-      {editItem && (
-        <Modal title={editItem.item === 'new' ? 'Новая позиция' : 'Редактировать позицию'} onClose={() => { setEditItem(null); setErr(''); }}>
-          <form onSubmit={saveItem}>
-            {err && <div style={S.errBox}>{err}</div>}
-            <Field label="Тип аппарата">
-              <select style={S.inp} name="device_type_code" required defaultValue={editItem.item === 'new' ? '' : (editItem.item as PlanItem).device_type_code}>
-                <option value="">— выбрать —</option>
-                {types.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Фаза"><input style={S.inp} name="phase" type="number" defaultValue={editItem.item === 'new' ? '' : ((editItem.item as PlanItem).phase ?? '')} /></Field>
-            <Field label="Сеансов"><input style={S.inp} name="sessions" type="number" required min="1" defaultValue={editItem.item === 'new' ? '' : (editItem.item as PlanItem).sessions} /></Field>
-            <Field label="Порядок"><input style={S.inp} name="sort" type="number" defaultValue={editItem.item === 'new' ? 0 : (editItem.item as PlanItem).sort} /></Field>
-            <div style={S.mBtns}>
-              <button type="button" style={S.cancelBtn} onClick={() => { setEditItem(null); setErr(''); }}>Отмена</button>
-              <button type="submit" style={S.saveBtn} disabled={loading}>{loading ? '…' : 'Сохранить'}</button>
-            </div>
-          </form>
-        </Modal>
-      )}
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.action} onClose={() => setConfirm(null)} />}
     </div>
   );
 }
@@ -394,6 +511,8 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
 function SuppliersSection() {
   const [rows, setRows] = useState<Supplier[]>([]);
   const [edit, setEdit] = useState<Supplier | null | 'new'>(null);
+  const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [err, setErr]   = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -406,47 +525,63 @@ function SuppliersSection() {
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setErr(''); setLoading(true);
     const fd = new FormData(e.currentTarget);
-    const body = { name: fd.get('name'), phone: fd.get('phone') || null, notes: fd.get('notes') || null };
-    const { ok, data } = await api(edit === 'new' ? 'POST' : 'PATCH', edit === 'new' ? '/kviz/api/crm/suppliers' : `/kviz/api/crm/suppliers/${(edit as Supplier).id}`, body);
+    const body = { name: fd.get('name'), phone: fd.get('phone') || null, link: fd.get('link') || null, notes: fd.get('notes') || null };
+    const { ok, data } = await api(edit === 'new' ? 'POST' : 'PATCH',
+      edit === 'new' ? '/kviz/api/crm/suppliers' : `/kviz/api/crm/suppliers/${(edit as Supplier).id}`, body);
     setLoading(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
     setEdit(null); load();
   }
 
-  async function toggle(id: string, active: boolean) {
-    await api('PATCH', `/kviz/api/crm/suppliers/${id}`, { is_active: !active });
-    load();
+  async function doDelete(id: string, name: string) {
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/suppliers/${id}`);
+    if (!ok) alert(data.error || 'Ошибка'); else load();
+    setConfirm(null);
   }
+
+  const visible = showArchived ? rows : rows.filter(r => r.is_active);
 
   return (
     <div style={S.section}>
       <div style={S.subheader}>
         <span style={S.subTitle}>Поставщики</span>
-        <button style={S.addBtn} onClick={() => setEdit('new')}>+ Добавить</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ArchiveToggle show={showArchived} onToggle={() => setShowArchived(p => !p)} />
+          <button style={S.addBtn} onClick={() => setEdit('new')}>+ Добавить</button>
+        </div>
       </div>
       <div style={S.list}>
-        {rows.map(r => (
-          <div key={r.id} style={S.row}>
+        {visible.map(r => (
+          <div key={r.id} style={{ ...S.row, opacity: r.is_active ? 1 : 0.6 }}>
             <div>
               <span style={{ fontWeight: 600 }}>{r.name}</span>
-              {!r.is_active && <span style={S.badge}>неактивен</span>}
+              {!r.is_active && <span style={S.badge}>архив</span>}
               {r.phone && <span style={S.meta}>{r.phone}</span>}
+              {r.link && (
+                <span style={S.meta}>
+                  <a href={r.link} target="_blank" rel="noopener noreferrer" style={{ color: '#02BDB6' }}>{r.link.length > 40 ? r.link.slice(0, 40) + '…' : r.link}</a>
+                </span>
+              )}
             </div>
             <div style={S.rowActions}>
               <button style={S.editBtn} onClick={() => setEdit(r)}>✎</button>
-              <button style={S.editBtn} onClick={() => toggle(r.id, r.is_active)}>{r.is_active ? 'Архив' : 'Вернуть'}</button>
+              <button style={S.editBtn} onClick={() => api('PATCH', `/kviz/api/crm/suppliers/${r.id}`, { is_active: !r.is_active }).then(load)}>
+                {r.is_active ? 'В архив' : 'Восстановить'}
+              </button>
+              <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить поставщика «${r.name}» навсегда?`, action: () => doDelete(r.id, r.name) })}>Удалить</button>
             </div>
           </div>
         ))}
-        {!rows.length && <div style={S.empty}>Поставщики не добавлены</div>}
+        {!visible.length && <div style={S.empty}>Поставщики не добавлены</div>}
       </div>
       {edit && (
         <Modal title={edit === 'new' ? 'Новый поставщик' : 'Редактировать'} onClose={() => { setEdit(null); setErr(''); }}>
           <form onSubmit={save}>
             {err && <div style={S.errBox}>{err}</div>}
-            <Field label="Название"><input style={S.inp} name="name" required defaultValue={edit === 'new' ? '' : (edit as Supplier).name} /></Field>
+            <Field label="Название *"><input style={S.inp} name="name" required defaultValue={edit === 'new' ? '' : (edit as Supplier).name} /></Field>
             <Field label="Телефон"><input style={S.inp} name="phone" defaultValue={edit === 'new' ? '' : ((edit as Supplier).phone ?? '')} /></Field>
-            <Field label="Заметки"><textarea style={{ ...S.inp, height: 60, resize: 'vertical' }} name="notes" defaultValue={edit === 'new' ? '' : ((edit as Supplier).notes ?? '')} /></Field>
+            <Field label="Ссылка (сайт / Instagram / WhatsApp)"><input style={S.inp} name="link" placeholder="https://…" defaultValue={edit === 'new' ? '' : ((edit as Supplier).link ?? '')} /></Field>
+            <Field label="Заметки"><textarea style={{ ...S.inp, height: 56, resize: 'vertical' }} name="notes" defaultValue={edit === 'new' ? '' : ((edit as Supplier).notes ?? '')} /></Field>
             <div style={S.mBtns}>
               <button type="button" style={S.cancelBtn} onClick={() => { setEdit(null); setErr(''); }}>Отмена</button>
               <button type="submit" style={S.saveBtn} disabled={loading}>{loading ? '…' : 'Сохранить'}</button>
@@ -454,6 +589,7 @@ function SuppliersSection() {
           </form>
         </Modal>
       )}
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.action} onClose={() => setConfirm(null)} />}
     </div>
   );
 }
@@ -467,6 +603,15 @@ function ProductsSection() {
   const [supplyFor, setSupplyFor] = useState<Product | null>(null);
   const [supplies, setSupplies]   = useState<Supply[]>([]);
   const [showSupplies, setShowSupplies] = useState<string | null>(null);
+  const [confirm, setConfirm]     = useState<{ message: string; action: () => void } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  // inline new supplier in supply modal
+  const [supplySupId, setSupplySupId] = useState('');
+  const [addingNewSup, setAddingNewSup] = useState(false);
+  const [newSupName, setNewSupName] = useState('');
+  const [newSupPhone, setNewSupPhone] = useState('');
+  const [newSupLink, setNewSupLink] = useState('');
+  const [newSupSaving, setNewSupSaving] = useState(false);
   const [err, setErr]   = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -490,10 +635,23 @@ function ProductsSection() {
     e.preventDefault(); setErr(''); setLoading(true);
     const fd = new FormData(e.currentTarget);
     const body = { name: fd.get('name'), barcode: fd.get('barcode') || null, is_active: fd.get('is_active') === 'on' };
-    const { ok, data } = await api(editProd === 'new' ? 'POST' : 'PATCH', editProd === 'new' ? '/kviz/api/crm/products' : `/kviz/api/crm/products/${(editProd as Product).id}`, body);
+    const { ok, data } = await api(editProd === 'new' ? 'POST' : 'PATCH',
+      editProd === 'new' ? '/kviz/api/crm/products' : `/kviz/api/crm/products/${(editProd as Product).id}`, body);
     setLoading(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
     setEditProd(null); load();
+  }
+
+  async function saveNewSupplier() {
+    if (!newSupName.trim()) return;
+    setNewSupSaving(true);
+    const { ok, data } = await api('POST', '/kviz/api/crm/suppliers', { name: newSupName.trim(), phone: newSupPhone || null, link: newSupLink || null });
+    setNewSupSaving(false);
+    if (!ok) { alert(data.error || 'Ошибка'); return; }
+    setSuppliers(prev => [...prev, data]);
+    setSupplySupId(data.id);
+    setAddingNewSup(false);
+    setNewSupName(''); setNewSupPhone(''); setNewSupLink('');
   }
 
   async function saveSupply(e: React.FormEvent<HTMLFormElement>) {
@@ -501,55 +659,79 @@ function ProductsSection() {
     if (!supplyFor) return;
     setErr(''); setLoading(true);
     const fd = new FormData(e.currentTarget);
-    const body = { supplier_id: fd.get('supplier_id') || null, quantity: fd.get('quantity'), purchase_price: fd.get('purchase_price'), retail_price: fd.get('retail_price') || null, supplied_at: fd.get('supplied_at') || null, notes: fd.get('notes') || null };
+    const body = {
+      supplier_id: supplySupId || null,
+      quantity: fd.get('quantity'), purchase_price: fd.get('purchase_price'),
+      retail_price: fd.get('retail_price'), supplied_at: fd.get('supplied_at'),
+      notes: fd.get('notes') || null,
+    };
     const { ok, data } = await api('POST', `/kviz/api/crm/products/${supplyFor.id}/supplies`, body);
     setLoading(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
-    setSupplyFor(null); load();
+    setSupplyFor(null); setSupplySupId(''); load();
   }
+
+  async function deleteSupply(id: string) {
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/product-supplies/${id}`);
+    if (!ok) { alert(data.error || 'Ошибка'); return; }
+    if (showSupplies) loadSupplies(showSupplies);
+    setConfirm(null);
+  }
+
+  const visible = showArchived ? products : products.filter(p => p.is_active);
 
   return (
     <div style={S.section}>
       <div style={S.subheader}>
         <span style={S.subTitle}>Товары и склад</span>
-        <button style={S.addBtn} onClick={() => setEditProd('new')}>+ Товар</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ArchiveToggle show={showArchived} onToggle={() => setShowArchived(p => !p)} />
+          <button style={S.addBtn} onClick={() => setEditProd('new')}>+ Товар</button>
+        </div>
       </div>
       <div style={S.list}>
-        {products.map(p => (
+        {visible.map(p => (
           <div key={p.id}>
-            <div style={S.row}>
+            <div style={{ ...S.row, opacity: p.is_active ? 1 : 0.6 }}>
               <div>
                 <span style={{ fontWeight: 600 }}>{p.name}</span>
                 {!p.is_active && <span style={S.badge}>архив</span>}
                 <span style={S.meta}>склад: {p.stock} шт{p.retail_price ? ` · ${fmtPrice(p.retail_price)}` : ''}</span>
-                {p.barcode && <span style={S.meta}>штрих: {p.barcode}</span>}
               </div>
               <div style={S.rowActions}>
-                <button style={S.editBtn} onClick={() => setSupplyFor(p)}>+ Поступление</button>
+                <button style={S.editBtn} onClick={() => { setSupplySupId(''); setSupplyFor(p); }}>+ Поставка</button>
                 <button style={S.editBtn} onClick={() => showSupplies === p.id ? setShowSupplies(null) : loadSupplies(p.id)}>История</button>
                 <button style={S.editBtn} onClick={() => setEditProd(p)}>✎</button>
+                <button style={S.editBtn} onClick={() => api('PATCH', `/kviz/api/crm/products/${p.id}`, { is_active: !p.is_active }).then(load)}>
+                  {p.is_active ? 'В архив' : 'Восстановить'}
+                </button>
+                <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить товар «${p.name}» навсегда?`, action: () => api('DELETE', `/kviz/api/crm/products/${p.id}`).then(r => { if (!r.ok) alert(r.data.error || 'Ошибка'); else load(); setConfirm(null); }) })}>Удалить</button>
               </div>
             </div>
             {showSupplies === p.id && (
               <div style={{ paddingLeft: 12, paddingBottom: 8, fontSize: 12, color: '#64748b' }}>
                 {supplies.map(s => (
-                  <div key={s.id} style={{ padding: '3px 0', borderBottom: '1px solid #f1f5f9' }}>
-                    {s.supplied_at.slice(0, 10)} · {s.quantity} шт · {fmtPrice(s.purchase_price)}/шт · остаток {s.remaining}
+                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
+                    <span>{s.supplied_at.slice(0, 10)} · {s.quantity} шт · {fmtPrice(s.purchase_price)}/шт · ост. {s.remaining}</span>
+                    <button style={{ ...S.delBtn, fontSize: 11, padding: '2px 6px' }}
+                      onClick={() => setConfirm({ message: `Удалить поставку от ${s.supplied_at.slice(0, 10)}?`, action: () => deleteSupply(s.id) })}>
+                      Удалить
+                    </button>
                   </div>
                 ))}
-                {!supplies.length && <div>Нет поступлений</div>}
+                {!supplies.length && <div>Нет поставок</div>}
               </div>
             )}
           </div>
         ))}
-        {!products.length && <div style={S.empty}>Товары не добавлены</div>}
+        {!visible.length && <div style={S.empty}>Товары не добавлены</div>}
       </div>
 
       {editProd && (
         <Modal title={editProd === 'new' ? 'Новый товар' : 'Редактировать'} onClose={() => { setEditProd(null); setErr(''); }}>
           <form onSubmit={saveProd}>
             {err && <div style={S.errBox}>{err}</div>}
-            <Field label="Название"><input style={S.inp} name="name" required defaultValue={editProd === 'new' ? '' : (editProd as Product).name} /></Field>
+            <Field label="Название *"><input style={S.inp} name="name" required defaultValue={editProd === 'new' ? '' : (editProd as Product).name} /></Field>
             <Field label="Штрих-код"><input style={S.inp} name="barcode" defaultValue={editProd === 'new' ? '' : ((editProd as Product).barcode ?? '')} /></Field>
             {editProd !== 'new' && (
               <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, marginBottom: 12 }}>
@@ -565,27 +747,42 @@ function ProductsSection() {
       )}
 
       {supplyFor && (
-        <Modal title={`Поступление: ${supplyFor.name}`} onClose={() => { setSupplyFor(null); setErr(''); }}>
+        <Modal title={`Поставка: ${supplyFor.name}`} onClose={() => { setSupplyFor(null); setErr(''); setAddingNewSup(false); }}>
           <form onSubmit={saveSupply}>
             {err && <div style={S.errBox}>{err}</div>}
-            <Field label="Поставщик">
-              <select style={S.inp} name="supplier_id">
-                <option value="">— без поставщика —</option>
+            <Field label="Поставщик *">
+              <select style={S.inp} value={supplySupId} required
+                onChange={e => { if (e.target.value === '__new__') { setAddingNewSup(true); setSupplySupId(''); } else { setSupplySupId(e.target.value); setAddingNewSup(false); } }}>
+                <option value="">— выбрать —</option>
                 {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                <option value="__new__">+ Новый поставщик</option>
               </select>
             </Field>
-            <Field label="Количество"><input style={S.inp} name="quantity" type="number" min="1" required /></Field>
-            <Field label="Закупочная цена (₸)"><input style={S.inp} name="purchase_price" type="number" min="0" required /></Field>
-            <Field label="Розничная цена (₸)"><input style={S.inp} name="retail_price" type="number" min="0" /></Field>
-            <Field label="Дата поставки"><input style={S.inp} name="supplied_at" type="date" defaultValue={new Date().toISOString().slice(0, 10)} /></Field>
+            {addingNewSup && (
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Новый поставщик</div>
+                <Field label="Название *"><input style={S.inp} value={newSupName} onChange={e => setNewSupName(e.target.value)} /></Field>
+                <Field label="Телефон"><input style={S.inp} value={newSupPhone} onChange={e => setNewSupPhone(e.target.value)} /></Field>
+                <Field label="Ссылка"><input style={S.inp} value={newSupLink} onChange={e => setNewSupLink(e.target.value)} /></Field>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" style={S.saveBtn} disabled={newSupSaving || !newSupName.trim()} onClick={saveNewSupplier}>{newSupSaving ? '…' : 'Добавить'}</button>
+                  <button type="button" style={S.cancelBtn} onClick={() => setAddingNewSup(false)}>Отмена</button>
+                </div>
+              </div>
+            )}
+            <Field label="Количество *"><input style={S.inp} name="quantity" type="number" min="1" required /></Field>
+            <Field label="Закупочная цена (₸) *"><input style={S.inp} name="purchase_price" type="number" min="0" required /></Field>
+            <Field label="Розничная цена (₸) *"><input style={S.inp} name="retail_price" type="number" min="0" required /></Field>
+            <Field label="Дата поставки *"><input style={S.inp} name="supplied_at" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} /></Field>
             <Field label="Заметки"><input style={S.inp} name="notes" /></Field>
             <div style={S.mBtns}>
-              <button type="button" style={S.cancelBtn} onClick={() => { setSupplyFor(null); setErr(''); }}>Отмена</button>
-              <button type="submit" style={S.saveBtn} disabled={loading}>{loading ? '…' : 'Добавить'}</button>
+              <button type="button" style={S.cancelBtn} onClick={() => { setSupplyFor(null); setErr(''); setAddingNewSup(false); }}>Отмена</button>
+              <button type="submit" style={S.saveBtn} disabled={loading || addingNewSup}>{loading ? '…' : 'Добавить'}</button>
             </div>
           </form>
         </Modal>
       )}
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.action} onClose={() => setConfirm(null)} />}
     </div>
   );
 }
@@ -593,9 +790,11 @@ function ProductsSection() {
 // ── Promo codes ────────────────────────────────────────────────────────────────
 
 function PromoCodesSection() {
-  const [rows, setRows] = useState<PromoCode[]>([]);
-  const [edit, setEdit] = useState<PromoCode | null | 'new'>(null);
-  const [err, setErr]   = useState('');
+  const [rows, setRows]   = useState<PromoCode[]>([]);
+  const [edit, setEdit]   = useState<PromoCode | null | 'new'>(null);
+  const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [err, setErr]     = useState('');
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -614,21 +813,33 @@ function PromoCodesSection() {
       expires_at: fd.get('expires_at') || null, applies_to_all: fd.get('applies_to_all') === 'on',
     };
     if (edit !== 'new') body.is_active = fd.get('is_active') === 'on';
-    const { ok, data } = await api(edit === 'new' ? 'POST' : 'PATCH', edit === 'new' ? '/kviz/api/crm/promo-codes' : `/kviz/api/crm/promo-codes/${(edit as PromoCode).id}`, body);
+    const { ok, data } = await api(edit === 'new' ? 'POST' : 'PATCH',
+      edit === 'new' ? '/kviz/api/crm/promo-codes' : `/kviz/api/crm/promo-codes/${(edit as PromoCode).id}`, body);
     setLoading(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
     setEdit(null); load();
   }
 
+  async function doDelete(id: string) {
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/promo-codes/${id}`);
+    if (!ok) alert(data.error || 'Ошибка'); else load();
+    setConfirm(null);
+  }
+
+  const visible = showArchived ? rows : rows.filter(r => r.is_active);
+
   return (
     <div style={S.section}>
       <div style={S.subheader}>
         <span style={S.subTitle}>Промокоды</span>
-        <button style={S.addBtn} onClick={() => setEdit('new')}>+ Добавить</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ArchiveToggle show={showArchived} onToggle={() => setShowArchived(p => !p)} />
+          <button style={S.addBtn} onClick={() => setEdit('new')}>+ Добавить</button>
+        </div>
       </div>
       <div style={S.list}>
-        {rows.map(r => (
-          <div key={r.id} style={S.row}>
+        {visible.map(r => (
+          <div key={r.id} style={{ ...S.row, opacity: r.is_active ? 1 : 0.6 }}>
             <div>
               <span style={{ fontWeight: 700, letterSpacing: 1 }}>{r.code}</span>
               {!r.is_active && <span style={S.badge}>неактивен</span>}
@@ -638,26 +849,32 @@ function PromoCodesSection() {
                 {r.expires_at ? ` · до ${r.expires_at.slice(0, 10)}` : ''}
               </span>
             </div>
-            <button style={S.editBtn} onClick={() => setEdit(r)}>✎</button>
+            <div style={S.rowActions}>
+              <button style={S.editBtn} onClick={() => setEdit(r)}>✎</button>
+              <button style={S.editBtn} onClick={() => api('PATCH', `/kviz/api/crm/promo-codes/${r.id}`, { is_active: !r.is_active }).then(load)}>
+                {r.is_active ? 'В архив' : 'Восстановить'}
+              </button>
+              <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить промокод «${r.code}» навсегда?`, action: () => doDelete(r.id) })}>Удалить</button>
+            </div>
           </div>
         ))}
-        {!rows.length && <div style={S.empty}>Промокоды не добавлены</div>}
+        {!visible.length && <div style={S.empty}>Промокоды не добавлены</div>}
       </div>
       {edit && (
         <Modal title={edit === 'new' ? 'Новый промокод' : 'Редактировать'} onClose={() => { setEdit(null); setErr(''); }}>
           <form onSubmit={save}>
             {err && <div style={S.errBox}>{err}</div>}
-            {edit === 'new' && <Field label="Код"><input style={S.inp} name="code" required placeholder="PROMO2025" /></Field>}
+            {edit === 'new' && <Field label="Код *"><input style={S.inp} name="code" required placeholder="PROMO2025" /></Field>}
             <Field label="Тип скидки">
               <select style={S.inp} name="discount_type" defaultValue={edit === 'new' ? 'percent' : (edit as PromoCode).discount_type}>
                 <option value="percent">Процент (%)</option>
                 <option value="fixed">Фиксированная (₸)</option>
               </select>
             </Field>
-            <Field label="Размер скидки"><input style={S.inp} name="discount_value" type="number" min="0" required defaultValue={edit === 'new' ? '' : (edit as PromoCode).discount_value} /></Field>
+            <Field label="Размер скидки *"><input style={S.inp} name="discount_value" type="number" min="0" required defaultValue={edit === 'new' ? '' : (edit as PromoCode).discount_value} /></Field>
             <Field label="Макс. использований"><input style={S.inp} name="max_uses" type="number" defaultValue={edit === 'new' ? '' : ((edit as PromoCode).max_uses ?? '')} /></Field>
             <Field label="Макс. на клиента"><input style={S.inp} name="max_uses_per_client" type="number" defaultValue={edit === 'new' ? '' : ((edit as PromoCode).max_uses_per_client ?? '')} /></Field>
-            <Field label="Дата окончания"><input style={S.inp} name="expires_at" type="date" defaultValue={edit === 'new' ? '' : ((edit as PromoCode).expires_at?.slice(0, 10) ?? '')} /></Field>
+            <Field label="Действует до"><input style={S.inp} name="expires_at" type="date" defaultValue={edit === 'new' ? '' : ((edit as PromoCode).expires_at?.slice(0, 10) ?? '')} /></Field>
             <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
               <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
                 <input type="checkbox" name="applies_to_all" defaultChecked={edit === 'new' ? true : (edit as PromoCode).applies_to_all} /> На все планы
@@ -675,6 +892,7 @@ function PromoCodesSection() {
           </form>
         </Modal>
       )}
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.action} onClose={() => setConfirm(null)} />}
     </div>
   );
 }
@@ -684,6 +902,8 @@ function PromoCodesSection() {
 function PaymentMethodsSection() {
   const [rows, setRows] = useState<PaymentMethod[]>([]);
   const [edit, setEdit] = useState<PaymentMethod | null | 'new'>(null);
+  const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [err, setErr]   = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -696,8 +916,10 @@ function PaymentMethodsSection() {
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setErr(''); setLoading(true);
     const fd = new FormData(e.currentTarget);
-    const body: Record<string, unknown> = { name: fd.get('name'), kind: fd.get('kind'), sort: Number(fd.get('sort') || 0) };
-    if (edit !== 'new') body.is_active = fd.get('is_active') === 'on';
+    const isSystem = edit !== 'new' && (edit as PaymentMethod).is_system;
+    const body: Record<string, unknown> = isSystem
+      ? { is_active: fd.get('is_active') === 'on' }
+      : { name: fd.get('name'), kind: fd.get('kind'), sort: Number(fd.get('sort') || 0), is_active: fd.get('is_active') === 'on' };
     const url = edit === 'new' ? '/kviz/api/crm/payment-methods' : `/kviz/api/crm/payment-methods/${(edit as PaymentMethod).id}`;
     const { ok, data } = await api(edit === 'new' ? 'POST' : 'PATCH', url, body);
     setLoading(false);
@@ -705,43 +927,77 @@ function PaymentMethodsSection() {
     setEdit(null); load();
   }
 
+  async function doDelete(id: string, name: string) {
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/payment-methods/${id}`);
+    if (!ok) alert(data.error || 'Ошибка'); else load();
+    setConfirm(null);
+  }
+
+  const visible = showArchived ? rows : rows.filter(r => r.is_active || r.is_system);
+
   return (
     <div style={S.section}>
       <div style={S.subheader}>
         <span style={S.subTitle}>Виды оплаты</span>
-        <button style={S.addBtn} onClick={() => setEdit('new')}>+ Добавить</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ArchiveToggle show={showArchived} onToggle={() => setShowArchived(p => !p)} />
+          <button style={S.addBtn} onClick={() => setEdit('new')}>+ Добавить</button>
+        </div>
       </div>
       <div style={S.list}>
-        {rows.map(r => (
-          <div key={r.id} style={S.row}>
-            <div>
+        {visible.map(r => (
+          <div key={r.id} style={{ ...S.row, opacity: r.is_active ? 1 : 0.6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 600 }}>{r.name}</span>
               {r.is_system && <span style={{ ...S.badge, background: '#dbeafe', color: '#1d4ed8' }}>системный</span>}
-              {!r.is_active && <span style={S.badge}>архив</span>}
-              <span style={S.meta}>{r.kind} · порядок {r.sort}</span>
+              {!r.is_active && !r.is_system && <span style={S.badge}>архив</span>}
+              <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 5, background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+                {PM_KIND_LABELS[r.kind] ?? r.kind}
+              </span>
             </div>
-            {!r.is_system && <button style={S.editBtn} onClick={() => setEdit(r)}>✎</button>}
+            <div style={S.rowActions}>
+              <button style={S.editBtn} onClick={() => setEdit(r)}>✎</button>
+              {!r.is_system && (
+                <>
+                  <button style={S.editBtn} onClick={() => api('PATCH', `/kviz/api/crm/payment-methods/${r.id}`, { is_active: !r.is_active }).then(load)}>
+                    {r.is_active ? 'В архив' : 'Восстановить'}
+                  </button>
+                  <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить вид оплаты «${r.name}» навсегда?`, action: () => doDelete(r.id, r.name) })}>Удалить</button>
+                </>
+              )}
+            </div>
           </div>
         ))}
-        {!rows.length && <div style={S.empty}>Нет записей</div>}
+        {!visible.length && <div style={S.empty}>Нет записей</div>}
       </div>
       {edit && (
         <Modal title={edit === 'new' ? 'Новый вид оплаты' : 'Редактировать'} onClose={() => { setEdit(null); setErr(''); }}>
           <form onSubmit={save}>
             {err && <div style={S.errBox}>{err}</div>}
-            <Field label="Название"><input style={S.inp} name="name" required defaultValue={edit === 'new' ? '' : (edit as PaymentMethod).name} /></Field>
-            <Field label="Тип">
-              <select style={S.inp} name="kind" defaultValue={edit === 'new' ? 'other' : (edit as PaymentMethod).kind}>
-                <option value="cash">Наличные</option>
-                <option value="card">Карта</option>
-                <option value="other">Другое</option>
-              </select>
-            </Field>
-            <Field label="Порядок"><input style={S.inp} name="sort" type="number" defaultValue={edit === 'new' ? 0 : (edit as PaymentMethod).sort} /></Field>
-            {edit !== 'new' && (
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, marginBottom: 12 }}>
-                <input type="checkbox" name="is_active" defaultChecked={(edit as PaymentMethod).is_active} /> Активен
-              </label>
+            {/* system entries: only toggle active */}
+            {edit !== 'new' && (edit as PaymentMethod).is_system ? (
+              <>
+                <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>Системный вид оплаты — можно только включить или отключить.</div>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, marginBottom: 16 }}>
+                  <input type="checkbox" name="is_active" defaultChecked={(edit as PaymentMethod).is_active} /> Активен
+                </label>
+              </>
+            ) : (
+              <>
+                <Field label="Название *"><input style={S.inp} name="name" required defaultValue={edit === 'new' ? '' : (edit as PaymentMethod).name} /></Field>
+                <Field label="Тип">
+                  <select style={S.inp} name="kind" defaultValue={edit === 'new' ? 'cashless' : (edit as PaymentMethod).kind}>
+                    <option value="cash">Наличные</option>
+                    <option value="cashless">Безналичные</option>
+                  </select>
+                </Field>
+                <Field label="Порядок"><input style={S.inp} name="sort" type="number" defaultValue={edit === 'new' ? 0 : (edit as PaymentMethod).sort} /></Field>
+                {edit !== 'new' && (
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, marginBottom: 12 }}>
+                    <input type="checkbox" name="is_active" defaultChecked={(edit as PaymentMethod).is_active} /> Активен
+                  </label>
+                )}
+              </>
             )}
             <div style={S.mBtns}>
               <button type="button" style={S.cancelBtn} onClick={() => { setEdit(null); setErr(''); }}>Отмена</button>
@@ -750,6 +1006,7 @@ function PaymentMethodsSection() {
           </form>
         </Modal>
       )}
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.action} onClose={() => setConfirm(null)} />}
     </div>
   );
 }
@@ -759,6 +1016,8 @@ function PaymentMethodsSection() {
 function AdSourcesSection() {
   const [rows, setRows] = useState<AdSource[]>([]);
   const [edit, setEdit] = useState<AdSource | null | 'new'>(null);
+  const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [err, setErr]   = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -773,37 +1032,54 @@ function AdSourcesSection() {
     const fd = new FormData(e.currentTarget);
     const body: Record<string, unknown> = { name: fd.get('name'), requires_referrer: fd.get('requires_referrer') === 'on', sort: Number(fd.get('sort') || 0) };
     if (edit !== 'new') body.is_active = fd.get('is_active') === 'on';
-    const { ok, data } = await api(edit === 'new' ? 'POST' : 'PATCH', edit === 'new' ? '/kviz/api/crm/ad-sources' : `/kviz/api/crm/ad-sources/${(edit as AdSource).id}`, body);
+    const { ok, data } = await api(edit === 'new' ? 'POST' : 'PATCH',
+      edit === 'new' ? '/kviz/api/crm/ad-sources' : `/kviz/api/crm/ad-sources/${(edit as AdSource).id}`, body);
     setLoading(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
     setEdit(null); load();
   }
 
+  async function doDelete(id: string) {
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/ad-sources/${id}`);
+    if (!ok) alert(data.error || 'Ошибка'); else load();
+    setConfirm(null);
+  }
+
+  const visible = showArchived ? rows : rows.filter(r => r.is_active);
+
   return (
     <div style={S.section}>
       <div style={S.subheader}>
         <span style={S.subTitle}>Рекламные источники</span>
-        <button style={S.addBtn} onClick={() => setEdit('new')}>+ Добавить</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ArchiveToggle show={showArchived} onToggle={() => setShowArchived(p => !p)} />
+          <button style={S.addBtn} onClick={() => setEdit('new')}>+ Добавить</button>
+        </div>
       </div>
       <div style={S.list}>
-        {rows.map(r => (
-          <div key={r.id} style={S.row}>
+        {visible.map(r => (
+          <div key={r.id} style={{ ...S.row, opacity: r.is_active ? 1 : 0.6 }}>
             <div>
               <span style={{ fontWeight: 600 }}>{r.name}</span>
               {!r.is_active && <span style={S.badge}>архив</span>}
               {r.requires_referrer && <span style={{ ...S.badge, background: '#fef3c7', color: '#92400e' }}>с реферером</span>}
-              <span style={S.meta}>порядок {r.sort}</span>
             </div>
-            <button style={S.editBtn} onClick={() => setEdit(r)}>✎</button>
+            <div style={S.rowActions}>
+              <button style={S.editBtn} onClick={() => setEdit(r)}>✎</button>
+              <button style={S.editBtn} onClick={() => api('PATCH', `/kviz/api/crm/ad-sources/${r.id}`, { is_active: !r.is_active }).then(load)}>
+                {r.is_active ? 'В архив' : 'Восстановить'}
+              </button>
+              <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить источник «${r.name}» навсегда?`, action: () => doDelete(r.id) })}>Удалить</button>
+            </div>
           </div>
         ))}
-        {!rows.length && <div style={S.empty}>Источники не добавлены</div>}
+        {!visible.length && <div style={S.empty}>Источники не добавлены</div>}
       </div>
       {edit && (
         <Modal title={edit === 'new' ? 'Новый источник' : 'Редактировать'} onClose={() => { setEdit(null); setErr(''); }}>
           <form onSubmit={save}>
             {err && <div style={S.errBox}>{err}</div>}
-            <Field label="Название"><input style={S.inp} name="name" required defaultValue={edit === 'new' ? '' : (edit as AdSource).name} /></Field>
+            <Field label="Название *"><input style={S.inp} name="name" required defaultValue={edit === 'new' ? '' : (edit as AdSource).name} /></Field>
             <Field label="Порядок"><input style={S.inp} name="sort" type="number" defaultValue={edit === 'new' ? 0 : (edit as AdSource).sort} /></Field>
             <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
               <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
@@ -822,6 +1098,7 @@ function AdSourcesSection() {
           </form>
         </Modal>
       )}
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.action} onClose={() => setConfirm(null)} />}
     </div>
   );
 }
@@ -1082,10 +1359,10 @@ function ServiceSection() {
   type Sub = 'inbody' | 'migrate' | 'bulk' | 'mission';
   const [sub, setSub] = useState<Sub>('inbody');
   const subs: { id: Sub; label: string }[] = [
-    { id: 'inbody', label: 'InBody: импорт, пересчёт' },
-    { id: 'migrate', label: 'Перенести клиентов InBody' },
-    { id: 'bulk', label: 'Выгрузить все результаты' },
-    { id: 'mission', label: 'Миссия студии' },
+    { id: 'inbody',   label: 'InBody: импорт, пересчёт' },
+    { id: 'migrate',  label: 'Перенести клиентов InBody' },
+    { id: 'bulk',     label: 'Выгрузить все результаты' },
+    { id: 'mission',  label: 'Миссия студии' },
   ];
   return (
     <div style={S.section}>
@@ -1094,9 +1371,9 @@ function ServiceSection() {
           <button key={s.id} style={{ ...S.subNavBtn, ...(sub === s.id ? S.subNavActive : {}) }} onClick={() => setSub(s.id)}>{s.label}</button>
         ))}
       </div>
-      {sub === 'inbody' && <InBodySettingsSection />}
+      {sub === 'inbody'  && <InBodySettingsSection />}
       {sub === 'migrate' && <MigrateSection />}
-      {sub === 'bulk' && <BulkResultsSection />}
+      {sub === 'bulk'    && <BulkResultsSection />}
       {sub === 'mission' && <MissionSection />}
     </div>
   );
@@ -1105,16 +1382,16 @@ function ServiceSection() {
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
 const NAV: { id: Section; label: string; icon: string }[] = [
-  { id: 'devices',   label: 'Аппараты',           icon: '⚙️' },
-  { id: 'abonements', label: 'Абонементы',         icon: '📋' },
-  { id: 'services',  label: 'Услуги',              icon: '🛎️' },
-  { id: 'products',  label: 'Товары и склад',       icon: '📦' },
-  { id: 'suppliers', label: 'Поставщики',           icon: '🏭' },
-  { id: 'promos',    label: 'Промокоды',            icon: '🎁' },
-  { id: 'payments',  label: 'Виды оплаты',          icon: '💳' },
-  { id: 'sources',   label: 'Рекламные источники',  icon: '📣' },
-  { id: 'classes',   label: 'Занятия',              icon: '🏃' },
-  { id: 'service',   label: 'Сервис',               icon: '🔧' },
+  { id: 'devices',    label: 'Аппараты',           icon: '⚙️' },
+  { id: 'abonements', label: 'Абонементы',          icon: '📋' },
+  { id: 'services',   label: 'Услуги',              icon: '🛎️' },
+  { id: 'products',   label: 'Товары и склад',       icon: '📦' },
+  { id: 'suppliers',  label: 'Поставщики',           icon: '🏭' },
+  { id: 'promos',     label: 'Промокоды',            icon: '🎁' },
+  { id: 'payments',   label: 'Виды оплаты',          icon: '💳' },
+  { id: 'sources',    label: 'Рекламные источники',  icon: '📣' },
+  { id: 'classes',    label: 'Занятия',              icon: '🏃' },
+  { id: 'service',    label: 'Сервис',               icon: '🔧' },
 ];
 
 export default function SettingsPage() {
@@ -1129,7 +1406,6 @@ export default function SettingsPage() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
-      {/* Sidebar */}
       <div style={S.sidebar}>
         <div style={S.sidebarTitle}>Настройки</div>
         {NAV.map(n => (
@@ -1138,7 +1414,6 @@ export default function SettingsPage() {
           </button>
         ))}
       </div>
-      {/* Content */}
       <div style={S.content}>
         <div style={S.contentHeader}>{NAV.find(n => n.id === section)?.label}</div>
         {section === 'devices'    && <DevicesSection />}
@@ -1177,16 +1452,16 @@ const S: Record<string, React.CSSProperties> = {
   subTitle:      { fontSize: 14, fontWeight: 700, color: '#1a202c' },
   list:          { background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: 8 },
   row:           { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #f1f5f9', gap: 8 },
-  rowActions:    { display: 'flex', gap: 6, flexShrink: 0 },
+  rowActions:    { display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' as const },
   meta:          { display: 'block', fontSize: 12, color: '#64748b', marginTop: 2 },
   badge:         { display: 'inline-block', marginLeft: 6, padding: '1px 6px', fontSize: 11, borderRadius: 6, background: '#fee2e2', color: '#ef4444' },
   empty:         { padding: '12px 14px', color: '#94a3b8', fontSize: 13 },
   addBtn:        { padding: '6px 14px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
   editBtn:       { padding: '4px 10px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: '#374151' },
-  delBtn:        { padding: '4px 8px', background: 'none', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: '#ef4444' },
+  delBtn:        { padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: '#ef4444' },
   iconBtn:       { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#64748b', padding: '2px 6px' },
   overlay:       { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 },
-  modal:         { background: '#fff', borderRadius: 16, padding: 24, width: 'min(440px,96vw)', maxHeight: '90vh', overflow: 'auto' },
+  modal:         { background: '#fff', borderRadius: 16, padding: 24, width: 'min(480px,96vw)', maxHeight: '90vh', overflow: 'auto' },
   label:         { display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 },
   inp:           { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
   mBtns:         { display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' },
