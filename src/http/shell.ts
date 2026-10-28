@@ -227,15 +227,47 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
         <span class="side-text">Менеджер</span>
       </button>
       <iframe class="frame" id="agent-iframe" src="/window" allow="notifications; clipboard-write"></iframe>
-      <button class="side-btn" id="side-to-kviz">
+      <button class="side-btn" id="side-to-schedule">
+        <span class="side-text">Расписание</span>
+      </button>
+    </div>
+    <div class="pane hidden" id="schedule-pane">
+      <button class="side-btn left" id="side-sched-to-agent">
+        <span class="sbadge" id="badge-side-agent2">0</span>
+        <span class="side-text">Агент</span>
+      </button>
+      <button class="side-btn" id="side-sched-to-clients">
+        <span class="side-text">Клиенты</span>
+      </button>
+    </div>
+    <div class="pane hidden" id="clients-pane">
+      <button class="side-btn left" id="side-cl-to-schedule">
+        <span class="side-text">Расписание</span>
+      </button>
+      <button class="side-btn" id="side-cl-to-funnel">
+        <span class="side-text">Воронка</span>
+      </button>
+    </div>
+    <div class="pane hidden" id="funnel-pane">
+      <button class="side-btn left" id="side-fn-to-clients">
+        <span class="side-text">Клиенты</span>
+      </button>
+      <button class="side-btn" id="side-fn-to-cashier">
+        <span class="side-text">Касса</span>
+      </button>
+    </div>
+    <div class="pane hidden" id="cashier-pane">
+      <button class="side-btn left" id="side-cash-to-funnel">
+        <span class="side-text">Воронка</span>
+      </button>
+      <button class="side-btn" id="side-cash-to-kviz">
         <span class="sbadge" id="badge-side-kviz">0</span>
         <span class="side-text">Квалификация</span>
       </button>
     </div>
     <div class="pane hidden" id="kviz-pane">
-      <button class="side-btn left" id="side-to-agent2">
-        <span class="sbadge" id="badge-side-agent2">0</span>
-        <span class="side-text">Агент</span>
+      <button class="side-btn left" id="side-kviz-to-cashier">
+        <span class="side-text">Касса</span>
       </button>
       <button class="side-btn" id="side-to-measure">
         <span class="side-text">Замеры</span>
@@ -247,10 +279,6 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       </button>
       <!--REPORTS_SIDE_FROM_MEASURE-->
     </div>
-    <div class="pane hidden" id="schedule-pane"></div>
-    <div class="pane hidden" id="clients-pane"></div>
-    <div class="pane hidden" id="funnel-pane"></div>
-    <div class="pane hidden" id="cashier-pane"></div>
     <!--REPORTS_PANE-->
     <!--METRICS_PANE-->
     <!--SETTINGS_PANE-->
@@ -332,9 +360,10 @@ export function mountShellRoutes(app: Application): void {
     const session = getSession(req);
     if (!session) { res.redirect(302, '/login'); return; }
     const isAdmin = session.role === 'admin';
-    const reportsPane = '<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button></div>';
+    const reportsSettingsBtn = isAdmin ? '<button class="side-btn" id="side-to-settings"><span class="side-text">Настройки</span></button>' : '';
+    const reportsPane = `<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button>${reportsSettingsBtn}</div>`;
     const settingsBtn  = isAdmin ? '<button class="tab-btn" id="tab-btn-settings">⚙️ Настройки</button>' : '';
-    const settingsPane = isAdmin ? '<div class="pane hidden" id="settings-pane"></div>' : '';
+    const settingsPane = isAdmin ? '<div class="pane hidden" id="settings-pane"><button class="side-btn left" id="side-set-to-reports"><span class="side-text">Отчёты</span></button></div>' : '';
     const settingsCh   = isAdmin ? '<button class="choice-btn" id="choice-settings"><span class="choice-icon">⚙️</span><span class="choice-label">Настройки</span></button>' : '';
     const html = SHELL_HTML
       .replace('<!--DNAME-->', escapeHtml(session.display_name))

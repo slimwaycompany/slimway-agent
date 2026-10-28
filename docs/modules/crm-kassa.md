@@ -6,7 +6,11 @@
 Вкладка «Касса»: смены, продажа абонементов/услуг/товаров/депозита, смешанная оплата, бонусы, промокоды, возвраты. Касса не фискальная (фискальный чек пробивают в своей онлайн-кассе).
 
 ## Где код
-- (дополнить после этапа 2)
+- Сервер: `src/http/crm.ts` — все API `/kviz/api/crm/shifts/*`, `/kviz/api/crm/sales`, `/kviz/api/crm/checkout`, `/kviz/api/crm/refund`, `/kviz/api/crm/clients/:id/balance`, `/kviz/api/crm/clients/:id/plans`, `/kviz/api/crm/clients/:id/balance-ops`, `/kviz/api/crm/lifecycle`, `/kviz/api/crm/promo-codes/validate`
+- Сервер lifecycle: `src/index.ts` — `GET/POST /run/crm-lifecycle` (CRON_SECRET)
+- Клиент: `kviz/client/src/pages/crm/KassaPage.tsx` — полный UI кассы
+- Клиент (карточка клиента): `kviz/client/src/pages/crm/ClientsPage.tsx` — баланс в шапке, вкладки «Абонементы» и «Продажи»
+- Роутинг: `kviz/client/src/App.tsx` — маршрут `/crm/cashier` → `KassaPage`
 
 ## Таблицы
 - `crm_cash_shifts` — одна открытая смена на студию; opening_cash (= counted_cash прошлой закрытой), expected/counted/difference при закрытии
@@ -30,16 +34,31 @@
 - Возврат абонемента: сумму вводит админ, причина обязательна; товар возвращается на склад по партиям.
 - Закрытие смены пока простое (ожидаемые / фактические / разница). Существующее «Закрытие смены» из Fitbase не трогаем.
 - Тестовые продажи — на клиенте «ТЕСТ Тестов»; чистка — SQL от Claude.
+- Параметр RPC `crm_checkout` передаётся как `{ params: payload }` — имя параметра `params`.
+- Параметр RPC `crm_shift_expected_cash` передаётся как `{ shift_id: uuid }`.
 
 ## Сделано
-### 28.10.2026 · — · SQL этапа 2 выполнен, ТЗ отдано Claude Code
+### 28.10.2026 · — · Этап 2: UI кассы, API смены/продаж/жизненного цикла
+- **Сервер** (`src/http/crm.ts`): 19 новых эндпоинтов — смена (current/open/close/expected-cash), движения, продажи списком и детально, checkout, refund, баланс клиента, планы клиента, balance-ops, promo validate, lifecycle trigger.
+- **Жизненный цикл** (`src/index.ts`): `GET/POST /run/crm-lifecycle` (CRON_SECRET) — активация `not_activated`, истечение `active` планов.
+- **KassaPage** (`kviz/client/src/pages/crm/KassaPage.tsx`): экраны `ShiftClosed` / `ShiftOpen` / `SaleScreen` / `done`. Открытие смены (admin может переопределить остаток), движения наличных, список продаж, полный экран продажи (выбор клиента, вкладки Абонементы/Услуги/Товары/Депозит/Бонусы, корзина, скидки, оплата), возврат (admin).
+- **ClientsPage** (`kviz/client/src/pages/crm/ClientsPage.tsx`): баланс (депозит/бонусы) в шапке карточки; вкладки «Анкета» / «Абонементы» / «Продажи» в ClientCard.
+- **App.tsx**: маршрут `/crm/cashier` → `KassaPage`.
+- **Fitbase import фикс**: читает из `fitbase_clients_cache`; дедупликация по fitbase_client_id (update) и phone (skip); source='fitbase_import'.
+- **profile_complete фикс**: вычисляется сервером при POST и PATCH /clients; бэкфилл `/crm/clients/recalculate-profiles`.
+- **SQL этапа 2 уже выполнен** (таблицы crm_cash_shifts, crm_cash_movements, crm_sales, crm_sale_items, crm_sale_payments, crm_client_plans, crm_client_plan_items, crm_balance_ops, crm_client_balances, crm_promo_usages, crm_refunds, RPC функции).
+
+### 28.10.2026 · e219a92 · SQL этапа 2 выполнен, ТЗ отдано Claude Code
 - Ждём отчёт.
 
 ## Открытые баги
-- (после отчёта)
+- Точные имена параметров RPC `crm_checkout` / `crm_refund` не верифицированы (нет прямого доступа к DB). Если RPC вернёт ошибку о параметрах — нужно уточнить имена у Сергея из описания функции в Supabase SQL Editor.
 
 ## Следующее
+- Проверка на проде: открытие/закрытие смены, продажа тестовому клиенту «ТЕСТ Тестов», возврат.
+- Настроить cron на `/run/crm-lifecycle` ежедневно в 00:05 UTC+5 (19:05 UTC).
 - Печать квитанции.
 - Закрытие смены по шаблону `templates/zakrytie-smeny.xlsx` (купюры, монеты, печать) поверх смен CRM.
 - Заморозка абонемента (сдвиг даты окончания на дни заморозки).
 - Отчёты по продажам из `crm_sales`.
+- Оплата бонусами (сейчас бонусы как payment method — зависит от наличия метода в `crm_payment_methods`).

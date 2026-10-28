@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
-import { rawGet } from './fitbase';
 
 const BRANCH_ID    = '00000000-0000-0000-0000-000000000001';
 const VALID_PHASES   = new Set(['active', 'finishing']);
@@ -35,9 +34,113 @@ function iinToDob(iin: string): string | null {
 async function writeAudit(entity_type: string, entity_id: string, action: string, actor: string) {
   try { await supabase.from('crm_audit_log').insert({ entity_type, entity_id, action, actor, details: {} }); } catch {}
 }
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 function n0(v: unknown): number { const x = Number(v); return isNaN(x) ? 0 : x; }
 function nNull(v: unknown): number | null { if (v === '' || v == null) return null; const x = Number(v); return isNaN(x) ? null : x; }
+
+// Asia/Yekaterinburg = UTC+5
+function todayUtc5(): string {
+  const d = new Date(Date.now() + 5 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+const RPC_ERROR_MAP: Record<string, string> = {
+  SHIFT_NOT_OPEN:            'Смена не открыта',
+  EMPTY_CART:                'Корзина пуста',
+  CLIENT_REQUIRED:           'Для абонемента, услуги и депозита нужен клиент',
+  CLIENT_NOT_FOUND:          'Клиент не найден',
+  PAYMENT_MISMATCH:          'Сумма оплат не равна итогу',
+  REASON_REQUIRED:           'Укажите причину',
+  REFUND_EXCEEDS_SALE:       'Сумма возврата превышает сумму продажи',
+  BAD_REFUND_QTY:            'Неверное количество для возврата',
+  PROMO_INACTIVE:            'Промокод неактивен',
+  PROMO_EXPIRED:             'Срок действия промокода истёк',
+  PROMO_LIMIT:               'Лимит использований промокода исчерпан',
+  PROMO_CLIENT_LIMIT:        'Вы уже использовали этот промокод',
+  PROMO_NEEDS_CLIENT:        'Для этого промокода нужен клиент',
+};
+
+function translateRpcError(msg: string): string {
+  if (msg.includes('OUT_OF_STOCK')) {
+    const name = msg.split('OUT_OF_STOCK:')[1]?.split(/[\s,"]/)[0] ?? '';
+    return `Не хватает на складе${name ? ': ' + name : ''}`;
+  }
+  if (msg.includes('INSUFFICIENT_BALANCE')) {
+    const wallet = msg.split('INSUFFICIENT_BALANCE:')[1]?.split(/[\s,"]/)[0] ?? '';
+    return wallet === 'deposit' ? 'Недостаточно на депозите' : 'Недостаточно бонусов';
+  }
+  for (const [code, text] of Object.entries(RPC_ERROR_MAP)) {
+    if (msg.includes(code)) return text;
+  }
+  return msg;
+}
+
+// Compute profile_complete from merged client fields
+async function computeProfileComplete(fields: Record<string, unknown>): Promise<boolean> {
+  if (!fields.full_name || !fields.phone || !fields.birth_date) return false;
+  if (!fields.iin || !fields.id_issued_by || !fields.id_valid_until) return false;
+  if (!fields.ad_source_id) return false;
+  const { data: src } = await supabase.from('crm_ad_sources').select('requires_referrer').eq('id', fields.ad_source_id as string).single();
+  if (!src) return false;
+  if (src.requires_referrer && !fields.referrer_client_id) return false;
+  return true;
+}
+
+export async function runCrmLifecycle(): Promise<Record<string, number>> {
+  const today = todayUtc5();
+  let activated = 0, expired = 0;
+
+  // Activate: not_activated where planned_start_date <= today OR auto_activate_on <= today
+  const { data: toActivate } = await supabase.from('crm_client_plans')
+    .select('id, plan_id, planned_start_date, auto_activate_on')
+    .eq('status', 'not_activated')
+    .or(`planned_start_date.lte.${today},auto_activate_on.lte.${today}`);
+
+  for (const cp of toActivate || []) {
+    const startDate = cp.planned_start_date || today;
+    const { data: plan } = await supabase.from('crm_plans')
+      .select('validity_days, extra_days').eq('id', cp.plan_id).single();
+    if (!plan) continue;
+    const validUntil = plan.validity_days
+      ? addDays(startDate, plan.validity_days - 1)
+      : null;
+    const extraUntil = validUntil && plan.extra_days
+      ? addDays(validUntil, plan.extra_days)
+      : null;
+    const { error } = await supabase.from('crm_client_plans').update({
+      status: 'active', activated_at: startDate,
+      valid_until: validUntil, extra_until: extraUntil,
+    }).eq('id', cp.id);
+    if (!error) {
+      await writeAudit('client_plan', cp.id, 'activated', 'system');
+      activated++;
+    }
+  }
+
+  // Expire: active where today > coalesce(extra_until, valid_until)
+  const { data: toExpire } = await supabase.from('crm_client_plans')
+    .select('id, valid_until, extra_until')
+    .eq('status', 'active');
+
+  for (const cp of toExpire || []) {
+    const deadline = cp.extra_until || cp.valid_until;
+    if (!deadline) continue;
+    if (today > deadline) {
+      const { error } = await supabase.from('crm_client_plans').update({ status: 'expired' }).eq('id', cp.id);
+      if (!error) {
+        await writeAudit('client_plan', cp.id, 'expired', 'system');
+        expired++;
+      }
+    }
+  }
+
+  return { activated, expired };
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 export function buildCrmRouter(): Router {
   const r = Router();
@@ -775,38 +878,47 @@ export function buildCrmRouter(): Router {
 
   r.post('/kviz/api/crm/clients/fitbase-import', async (req, res) => {
     if (!requireAdmin(req, res)) return;
-    const session = getSession(req)!;
-    let imported = 0, skipped = 0, total = 0;
+    let imported = 0, updated = 0, skipped = 0;
+    const skipReasons: string[] = [];
     try {
-      let page = 1;
-      while (true) {
-        const resp = await rawGet(`/client?page=${page}&page_size=100`) as Record<string, unknown>;
-        const items = (resp.items || []) as Record<string, unknown>[];
-        total += items.length;
-        if (items.length === 0) break;
-        for (const c of items) {
-          const fitId = String(c.id || '');
-          if (!fitId) { skipped++; continue; }
-          const { data: existing } = await supabase.from('crm_clients').select('id').eq('fitbase_client_id', fitId).maybeSingle();
-          if (existing) { skipped++; continue; }
-          const rawPhone = String(c.phone || c.mobile || '');
-          const phone = rawPhone ? normalizePhone(rawPhone) : null;
-          const fullName = String(c.full_name || c.name || '').trim();
-          if (!fullName) { skipped++; continue; }
+      // Load source data from fitbase_clients_cache
+      const { data: cache } = await supabase.from('fitbase_clients_cache').select('fitbase_client_id,phone,name');
+      const total = (cache || []).length;
+      // Build dedup maps from existing crm_clients
+      const { data: existing } = await supabase.from('crm_clients')
+        .select('id,fitbase_client_id,phone').eq('is_deleted', false);
+      const byFitId = new Map<string, string>();
+      const existingPhones = new Set<string>();
+      for (const c of existing || []) {
+        if (c.fitbase_client_id) byFitId.set(String(c.fitbase_client_id), c.id);
+        if (c.phone) existingPhones.add(c.phone);
+      }
+      for (const c of cache || []) {
+        const fitId = String(c.fitbase_client_id || '');
+        const fullName = String(c.name || '').trim();
+        const phone = c.phone ? (normalizePhone(c.phone) ?? c.phone) : null;
+        if (!fullName) { skipped++; skipReasons.push(`${fitId}: пустое имя`); continue; }
+        const existingId = fitId ? byFitId.get(fitId) : null;
+        if (existingId) {
+          // Update: ensure fitbase_client_id and name are current
+          await supabase.from('crm_clients').update({ fitbase_client_id: fitId || null }).eq('id', existingId);
+          updated++;
+        } else {
+          if (phone && existingPhones.has(phone)) {
+            skipped++; skipReasons.push(`${fitId}: телефон уже есть`); continue;
+          }
           const { error } = await supabase.from('crm_clients').insert({
             branch_id: BRANCH_ID, full_name: fullName, phone,
-            birth_date: c.birth_date ?? null, fitbase_client_id: fitId,
-            source: 'fitbase', status: 'active', is_deleted: false,
-            profile_complete: false, created_by: session.display_name,
+            fitbase_client_id: fitId || null,
+            source: 'fitbase_import', status: 'active', is_deleted: false,
+            profile_complete: false, created_by: 'fitbase_import',
           });
-          if (error) { skipped++; } else { imported++; }
+          if (error) { skipped++; skipReasons.push(`${fitId}: ${error.message}`); }
+          else { if (phone) existingPhones.add(phone); imported++; }
         }
-        if (items.length < 100) break;
-        page++;
-        await sleep(400);
       }
-      res.json({ imported, skipped, total });
-    } catch (e) { res.status(500).json({ error: String(e), imported, skipped, total }); }
+      res.json({ total, imported, updated, skipped, skip_reasons: skipReasons.slice(0, 10) });
+    } catch (e) { res.status(500).json({ error: String(e), imported, updated, skipped }); }
   });
 
   r.post('/kviz/api/crm/clients', async (req, res) => {
@@ -826,13 +938,17 @@ export function buildCrmRouter(): Router {
       if (iin && iin.length !== 12) { res.status(400).json({ error: 'ИИН должен содержать 12 цифр' }); return; }
       let birth_date = b.birth_date ?? null;
       if (iin && !birth_date) birth_date = iinToDob(iin);
+      const mergedForProfile = { full_name: b.full_name, phone, birth_date, iin,
+        id_issued_by: b.id_issued_by, id_valid_until: b.id_valid_until,
+        ad_source_id: b.ad_source_id, referrer_client_id: b.referrer_client_id };
+      const profile_complete = await computeProfileComplete(mergedForProfile);
       const { data, error } = await supabase.from('crm_clients').insert({
         branch_id: BRANCH_ID, full_name: String(b.full_name).trim(), phone, iin,
         birth_date: birth_date ?? null, ad_source_id: b.ad_source_id ?? null,
         referrer_client_id: b.referrer_client_id ?? null,
         id_issued_by: b.id_issued_by ?? null, id_valid_until: b.id_valid_until ?? null,
         contraindications: b.contraindications ?? null, notes: b.notes ?? null,
-        profile_complete: Boolean(b.profile_complete), source: 'manual',
+        profile_complete, source: 'manual',
         status: 'active', is_deleted: false, created_by: session.display_name,
       }).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -875,8 +991,14 @@ export function buildCrmRouter(): Router {
         upd.iin = iin;
         if (iin && !b.birth_date) upd.birth_date = iinToDob(iin);
       }
-      for (const k of ['birth_date', 'ad_source_id', 'referrer_client_id', 'id_issued_by', 'id_valid_until', 'contraindications', 'notes', 'profile_complete', 'status', 'is_deleted']) {
+      for (const k of ['birth_date', 'ad_source_id', 'referrer_client_id', 'id_issued_by', 'id_valid_until', 'contraindications', 'notes', 'status', 'is_deleted']) {
         if (b[k] !== undefined) upd[k] = b[k];
+      }
+      // Compute profile_complete from merged state
+      const { data: cur } = await supabase.from('crm_clients').select('full_name,phone,birth_date,iin,id_issued_by,id_valid_until,ad_source_id,referrer_client_id').eq('id', req.params.id).single();
+      if (cur) {
+        const merged: Record<string, unknown> = { ...cur, ...upd };
+        upd.profile_complete = await computeProfileComplete(merged);
       }
       const { data, error } = await supabase.from('crm_clients').update(upd).eq('id', req.params.id).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -926,6 +1048,373 @@ export function buildCrmRouter(): Router {
       const { data, error } = await supabase.storage.from('crm-client-photos').createSignedUrl(client.photo_path, 3600);
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json({ url: data.signedUrl });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Recalculate profile_complete for all clients ───────────────────────────
+  r.post('/kviz/api/crm/clients/recalculate-profiles', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const [{ data: clients }, { data: adSrcs }] = await Promise.all([
+        supabase.from('crm_clients').select('id,full_name,phone,birth_date,iin,id_issued_by,id_valid_until,ad_source_id,referrer_client_id').eq('is_deleted', false),
+        supabase.from('crm_ad_sources').select('id,requires_referrer'),
+      ]);
+      const srcMap = new Map((adSrcs || []).map((s: Record<string,unknown>) => [s.id, s.requires_referrer]));
+      let updated = 0;
+      for (const c of clients || []) {
+        const ok = !!(c.full_name && c.phone && c.birth_date && c.iin && c.id_issued_by && c.id_valid_until && c.ad_source_id);
+        const requiresRef = c.ad_source_id ? srcMap.get(c.ad_source_id) : false;
+        const pc = ok && !(requiresRef && !c.referrer_client_id);
+        await supabase.from('crm_clients').update({ profile_complete: pc }).eq('id', c.id);
+        updated++;
+      }
+      res.json({ updated });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Users (for manager dropdown) ─────────────────────────────────────────────
+  r.get('/kviz/api/crm/users', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('app_users').select('id,display_name,role').order('display_name');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Cash shifts ───────────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/shifts/current', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('crm_cash_shifts')
+        .select('*').eq('branch_id', BRANCH_ID).eq('status', 'open').maybeSingle();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data ?? null);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/shifts', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      // Only one open shift allowed
+      const { data: existing } = await supabase.from('crm_cash_shifts')
+        .select('id').eq('branch_id', BRANCH_ID).eq('status', 'open').maybeSingle();
+      if (existing) { res.status(409).json({ error: 'Смена уже открыта' }); return; }
+
+      const b = req.body as Record<string, unknown>;
+      // Default opening_cash = counted_cash of last closed shift
+      let opening_cash = 0;
+      const { data: lastShift } = await supabase.from('crm_cash_shifts')
+        .select('counted_cash').eq('branch_id', BRANCH_ID).eq('status', 'closed')
+        .order('closed_at', { ascending: false }).limit(1).maybeSingle();
+      if (lastShift) opening_cash = n0(lastShift.counted_cash);
+
+      const overridden = b.opening_cash !== undefined && session.role === 'admin';
+      if (overridden) opening_cash = n0(b.opening_cash);
+      else if (b.opening_cash !== undefined && session.role !== 'admin') {
+        res.status(403).json({ error: 'Изменять остаток на открытие может только администратор' }); return;
+      }
+
+      const { data, error } = await supabase.from('crm_cash_shifts').insert({
+        branch_id: BRANCH_ID, shift_date: todayUtc5(),
+        opened_by: session.display_name, opened_at: new Date().toISOString(),
+        opening_cash, opening_cash_overridden: overridden, status: 'open',
+      }).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      if (overridden && b.override_reason) {
+        await writeAudit('shift', data.id, `opening_cash_override: ${b.override_reason}`, session.display_name);
+      }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/kviz/api/crm/shifts/:id/close', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const { data: shift } = await supabase.from('crm_cash_shifts').select('*').eq('id', req.params.id).single();
+      if (!shift) { res.status(404).json({ error: 'Смена не найдена' }); return; }
+      if (shift.status !== 'open') { res.status(409).json({ error: 'Смена уже закрыта' }); return; }
+
+      // Get expected cash from RPC
+      const { data: expected } = await supabase.rpc('crm_shift_expected_cash', { shift_id: req.params.id });
+      const expected_cash = n0(expected);
+
+      const b = req.body as Record<string, unknown>;
+      if (b.counted_cash === undefined) { res.status(400).json({ error: 'Укажите фактическую сумму' }); return; }
+      const counted_cash = n0(b.counted_cash);
+      const difference = counted_cash - expected_cash;
+
+      const { data, error } = await supabase.from('crm_cash_shifts').update({
+        status: 'closed', closed_by: session.display_name, closed_at: new Date().toISOString(),
+        expected_cash, counted_cash, difference,
+        close_comment: b.comment ?? null,
+      }).eq('id', req.params.id).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      await writeAudit('shift', req.params.id, 'close', session.display_name);
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.get('/kviz/api/crm/shifts/:id/expected-cash', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.rpc('crm_shift_expected_cash', { shift_id: req.params.id });
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ expected_cash: n0(data) });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Cash movements ────────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/shifts/:id/movements', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('crm_cash_movements')
+        .select('*').eq('shift_id', req.params.id).order('created_at');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/shifts/:id/movements', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const b = req.body as Record<string, unknown>;
+      if (!b.direction || !['in', 'out'].includes(String(b.direction))) {
+        res.status(400).json({ error: 'direction должен быть "in" или "out"' }); return;
+      }
+      if (!b.amount || n0(b.amount) <= 0) { res.status(400).json({ error: 'Укажите сумму' }); return; }
+      if (!b.comment || !String(b.comment).trim()) { res.status(400).json({ error: 'Комментарий обязателен' }); return; }
+      // Check shift is open
+      const { data: shift } = await supabase.from('crm_cash_shifts').select('status').eq('id', req.params.id).single();
+      if (!shift || shift.status !== 'open') { res.status(409).json({ error: 'Смена не открыта' }); return; }
+
+      const { data, error } = await supabase.from('crm_cash_movements').insert({
+        shift_id: req.params.id, branch_id: BRANCH_ID,
+        direction: b.direction, amount: n0(b.amount),
+        comment: String(b.comment).trim(), created_by: session.display_name,
+      }).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Sales ─────────────────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/shifts/:id/sales', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      let q = supabase.from('crm_sales')
+        .select('id,number,client_id,cashier,manager,total_amount,discount_kind,status,created_at,crm_sale_payments(method_id,amount)')
+        .eq('shift_id', req.params.id).order('created_at', { ascending: false });
+      if (req.query.date_from) q = q.gte('created_at', req.query.date_from as string);
+      if (req.query.date_to)   q = q.lte('created_at', req.query.date_to as string);
+      const { data, error } = await q;
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.get('/kviz/api/crm/sales', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const session = getSession(req)!;
+      let q = supabase.from('crm_sales')
+        .select('id,number,client_id,cashier,manager,total_amount,status,created_at,crm_sale_payments(method_id,amount)')
+        .eq('branch_id', BRANCH_ID).order('created_at', { ascending: false }).limit(200);
+      if (req.query.client_id) q = q.eq('client_id', req.query.client_id as string);
+      // Non-admins only see their own shift (current open shift)
+      if (session.role !== 'admin' && req.query.shift_id) q = q.eq('shift_id', req.query.shift_id as string);
+      const { data, error } = await q;
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.get('/kviz/api/crm/sales/:id', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('crm_sales')
+        .select('*,crm_sale_items(*),crm_sale_payments(*)')
+        .eq('id', req.params.id).single();
+      if (error) { res.status(404).json({ error: 'Продажа не найдена' }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Checkout ──────────────────────────────────────────────────────────────────
+
+  r.post('/kviz/api/crm/checkout', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const payload = { ...(req.body as Record<string, unknown>) };
+      payload.cashier = session.display_name; // always override
+      // Admin-only: discount kind 'admin'
+      if (payload.discount_kind === 'admin' && session.role !== 'admin') {
+        res.status(403).json({ error: 'Скидка администратора — только для администратора' }); return;
+      }
+      const { data, error } = await supabase.rpc('crm_checkout', { params: payload });
+      if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
+      await writeAudit('sale', String(data), 'checkout', session.display_name);
+      res.json({ sale_id: data });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Refund ────────────────────────────────────────────────────────────────────
+
+  r.post('/kviz/api/crm/refund', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const payload = { ...(req.body as Record<string, unknown>), created_by: session.display_name };
+      const { data, error } = await supabase.rpc('crm_refund', { params: payload });
+      if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
+      await writeAudit('refund', String(data), 'refund', session.display_name);
+      res.json({ refund_id: data });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Client balance & plans ────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/clients/:id/balance', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('crm_client_balances')
+        .select('deposit,bonus').eq('client_id', req.params.id).maybeSingle();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data ?? { deposit: 0, bonus: 0 });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.get('/kviz/api/crm/clients/:id/plans', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      // Trigger lifecycle update for this client's plans
+      const today = todayUtc5();
+      const { data: cps } = await supabase.from('crm_client_plans')
+        .select('id,plan_id,status,planned_start_date,auto_activate_on,valid_until,extra_until,activated_at,purchase_date,freeze_used,crm_client_plan_items(*)')
+        .eq('client_id', req.params.id).order('purchase_date', { ascending: false });
+
+      for (const cp of cps || []) {
+        if (cp.status === 'not_activated') {
+          const shouldActivate = (cp.planned_start_date && cp.planned_start_date <= today)
+            || (cp.auto_activate_on && cp.auto_activate_on <= today);
+          if (shouldActivate) {
+            const startDate = cp.planned_start_date || today;
+            const { data: plan } = await supabase.from('crm_plans')
+              .select('validity_days,extra_days').eq('id', cp.plan_id).single();
+            if (plan) {
+              const validUntil = plan.validity_days ? addDays(startDate, plan.validity_days - 1) : null;
+              const extraUntil = validUntil && plan.extra_days ? addDays(validUntil, plan.extra_days) : null;
+              await supabase.from('crm_client_plans').update({
+                status: 'active', activated_at: startDate, valid_until: validUntil, extra_until: extraUntil,
+              }).eq('id', cp.id);
+              cp.status = 'active'; cp.activated_at = startDate; cp.valid_until = validUntil; cp.extra_until = extraUntil;
+            }
+          }
+        } else if (cp.status === 'active') {
+          const deadline = cp.extra_until || cp.valid_until;
+          if (deadline && today > deadline) {
+            await supabase.from('crm_client_plans').update({ status: 'expired' }).eq('id', cp.id);
+            cp.status = 'expired';
+          }
+        }
+      }
+
+      // Join with plan names
+      const planIds = [...new Set((cps || []).map(cp => cp.plan_id))];
+      const { data: plans } = planIds.length
+        ? await supabase.from('crm_plans').select('id,name,kind').in('id', planIds)
+        : { data: [] };
+      const planMap = new Map((plans || []).map((p: Record<string,unknown>) => [p.id, p]));
+
+      res.json((cps || []).map(cp => ({ ...cp, plan: planMap.get(cp.plan_id) ?? null })));
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.get('/kviz/api/crm/clients/:id/balance-ops', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('crm_balance_ops')
+        .select('*').eq('client_id', req.params.id)
+        .order('created_at', { ascending: false }).limit(50);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/clients/:id/balance-ops', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const b = req.body as Record<string, unknown>;
+      if (!b.wallet || !['deposit', 'bonus'].includes(String(b.wallet))) {
+        res.status(400).json({ error: 'wallet должен быть "deposit" или "bonus"' }); return;
+      }
+      if (!b.direction || !['in', 'out'].includes(String(b.direction))) {
+        res.status(400).json({ error: 'direction должен быть "in" или "out"' }); return;
+      }
+      if (!b.amount || n0(b.amount) <= 0) { res.status(400).json({ error: 'Укажите сумму' }); return; }
+      if (!b.reason || !String(b.reason).trim()) { res.status(400).json({ error: 'Причина обязательна' }); return; }
+      const { data, error } = await supabase.from('crm_balance_ops').insert({
+        client_id: req.params.id, wallet: b.wallet, direction: b.direction,
+        amount: n0(b.amount), reason: String(b.reason).trim(),
+        created_by: session.display_name,
+      }).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      await writeAudit('balance_op', data.id, `${b.direction} ${b.wallet}`, session.display_name);
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Promo validation ──────────────────────────────────────────────────────────
+
+  r.post('/kviz/api/crm/promo-codes/validate', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const code = String(b.code || '').toUpperCase().trim();
+      if (!code) { res.status(400).json({ error: 'Укажите промокод' }); return; }
+      const { data: promo, error } = await supabase.from('crm_promo_codes')
+        .select('*').eq('code', code).maybeSingle();
+      if (error || !promo) { res.status(404).json({ error: 'Промокод не найден' }); return; }
+      if (!promo.is_active) { res.status(400).json({ error: 'Промокод неактивен' }); return; }
+      if (promo.expires_at && new Date(promo.expires_at) < new Date()) {
+        res.status(400).json({ error: 'Срок действия промокода истёк' }); return;
+      }
+      if (promo.max_uses && promo.uses_count >= promo.max_uses) {
+        res.status(400).json({ error: 'Лимит использований промокода исчерпан' }); return;
+      }
+      if (promo.max_uses_per_client && b.client_id) {
+        const { count } = await supabase.from('crm_promo_usages')
+          .select('id', { count: 'exact', head: true })
+          .eq('promo_code_id', promo.id).eq('client_id', b.client_id as string);
+        if (count && count >= promo.max_uses_per_client) {
+          res.status(400).json({ error: 'Вы уже использовали этот промокод' }); return;
+        }
+      }
+      // Get applicable targets
+      let targets: { target_type: string; target_id: string }[] = [];
+      if (!promo.applies_to_all) {
+        const { data: t } = await supabase.from('crm_promo_targets').select('target_type,target_id').eq('promo_id', promo.id);
+        targets = t || [];
+      }
+      res.json({ id: promo.id, code: promo.code, discount_type: promo.discount_type, discount_value: promo.discount_value, applies_to_all: promo.applies_to_all, targets });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── CRM lifecycle (plan activation/expiry) ────────────────────────────────────
+
+  r.post('/kviz/api/crm/lifecycle', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const result = await runCrmLifecycle();
+      res.json({ ok: true, ...result });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

@@ -17,6 +17,7 @@ import InBodyImportPage from './pages/measure/InBodyImportPage';
 import PlaceholderPage from './pages/crm/PlaceholderPage';
 import SettingsPage from './pages/crm/SettingsPage';
 import ClientsPage from './pages/crm/ClientsPage';
+import KassaPage from './pages/crm/KassaPage';
 import { isEmbedded } from './utils/iframe';
 import './index.css';
 
@@ -69,7 +70,7 @@ export default function App() {
       <Route path="/crm/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/crm/schedule" element={<RequireAuth><PlaceholderPage title="Расписание" /></RequireAuth>} />
       <Route path="/crm/funnel" element={<RequireAuth><PlaceholderPage title="Воронка" /></RequireAuth>} />
-      <Route path="/crm/cashier" element={<RequireAuth><PlaceholderPage title="Касса" /></RequireAuth>} />
+      <Route path="/crm/cashier" element={<RequireAuth><KassaPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

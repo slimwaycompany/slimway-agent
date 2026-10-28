@@ -5,7 +5,7 @@
   var origin = location.origin;
 
   // State
-  var currentTab          = null; // null=choice, 'manager', 'agent', 'kviz', 'measure', 'reports', 'schedule', 'clients', 'funnel', 'cashier', 'settings'
+  var currentTab          = null;
   var agentAlertCount     = 0;
   var agentSeenCount      = 0;
   var kvizDraftCount      = 0;
@@ -37,10 +37,13 @@
     setBadge('badge-choice-manager', managerOverdueCount);
     setBadge('badge-choice-agent',   agentAlertCount);
     setBadge('badge-choice-kviz',    kvizDraftCount);
-    setBadge('badge-side-agent',     agentNew);
-    setBadge('badge-side-manager',   managerNew);
-    setBadge('badge-side-kviz',      kvizDraftCount);
-    setBadge('badge-side-agent2',    agentNew);
+    // Side badges — agent badge on manager-pane right and schedule-pane left
+    setBadge('badge-side-agent',    agentNew);
+    setBadge('badge-side-agent2',   agentNew);
+    // Side badges — manager badge on agent-pane left
+    setBadge('badge-side-manager',  managerNew);
+    // Side badges — kviz badge on cashier-pane right
+    setBadge('badge-side-kviz',     kvizDraftCount);
   }
 
   function hidePanes() {
@@ -92,13 +95,13 @@
     settings: 'settings-iframe',
   };
 
-  function lazyIframe(paneId, iframeId, src, before) {
+  function lazyIframe(paneId, iframeId, src, beforeId) {
     var f = document.createElement('iframe');
     f.id = iframeId; f.className = 'frame';
     f.src = src; f.setAttribute('allow', 'clipboard-write');
     var pane = $(paneId);
     if (!pane) return;
-    var anchor = before ? $(before) : null;
+    var anchor = beforeId ? $(beforeId) : null;
     if (anchor) pane.insertBefore(f, anchor);
     else pane.appendChild(f);
   }
@@ -119,42 +122,89 @@
       $('manager-pane').classList.remove('hidden');
       $('tab-btn-manager').classList.add('active');
       if (!managerCreated) {
-        var fm = document.createElement('iframe');
-        fm.id = 'manager-iframe'; fm.className = 'frame';
-        fm.src = '/kviz/manager'; fm.setAttribute('allow', 'clipboard-write');
-        $('manager-pane').insertBefore(fm, $('side-to-agent'));
+        // Insert iframe before the right side button "Агент"
+        lazyIframe('manager-pane', 'manager-iframe', '/kviz/manager', 'side-to-agent');
         managerCreated = true;
       }
       history.replaceState(null, '', '#manager');
+
     } else if (name === 'agent') {
       $('agent-pane').classList.remove('hidden');
       $('tab-btn-agent').classList.add('active');
       agentSeenCount = agentAlertCount;
       history.replaceState(null, '', '#agent');
+
+    } else if (name === 'schedule') {
+      var sp = $('schedule-pane');
+      if (!sp) return;
+      sp.classList.remove('hidden');
+      $('tab-btn-schedule').classList.add('active');
+      if (!scheduleCreated) {
+        lazyIframe('schedule-pane', 'schedule-iframe', '/kviz/crm/schedule', 'side-sched-to-clients');
+        scheduleCreated = true;
+      }
+      history.replaceState(null, '', '#schedule');
+
+    } else if (name === 'clients') {
+      var cp = $('clients-pane');
+      if (!cp) return;
+      cp.classList.remove('hidden');
+      $('tab-btn-clients').classList.add('active');
+      if (!clientsCreated) {
+        lazyIframe('clients-pane', 'clients-iframe', '/kviz/crm/clients', 'side-cl-to-funnel');
+        clientsCreated = true;
+      }
+      history.replaceState(null, '', '#clients');
+
+    } else if (name === 'funnel') {
+      var fp = $('funnel-pane');
+      if (!fp) return;
+      fp.classList.remove('hidden');
+      $('tab-btn-funnel').classList.add('active');
+      if (!funnelCreated) {
+        lazyIframe('funnel-pane', 'funnel-iframe', '/kviz/crm/funnel', 'side-fn-to-cashier');
+        funnelCreated = true;
+      }
+      history.replaceState(null, '', '#funnel');
+
+    } else if (name === 'cashier') {
+      var xp = $('cashier-pane');
+      if (!xp) return;
+      xp.classList.remove('hidden');
+      $('tab-btn-cashier').classList.add('active');
+      if (!cashierCreated) {
+        lazyIframe('cashier-pane', 'cashier-iframe', '/kviz/crm/cashier', 'side-cash-to-kviz');
+        cashierCreated = true;
+      }
+      history.replaceState(null, '', '#cashier');
+
     } else if (name === 'kviz') {
       $('kviz-pane').classList.remove('hidden');
       $('tab-btn-kviz').classList.add('active');
       if (!kvizCreated) {
-        var fk = document.createElement('iframe');
-        fk.id = 'kviz-iframe'; fk.className = 'frame';
-        fk.src = '/kviz/'; fk.setAttribute('allow', 'clipboard-write');
-        $('kviz-pane').insertBefore(fk, $('side-to-measure'));
+        // Insert iframe before right button "Замеры"
+        lazyIframe('kviz-pane', 'kviz-iframe', '/kviz/', 'side-to-measure');
         kvizCreated = true;
       }
       history.replaceState(null, '', '#kviz');
+
     } else if (name === 'measure') {
       $('measure-pane').classList.remove('hidden');
       $('tab-btn-measure').classList.add('active');
       if (!measureCreated) {
-        var fme = document.createElement('iframe');
-        fme.id = 'measure-iframe'; fme.className = 'frame';
-        fme.src = '/kviz/measure/new'; fme.setAttribute('allow', 'clipboard-write');
+        // Insert before right button "Отчёты" (injected server-side)
         var sideToReports = $('side-to-reports');
-        if (sideToReports) $('measure-pane').insertBefore(fme, sideToReports);
-        else $('measure-pane').appendChild(fme);
+        if (sideToReports) $('measure-pane').insertBefore(
+          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure/new'; f.setAttribute('allow','clipboard-write'); return f; })(),
+          sideToReports
+        );
+        else $('measure-pane').appendChild(
+          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure/new'; f.setAttribute('allow','clipboard-write'); return f; })()
+        );
         measureCreated = true;
       }
       history.replaceState(null, '', '#measure');
+
     } else if (name === 'reports') {
       var rp = $('reports-pane');
       if (!rp) return;
@@ -162,55 +212,17 @@
       var trb = $('tab-btn-reports');
       if (trb) trb.classList.add('active');
       if (!reportsCreated) {
+        // Insert before right button "Настройки" (admin only, may not exist)
+        var sideToSettings = $('side-to-settings');
         var frep = document.createElement('iframe');
         frep.id = 'reports-iframe'; frep.className = 'frame';
         frep.src = '/kviz/reports'; frep.setAttribute('allow', 'clipboard-write');
-        var sideM2 = $('side-to-measure2');
-        if (sideM2) rp.insertBefore(frep, sideM2);
+        if (sideToSettings) rp.insertBefore(frep, sideToSettings);
         else rp.appendChild(frep);
         reportsCreated = true;
       }
       history.replaceState(null, '', '#reports');
-    } else if (name === 'schedule') {
-      var sp = $('schedule-pane');
-      if (!sp) return;
-      sp.classList.remove('hidden');
-      $('tab-btn-schedule').classList.add('active');
-      if (!scheduleCreated) {
-        lazyIframe('schedule-pane', 'schedule-iframe', '/kviz/crm/schedule', null);
-        scheduleCreated = true;
-      }
-      history.replaceState(null, '', '#schedule');
-    } else if (name === 'clients') {
-      var cp = $('clients-pane');
-      if (!cp) return;
-      cp.classList.remove('hidden');
-      $('tab-btn-clients').classList.add('active');
-      if (!clientsCreated) {
-        lazyIframe('clients-pane', 'clients-iframe', '/kviz/crm/clients', null);
-        clientsCreated = true;
-      }
-      history.replaceState(null, '', '#clients');
-    } else if (name === 'funnel') {
-      var fp = $('funnel-pane');
-      if (!fp) return;
-      fp.classList.remove('hidden');
-      $('tab-btn-funnel').classList.add('active');
-      if (!funnelCreated) {
-        lazyIframe('funnel-pane', 'funnel-iframe', '/kviz/crm/funnel', null);
-        funnelCreated = true;
-      }
-      history.replaceState(null, '', '#funnel');
-    } else if (name === 'cashier') {
-      var xp = $('cashier-pane');
-      if (!xp) return;
-      xp.classList.remove('hidden');
-      $('tab-btn-cashier').classList.add('active');
-      if (!cashierCreated) {
-        lazyIframe('cashier-pane', 'cashier-iframe', '/kviz/crm/cashier', null);
-        cashierCreated = true;
-      }
-      history.replaceState(null, '', '#cashier');
+
     } else if (name === 'settings') {
       var stp = $('settings-pane');
       if (!stp) return;
@@ -251,15 +263,46 @@
   if ($('tab-btn-reports'))  $('tab-btn-reports').onclick  = function () { showTab('reports'); };
   if ($('tab-btn-settings')) $('tab-btn-settings').onclick = function () { showTab('settings'); };
 
-  // ── Side buttons ────────────────────────────────────────────────────────────
-  $('side-to-agent').onclick   = function () { showTab('agent'); };    // manager-pane right
-  $('side-to-manager').onclick = function () { showTab('manager'); };  // agent-pane left
-  $('side-to-kviz').onclick    = function () { showTab('kviz'); };     // agent-pane right
-  $('side-to-agent2').onclick  = function () { showTab('agent'); };    // kviz-pane left
-  $('side-to-measure').onclick = function () { showTab('measure'); };  // kviz-pane right
-  $('side-to-kviz2').onclick   = function () { showTab('kviz'); };     // measure-pane left
-  if ($('side-to-reports'))  $('side-to-reports').onclick  = function () { showTab('reports'); };
-  if ($('side-to-measure2')) $('side-to-measure2').onclick = function () { showTab('measure'); };
+  // ── Side buttons ─────────────────────────────────────────────────────────────
+  // Order: Manager(1)→Agent(2)→Schedule(3)→Clients(4)→Funnel(5)→Cashier(6)→Kviz(7)→Measure(8)→Reports(9)→Settings(10)
+
+  // manager-pane: no left, right=Агент
+  $('side-to-agent').onclick = function () { showTab('agent'); };
+
+  // agent-pane: left=Менеджер, right=Расписание
+  $('side-to-manager').onclick   = function () { showTab('manager'); };
+  $('side-to-schedule').onclick  = function () { showTab('schedule'); };
+
+  // schedule-pane: left=Агент, right=Клиенты
+  $('side-sched-to-agent').onclick   = function () { showTab('agent'); };
+  $('side-sched-to-clients').onclick = function () { showTab('clients'); };
+
+  // clients-pane: left=Расписание, right=Воронка
+  $('side-cl-to-schedule').onclick = function () { showTab('schedule'); };
+  $('side-cl-to-funnel').onclick   = function () { showTab('funnel'); };
+
+  // funnel-pane: left=Клиенты, right=Касса
+  $('side-fn-to-clients').onclick  = function () { showTab('clients'); };
+  $('side-fn-to-cashier').onclick  = function () { showTab('cashier'); };
+
+  // cashier-pane: left=Воронка, right=Квалификация
+  $('side-cash-to-funnel').onclick = function () { showTab('funnel'); };
+  $('side-cash-to-kviz').onclick   = function () { showTab('kviz'); };
+
+  // kviz-pane: left=Касса, right=Замеры
+  $('side-kviz-to-cashier').onclick = function () { showTab('cashier'); };
+  $('side-to-measure').onclick      = function () { showTab('measure'); };
+
+  // measure-pane: left=Квалификация, right=Отчёты
+  $('side-to-kviz2').onclick = function () { showTab('kviz'); };
+  if ($('side-to-reports')) $('side-to-reports').onclick = function () { showTab('reports'); };
+
+  // reports-pane: left=Замеры, right=Настройки (admin only)
+  if ($('side-to-measure2'))  $('side-to-measure2').onclick  = function () { showTab('measure'); };
+  if ($('side-to-settings'))  $('side-to-settings').onclick  = function () { showTab('settings'); };
+
+  // settings-pane: left=Отчёты
+  if ($('side-set-to-reports')) $('side-set-to-reports').onclick = function () { showTab('reports'); };
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   $('logout-btn').onclick = function () {
@@ -269,7 +312,8 @@
     });
   };
 
-  // ── Keyboard shortcuts: Alt+1-9, Alt+0 ────────────────────────────────────
+  // ── Keyboard shortcuts: Alt+1-0 ────────────────────────────────────────────
+  // Order: 1=Manager,2=Agent,3=Schedule,4=Clients,5=Funnel,6=Cashier,7=Kviz,8=Measure,9=Reports,0=Settings
   document.addEventListener('keydown', function (e) {
     if (!e.altKey) return;
     if (e.key === '1' || e.code === 'Digit1') { e.preventDefault(); showTab('manager'); }
@@ -324,10 +368,7 @@
         if (frame) {
           frame.src = d.path;
         } else {
-          var fk2 = document.createElement('iframe');
-          fk2.id = 'kviz-iframe'; fk2.className = 'frame';
-          fk2.src = d.path; fk2.setAttribute('allow', 'clipboard-write');
-          $('kviz-pane').insertBefore(fk2, $('side-to-measure'));
+          lazyIframe('kviz-pane', 'kviz-iframe', d.path, 'side-to-measure');
           kvizCreated = true;
         }
       }
@@ -377,7 +418,7 @@
 
   updateBadges();
 
-  // ── Restore last tab on reload (skip choice screen) ────────────────────────
+  // ── Restore last tab on reload ──────────────────────────────────────────────
   try {
     var inSession = sessionStorage.getItem('sw-session');
     var lastTab   = localStorage.getItem('sw-last-tab');

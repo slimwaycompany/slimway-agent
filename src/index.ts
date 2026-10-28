@@ -24,6 +24,7 @@ import { buildShiftsAutocloseRoute }                  from './http/shifts';
 import { runFitbaseOps, JOB_NAME as FITBASE_OPS_JOB } from './jobs/fitbaseOps';
 import { runFitbaseCrmSync } from './jobs/fitbaseCrmSync';
 import { mountScriptologRoutes } from './http/scriptolog';
+import { runCrmLifecycle } from './http/crm';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -232,6 +233,19 @@ async function handleFitbaseCrmSync(req: express.Request, res: express.Response)
 }
 app.get('/run/fitbase-crm-sync',  handleFitbaseCrmSync);
 app.post('/run/fitbase-crm-sync', handleFitbaseCrmSync);
+
+// crm-lifecycle: plan activation/expiry, daily at 00:05 UTC+5
+async function handleCrmLifecycle(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  try {
+    const result = await runCrmLifecycle();
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+app.get('/run/crm-lifecycle',  handleCrmLifecycle);
+app.post('/run/crm-lifecycle', handleCrmLifecycle);
 
 // shifts-autoclose — must be before generic /run/:job
 app.use(buildShiftsAutocloseRoute());

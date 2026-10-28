@@ -19,6 +19,18 @@ interface ClientFull extends ClientRow {
 
 interface RefClient { id: string; full_name: string; phone: string | null }
 
+interface ClientBalance { deposit: number; bonus: number }
+interface ClientPlan {
+  id: string; plan_id: string; status: string; purchase_date: string;
+  activated_at: string | null; valid_until: string | null;
+  plan: { id: string; name: string; kind: string } | null;
+  crm_client_plan_items: { device_type_code: string; sessions: number }[];
+}
+interface SaleRow {
+  id: string; number: number; total_amount: number; status: string; created_at: string;
+  cashier: string; discount_kind: string;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null) {
@@ -265,13 +277,20 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [referrerName, setReferrerName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<'info' | 'plans' | 'sales'>('info');
+  const [balance, setBalance] = useState<ClientBalance | null>(null);
+  const [plans, setPlans] = useState<ClientPlan[] | null>(null);
+  const [sales, setSales] = useState<SaleRow[] | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setTab('info'); setBalance(null); setPlans(null); setSales(null);
     fetch(`/kviz/api/crm/clients/${clientId}`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => { setClient(d); setLoading(false); })
       .catch(() => setLoading(false));
+    fetch(`/kviz/api/crm/clients/${clientId}/balance`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setBalance(d)).catch(() => {});
   }, [clientId]);
 
   useEffect(() => {
@@ -285,6 +304,17 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
         .then(r => r.json()).then(d => { if (d.full_name) setReferrerName(d.full_name); }).catch(() => {});
     }
   }, [client, clientId]);
+
+  useEffect(() => {
+    if (tab === 'plans' && plans === null) {
+      fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
+        .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => setPlans([]));
+    }
+    if (tab === 'sales' && sales === null) {
+      fetch(`/kviz/api/crm/sales?client_id=${clientId}`, { credentials: 'include' })
+        .then(r => r.json()).then(d => setSales(Array.isArray(d) ? d : [])).catch(() => setSales([]));
+    }
+  }, [tab, clientId, plans, sales]);
 
   if (loading) return <div style={{ padding: 20, color: '#94a3b8', fontSize: 13 }}>Загрузка…</div>;
   if (!client) return <div style={{ padding: 20, color: '#ef4444', fontSize: 13 }}>Клиент не найден</div>;
@@ -301,6 +331,15 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
     );
   }
 
+  const planStatusLabel: Record<string, { text: string; color: string }> = {
+    not_activated: { text: 'Не активирован', color: '#f59e0b' },
+    active:        { text: 'Активен',         color: '#16a34a' },
+    frozen:        { text: 'Заморожен',        color: '#6366f1' },
+    expired:       { text: 'Истёк',            color: '#ef4444' },
+    refunded:      { text: 'Возвращён',        color: '#94a3b8' },
+    cancelled:     { text: 'Отменён',          color: '#94a3b8' },
+  };
+
   return (
     <div style={{ height: '100%', overflow: 'auto' }}>
       <div style={SC.header}>
@@ -313,10 +352,12 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
           <div>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{client.full_name}</div>
             <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{client.phone ?? 'Без телефона'}</div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+            <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
               {client.profile_complete && <span style={SC.chip}>✓ Анкета</span>}
               {client.fitbase_client_id && <span style={{ ...SC.chip, background: '#dbeafe', color: '#1d4ed8' }}>Fitbase</span>}
               {client.status !== 'active' && <span style={{ ...SC.chip, background: '#fee2e2', color: '#ef4444' }}>{client.status}</span>}
+              {balance && balance.deposit > 0 && <span style={{ ...SC.chip, background: '#ecfdf5', color: '#059669' }}>Депозит: {balance.deposit.toLocaleString('ru-RU')} ₸</span>}
+              {balance && balance.bonus > 0 && <span style={{ ...SC.chip, background: '#ede9fe', color: '#6d28d9' }}>{balance.bonus} б.</span>}
             </div>
           </div>
         </div>
@@ -325,18 +366,80 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
           <button style={SC.closeBtn} onClick={onClose}>✕</button>
         </div>
       </div>
-      <div style={{ padding: '12px 20px' }}>
-        {row('Дата рождения', fmtDate(client.birth_date))}
-        {client.iin && row('ИИН', role === 'admin' ? client.iin : client.iin.replace(/\d{6}$/, '******'))}
-        {row('Источник', source?.name ?? client.ad_source_id)}
-        {referrerName && row('Реферер', referrerName)}
-        {row('Документ выдан', client.id_issued_by)}
-        {row('Документ действует до', fmtDate(client.id_valid_until))}
-        {row('Противопоказания', client.contraindications)}
-        {row('Заметки', client.notes)}
-        {row('Источник создания', client.source)}
-        {row('Добавлен', fmtDate(client.created_at))}
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, padding: '8px 16px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+        {(['info', 'plans', 'sales'] as const).map(t => (
+          <button key={t} style={{ padding: '5px 14px', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: tab === t ? 700 : 500, background: tab === t ? '#02BDB6' : '#f1f5f9', color: tab === t ? '#fff' : '#374151' }} onClick={() => setTab(t)}>
+            {t === 'info' ? 'Анкета' : t === 'plans' ? 'Абонементы' : 'Продажи'}
+          </button>
+        ))}
       </div>
+
+      {tab === 'info' && (
+        <div style={{ padding: '12px 20px' }}>
+          {row('Дата рождения', fmtDate(client.birth_date))}
+          {client.iin && row('ИИН', role === 'admin' ? client.iin : client.iin.replace(/\d{6}$/, '******'))}
+          {row('Источник', source?.name ?? client.ad_source_id)}
+          {referrerName && row('Реферер', referrerName)}
+          {row('Документ выдан', client.id_issued_by)}
+          {row('Документ действует до', fmtDate(client.id_valid_until))}
+          {row('Противопоказания', client.contraindications)}
+          {row('Заметки', client.notes)}
+          {row('Источник создания', client.source)}
+          {row('Добавлен', fmtDate(client.created_at))}
+        </div>
+      )}
+
+      {tab === 'plans' && (
+        <div style={{ padding: '12px 16px' }}>
+          {plans === null && <div style={{ color: '#94a3b8', fontSize: 13 }}>Загрузка…</div>}
+          {plans !== null && plans.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Абонементы не найдены</div>}
+          {(plans ?? []).map(cp => {
+            const st = planStatusLabel[cp.status] ?? { text: cp.status, color: '#64748b' };
+            return (
+              <div key={cp.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{cp.plan?.name ?? cp.plan_id}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: st.color, background: st.color + '1a', padding: '2px 8px', borderRadius: 4 }}>{st.text}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                  {cp.activated_at && <span>Активирован: {fmtDate(cp.activated_at)}</span>}
+                  {cp.valid_until && <span style={{ marginLeft: 8 }}>До: {fmtDate(cp.valid_until)}</span>}
+                </div>
+                {cp.crm_client_plan_items.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                    {cp.crm_client_plan_items.map((it, i) => (
+                      <span key={i} style={{ fontSize: 11, background: '#f1f5f9', padding: '1px 7px', borderRadius: 4 }}>
+                        {it.device_type_code}: {it.sessions} сеансов
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === 'sales' && (
+        <div style={{ padding: '12px 16px' }}>
+          {sales === null && <div style={{ color: '#94a3b8', fontSize: 13 }}>Загрузка…</div>}
+          {sales !== null && sales.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Продажи не найдены</div>}
+          {(sales ?? []).map(sale => (
+            <div key={sale.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>#{sale.number} · {sale.total_amount.toLocaleString('ru-RU')} ₸</span>
+                {sale.status !== 'completed' && <span style={{ fontSize: 11, color: '#ef4444', background: '#fef2f2', padding: '1px 6px', borderRadius: 4 }}>{sale.status}</span>}
+              </div>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                {sale.cashier} · {fmtDate(sale.created_at)}
+                {sale.discount_kind !== 'none' && ` · скидка (${sale.discount_kind})`}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
