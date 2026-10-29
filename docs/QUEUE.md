@@ -47,6 +47,7 @@
 | 16 | crm-kassa, crm-core | shift_date fix, async fitbase-import, phone format | ТЗ в чате | 🔧 в работе (Claude, 28.10.2026) |
 | 17 | zamery | Фикс from/to_measure_no в studio_results | ТЗ в чате | ✅ готово (текущий) |
 | 15 | infra | Документация: синхронизировать все docs/modules/*.md с кодом (пути, хэши, таблицы), добавить модуль в очередь | ТЗ в чате | ✅ готово (cd3025c + следующий коммит) |
+| 18 | crm-core, reports, crm-kassa | crm-kassa RPC-фикс (продакшен), колонки, пагинация клиентов, is_trial, async sync | `docs/tasks/18-crm-reports-kassa.md` | 🔧 в работе (Claude, 29.10.2026) |
 
 ## Сделано недавно (для контекста)
 
