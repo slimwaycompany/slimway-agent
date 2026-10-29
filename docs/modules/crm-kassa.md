@@ -34,15 +34,22 @@
 - Возврат абонемента: сумму вводит админ, причина обязательна; товар возвращается на склад по партиям.
 - Закрытие смены пока простое (ожидаемые / фактические / разница). Существующее «Закрытие смены» из Fitbase не трогаем.
 - Тестовые продажи — на клиенте «ТЕСТ Тестов»; чистка — SQL от Claude.
-- Параметр RPC `crm_checkout` передаётся как `{ p: payload }`.
-- Параметр RPC `crm_refund` передаётся как `{ p: payload }`; `shift_id` добавляется на сервере.
+- Параметр RPC `crm_checkout` передаётся как `{ p: payload }`. items: `type`, `unit_price`, `start_date` (null = с первого визита). payments: `method_id` integer, `amount`.
+- Параметр RPC `crm_refund` передаётся как `{ p: payload }`; `shift_id` добавляется на сервере. payments: `method_id` integer.
 - Параметр RPC `crm_shift_expected_cash` передаётся как `{ p_shift: uuid }`.
-- Цены планов и товаров в checkout берутся с сервера (БД), браузерные `price` игнорируются.
+- Оба RPC возвращают объект: checkout → `{sale_id, number, total}`, refund → `{refund_id, amount}`.
+- Цены планов и товаров в checkout берутся с сервера (БД). Нет плана/товара в БД — 400, RPC не вызывается.
 - `crm_cash_movements.type` (не `direction`); нет `branch_id` в INSERT.
 - `crm_balance_ops.amount` — знаковый (отрицательный для изъятий), нет колонки `direction`.
 
 ## Сделано
-### 29.10.2026 · (текущий) · RPC-фикс, имена колонок, цены с сервера
+### 29.10.2026 · (текущий) · payload checkout/refund — явная сборка, правильные ключи
+- `crm_checkout` payload: больше нет `{ ...b }`. Сервер собирает payload явно: `items[].type` (не `item_type`), `unit_price` (из БД, не из браузера), `start_date` (null если start_mode != 'date'). `payments[].method_id` — Number(). Если план/товар не найден в БД — 400 без вызова RPC. Ответ `{sale_id, number, total}` (объект, не UUID).
+- `crm_refund` payload: аналогично явная сборка — `sale_id`, `shift_id` (с сервера), `reason`, `created_by`, `items`, `payments[].method_id` Number(). Ответ `{refund_id, amount}`.
+- `translateRpcError`: неизвестная RPC-ошибка — `console.error` + `GENERIC_CRM_ERROR`; catch в checkout/refund — тоже лог + generic.
+- `KassaPage.tsx`: `onDone(num)` принимает номер продажи; экран «Продажа оформлена» показывает «Чек #N» через `lastSaleNum`.
+
+### 29.10.2026 · da948c1 · RPC-фикс, имена колонок, цены с сервера
 - `crm_shift_expected_cash`: параметр `{ shift_id }` → `{ p_shift }` (строки ~1190, ~1212); добавлена обработка ошибки при закрытии смены.
 - `crm_checkout`: `{ params: payload }` → `{ p: payload }`; цены планов и товаров берутся из БД (`crm_plans.price`, `crm_product_stock.retail_price`), а не из браузера; поле `method_id` в payments переименовано в `payment_method_id` на сервере.
 - `crm_refund`: `{ params: payload }` → `{ p: payload }`; `shift_id` открытой смены добавляется на сервере.

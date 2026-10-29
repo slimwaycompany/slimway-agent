@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
 
-const BRANCH_ID    = '00000000-0000-0000-0000-000000000001';
+const BRANCH_ID         = '00000000-0000-0000-0000-000000000001';
+const GENERIC_CRM_ERROR = 'Ошибка кассы, сообщите администратору';
 const VALID_PHASES   = new Set(['active', 'finishing']);
 const VALID_STATUSES = new Set(['working', 'repair', 'disabled', 'broken']);
 const VALID_PM_KIND  = new Set(['cash', 'cashless']);
@@ -74,7 +75,8 @@ function translateRpcError(msg: string): string {
   for (const [code, text] of Object.entries(RPC_ERROR_MAP)) {
     if (msg.includes(code)) return text;
   }
-  return msg;
+  console.error('[crm rpc] unhandled error:', msg);
+  return GENERIC_CRM_ERROR;
 }
 
 // Compute profile_complete from merged client fields
@@ -1315,28 +1317,62 @@ export function buildCrmRouter(): Router {
       const productIds = rawItems.filter(it => it.item_type === 'product').map(it => String(it.product_id)).filter(Boolean);
 
       const [planRes, stockRes] = await Promise.all([
-        planIds.length ? supabase.from('crm_plans').select('id,price').in('id', planIds) : { data: [] as any[] },
-        productIds.length ? supabase.from('crm_product_stock').select('product_id,retail_price').in('product_id', productIds) : { data: [] as any[] },
+        planIds.length ? supabase.from('crm_plans').select('id,price').in('id', planIds) : { data: [] as any[], error: null },
+        productIds.length ? supabase.from('crm_product_stock').select('product_id,retail_price').in('product_id', productIds) : { data: [] as any[], error: null },
       ]);
       const planPriceMap    = new Map((planRes.data || []).map((p: any) => [String(p.id), n0(p.price)]));
       const productPriceMap = new Map((stockRes.data || []).map((p: any) => [String(p.product_id), n0(p.retail_price)]));
 
-      const items = rawItems.map(it => {
-        if (it.item_type === 'plan' && it.plan_id)       return { ...it, price: planPriceMap.get(String(it.plan_id)) ?? n0(it.price) };
-        if (it.item_type === 'product' && it.product_id) return { ...it, price: productPriceMap.get(String(it.product_id)) ?? n0(it.price) };
-        return it;
-      });
+      const items: Record<string, unknown>[] = [];
+      for (const it of rawItems) {
+        const itemType = String(it.item_type || '');
+        if (itemType === 'plan') {
+          const pid = String(it.plan_id || '');
+          if (!planPriceMap.has(pid)) { res.status(400).json({ error: 'Абонемент недоступен для продажи' }); return; }
+          const startDate = it.start_mode === 'date' ? (it.start_date || null) : null;
+          items.push({ type: 'plan', plan_id: pid, qty: 1, unit_price: planPriceMap.get(pid), start_date: startDate });
+        } else if (itemType === 'product') {
+          const pid = String(it.product_id || '');
+          if (!productPriceMap.has(pid)) { res.status(400).json({ error: 'Товар недоступен для продажи' }); return; }
+          items.push({ type: 'product', product_id: pid, qty: Math.max(1, Math.round(n0(it.qty))), unit_price: productPriceMap.get(pid) });
+        } else if (itemType === 'deposit') {
+          const amount = n0(it.price);
+          if (amount <= 0) { res.status(400).json({ error: 'Укажите сумму пополнения депозита' }); return; }
+          items.push({ type: 'deposit', qty: 1, unit_price: amount });
+        }
+      }
 
       const rawPays = Array.isArray(b.payments) ? b.payments as Record<string, unknown>[] : [];
-      const payments = rawPays.map(p => ({ payment_method_id: p.method_id ?? p.payment_method_id, amount: p.amount }));
+      const payments = rawPays
+        .filter(p => p.method_id && Number(p.amount) > 0)
+        .map(p => ({ method_id: Number(p.method_id), amount: Number(p.amount) }));
 
-      const payload: Record<string, unknown> = { ...b, items, payments, cashier: session.display_name };
+      const payload: Record<string, unknown> = {
+        shift_id:             b.shift_id,
+        client_id:            b.client_id ?? null,
+        cashier:              session.display_name,
+        manager:              b.manager ?? null,
+        comment:              b.comment ?? null,
+        discount_kind:        b.discount_kind ?? 'none',
+        promo_code_id:        b.promo_code_id ?? null,
+        admin_discount_type:  b.admin_discount_type ?? null,
+        admin_discount_value: b.admin_discount_value ?? null,
+        items,
+        payments,
+      };
 
       const { data, error } = await supabase.rpc('crm_checkout', { p: payload });
-      if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
-      await writeAudit('sale', String(data), 'checkout', session.display_name);
-      res.json({ sale_id: data });
-    } catch (e) { res.status(500).json({ error: String(e) }); }
+      if (error) {
+        console.error('[checkout] rpc error:', error.message, JSON.stringify(payload));
+        res.status(400).json({ error: translateRpcError(error.message) }); return;
+      }
+      const result = data as { sale_id: string; number: number; total: number };
+      await writeAudit('sale', result.sale_id, 'checkout', session.display_name);
+      res.json(result);
+    } catch (e) {
+      console.error('[checkout] unexpected:', e);
+      res.status(500).json({ error: GENERIC_CRM_ERROR });
+    }
   });
 
   // ── Refund ────────────────────────────────────────────────────────────────────
@@ -1349,12 +1385,40 @@ export function buildCrmRouter(): Router {
       const { data: openShift } = await supabase.from('crm_cash_shifts')
         .select('id').eq('branch_id', BRANCH_ID).eq('status', 'open').maybeSingle();
       if (!openShift) { res.status(409).json({ error: 'Нет открытой смены' }); return; }
-      const payload = { ...b, shift_id: openShift.id, created_by: session.display_name };
+
+      const rawItems = Array.isArray(b.items) ? b.items as Record<string, unknown>[] : [];
+      const rawPays  = Array.isArray(b.payments) ? b.payments as Record<string, unknown>[] : [];
+
+      const items = rawItems.map(it => ({
+        sale_item_id: it.sale_item_id,
+        qty:          Number(it.qty),
+        amount:       Number(it.amount),
+      }));
+      const payments = rawPays
+        .filter(p => p.method_id && Number(p.amount) > 0)
+        .map(p => ({ method_id: Number(p.method_id), amount: Number(p.amount) }));
+
+      const payload: Record<string, unknown> = {
+        sale_id:    b.sale_id,
+        shift_id:   openShift.id,
+        reason:     b.reason ?? null,
+        created_by: session.display_name,
+        items,
+        payments,
+      };
+
       const { data, error } = await supabase.rpc('crm_refund', { p: payload });
-      if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
-      await writeAudit('refund', String(data), 'refund', session.display_name);
-      res.json({ refund_id: data });
-    } catch (e) { res.status(500).json({ error: String(e) }); }
+      if (error) {
+        console.error('[refund] rpc error:', error.message, JSON.stringify(payload));
+        res.status(400).json({ error: translateRpcError(error.message) }); return;
+      }
+      const result = data as { refund_id: string; amount: number };
+      await writeAudit('refund', result.refund_id, 'refund', session.display_name);
+      res.json(result);
+    } catch (e) {
+      console.error('[refund] unexpected:', e);
+      res.status(500).json({ error: GENERIC_CRM_ERROR });
+    }
   });
 
   // ── Client balance & plans ────────────────────────────────────────────────────

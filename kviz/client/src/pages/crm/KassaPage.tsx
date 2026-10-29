@@ -225,7 +225,7 @@ function RefundDialog({ sale, payMethods, onDone, onClose }: {
 
 function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onDone }: {
   shift: Shift; role: string; displayName: string;
-  payMethods: PM[]; users: AppUser[]; onCancel: () => void; onDone: () => void;
+  payMethods: PM[]; users: AppUser[]; onCancel: () => void; onDone: (num: number) => void;
 }) {
   const [tab, setTab] = useState<'abonement' | 'service' | 'product' | 'deposit' | 'bonus'>('abonement');
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -376,7 +376,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
     const { ok, data } = await api('POST', '/kviz/api/crm/checkout', payload);
     setSaving(false);
     if (!ok) { setErr(data.error || 'Ошибка оформления'); return; }
-    onDone();
+    onDone(data.number as number);
   }
 
   const activePlans = plans.filter(p => p.is_active && p.kind === (tab === 'abonement' ? 'abonement' : 'service'));
@@ -814,7 +814,7 @@ export default function KassaPage() {
   if (screen === 'sale' && shift) return (
     <SaleScreen shift={shift} role={role} displayName={displayName} payMethods={payMethods} users={users}
       onCancel={() => setScreen('open')}
-      onDone={() => { setScreen('done'); }}
+      onDone={(num) => { setLastSaleNum(num); setScreen('done'); }}
     />
   );
 
