@@ -45,6 +45,7 @@
 | 13 | crm-core | CRM Настройки — фикс схемы: enum-ы, атомарный план+состав, inline поставщик, системные виды оплаты, архив/удаление | `docs/tasks/13-crm-settings-fix.md` | ✅ готово (e219a92) |
 | 14 | crm-kassa | CRM Касса этап 2: хвосты этапа 1, смена, продажа, возврат, активация абонементов, карточка клиента | ТЗ в чате | 🟡 частично (9574ebf + следующий; проверка на проде — на стороне Сергея) |
 | 16 | crm-kassa, crm-core | shift_date fix, async fitbase-import, phone format | ТЗ в чате | 🔧 в работе (Claude, 28.10.2026) |
+| 17 | zamery | Фикс from/to_measure_no в studio_results | ТЗ в чате | ✅ готово (текущий) |
 | 15 | infra | Документация: синхронизировать все docs/modules/*.md с кодом (пути, хэши, таблицы), добавить модуль в очередь | ТЗ в чате | ✅ готово (cd3025c + следующий коммит) |
 
 ## Сделано недавно (для контекста)
@@ -99,4 +100,5 @@
 | 28.10.2026 | Claude | 13 CRM Настройки фикс: enum-ы фазы/статуса аппарата; авто-номер; атомарный план+состав (crm_plan_items); inline «+Новый поставщик»; только cash/cashless для создания вида оплаты; системные виды оплаты — только is_active; ConfirmModal+архив+удаление с проверкой использования для всех разделов; n0/nNull хелперы; VALID_* Set-ы на сервере; дружелюбные ошибки | e219a92 | Проверка на проде — на стороне Сергея |
 | 28.10.2026 | Claude | 14 CRM Касса этап 2: KassaPage (ShiftClosed/ShiftOpen/SaleScreen/RefundDialog), lifecycle /run/crm-lifecycle, баланс+вкладки в ClientCard, фикс fitbase-import и profile_complete | 9574ebf | Проверка на проде + верификация имён параметров RPC — на стороне Сергея |
 | 28.10.2026 | Claude | 15 Документация: все docs/modules/*.md сверены с кодом; добавлены реальные хэши, пути файлов, таблицы; модуль в очередь; Модуль-колонка в QUEUE.md | b8a3620 | Код не менялся. |
+| 29.10.2026 | Claude | 17 zamery: from/to_measure_no в studio_results — calcAllResults + одиночная кнопка, null для клиентов без замеров; дружелюбные ошибки upsert; ClientPage.tsx interface fix | текущий | SQL уже выполнен Сергеем (nullable колонки). Проверка на проде — на стороне Сергея |
 | 28.10.2026 | Claude | 16 crm-kassa fix: async fitbase-import (прогресс-бар, poll 2 сек, batch 100), phone 7XXXXXXXXXX, shift_date подтверждён | 62b3db3 | Нужно на проде: 1) проверить открытие смены; 2) запустить импорт; 3) SQL phone migration если есть старые +7 записи; 4) выполнить information_schema SQL (см. отчёт) |

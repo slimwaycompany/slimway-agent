@@ -377,10 +377,11 @@ export function buildMeasureRouter(): Router {
       if (cmLost <= 0 && kgLost <= 0 && (fatKgLost == null || fatKgLost <= 0)) {
         res.status(400).json({ error: 'Потерь со старта пока нет' }); return;
       }
-      const row = { client_id: req.params.id, from_measure_no: 1, to_measure_no: lastM?.measure_no ?? 0,
+      const row = { client_id: req.params.id,
+        from_measure_no: firstM?.measure_no ?? null, to_measure_no: lastM?.measure_no ?? null,
         cm_lost: cmLost, kg_lost: kgLost, fat_kg_lost: fatKgLost, sent_by: session.display_name, sent_at: new Date().toISOString() };
       const { data, error } = await supabase.from('studio_results').upsert(row, { onConflict: 'client_id' }).select('*').single();
-      if (error) { res.status(500).json({ error: error.message }); return; }
+      if (error) { console.error('studio_results upsert error:', error); res.status(500).json({ error: 'Не удалось сохранить результаты студии, попробуйте ещё раз' }); return; }
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -630,7 +631,7 @@ export function buildClientsSyncRoute(): Router {
       ibMap.get(d)!.push(t);
     }
 
-    const rows: Array<{ client_id: string; cm_lost: number; kg_lost: number; fat_kg_lost: number | null; sent_by: string; sent_at: string }> = [];
+    const rows: Array<{ client_id: string; from_measure_no: number | null; to_measure_no: number | null; cm_lost: number; kg_lost: number; fat_kg_lost: number | null; sent_by: string; sent_at: string }> = [];
     let skipped = 0;
     const now = new Date().toISOString();
 
@@ -657,7 +658,9 @@ export function buildClientsSyncRoute(): Router {
       }
 
       if (cm_lost <= 0 && kg_lost <= 0 && (fat_kg_lost == null || fat_kg_lost <= 0)) { skipped++; continue; }
-      rows.push({ client_id: id, cm_lost, kg_lost, fat_kg_lost: fat_kg_lost ?? null, sent_by: sentBy, sent_at: now });
+      const from_measure_no = ms.length ? Number(ms[0].measure_no) : null;
+      const to_measure_no   = ms.length ? Number(ms[ms.length - 1].measure_no) : null;
+      rows.push({ client_id: id, from_measure_no, to_measure_no, cm_lost, kg_lost, fat_kg_lost: fat_kg_lost ?? null, sent_by: sentBy, sent_at: now });
     }
     return { rows, skipped };
   }
@@ -722,7 +725,7 @@ export function buildClientsSyncRoute(): Router {
       let added = 0, updated = 0;
       for (let i = 0; i < toUpsert.length; i += 100) {
         const { error } = await supabase.from('studio_results').upsert(toUpsert.slice(i, i + 100), { onConflict: 'client_id' });
-        if (error) { res.status(500).json({ error: error.message }); return; }
+        if (error) { console.error('bulk-results upsert error:', error); res.status(500).json({ error: 'Не удалось сохранить результаты студии, попробуйте ещё раз' }); return; }
       }
       for (const r of toUpsert) { if (newIds.has(r.client_id)) added++; else updated++; }
       res.json({ added, updated });

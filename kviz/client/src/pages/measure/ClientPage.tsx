@@ -49,7 +49,7 @@ interface Client {
   id: string; name: string; phone: string | null; fitbase_client_id: number | null;
   measurements: Measurement[];
 }
-interface StudioResult { cm_lost: number; kg_lost: number; fat_kg_lost: number | null; sent_by: string; sent_at: string; to_measure_no: number }
+interface StudioResult { cm_lost: number; kg_lost: number; fat_kg_lost: number | null; sent_by: string; sent_at: string; from_measure_no: number | null; to_measure_no: number | null }
 interface InBodyTest {
   id: string; inbody_id: string; tested_at: string; source: 'qr' | 'csv';
   weight: number | null; bfm: number | null; pbf: number | null;
