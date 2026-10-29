@@ -12,7 +12,7 @@
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟡 | 28.10.2026 | Закрытие смены из Fitbase — тестовый режим |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 28.10.2026 | Не трогаем, может быть скрыта |
 | Замеры и InBody | `modules/zamery.md` | Замеры и отчёты | 🟢 | 29.10.2026 | Фикс from/to_measure_no в studio_results; выгрузка в общий работает для клиентов только с InBody |
-| Отчёты | `modules/reports.md` | Замеры и отчёты | 🟡 | 29.10.2026 | syncVisits fix (RangeError, client_id, resource, manager); TRIAL_SERVICE_NAMES; fact-day trial_sold; ждёт синка на проде |
+| Отчёты | `modules/reports.md` | Замеры и отчёты | 🟡 | 29.10.2026 | Фильтр источника и менеджера на всех 5 шагах; by_source 6 колонок; by_manager 8 колонок с дриллом; chipActive fix |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 28.10.2026 | Базовая версия работает, полное дерево скриптов |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |

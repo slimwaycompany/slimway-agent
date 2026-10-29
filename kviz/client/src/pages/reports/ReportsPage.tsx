@@ -1429,12 +1429,17 @@ function useSyncButton() {
   return { syncing, syncMsg, doSync };
 }
 
+interface FdSrcRow { source: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_amount: number }
+interface FdMgrRow { manager: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; sales_amount: number; items?: DrillItem[] }
+
 function FactDaySection() {
   const [data, setData]             = useState<Record<string, FunnelStep> | null>(null);
-  const [bySrc, setBySrc]           = useState<Array<{ source: string; count: number }>>([]);
+  const [bySrc, setBySrc]           = useState<FdSrcRow[]>([]);
+  const [byMgr, setByMgr]           = useState<FdMgrRow[]>([]);
   const [availSources, setAvailSrc] = useState<string[]>([]);
   const [availMgr, setAvailMgr]     = useState<string[]>([]);
   const [loading, setLoading]       = useState(false);
+  const [mgrDrill, setMgrDrill]     = useState<{ label: string; items: DrillItem[] } | null>(null);
   const { syncing, syncMsg, doSync } = useSyncButton();
   const { from, to, sources, manager, setManager, filterBar, sourceBar } = useFunnelFilters(availSources);
 
@@ -1449,6 +1454,7 @@ function FactDaySection() {
       const d = await r.json();
       setData(d.steps);
       setBySrc(d.by_source ?? []);
+      setByMgr(d.by_manager ?? []);
       setAvailSrc(d.availableSources ?? []);
       setAvailMgr(d.availableManagers ?? []);
     } catch {} finally { setLoading(false); }
@@ -1459,6 +1465,9 @@ function FactDaySection() {
   const LABELS: Record<string, string> = {
     leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи на пробное', visited: 'Пришли', sales: 'Продажи',
   };
+  const fmt = (n: number) => Math.round(n).toLocaleString('ru');
+  const TH: React.CSSProperties = { padding: '4px 10px 4px 0', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' };
+  const TD: React.CSSProperties = { padding: '3px 10px 3px 0', fontSize: 13 };
 
   return (
     <div style={s.section}>
@@ -1467,14 +1476,12 @@ function FactDaySection() {
         {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
       </div>
       {filterBar}
-      {availMgr.length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          <select value={manager} onChange={e => setManager(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
-            <option value="">Все менеджеры</option>
-            {availMgr.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </div>
-      )}
+      <div style={{ marginBottom: 10 }}>
+        <select value={manager} onChange={e => setManager(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
+          <option value="">Все менеджеры</option>
+          {availMgr.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
       {sourceBar}
       {data && (
         <>
@@ -1482,25 +1489,77 @@ function FactDaySection() {
           {bySrc.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <div style={s.sectionTitle}>По источникам</div>
-              <table style={{ fontSize: 13, borderCollapse: 'collapse' }}>
-                <thead><tr><th style={{ padding: '4px 12px 4px 0', textAlign: 'left', color: '#64748b' }}>Источник</th><th style={{ padding: '4px 0', color: '#64748b' }}>Лидов</th></tr></thead>
-                <tbody>{bySrc.map(r => <tr key={r.source}><td style={{ padding: '3px 12px 3px 0' }}>{r.source}</td><td style={{ fontWeight: 700 }}>{r.count}</td></tr>)}</tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 500 }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    {['Источник','Лидов','В работе','Записи','Пришли','Услуг','Сумма'].map(h => <th key={h} style={TH}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {bySrc.map(r => (
+                      <tr key={r.source} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={TD}>{r.source}</td>
+                        <td style={{ ...TD, fontWeight: 700 }}>{r.leads}</td>
+                        <td style={TD}>{r.in_work}</td>
+                        <td style={TD}>{r.trial_booked}</td>
+                        <td style={TD}>{r.visited}</td>
+                        <td style={TD}>{r.trial_sold_count}</td>
+                        <td style={{ ...TD, color: r.sales_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.sales_amount > 0 ? fmt(r.sales_amount) + ' ₸' : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {byMgr.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={s.sectionTitle}>По менеджерам</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 600 }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    {['Менеджер','Лидов','В работе','Записи','Пришли','Услуг','Продаж','Сумма'].map(h => <th key={h} style={TH}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {byMgr.map(r => (
+                      <tr key={r.manager} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                        onClick={() => setMgrDrill({ label: r.manager, items: (r.items ?? []) })}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                        <td style={{ ...TD, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
+                        <td style={TD}>{r.leads}</td>
+                        <td style={TD}>{r.in_work}</td>
+                        <td style={TD}>{r.trial_booked}</td>
+                        <td style={TD}>{r.visited}</td>
+                        <td style={TD}>{r.trial_sold_count}</td>
+                        <td style={TD}>{r.sales_count}</td>
+                        <td style={{ ...TD, fontWeight: 700, color: r.sales_amount > 0 ? '#02BDB6' : '#94a3b8' }}>{r.sales_amount > 0 ? fmt(r.sales_amount) + ' ₸' : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Клик по строке — детализация лидов менеджера</div>
+              </div>
             </div>
           )}
         </>
       )}
       {!data && loading && <div style={s.empty}>Загрузка…</div>}
+      {mgrDrill && <DrillModal title={mgrDrill.label} items={mgrDrill.items} onClose={() => setMgrDrill(null)} />}
     </div>
   );
 }
 
+interface DrSrcRow { source: string; leads: number; qualified: number; booked: number; visited: number; bought: number }
+interface DrMgrRow { manager: string; leads: number; qualified: number; booked: number; visited: number; bought: number }
+
 function DayRhythmSection() {
   const [steps, setSteps]           = useState<Array<{ id: string; label: string; count: number; pct: number; items: DrillItem[] }> | null>(null);
-  const [bySrc, setBySrc]           = useState<Array<{ source: string; count: number }>>([]);
+  const [bySrc, setBySrc]           = useState<DrSrcRow[]>([]);
+  const [byMgr, setByMgr]           = useState<DrMgrRow[]>([]);
   const [availSources, setAvailSrc] = useState<string[]>([]);
   const [availMgr, setAvailMgr]     = useState<string[]>([]);
   const [loading, setLoading]       = useState(false);
+  const [mgrDrill, setMgrDrill]     = useState<{ label: string; items: DrillItem[] } | null>(null);
   const { syncing, syncMsg, doSync } = useSyncButton();
   const { from, to, sources, manager, setManager, filterBar, sourceBar } = useFunnelFilters(availSources);
 
@@ -1515,12 +1574,16 @@ function DayRhythmSection() {
       const d = await r.json();
       setSteps(d.steps ?? []);
       setBySrc(d.by_source ?? []);
+      setByMgr(d.by_manager ?? []);
       setAvailSrc(d.availableSources ?? []);
       setAvailMgr(d.availableManagers ?? []);
     } catch {} finally { setLoading(false); }
   }, [from, to, sources, manager]);
 
   useEffect(() => { load(); }, [load]);
+
+  const TH: React.CSSProperties = { padding: '4px 10px 4px 0', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' };
+  const TD: React.CSSProperties = { padding: '3px 10px 3px 0', fontSize: 13 };
 
   return (
     <div style={s.section}>
@@ -1529,14 +1592,12 @@ function DayRhythmSection() {
         {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
       </div>
       {filterBar}
-      {availMgr.length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          <select value={manager} onChange={e => setManager(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
-            <option value="">Все менеджеры</option>
-            {availMgr.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </div>
-      )}
+      <div style={{ marginBottom: 10 }}>
+        <select value={manager} onChange={e => setManager(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
+          <option value="">Все менеджеры</option>
+          {availMgr.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
       {sourceBar}
       {steps && (
         <>
@@ -1544,15 +1605,59 @@ function DayRhythmSection() {
           {bySrc.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <div style={s.sectionTitle}>По источникам</div>
-              <table style={{ fontSize: 13, borderCollapse: 'collapse' }}>
-                <thead><tr><th style={{ padding: '4px 12px 4px 0', textAlign: 'left', color: '#64748b' }}>Источник</th><th style={{ padding: '4px 0', color: '#64748b' }}>Лидов</th></tr></thead>
-                <tbody>{bySrc.map(r => <tr key={r.source}><td style={{ padding: '3px 12px 3px 0' }}>{r.source}</td><td style={{ fontWeight: 700 }}>{r.count}</td></tr>)}</tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 460 }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    {['Источник','Лидов','Квалиф.','Записи','Пришли','Купили'].map(h => <th key={h} style={TH}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {bySrc.map(r => (
+                      <tr key={r.source} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={TD}>{r.source}</td>
+                        <td style={{ ...TD, fontWeight: 700 }}>{r.leads}</td>
+                        <td style={TD}>{r.qualified}</td>
+                        <td style={TD}>{r.booked}</td>
+                        <td style={TD}>{r.visited}</td>
+                        <td style={{ ...TD, color: r.bought > 0 ? '#22c55e' : '#94a3b8', fontWeight: r.bought > 0 ? 700 : 400 }}>{r.bought}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {byMgr.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={s.sectionTitle}>По менеджерам</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 460 }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    {['Менеджер','Лидов','Квалиф.','Записи','Пришли','Купили'].map(h => <th key={h} style={TH}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {byMgr.map(r => (
+                      <tr key={r.manager} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                        onClick={() => setMgrDrill({ label: r.manager, items: [] })}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                        <td style={{ ...TD, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
+                        <td style={TD}>{r.leads}</td>
+                        <td style={TD}>{r.qualified}</td>
+                        <td style={TD}>{r.booked}</td>
+                        <td style={TD}>{r.visited}</td>
+                        <td style={{ ...TD, color: r.bought > 0 ? '#22c55e' : '#94a3b8', fontWeight: r.bought > 0 ? 700 : 400 }}>{r.bought}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Клик по строке — список лидов (уточните период)</div>
+              </div>
             </div>
           )}
         </>
       )}
       {!steps && loading && <div style={s.empty}>Загрузка…</div>}
+      {mgrDrill && <DrillModal title={mgrDrill.label} items={mgrDrill.items} onClose={() => setMgrDrill(null)} />}
     </div>
   );
 }
@@ -1697,7 +1802,7 @@ const s: Record<string, React.CSSProperties> = {
   loadBtn:      { padding: '8px 16px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
   csvBtn:       { padding: '8px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
   chip:         { padding: '3px 10px', border: '1px solid #e2e8f0', borderRadius: 20, fontSize: 12, cursor: 'pointer', background: '#fff', fontFamily: 'inherit', color: '#374151' },
-  chipActive:   { background: '#02BDB6', color: '#fff', borderColor: '#02BDB6' },
+  chipActive:   { background: '#02BDB6', color: '#fff', border: '1px solid #02BDB6' },
   empty:        { color: '#94a3b8', fontSize: 13, padding: '12px 0' },
   rowTitle:     { fontSize: 14, fontWeight: 600, color: '#1a202c' },
   rowMeta:      { fontSize: 12, color: '#64748b', marginTop: 2 },
