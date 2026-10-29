@@ -246,20 +246,33 @@ export function buildMetricsRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // Trigger CRM sync (admin only, calls job directly)
-  router.post('/kviz/api/metrics/sync', async (req: Request, res: Response) => {
+  // Async CRM sync — POST starts job, GET returns status
+  let syncJob: { status: 'running' | 'done' | 'error'; leads?: number; visits?: number; error?: string; synced_at?: string } | null = null;
+
+  router.post('/kviz/api/metrics/sync', (req: Request, res: Response) => {
     if (!isAdmin(req, res)) return;
-    try {
-      const locked = await acquireLock('fitbase-crm-sync', 10 * 60);
-      if (!locked) { res.json({ status: 'already_running' }); return; }
-      const stats = await runFitbaseCrmSync();
-      await releaseLock('fitbase-crm-sync');
-      await supabase.from('sync_state').upsert({ key: 'fitbase_crm_synced_at', value: new Date().toISOString() }, { onConflict: 'key' });
-      res.json({ ok: true, ...stats, synced_at: new Date().toISOString() });
-    } catch (e) {
-      await releaseLock('fitbase-crm-sync').catch(() => {});
-      res.status(500).json({ error: String(e) });
-    }
+    if (syncJob?.status === 'running') { res.json({ status: 'running' }); return; }
+    syncJob = { status: 'running' };
+    res.json({ status: 'started' });
+    (async () => {
+      try {
+        const locked = await acquireLock('fitbase-crm-sync', 10 * 60);
+        if (!locked) { syncJob = { status: 'error', error: 'Уже запущено' }; return; }
+        const stats = await runFitbaseCrmSync();
+        await releaseLock('fitbase-crm-sync');
+        const now = new Date().toISOString();
+        await supabase.from('sync_state').upsert({ key: 'fitbase_crm_synced_at', value: now }, { onConflict: 'key' });
+        syncJob = { status: 'done', leads: stats.leads as number, visits: stats.visits as number, synced_at: now };
+      } catch (e) {
+        await releaseLock('fitbase-crm-sync').catch(() => {});
+        syncJob = { status: 'error', error: String(e) };
+      }
+    })();
+  });
+
+  router.get('/kviz/api/metrics/sync', (req: Request, res: Response) => {
+    if (!isAdmin(req, res)) return;
+    res.json(syncJob ?? { status: 'idle' });
   });
 
   return router;

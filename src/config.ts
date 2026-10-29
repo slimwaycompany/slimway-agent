@@ -80,6 +80,7 @@ export const STAGE_DECISION  = 50;  // Принимает решение (Дож
 export const STAGE_NOSHOW    = 55;  // Не пришел на пробную
 
 export const TRIAL_TRAINING_ID  = 16; // event.training.id для пробного занятия
+export const TRIAL_SERVICE_NAME = 'Бесплатное пробное занятие';
 export const TRIAL_CHECK_HOURS  = 2;  // проверяем визит через N часов от начала
 export const AGENT_TASK_DUE_HOURS = 2;
 

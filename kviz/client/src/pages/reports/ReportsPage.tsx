@@ -1397,17 +1397,47 @@ function useFunnelFilters(availSources: string[]) {
   return { from, to, sources, manager, setManager, filterBar, sourceBar };
 }
 
+function useSyncButton() {
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
+
+  async function doSync() {
+    setSyncing(true); setSyncMsg('Запуск синхронизации…');
+    try {
+      await fetch('/kviz/api/metrics/sync', { method: 'POST', credentials: 'include' });
+      const poll = async () => {
+        const r = await fetch('/kviz/api/metrics/sync', { credentials: 'include' });
+        const d = await r.json().catch(() => ({}));
+        if (d.status === 'done') {
+          setSyncMsg(`Синхронизировано: лидов ${d.leads ?? '?'}, записей ${d.visits ?? '?'}`);
+          setSyncing(false);
+        } else if (d.status === 'error') {
+          setSyncMsg(d.error || 'Ошибка синхронизации');
+          setSyncing(false);
+        } else {
+          pollRef.current = setTimeout(poll, 2000);
+        }
+      };
+      pollRef.current = setTimeout(poll, 1500);
+    } catch (e) { setSyncMsg(String(e)); setSyncing(false); }
+  }
+
+  return { syncing, syncMsg, doSync };
+}
+
 function FactDaySection() {
   const [data, setData]             = useState<Record<string, FunnelStep> | null>(null);
   const [bySrc, setBySrc]           = useState<Array<{ source: string; count: number }>>([]);
   const [availSources, setAvailSrc] = useState<string[]>([]);
   const [availMgr, setAvailMgr]     = useState<string[]>([]);
   const [loading, setLoading]       = useState(false);
-  const [syncing, setSyncing]       = useState(false);
-  const [syncMsg, setSyncMsg]       = useState('');
+  const { syncing, syncMsg, doSync } = useSyncButton();
   const { from, to, sources, manager, setManager, filterBar, sourceBar } = useFunnelFilters(availSources);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const sp = new URLSearchParams({ from, to });
@@ -1421,16 +1451,9 @@ function FactDaySection() {
       setAvailSrc(d.availableSources ?? []);
       setAvailMgr(d.availableManagers ?? []);
     } catch {} finally { setLoading(false); }
-  }
+  }, [from, to, sources, manager]);
 
-  async function doSync() {
-    setSyncing(true); setSyncMsg('');
-    try {
-      const r = await fetch('/kviz/api/metrics/sync', { method: 'POST', credentials: 'include' });
-      const d = await r.json();
-      setSyncMsg(r.ok ? `Синхронизировано: лидов ${d.leads ?? '?'}, записей ${d.visits ?? '?'}` : (d.error || 'Ошибка'));
-    } catch (e) { setSyncMsg(String(e)); } finally { setSyncing(false); }
-  }
+  useEffect(() => { load(); }, [load]);
 
   const LABELS: Record<string, string> = {
     leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи на пробное', visited: 'Пришли', sales: 'Продажи',
@@ -1439,7 +1462,6 @@ function FactDaySection() {
   return (
     <div style={s.section}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '…' : 'Показать'}</button>
         <button style={s.csvBtn} onClick={doSync} disabled={syncing}>{syncing ? 'Запуск…' : '↺ Обновить Fitbase'}</button>
         {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
       </div>
@@ -1467,7 +1489,7 @@ function FactDaySection() {
           )}
         </>
       )}
-      {!data && !loading && <div style={s.empty}>Нажмите «Показать» для загрузки данных</div>}
+      {!data && loading && <div style={s.empty}>Загрузка…</div>}
     </div>
   );
 }
@@ -1478,11 +1500,10 @@ function DayRhythmSection() {
   const [availSources, setAvailSrc] = useState<string[]>([]);
   const [availMgr, setAvailMgr]     = useState<string[]>([]);
   const [loading, setLoading]       = useState(false);
-  const [syncing, setSyncing]       = useState(false);
-  const [syncMsg, setSyncMsg]       = useState('');
+  const { syncing, syncMsg, doSync } = useSyncButton();
   const { from, to, sources, manager, setManager, filterBar, sourceBar } = useFunnelFilters(availSources);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const sp = new URLSearchParams({ from, to });
@@ -1496,21 +1517,13 @@ function DayRhythmSection() {
       setAvailSrc(d.availableSources ?? []);
       setAvailMgr(d.availableManagers ?? []);
     } catch {} finally { setLoading(false); }
-  }
+  }, [from, to, sources, manager]);
 
-  async function doSync() {
-    setSyncing(true); setSyncMsg('');
-    try {
-      const r = await fetch('/kviz/api/metrics/sync', { method: 'POST', credentials: 'include' });
-      const d = await r.json();
-      setSyncMsg(r.ok ? `Синхронизировано: лидов ${d.leads ?? '?'}, записей ${d.visits ?? '?'}` : (d.error || 'Ошибка'));
-    } catch (e) { setSyncMsg(String(e)); } finally { setSyncing(false); }
-  }
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div style={s.section}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '…' : 'Показать'}</button>
         <button style={s.csvBtn} onClick={doSync} disabled={syncing}>{syncing ? 'Запуск…' : '↺ Обновить Fitbase'}</button>
         {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
       </div>
@@ -1538,7 +1551,7 @@ function DayRhythmSection() {
           )}
         </>
       )}
-      {!steps && !loading && <div style={s.empty}>Нажмите «Показать» для загрузки данных</div>}
+      {!steps && loading && <div style={s.empty}>Загрузка…</div>}
     </div>
   );
 }

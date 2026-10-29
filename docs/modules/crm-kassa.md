@@ -34,10 +34,26 @@
 - Возврат абонемента: сумму вводит админ, причина обязательна; товар возвращается на склад по партиям.
 - Закрытие смены пока простое (ожидаемые / фактические / разница). Существующее «Закрытие смены» из Fitbase не трогаем.
 - Тестовые продажи — на клиенте «ТЕСТ Тестов»; чистка — SQL от Claude.
-- Параметр RPC `crm_checkout` передаётся как `{ params: payload }` — имя параметра `params`.
-- Параметр RPC `crm_shift_expected_cash` передаётся как `{ shift_id: uuid }`.
+- Параметр RPC `crm_checkout` передаётся как `{ p: payload }`.
+- Параметр RPC `crm_refund` передаётся как `{ p: payload }`; `shift_id` добавляется на сервере.
+- Параметр RPC `crm_shift_expected_cash` передаётся как `{ p_shift: uuid }`.
+- Цены планов и товаров в checkout берутся с сервера (БД), браузерные `price` игнорируются.
+- `crm_cash_movements.type` (не `direction`); нет `branch_id` в INSERT.
+- `crm_balance_ops.amount` — знаковый (отрицательный для изъятий), нет колонки `direction`.
 
 ## Сделано
+### 29.10.2026 · (текущий) · RPC-фикс, имена колонок, цены с сервера
+- `crm_shift_expected_cash`: параметр `{ shift_id }` → `{ p_shift }` (строки ~1190, ~1212); добавлена обработка ошибки при закрытии смены.
+- `crm_checkout`: `{ params: payload }` → `{ p: payload }`; цены планов и товаров берутся из БД (`crm_plans.price`, `crm_product_stock.retail_price`), а не из браузера; поле `method_id` в payments переименовано в `payment_method_id` на сервере.
+- `crm_refund`: `{ params: payload }` → `{ p: payload }`; `shift_id` открытой смены добавляется на сервере.
+- `crm_cash_movements`: поле `direction` → `type`, убран `branch_id` из INSERT; валидация и KassaPage обновлены.
+- `crm_sales` SELECT: `total_amount` → `total`, `crm_sale_payments(method_id,...)` → `(payment_method_id,...)`.
+- `crm_client_plans` SELECT: `purchase_date` → `purchased_at`, `freeze_used` → `freeze_days_used`, order по `purchased_at`.
+- `crm_balance_ops`: убран `direction`, `amount` со знаком (−amount для изъятий).
+- `KassaPage.tsx`: интерфейсы `Movement`/`SaleRow` обновлены; убраны инпуты цены для абонементов и товаров (цена только с сервера); поиск клиентов принимает `{items, total}`.
+- `RPC_ERROR_MAP`: добавлены `BAD_PAYMENT_METHOD` и `BAD_QTY`.
+- `ClientsPage.tsx`: `ClientPlan.purchase_date` → `purchased_at`, `sessions` → `sessions_left`/`sessions_total`; `SaleRow.total_amount` → `total`.
+
 ### 28.10.2026 · (следующий) · фикс shift_date + async импорт + phone format
 - **Смена открывается**: Сергей добавил `crm_cash_shifts.shift_date date not null default (now() at time zone 'Asia/Yekaterinburg')::date`, код уже передавал это поле.
 - **Импорт Fitbase — фоновая задача**: POST `/fitbase-import` запускает фоновый импорт и сразу возвращает `{status:'started'}`. GET `/fitbase-import/status` возвращает прогресс `{status, total, processed, added, updated, skipped, errors}`. Повторный запуск пока идёт — 409. Вставка пачками по 100. Фронт опрашивает раз в 2 сек, показывает прогресс-бар.
@@ -57,8 +73,7 @@
 - Ждём отчёт.
 
 ## Открытые баги
-- Точные имена параметров RPC `crm_checkout` / `crm_refund` не верифицированы. Если вернёт ошибку о параметрах — уточнить у Сергея из описания функции в Supabase SQL Editor.
-- Не проверено: существуют ли в `crm_cash_shifts` колонки `opening_cash_overridden` и `close_comment`; в `crm_client_plans` — `freeze_used`. Если нет — insert/select упадут с ошибкой PostgreSQL. SQL для проверки: `select column_name from information_schema.columns where table_name in ('crm_cash_shifts','crm_client_plans') order by table_name,ordinal_position;`
+- Не проверено: существуют ли в `crm_cash_shifts` колонки `opening_cash_overridden` и `close_comment`. SQL для проверки: `select column_name from information_schema.columns where table_name in ('crm_cash_shifts','crm_client_plans') order by table_name,ordinal_position;`
 - Phone format migration: если в crm_clients уже есть записи с форматом `+7XXXXXXXXXX` (старый код), их нужно исправить: `UPDATE crm_clients SET phone = regexp_replace(phone, '^\+', '') WHERE phone LIKE '+%';`
 
 ## Следующее

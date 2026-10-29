@@ -53,6 +53,8 @@ const RPC_ERROR_MAP: Record<string, string> = {
   REASON_REQUIRED:           'Укажите причину',
   REFUND_EXCEEDS_SALE:       'Сумма возврата превышает сумму продажи',
   BAD_REFUND_QTY:            'Неверное количество для возврата',
+  BAD_PAYMENT_METHOD:        'Недопустимый способ оплаты',
+  BAD_QTY:                   'Неверное количество',
   PROMO_INACTIVE:            'Промокод неактивен',
   PROMO_EXPIRED:             'Срок действия промокода истёк',
   PROMO_LIMIT:               'Лимит использований промокода исчерпан',
@@ -156,11 +158,11 @@ let fitbaseImportJob: ImportJob | null = null;
 async function runFitbaseImport(): Promise<void> {
   const job = fitbaseImportJob!;
   try {
-    const { data: cache } = await supabase.from('fitbase_clients_cache').select('fitbase_client_id,phone,name');
+    const { data: cache } = await supabase.from('fitbase_clients_cache').select('fitbase_client_id,phone,name').limit(10000);
     job.total = (cache || []).length;
 
     const { data: existing } = await supabase.from('crm_clients')
-      .select('id,fitbase_client_id,phone').eq('is_deleted', false);
+      .select('id,fitbase_client_id,phone').eq('is_deleted', false).limit(10000);
     const byFitId = new Map<string, string>();
     const existingPhones = new Set<string>();
     for (const c of existing || []) {
@@ -932,11 +934,13 @@ export function buildCrmRouter(): Router {
     if (!requireAuth(req, res)) return;
     try {
       let q = supabase.from('crm_clients')
-        .select('id,full_name,phone,birth_date,ad_source_id,profile_complete,status,fitbase_client_id,created_at,is_deleted')
-        .eq('is_deleted', false).order('full_name');
+        .select('id,full_name,phone,birth_date,ad_source_id,profile_complete,status,fitbase_client_id,created_at,is_deleted', { count: 'exact' })
+        .eq('branch_id', BRANCH_ID).eq('is_deleted', false).order('full_name');
       if (req.query.search) {
         const s = String(req.query.search);
-        q = (q as any).or(`full_name.ilike.%${s}%,phone.ilike.%${s}%`);
+        const digits = s.replace(/\D/g, '');
+        const phoneFilter = digits.length >= 7 ? `phone.ilike.%${digits.slice(-10)}%` : `phone.ilike.%${s}%`;
+        q = (q as any).or(`full_name.ilike.%${s}%,${phoneFilter}`);
       }
       if (req.query.ad_source_id)     q = q.eq('ad_source_id', req.query.ad_source_id as string);
       if (req.query.profile_complete === 'true')  q = q.eq('profile_complete', true);
@@ -945,9 +949,9 @@ export function buildCrmRouter(): Router {
       const limit  = Math.min(Number(req.query.limit ?? 100), 200);
       const offset = Number(req.query.offset ?? 0);
       q = q.range(offset, offset + limit - 1);
-      const { data, error } = await q;
+      const { data, count, error } = await q;
       if (error) { res.status(500).json({ error: error.message }); return; }
-      res.json(data);
+      res.json({ items: data, total: count ?? 0 });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -1104,7 +1108,7 @@ export function buildCrmRouter(): Router {
     if (!requireAdmin(req, res)) return;
     try {
       const [{ data: clients }, { data: adSrcs }] = await Promise.all([
-        supabase.from('crm_clients').select('id,full_name,phone,birth_date,iin,id_issued_by,id_valid_until,ad_source_id,referrer_client_id').eq('is_deleted', false),
+        supabase.from('crm_clients').select('id,full_name,phone,birth_date,iin,id_issued_by,id_valid_until,ad_source_id,referrer_client_id').eq('is_deleted', false).limit(10000),
         supabase.from('crm_ad_sources').select('id,requires_referrer'),
       ]);
       const srcMap = new Map((adSrcs || []).map((s: Record<string,unknown>) => [s.id, s.requires_referrer]));
@@ -1187,7 +1191,8 @@ export function buildCrmRouter(): Router {
       if (shift.status !== 'open') { res.status(409).json({ error: 'Смена уже закрыта' }); return; }
 
       // Get expected cash from RPC
-      const { data: expected } = await supabase.rpc('crm_shift_expected_cash', { shift_id: req.params.id });
+      const { data: expected, error: expErr } = await supabase.rpc('crm_shift_expected_cash', { p_shift: req.params.id });
+      if (expErr) { res.status(500).json({ error: 'Не удалось рассчитать ожидаемые наличные' }); return; }
       const expected_cash = n0(expected);
 
       const b = req.body as Record<string, unknown>;
@@ -1209,7 +1214,7 @@ export function buildCrmRouter(): Router {
   r.get('/kviz/api/crm/shifts/:id/expected-cash', async (req, res) => {
     if (!requireAuth(req, res)) return;
     try {
-      const { data, error } = await supabase.rpc('crm_shift_expected_cash', { shift_id: req.params.id });
+      const { data, error } = await supabase.rpc('crm_shift_expected_cash', { p_shift: req.params.id });
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json({ expected_cash: n0(data) });
     } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -1232,8 +1237,8 @@ export function buildCrmRouter(): Router {
     const session = getSession(req)!;
     try {
       const b = req.body as Record<string, unknown>;
-      if (!b.direction || !['in', 'out'].includes(String(b.direction))) {
-        res.status(400).json({ error: 'direction должен быть "in" или "out"' }); return;
+      if (!b.type || !['in', 'out'].includes(String(b.type))) {
+        res.status(400).json({ error: '"type" должен быть "in" или "out"' }); return;
       }
       if (!b.amount || n0(b.amount) <= 0) { res.status(400).json({ error: 'Укажите сумму' }); return; }
       if (!b.comment || !String(b.comment).trim()) { res.status(400).json({ error: 'Комментарий обязателен' }); return; }
@@ -1242,8 +1247,8 @@ export function buildCrmRouter(): Router {
       if (!shift || shift.status !== 'open') { res.status(409).json({ error: 'Смена не открыта' }); return; }
 
       const { data, error } = await supabase.from('crm_cash_movements').insert({
-        shift_id: req.params.id, branch_id: BRANCH_ID,
-        direction: b.direction, amount: n0(b.amount),
+        shift_id: req.params.id,
+        type: b.type, amount: n0(b.amount),
         comment: String(b.comment).trim(), created_by: session.display_name,
       }).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -1257,7 +1262,7 @@ export function buildCrmRouter(): Router {
     if (!requireAuth(req, res)) return;
     try {
       let q = supabase.from('crm_sales')
-        .select('id,number,client_id,cashier,manager,total_amount,discount_kind,status,created_at,crm_sale_payments(method_id,amount)')
+        .select('id,number,client_id,cashier,manager,total,discount_kind,status,created_at,crm_sale_payments(payment_method_id,amount)')
         .eq('shift_id', req.params.id).order('created_at', { ascending: false });
       if (req.query.date_from) q = q.gte('created_at', req.query.date_from as string);
       if (req.query.date_to)   q = q.lte('created_at', req.query.date_to as string);
@@ -1272,7 +1277,7 @@ export function buildCrmRouter(): Router {
     try {
       const session = getSession(req)!;
       let q = supabase.from('crm_sales')
-        .select('id,number,client_id,cashier,manager,total_amount,status,created_at,crm_sale_payments(method_id,amount)')
+        .select('id,number,client_id,cashier,manager,total,status,created_at,crm_sale_payments(payment_method_id,amount)')
         .eq('branch_id', BRANCH_ID).order('created_at', { ascending: false }).limit(200);
       if (req.query.client_id) q = q.eq('client_id', req.query.client_id as string);
       // Non-admins only see their own shift (current open shift)
@@ -1300,13 +1305,34 @@ export function buildCrmRouter(): Router {
     if (!requireAuth(req, res)) return;
     const session = getSession(req)!;
     try {
-      const payload = { ...(req.body as Record<string, unknown>) };
-      payload.cashier = session.display_name; // always override
-      // Admin-only: discount kind 'admin'
-      if (payload.discount_kind === 'admin' && session.role !== 'admin') {
+      const b = req.body as Record<string, unknown>;
+      if (b.discount_kind === 'admin' && session.role !== 'admin') {
         res.status(403).json({ error: 'Скидка администратора — только для администратора' }); return;
       }
-      const { data, error } = await supabase.rpc('crm_checkout', { params: payload });
+
+      const rawItems = Array.isArray(b.items) ? b.items as Record<string, unknown>[] : [];
+      const planIds    = rawItems.filter(it => it.item_type === 'plan').map(it => String(it.plan_id)).filter(Boolean);
+      const productIds = rawItems.filter(it => it.item_type === 'product').map(it => String(it.product_id)).filter(Boolean);
+
+      const [planRes, stockRes] = await Promise.all([
+        planIds.length ? supabase.from('crm_plans').select('id,price').in('id', planIds) : { data: [] as any[] },
+        productIds.length ? supabase.from('crm_product_stock').select('product_id,retail_price').in('product_id', productIds) : { data: [] as any[] },
+      ]);
+      const planPriceMap    = new Map((planRes.data || []).map((p: any) => [String(p.id), n0(p.price)]));
+      const productPriceMap = new Map((stockRes.data || []).map((p: any) => [String(p.product_id), n0(p.retail_price)]));
+
+      const items = rawItems.map(it => {
+        if (it.item_type === 'plan' && it.plan_id)       return { ...it, price: planPriceMap.get(String(it.plan_id)) ?? n0(it.price) };
+        if (it.item_type === 'product' && it.product_id) return { ...it, price: productPriceMap.get(String(it.product_id)) ?? n0(it.price) };
+        return it;
+      });
+
+      const rawPays = Array.isArray(b.payments) ? b.payments as Record<string, unknown>[] : [];
+      const payments = rawPays.map(p => ({ payment_method_id: p.method_id ?? p.payment_method_id, amount: p.amount }));
+
+      const payload: Record<string, unknown> = { ...b, items, payments, cashier: session.display_name };
+
+      const { data, error } = await supabase.rpc('crm_checkout', { p: payload });
       if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
       await writeAudit('sale', String(data), 'checkout', session.display_name);
       res.json({ sale_id: data });
@@ -1319,8 +1345,12 @@ export function buildCrmRouter(): Router {
     if (!requireAdmin(req, res)) return;
     const session = getSession(req)!;
     try {
-      const payload = { ...(req.body as Record<string, unknown>), created_by: session.display_name };
-      const { data, error } = await supabase.rpc('crm_refund', { params: payload });
+      const b = req.body as Record<string, unknown>;
+      const { data: openShift } = await supabase.from('crm_cash_shifts')
+        .select('id').eq('branch_id', BRANCH_ID).eq('status', 'open').maybeSingle();
+      if (!openShift) { res.status(409).json({ error: 'Нет открытой смены' }); return; }
+      const payload = { ...b, shift_id: openShift.id, created_by: session.display_name };
+      const { data, error } = await supabase.rpc('crm_refund', { p: payload });
       if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
       await writeAudit('refund', String(data), 'refund', session.display_name);
       res.json({ refund_id: data });
@@ -1345,8 +1375,8 @@ export function buildCrmRouter(): Router {
       // Trigger lifecycle update for this client's plans
       const today = todayUtc5();
       const { data: cps } = await supabase.from('crm_client_plans')
-        .select('id,plan_id,status,planned_start_date,auto_activate_on,valid_until,extra_until,activated_at,purchase_date,freeze_used,crm_client_plan_items(*)')
-        .eq('client_id', req.params.id).order('purchase_date', { ascending: false });
+        .select('id,plan_id,status,planned_start_date,auto_activate_on,valid_until,extra_until,activated_at,purchased_at,freeze_days_used,crm_client_plan_items(*)')
+        .eq('client_id', req.params.id).order('purchased_at', { ascending: false });
 
       for (const cp of cps || []) {
         if (cp.status === 'not_activated') {
@@ -1409,9 +1439,10 @@ export function buildCrmRouter(): Router {
       }
       if (!b.amount || n0(b.amount) <= 0) { res.status(400).json({ error: 'Укажите сумму' }); return; }
       if (!b.reason || !String(b.reason).trim()) { res.status(400).json({ error: 'Причина обязательна' }); return; }
+      const signedAmt = b.direction === 'out' ? -n0(b.amount) : n0(b.amount);
       const { data, error } = await supabase.from('crm_balance_ops').insert({
-        client_id: req.params.id, wallet: b.wallet, direction: b.direction,
-        amount: n0(b.amount), reason: String(b.reason).trim(),
+        client_id: req.params.id, wallet: b.wallet,
+        amount: signedAmt, reason: String(b.reason).trim(),
         created_by: session.display_name,
       }).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }

@@ -1,6 +1,6 @@
 import { supabase } from '../db/supabase';
 import { paginateGet } from '../http/fitbase';
-import { TRIAL_TRAINING_ID } from '../config';
+import { TRIAL_TRAINING_ID, TRIAL_SERVICE_NAME } from '../config';
 
 const YEK_MS = 5 * 3600_000;
 
@@ -93,7 +93,7 @@ async function syncVisits(): Promise<number> {
       client_fitbase_id: client?.id != null ? Number(client.id) : null,
       client_name: (client?.full_name ?? null) as string | null,
       client_phone: normalizePhone(client?.phone as string | null),
-      is_trial: training?.id === TRIAL_TRAINING_ID,
+      is_trial: training?.id === TRIAL_TRAINING_ID || training?.name === TRIAL_SERVICE_NAME,
       booked_at: bookedTs ? new Date(bookedTs).toISOString() : null,
       visit_at,
       visit_date: dateStr,

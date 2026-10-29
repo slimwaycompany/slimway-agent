@@ -21,13 +21,13 @@ interface RefClient { id: string; full_name: string; phone: string | null }
 
 interface ClientBalance { deposit: number; bonus: number }
 interface ClientPlan {
-  id: string; plan_id: string; status: string; purchase_date: string;
+  id: string; plan_id: string; status: string; purchased_at: string;
   activated_at: string | null; valid_until: string | null;
   plan: { id: string; name: string; kind: string } | null;
-  crm_client_plan_items: { device_type_code: string; sessions: number }[];
+  crm_client_plan_items: { device_type_code: string; sessions_total: number; sessions_left: number; phase: string }[];
 }
 interface SaleRow {
-  id: string; number: number; total_amount: number; status: string; created_at: string;
+  id: string; number: number; total: number; status: string; created_at: string;
   cashier: string; discount_kind: string;
 }
 
@@ -108,7 +108,8 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
     if (q.length < 2) { setReferrerResults([]); return; }
     const r = await fetch(`/kviz/api/crm/clients?search=${encodeURIComponent(q)}&limit=10`, { credentials: 'include' });
     const d = await r.json();
-    setReferrerResults(Array.isArray(d) ? d.filter((c: ClientRow) => c.id !== client?.id) : []);
+    const list = Array.isArray(d) ? d : (d?.items ?? []);
+    setReferrerResults(list.filter((c: ClientRow) => c.id !== client?.id));
   }
 
   function onIinChange(v: string) {
@@ -411,7 +412,7 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
                     {cp.crm_client_plan_items.map((it, i) => (
                       <span key={i} style={{ fontSize: 11, background: '#f1f5f9', padding: '1px 7px', borderRadius: 4 }}>
-                        {it.device_type_code}: {it.sessions} сеансов
+                        {it.device_type_code}: {it.sessions_left}/{it.sessions_total} сеансов
                       </span>
                     ))}
                   </div>
@@ -429,7 +430,7 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
           {(sales ?? []).map(sale => (
             <div key={sale.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>#{sale.number} · {sale.total_amount.toLocaleString('ru-RU')} ₸</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>#{sale.number} · {sale.total.toLocaleString('ru-RU')} ₸</span>
                 {sale.status !== 'completed' && <span style={{ fontSize: 11, color: '#ef4444', background: '#fef2f2', padding: '1px 6px', borderRadius: 4 }}>{sale.status}</span>}
               </div>
               <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
@@ -527,6 +528,8 @@ function FitbaseImport({ onDone }: { onDone: () => void }) {
 
 export default function ClientsPage() {
   const [clients, setClients]   = useState<ClientRow[]>([]);
+  const [total, setTotal]       = useState(0);
+  const [offset, setOffset]     = useState(0);
   const [adSources, setAdSources] = useState<AdSource[]>([]);
   const [search, setSearch]     = useState('');
   const [filterSource, setFilterSource] = useState('');
@@ -545,15 +548,33 @@ export default function ClientsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ limit: '100' });
+    setOffset(0);
+    const params = new URLSearchParams({ limit: '100', offset: '0' });
     if (search) params.set('search', search);
     if (filterSource) params.set('ad_source_id', filterSource);
     if (filterComplete) params.set('profile_complete', filterComplete);
     const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
     const d = await r.json();
-    setClients(Array.isArray(d) ? d : []);
+    const items: ClientRow[] = d?.items ?? (Array.isArray(d) ? d : []);
+    setClients(items);
+    setTotal(d?.total ?? items.length);
+    setOffset(items.length);
     setLoading(false);
   }, [search, filterSource, filterComplete]);
+
+  async function loadMore() {
+    setLoading(true);
+    const params = new URLSearchParams({ limit: '100', offset: String(offset) });
+    if (search) params.set('search', search);
+    if (filterSource) params.set('ad_source_id', filterSource);
+    if (filterComplete) params.set('profile_complete', filterComplete);
+    const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
+    const d = await r.json();
+    const items: ClientRow[] = d?.items ?? (Array.isArray(d) ? d : []);
+    setClients(prev => [...prev, ...items]);
+    setOffset(prev => prev + items.length);
+    setLoading(false);
+  }
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -639,8 +660,15 @@ export default function ClientsPage() {
             </div>
           ))}
         </div>
+        {clients.length < total && !loading && (
+          <div style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9' }}>
+            <button style={{ ...SL.outlineBtn, width: '100%', fontSize: 12 }} onClick={loadMore}>
+              Показать ещё ({total - clients.length})
+            </button>
+          </div>
+        )}
         <div style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9', fontSize: 12, color: '#94a3b8' }}>
-          {clients.length} клиентов
+          {clients.length} из {total} клиентов
         </div>
       </div>
 

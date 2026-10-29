@@ -7,14 +7,14 @@ interface Shift {
   opening_cash: number; status: string; shift_date: string;
 }
 interface Movement {
-  id: string; direction: 'in' | 'out'; amount: number;
+  id: string; type: 'in' | 'out'; amount: number;
   comment: string; created_by: string; created_at: string;
 }
 interface SaleRow {
   id: string; number: number; cashier: string; manager: string | null;
-  total_amount: number; discount_kind: string; status: string; created_at: string;
+  total: number; discount_kind: string; status: string; created_at: string;
   client_id: string | null;
-  crm_sale_payments: { method_id: string; amount: number }[];
+  crm_sale_payments: { payment_method_id: string; amount: number }[];
 }
 interface SaleFull extends SaleRow {
   crm_sale_items: { id: string; item_type: string; price: number; qty: number; plan_id: string | null; product_id: string | null; amount: number }[];
@@ -71,7 +71,7 @@ function MovementModal({ shiftId, onDone, onClose }: { shiftId: string; onDone: 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setErr(''); setSaving(true);
     const { ok, data } = await api('POST', `/kviz/api/crm/shifts/${shiftId}/movements`, {
-      direction: dir, amount: Number(amount), comment,
+      type: dir, amount: Number(amount), comment,
     });
     setSaving(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
@@ -269,7 +269,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
   const doClientSearch = useCallback((q: string) => {
     if (q.length < 2) { setClientResults([]); return; }
     fetch(`/kviz/api/crm/clients?search=${encodeURIComponent(q)}&limit=8`, { credentials: 'include' })
-      .then(r => r.json()).then(d => { if (Array.isArray(d)) setClientResults(d); }).catch(() => {});
+      .then(r => r.json()).then(d => { if (d?.items) setClientResults(d.items); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -523,20 +523,11 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
                     <button style={S.qtyBtn} onClick={() => setProductQty(item.key, item.qty - 1)}>−</button>
                     <span style={{ fontSize: 13, minWidth: 20, textAlign: 'center' }}>{item.qty}</span>
                     <button style={S.qtyBtn} onClick={() => setProductQty(item.key, item.qty + 1)}>+</button>
-                    <span style={{ fontSize: 13, color: '#64748b', marginLeft: 4 }}>× </span>
-                    {role === 'admin'
-                      ? <input style={{ ...S.inp, width: 80, padding: '3px 6px', fontSize: 12 }} type="number" min="0" value={item.price}
-                          onChange={e => setItemPrice(item.key, Number(e.target.value))} />
-                      : <span style={{ fontSize: 13 }}>{fmtMoney(item.price)}</span>
-                    }
+                    <span style={{ fontSize: 13, color: '#64748b', marginLeft: 4 }}>× {fmtMoney(item.price)}</span>
                   </div>
                 )}
                 {item.type === 'plan' && (
                   <div style={{ marginTop: 4 }}>
-                    {role === 'admin' && (
-                      <input style={{ ...S.inp, width: 100, padding: '3px 6px', fontSize: 12, marginBottom: 4 }} type="number" min="0" value={item.price}
-                        onChange={e => setItemPrice(item.key, Number(e.target.value))} />
-                    )}
                     <div style={{ display: 'flex', gap: 6, fontSize: 12 }}>
                       <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
                         <input type="radio" checked={item.startMode === 'first_visit'} onChange={() => setStartMode(item.key, 'first_visit')} />
@@ -683,8 +674,8 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
           {movements.map(m => (
             <div key={m.id} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: m.direction === 'in' ? '#16a34a' : '#ef4444', fontWeight: 600 }}>
-                  {m.direction === 'in' ? '+' : '−'}{fmtMoney(m.amount)}
+                <span style={{ color: m.type === 'in' ? '#16a34a' : '#ef4444', fontWeight: 600 }}>
+                  {m.type === 'in' ? '+' : '−'}{fmtMoney(m.amount)}
                 </span>
                 <span style={{ color: '#94a3b8' }}>{fmtDT(m.created_at)}</span>
               </div>
@@ -702,7 +693,7 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
           <div key={sale.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: '10px 14px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14 }}>
-                #{sale.number} · {fmtMoney(sale.total_amount)}
+                #{sale.number} · {fmtMoney(sale.total)}
                 {sale.status !== 'completed' && <span style={{ marginLeft: 6, fontSize: 11, background: '#fef2f2', color: '#ef4444', padding: '1px 5px', borderRadius: 4 }}>{sale.status}</span>}
               </div>
               <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
