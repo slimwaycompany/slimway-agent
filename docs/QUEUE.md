@@ -51,7 +51,7 @@
 | 19 | crm-kassa | checkout/refund payload: явная сборка, правильные ключи RPC, ответ {sale_id,number,total} | ТЗ в чате | ✅ готово (1b45146) |
 | 20 | reports, agent | syncVisits fix (RangeError time, client_id, resource, manager); TRIAL_SERVICE_NAMES; fact-day trial_sold, статусы визитов | ТЗ в чате | ✅ готово (74f4a78) |
 | 21 | reports | clientLeadMap; фильтр источника+менеджера на всех 5 шагах; by_source 6 кол.; by_manager 8 кол. с дриллом | ТЗ в чате | ✅ готово (текущий) |
-| 22 | scriptolog | Лояльное дерево, блок 8, KZ-тексты, RU/KZ, ↩К развилке, чтение переписки | `docs/tasks/22-scriptolog-loyal-kk.md` | 🔧 в работе (Claude, 29.10.2026) |
+| 22 | scriptolog | Лояльное дерево, блок 8, KZ-тексты, RU/KZ, ↩К развилке, чтение переписки | `docs/tasks/22-scriptolog-loyal-kk.md` | ✅ готово |
 
 ## Сделано недавно (для контекста)
 
@@ -111,3 +111,4 @@
 | 29.10.2026 | Claude | 20 reports/agent: syncVisits — RangeError fix (time_start slice 0..5), client_fitbase_id=v.client_id, resource/manager/abonement из event, batch cache lookup; TRIAL_SERVICE_NAMES+isTrialServiceName(); VISIT_STATUS_* константы; fact-day: trial_sold_count, notCancelled(), time+resource в items; day-rhythm/funnel: notCancelled() | текущий | После деплоя: запустить синк, проверить visit_date + is_trial по SQL из ч.3 |
 | 28.10.2026 | Claude | 16 crm-kassa fix: async fitbase-import (прогресс-бар, poll 2 сек, batch 100), phone 7XXXXXXXXXX, shift_date подтверждён | 62b3db3 | Нужно на проде: 1) проверить открытие смены; 2) запустить импорт; 3) SQL phone migration если есть старые +7 записи; 4) выполнить information_schema SQL (см. отчёт) |
 | 29.10.2026 | Claude | 21 reports: clientLeadMap; фильтр source+manager на шагах 3,4,5 через карточку клиента; by_source 6 колонок; by_manager 8 колонок с дриллом; chipActive border fix; всегда-видимый dropdown менеджера; day-rhythm: аналогичные таблицы | текущий | Проверка на проде — на стороне Сергея. Нет SQL. |
+| 29.10.2026 | Claude | 22 scriptolog: дерево (66 узлов, 2.8/3.11/блок 8), KZ-тексты (55 узлов), check-tree +5 проверок, RU/KZ переключатель, hub «↩ К развилке», чтение переписки (MutationObserver), диагностика (admin), автостарт, KZ-детект, sent detection | текущий | SQL не нужен. Селекторы сообщений EasyChat нужно проверить на живом интерфейсе. |

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Проверяет scripts/sales-tree.json: ID, тексты, переходы, считает по блокам.
+// Проверяет scripts/sales-tree.json: ID, тексты, переходы, KZ, хабы.
 const fs   = require('fs');
 const path = require('path');
 
@@ -15,6 +15,14 @@ let errors    = 0;
 
 function fail(msg) { console.error('  ✗', msg); errors++; }
 function ok(msg)   { console.log ('  ✓', msg); }
+
+// Бренды, которые допустимы в KZ-тексте латиницей
+const BRAND_RE = /\b(InBody|VacuActiv|InfraShape|InfraStep|RollShape|SlimWay|WhatsApp|Fitbase|EasyChat|Kaspi|Qazyna)\b/gi;
+
+function extractVars(text) {
+  const m = text.match(/\{[^}]+\}/g);
+  return m ? new Set(m) : new Set();
+}
 
 // ── 1. Все ID из markdown присутствуют в JSON ──────────────────────────────
 console.log('\n[1] ID из markdown → JSON');
@@ -56,13 +64,17 @@ for (const id of nodeIds) {
 }
 ok('все chat-узлы имеют текст или варианты');
 
-// ── 5. Все answers[].next указывают на существующие ID или null ────────────
+// ── 5. Все переходы ведут на существующие ID или null ─────────────────────
 console.log('\n[5] Корректность переходов');
 for (const id of nodeIds) {
-  for (const ans of (nodes[id].answers || [])) {
+  const n = nodes[id];
+  for (const ans of (n.answers || [])) {
     if (ans.next !== null && !nodes[ans.next]) {
       fail(`${id}: ответ «${ans.label}» ведёт в несуществующий ${ans.next}`);
     }
+  }
+  if (n.next !== undefined && n.next !== null && !nodes[n.next]) {
+    fail(`${id}: next ведёт в несуществующий ${n.next}`);
   }
 }
 ok('все переходы корректны');
@@ -81,6 +93,70 @@ for (const b of Object.keys(byBlock).sort((a,b) => +a - +b)) {
   console.log(`  Блок ${b}: ${cnt} узл${cnt===1?'':cnt<5?'а':'ов'}`);
 }
 console.log(`  Итого: ${total}`);
+
+// ── 7. KZ-текст у каждого неpending chat/bot-узла ────────────────────────
+console.log('\n[7] Наличие KZ-текста');
+for (const id of nodeIds) {
+  const n = nodes[id];
+  if (n.pending) continue;
+  if (n.kind !== 'chat' && n.kind !== 'bot') continue;
+  if (Array.isArray(n.variants) && n.variants.length > 0) {
+    for (const v of n.variants) {
+      if (!v.text_kk || !v.text_kk.trim()) fail(`${id} вариант «${v.label}»: нет text_kk`);
+    }
+  } else {
+    if (!n.text_kk || !n.text_kk.trim()) fail(`${id}: нет text_kk`);
+  }
+}
+ok('KZ-тексты проверены');
+
+// ── 8. Совпадение переменных в RU и KZ ───────────────────────────────────
+console.log('\n[8] Совпадение переменных {…} в RU и KZ');
+for (const id of nodeIds) {
+  const n = nodes[id];
+  if (n.pending) continue;
+  if (n.kind !== 'chat' && n.kind !== 'bot') continue;
+  const pairs = [];
+  if (Array.isArray(n.variants) && n.variants.length > 0) {
+    for (const v of n.variants) {
+      if (v.text && v.text_kk) pairs.push([v.text, v.text_kk, `вариант «${v.label}»`]);
+    }
+  } else if (n.text && n.text_kk) {
+    pairs.push([n.text, n.text_kk, 'text']);
+  }
+  for (const [ru, kk, label] of pairs) {
+    const ruVars = extractVars(ru);
+    const kkVars = extractVars(kk);
+    for (const v of ruVars) if (!kkVars.has(v)) fail(`${id} ${label}: переменная ${v} есть в RU, нет в KZ`);
+    for (const v of kkVars) if (!ruVars.has(v)) fail(`${id} ${label}: переменная ${v} есть в KZ, нет в RU`);
+  }
+}
+ok('переменные в RU/KZ совпадают');
+
+// ── 9. Нет Latin/Russian замен Казахских букв в KZ-текстах ───────────────
+console.log('\n[9] Отсутствие латиницы вне брендов в KZ-текстах');
+for (const id of nodeIds) {
+  const n = nodes[id];
+  if (n.pending) continue;
+  const kkTexts = [];
+  if (Array.isArray(n.variants)) n.variants.forEach(v => v.text_kk && kkTexts.push([v.text_kk, `вариант «${v.label}»`]));
+  if (n.text_kk) kkTexts.push([n.text_kk, 'text']);
+  for (const [kk, label] of kkTexts) {
+    const stripped = kk
+      .replace(BRAND_RE, '')
+      .replace(/\{[^}]+\}/g, '');  // убираем {Переменные}
+    if (/[a-zA-Z]/.test(stripped)) {
+      fail(`${id} ${label}: латиница вне брендов — «${stripped.match(/[a-zA-Z]+/)[0]}»`);
+    }
+  }
+}
+ok('латиница в KZ-текстах только в именах брендов');
+
+// ── 10. Ровно 3 узла с hub: true ─────────────────────────────────────────
+console.log('\n[10] Хаб-узлы (hub: true)');
+const hubs = nodeIds.filter(id => nodes[id].hub === true);
+if (hubs.length !== 3) fail(`ожидается 3 хаб-узла, найдено ${hubs.length}: ${hubs.join(', ')}`);
+else ok(`хаб-узлы: ${hubs.join(', ')}`);
 
 // ── Итог ───────────────────────────────────────────────────────────────────
 console.log('');

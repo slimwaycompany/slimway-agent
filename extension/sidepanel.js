@@ -46,6 +46,11 @@ chrome.storage.onChanged.addListener((changes) => {
   if (changes.authToken) {
     postToPage({ type: 'auth', token: changes.authToken.newValue });
   }
+  if (changes.chatMessages) {
+    const oldLen = (changes.chatMessages.oldValue || []).length;
+    const newMsgs = (changes.chatMessages.newValue || []).slice(oldLen);
+    newMsgs.forEach(m => postToPage({ type: 'chat-message', direction: m.dir, text: m.text }));
+  }
 });
 
 function postToPage(msg) {

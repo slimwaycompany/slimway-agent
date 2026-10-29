@@ -1,11 +1,14 @@
 // Контент-скрипт для chat.easychat.ru (all_frames: true)
 // Читает имя/телефон/канал клиентки, слушает команды вставки текста.
+// Читает сообщения из DOM; текст НЕ сохраняется в базу — только отправляется в панель.
 
 (function () {
   'use strict';
 
-  let lastClient = null; // {name, phone, channel}
+  let lastClient   = null; // {name, phone, channel}
   let debounceTimer = null;
+  let msgObserver  = null;
+  let knownMsgIds  = new Set(); // предотвращает дублирование при перерисовке
 
   // ── Чтение данных клиентки ─────────────────────────────────────────────────
 
@@ -52,11 +55,45 @@
     textarea.focus();
   }
 
+  // ── Чтение сообщений из DOM ────────────────────────────────────────────────
+
+  function watchMessages() {
+    const list = document.querySelector(SEL.msgList);
+    if (!list) return; // контейнер ещё не появился — main observer повторит
+    if (msgObserver) return; // уже следим
+
+    // Сначала отмечаем все уже существующие сообщения как «известные»
+    list.querySelectorAll(SEL.msgItem).forEach(el => knownMsgIds.add(getElId(el)));
+
+    msgObserver = new MutationObserver(() => {
+      list.querySelectorAll(SEL.msgItem).forEach(el => {
+        const id = getElId(el);
+        if (knownMsgIds.has(id)) return;
+        knownMsgIds.add(id);
+        const textEl = el.querySelector(SEL.msgText);
+        const text = textEl ? textEl.textContent.trim() : '';
+        if (!text) return;
+        const isOwn = !!el.querySelector(SEL.msgOwn) || el.matches(SEL.msgOwn);
+        chrome.runtime.sendMessage({
+          type: 'chat-message',
+          direction: isOwn ? 'out' : 'in',
+          text,
+        });
+      });
+    });
+    msgObserver.observe(list, {childList: true, subtree: true});
+  }
+
+  function getElId(el) {
+    // Уникальный идентификатор DOM-элемента (порядковый номер в родителе)
+    return el.dataset.id || Array.from(el.parentNode?.children || []).indexOf(el) + '_' + (el.textContent || '').slice(0, 20);
+  }
+
   // ── Обнаружение смены диалога ──────────────────────────────────────────────
 
   function onMutation() {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(checkClientChange, 300);
+    debounceTimer = setTimeout(() => { checkClientChange(); watchMessages(); }, 300);
   }
 
   function checkClientChange() {
@@ -68,7 +105,11 @@
       client.channel === lastClient?.channel
     ) return;
     lastClient = client;
+    // Сброс наблюдателя сообщений при смене диалога
+    if (msgObserver) { msgObserver.disconnect(); msgObserver = null; }
+    knownMsgIds.clear();
     chrome.runtime.sendMessage({ type: 'client', ...client });
+    watchMessages();
   }
 
   // ── Проверка готовности поля ввода ─────────────────────────────────────────
@@ -90,6 +131,7 @@
   function init() {
     checkClientChange();
     checkChatReady();
+    watchMessages();
     const observer = new MutationObserver(onMutation);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
   }

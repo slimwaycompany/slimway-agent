@@ -227,6 +227,36 @@ input:focus{border-color:var(--brand)}
   border-radius:10px;padding:12px;margin-bottom:8px}
 .ref-block .rb-title{font-size:13px;font-weight:700;margin-bottom:6px;color:#1a202c}
 .ref-block .rb-text{font-size:13px;color:#475569;line-height:1.6;white-space:pre-wrap}
+
+/* ── RU/KZ switcher ──────────────────────────── */
+.lang-toggle{display:flex;gap:2px;margin-left:auto;flex-shrink:0}
+.lang-btn{padding:2px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;
+  font-weight:700;font-family:inherit;cursor:pointer;background:rgba(255,255,255,0.7);color:#64748b;transition:all .12s}
+.lang-btn.active{background:rgba(2,189,182,0.12);border-color:rgba(2,189,182,0.4);color:var(--brand)}
+
+/* ── KZ banner ───────────────────────────────── */
+.kz-banner{background:rgba(2,189,182,0.08);border:1px solid rgba(2,189,182,0.25);border-radius:10px;
+  padding:6px 10px;font-size:12px;color:#0f766e;margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.kz-orig{font-size:11px;color:#94a3b8;margin-top:5px;line-height:1.45;border-top:1px dashed rgba(148,163,184,0.3);padding-top:5px}
+
+/* ── Autostart banner ────────────────────────── */
+.autostart-banner{background:rgba(38,60,217,0.05);border:1px solid rgba(38,60,217,0.18);border-radius:10px;
+  padding:7px 12px;font-size:12px;color:#374151;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ── Hub dropdown ────────────────────────────── */
+.hub-menu-card{background:var(--glass);backdrop-filter:blur(14px);border:1px solid var(--border);
+  border-radius:10px;box-shadow:var(--shadow);padding:4px;margin-top:4px}
+.hub-menu-item{padding:7px 12px;cursor:pointer;font-size:13px;border-radius:7px;font-weight:500;
+  transition:background .1s}
+.hub-menu-item:hover{background:rgba(2,189,182,0.09)}
+
+/* ── Answer highlight ────────────────────────── */
+.ans-btn.highlighted{border-color:rgba(2,189,182,0.5);background:rgba(2,189,182,0.07)}
+
+/* ── Diagnostics ──────────────────────────────── */
+.diag-msg{padding:5px 8px;border-radius:6px;font-size:11px;margin-bottom:3px;display:flex;gap:8px;align-items:flex-start}
+.diag-in{background:rgba(255,255,255,0.7)}
+.diag-out{background:rgba(2,189,182,0.06);flex-direction:row-reverse}
 </style>
 </head>
 <body>
@@ -251,6 +281,10 @@ input:focus{border-color:var(--brand)}
   <div id="status-bar">
     <span id="status-dot"></span>
     <span id="status-text">Загрузка...</span>
+    <div class="lang-toggle" id="lang-toggle" style="display:none">
+      <button class="lang-btn active" id="btn-lang-ru" onclick="setLang('ru')">RU</button>
+      <button class="lang-btn" id="btn-lang-kk" onclick="setLang('kk')">KZ</button>
+    </div>
   </div>
 
   <div id="client-card" style="display:none">
@@ -276,10 +310,15 @@ input:focus{border-color:var(--brand)}
     <button class="tab-btn" data-tab="objections">Возражения</button>
     <button class="tab-btn" data-tab="reference">Справочник</button>
     <button class="tab-btn" data-tab="history">История</button>
+    <button class="tab-btn" id="tab-btn-diag" data-tab="diagnostics" style="display:none">Диагностика</button>
   </div>
 
   <!-- Tab: Script -->
   <div id="tab-script" class="tab-content active">
+    <div id="kz-banner" class="kz-banner" style="display:none">
+      🇰🇿 Клиентка, похоже, пишет по-казахски
+      <button class="small-btn brand" onclick="setLang('kk')" style="margin-left:auto;white-space:nowrap">Перейти на KZ</button>
+    </div>
     <div class="search-row">
       <input type="text" id="search-input" placeholder="Поиск по ID или тексту…">
       <button class="search-clear" id="search-clear" style="display:none">✕</button>
@@ -292,6 +331,10 @@ input:focus{border-color:var(--brand)}
     </div>
 
     <div id="start-screen" style="display:none">
+      <div id="autostart-banner" class="autostart-banner" style="display:none">
+        <span id="autostart-text">Входящее сообщение</span>
+        <button class="small-btn brand" id="autostart-btn" onclick="doAutoStart()" style="white-space:nowrap;margin-left:auto"></button>
+      </div>
       <p class="hint" style="margin-bottom:8px">С чего начнём?</p>
       <div class="entry-grid" id="entry-buttons"></div>
       <div style="margin-top:8px">
@@ -319,6 +362,13 @@ input:focus{border-color:var(--brand)}
         </div>
       </div>
       <div class="action-row" id="nc-actions"></div>
+      <div id="hub-menu" style="display:none">
+        <div class="hub-menu-card">
+          <div class="hub-menu-item" onclick="jumpToHub('1.1')">1.1 · Стандартный вход</div>
+          <div class="hub-menu-item" onclick="jumpToHub('3.1')">3.1 · Точка записи</div>
+          <div class="hub-menu-item" onclick="jumpToHub('6.1')">6.1 · После пробного</div>
+        </div>
+      </div>
       <div id="nc-fitbase" style="display:none">
         <div class="fb-title">Не забудь в Fitbase:</div>
         <div id="nc-fitbase-items"></div>
@@ -349,6 +399,13 @@ input:focus{border-color:var(--brand)}
   <!-- Tab: History -->
   <div id="tab-history" class="tab-content">
     <div id="history-list" class="info-msg">Нет истории</div>
+  </div>
+
+  <!-- Tab: Diagnostics (admin only) -->
+  <div id="tab-diagnostics" class="tab-content">
+    <p class="section-title">Диагностика чата</p>
+    <p class="hint" style="margin-bottom:8px">Последние сообщения из EasyChat · текст не сохраняется в базу</p>
+    <div id="diag-list" class="info-msg">Нет сообщений</div>
   </div>
 </div>
 
@@ -407,6 +464,10 @@ const S = {
   variant:    0,
   chatReady:  false,
   embedded:   window.parent !== window,
+  lang:       'ru',        // 'ru' | 'kk'
+  isAdmin:    false,
+  lastInsertedText: null,  // for auto-sent detection
+  chatMsgs:   [],          // last 20 chat messages (diagnostics only, not saved to DB)
 };
 
 // Night nodes (касания)
@@ -417,11 +478,19 @@ function isNight() {
 }
 
 // ── Boot ───────────────────────────────────────
+function decodeJWT(token) {
+  try { return JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); } catch { return {}; }
+}
+
 function boot() {
   bindUI();
   const saved = sessionStorage.getItem('sw_token');
-  if (saved) { S.token = saved; showApp(); loadTree(); }
-  else if (S.embedded) {
+  if (saved) {
+    S.token = saved;
+    S.isAdmin = decodeJWT(saved).role === 'admin';
+    showApp();
+    loadTree();
+  } else if (S.embedded) {
     window.parent.postMessage({type:'ready'}, '*');
     window.addEventListener('message', onParentMsg);
     setTimeout(() => { if (!S.token) showLogin(); }, 2500);
@@ -436,15 +505,21 @@ function onParentMsg(e) {
   if (!ok) return;
   const d = e.data;
   if (!d || typeof d !== 'object') return;
-  if (d.type === 'auth' && d.token)        { S.token = d.token; sessionStorage.setItem('sw_token', d.token); showApp(); loadTree(); }
+  if (d.type === 'auth' && d.token)        { S.token = d.token; S.isAdmin = decodeJWT(d.token).role === 'admin'; sessionStorage.setItem('sw_token', d.token); showApp(); loadTree(); }
   if (d.type === 'client')                  onClientData(d);
   if (d.type === 'manager' && d.name)       { S.manager = d.name; sessionStorage.setItem('sw_mgr', d.name); renderMgr(); }
   if (d.type === 'chat-status')             updateChatStatus(d.ready);
+  if (d.type === 'chat-message')            onChatMessage(d);
 }
 
 // ── Login ──────────────────────────────────────
 function showLogin() { document.getElementById('login-screen').classList.remove('hidden'); }
-function showApp()   { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); }
+function showApp()   {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('lang-toggle').style.display = '';
+  if (S.isAdmin) document.getElementById('tab-btn-diag').style.display = '';
+}
 
 function doLogin() {
   const login = document.getElementById('l-login').value.trim();
@@ -456,6 +531,7 @@ function doLogin() {
     .then(d => {
       S.token = d.token;
       S.manager = d.display_name || '';
+      S.isAdmin = decodeJWT(d.token).role === 'admin';
       sessionStorage.setItem('sw_token', d.token);
       sessionStorage.setItem('sw_mgr', S.manager);
       // Tell extension to store token
@@ -502,6 +578,8 @@ function onClientData(d) {
       S.history = [];
       S.nodeId  = r.client.current_node || null;
       S.phase   = 'card';
+      // Restore language preference for this client
+      if (S.vars.lang === 'kk') setLang('kk'); else setLang('ru');
       renderClientCard();
       renderHistory();
       if (S.nodeId) showNode(S.nodeId);
@@ -659,6 +737,14 @@ function showNode(nodeId) {
 }
 
 function getNodeText(node) {
+  if (node.variants && node.variants.length > 0 && S.variant < node.variants.length) {
+    const v = node.variants[S.variant];
+    return (S.lang === 'kk' && v.text_kk) ? v.text_kk : (v.text || '');
+  }
+  return (S.lang === 'kk' && node.text_kk) ? node.text_kk : (node.text || '');
+}
+
+function getNodeTextRU(node) {
   if (node.variants && node.variants.length > 0 && S.variant < node.variants.length)
     return node.variants[S.variant].text || '';
   return node.text || '';
@@ -721,6 +807,10 @@ function renderNodeText(node) {
     if (S.vars[v])   return `<span class="var-filled">${esc(S.vars[v])}</span>`;
     return `<span class="var-missing">{${esc(v)}}</span>`;
   });
+  if (S.lang === 'kk') {
+    const ruRaw = getNodeTextRU(node);
+    if (ruRaw && ruRaw !== raw) html += `<div class="kz-orig">${esc(ruRaw)}</div>`;
+  }
   el.innerHTML = html;
 
   // Var inputs
@@ -782,8 +872,10 @@ function renderActions(node) {
   if (S.history.length > 0) {
     html += `<button class="act-btn act-back" onclick="goBack()">← Назад</button>`;
   }
+  html += `<button class="act-btn act-back" onclick="toggleHubMenu()">↩ К развилке ▾</button>`;
   html += `<button class="act-btn act-jump" onclick="openSearch()">🔀</button>`;
   el.innerHTML = html;
+  document.getElementById('hub-menu').style.display = 'none'; // reset on each render
 }
 
 function renderFitbase(node) {
@@ -802,6 +894,7 @@ function doInsert() {
   const text = fillText(raw);
   if (hasMissingVars(raw)) return;
 
+  S.lastInsertedText = text;
   sendToExtension({type:'insert', text});
   logEvent({event_type:'insert', node_id:S.nodeId, text, manager:S.manager, vars:S.vars});
 }
@@ -833,7 +926,10 @@ function renderAnswerButtons(node) {
     return;
   }
   document.getElementById('nc-answer-buttons').innerHTML = node.answers.map((a, i) => {
-    let html = `<button class="ans-btn" onclick="selectAnswer(${i})">${esc(a.label)}`;
+    let html = `<button class="ans-btn" data-ans="${i}" onclick="selectAnswer(${i})">${esc(a.label)}`;
+    if (S.lang === 'kk' && a.reply_kk) {
+      html += `<span class="ans-note" style="color:var(--brand)">${esc(a.reply_kk.slice(0, 50))}${a.reply_kk.length>50?'…':''}</span>`;
+    }
     if (a.note) html += `<span class="ans-note">${esc(a.note)}</span>`;
     html += '</button>';
     return html;
@@ -878,18 +974,21 @@ function answerStatus(nextNode) {
 
 function proceedAfterAnswer(answer) {
   document.getElementById('nc-answers').style.display = 'none';
-  if (answer.reply) {
-    S.replyPending = {text: answer.reply, next: answer.next};
+  const reply = (S.lang === 'kk' && answer.reply_kk) ? answer.reply_kk : answer.reply;
+  if (reply) {
+    S.replyPending = {text: reply, next: answer.next};
     S.phase = 'showing_reply';
     const replyEl = document.getElementById('nc-reply');
     replyEl.style.display = '';
-    document.getElementById('nc-reply-text').innerHTML = esc(answer.reply).replace(/\n/g,'<br>');
+    document.getElementById('nc-reply-text').innerHTML = esc(reply).replace(/\n/g,'<br>');
     return;
   }
   if (answer.next) {
     navigateTo(answer.next);
   } else {
-    // End of branch
+    // Block 8 → open hub menu instead of start screen
+    const node = S.tree?.nodes[S.nodeId];
+    if (node?.block === 8) { toggleHubMenu(); return; }
     S.nodeId = null;
     showStartScreen();
   }
@@ -1131,6 +1230,131 @@ function logEvent(payload) {
   }).catch(() => {});
 }
 
+// ── RU/KZ language ─────────────────────────────
+function setLang(lang) {
+  S.lang = lang;
+  document.getElementById('btn-lang-ru').classList.toggle('active', lang === 'ru');
+  document.getElementById('btn-lang-kk').classList.toggle('active', lang === 'kk');
+  if (lang === 'kk') document.getElementById('kz-banner').style.display = 'none';
+  if (S.client) {
+    S.vars = {...S.vars, lang};
+    api('POST', '/api/scriptolog/event', {client_id: S.client.id, event_type: 'insert',
+      node_id: S.nodeId, vars: {lang}, manager: S.manager}).catch(() => {});
+  }
+  const node = S.tree?.nodes[S.nodeId];
+  if (node) showNode(S.nodeId);
+}
+
+// ── Hub menu ────────────────────────────────────
+let _hubOpen = false;
+function toggleHubMenu() {
+  _hubOpen = !_hubOpen;
+  document.getElementById('hub-menu').style.display = _hubOpen ? '' : 'none';
+}
+
+function jumpToHub(hubId) {
+  _hubOpen = false;
+  document.getElementById('hub-menu').style.display = 'none';
+  if (!S.client) return;
+  S.history = [];
+  logEvent({event_type: 'jump', node_id: hubId, manager: S.manager, via: 'hub'});
+  showNode(hubId);
+}
+
+// ── Chat message reading ─────────────────────────
+function onChatMessage(d) {
+  const text = String(d.text || '').trim();
+  if (!text) return;
+  // Store for admin diagnostics — NOT sent to server
+  S.chatMsgs.unshift({dir: d.direction, text, ts: Date.now()});
+  if (S.chatMsgs.length > 20) S.chatMsgs.pop();
+  if (S.isAdmin) renderDiagnostics();
+
+  if (d.direction === 'in') {
+    // KZ detection: Kazakh-specific Cyrillic letters
+    if (/[әғқңөұүһі]/i.test(text) && S.lang !== 'kk')
+      document.getElementById('kz-banner').style.display = '';
+    // Auto-start suggestion on first incoming message
+    if (!S.nodeId && S.client)
+      showAutoStartBanner(text);
+    // Highlight matching answer button by keywords
+    highlightAnswerMatch(text);
+  }
+
+  // Sent detection: match outgoing to lastInsertedText
+  if (d.direction === 'out' && S.lastInsertedText && S.phase !== 'awaiting_answer') {
+    const key = S.lastInsertedText.slice(0, 30).toLowerCase();
+    if (text.toLowerCase().includes(key)) {
+      S.lastInsertedText = null;
+      const node = S.tree?.nodes[S.nodeId];
+      if (node) doDalye();
+    }
+  }
+}
+
+function showAutoStartBanner(firstText) {
+  const nodeId = detectAutoStartNode(firstText) || '1.1';
+  const banner = document.getElementById('autostart-banner');
+  document.getElementById('autostart-text').textContent = '✉ Входящее сообщение';
+  const btn = document.getElementById('autostart-btn');
+  btn.textContent = 'Начать с ' + nodeId + '?';
+  btn.dataset.nodeId = nodeId;
+  banner.style.display = '';
+}
+
+function detectAutoStartNode(text) {
+  const lc = text.toLowerCase();
+  if (lc.includes('цена') || lc.includes('стоимость') || lc.includes('сколько')) return '1.3';
+  if (lc.includes('рекоменд') || lc.includes('посоветовала') || lc.includes('подруга')) return '1.4';
+  if (lc.includes('+') || lc.includes('инфо') || lc.includes('подробн')) return '1.2';
+  return '1.1';
+}
+
+function doAutoStart() {
+  const btn = document.getElementById('autostart-btn');
+  const nodeId = btn.dataset.nodeId || '1.1';
+  document.getElementById('autostart-banner').style.display = 'none';
+  selectEntry(nodeId);
+}
+
+function highlightAnswerMatch(incomingText) {
+  const btns = document.querySelectorAll('#nc-answer-buttons .ans-btn');
+  if (!btns.length) return;
+  const lc = incomingText.toLowerCase();
+  const KW = {
+    'цел': ['цель'],
+    'цен': ['цена', 'стоимость'],
+    'запи': ['время', 'записа'],
+    'некогда': ['время', 'занята'],
+    'подума': ['подума', 'думает'],
+    'не буд': ['не будет', 'не готова'],
+    'хорош': ['нет возражений', 'готова'],
+  };
+  btns.forEach(btn => {
+    const bLc = btn.textContent.toLowerCase();
+    let hit = false;
+    for (const [kw, targets] of Object.entries(KW)) {
+      if (lc.includes(kw) && targets.some(t => bLc.includes(t))) { hit = true; break; }
+    }
+    btn.classList.toggle('highlighted', hit);
+  });
+}
+
+function renderDiagnostics() {
+  const el = document.getElementById('diag-list');
+  if (!el) return;
+  if (!S.chatMsgs.length) { el.innerHTML = '<p class="info-msg">Нет сообщений</p>'; return; }
+  el.innerHTML = S.chatMsgs.map(m => {
+    const t = new Date(m.ts).toLocaleTimeString('ru', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const cls = m.dir === 'out' ? 'diag-out' : 'diag-in';
+    const icon = m.dir === 'out' ? '→' : '←';
+    return `<div class="diag-msg ${cls}">
+      <span style="opacity:.5;font-size:10px;white-space:nowrap">${t} ${icon}</span>
+      <span>${esc(m.text.slice(0, 120))}${m.text.length>120?'…':''}</span>
+    </div>`;
+  }).join('');
+}
+
 // ── Escape HTML ────────────────────────────────
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1161,10 +1385,13 @@ function bindUI() {
     document.getElementById('search-input').value = '';
     doSearch('');
   });
-  // Close search on click outside
+  // Close search on click outside; close hub menu on click outside
   document.addEventListener('click', e => {
-    if (!e.target.closest('.search-row')) {
+    if (!e.target.closest('.search-row'))
       document.getElementById('search-results').style.display = 'none';
+    if (!e.target.closest('#hub-menu') && !e.target.closest('#nc-actions')) {
+      document.getElementById('hub-menu').style.display = 'none';
+      _hubOpen = false;
     }
   });
 

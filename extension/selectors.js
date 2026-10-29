@@ -23,6 +23,18 @@ const SEL = {
 
   // Иконка/название канала в заголовке диалога
   channelLabel: '[class*="_channel_"], [class*="_source_"], [class*="_integration_"]',
+
+  // Список сообщений (контейнер, за которым следит MutationObserver)
+  msgList: '[class*="_message-list_"], [class*="_messages_"]',
+
+  // Один элемент сообщения
+  msgItem: '[class*="_message-item_"]',
+
+  // Текст внутри элемента сообщения
+  msgText: '[class*="_message-text_"], [class*="_text_"]',
+
+  // Класс исходящего (нашего) сообщения
+  msgOwn: '[class*="_own_"], [class*="_right_"]',
 };
 
 // Каналы: искать слова в тексте; порядок важен — 'max' после остальных

@@ -23,6 +23,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
 
+  // Сообщение из чата: добавить в очередь (не более 20), текст не сохраняется в базу
+  if (msg.type === 'chat-message') {
+    chrome.storage.local.get(['chatMessages'], (data) => {
+      const msgs = ((data.chatMessages) || []).slice(-19);
+      msgs.push({ dir: msg.direction, text: msg.text, ts: Date.now() });
+      chrome.storage.local.set({ chatMessages: msgs });
+    });
+    return;
+  }
+
   if (msg.type === 'manager') {
     chrome.storage.local.set({ managerName: msg.name });
     return;
