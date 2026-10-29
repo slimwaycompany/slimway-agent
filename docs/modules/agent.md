@@ -54,6 +54,9 @@
 ### до 28.10.2026 · 6a264e0 · синхронизация операций Fitbase
 - `fitbaseOps.ts`, `/run/fitbase-ops`, sync_state.
 
+### 29.10.2026 · (текущий) · syncVisits fix — client_id, time, resource, manager, abonement
+- `syncVisits`: `client_fitbase_id = v.client_id` (не `v.client.id`); `time_start "08:00:00"` → slice 0..5 (был RangeError); `resource = event.place.name`; `manager = event.trainers[0].full_name`; `abonement` из `client_service`/`client_contract`; `is_trial` через `isTrialServiceName()`; batch-fetch имён из `fitbase_clients_cache`.
+
 ### до 28.10.2026 · 44f8e05 · fitbaseCrmSync
 - Синхронизация лидов и визитов; MetricsPage воронка.
 

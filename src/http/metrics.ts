@@ -3,6 +3,7 @@ import { supabase } from '../db/supabase';
 import { getSession } from './auth';
 import { acquireLock, releaseLock } from '../core/lock';
 import { runFitbaseCrmSync } from '../jobs/fitbaseCrmSync';
+import { TRIAL_SERVICE_NAMES, VISIT_STATUS_VISITED, VISIT_CANCELLED_STATUSES } from '../config';
 
 interface Lead { fitbase_id: string; source: string | null; stage: string | null; status: string | null; manager: string | null; client_fitbase_id: number | null; client_phone: string | null; client_name: string | null; created_date: string | null }
 interface Visit { client_fitbase_id: number | null; status: number | null; is_trial: boolean; client_phone: string | null }
@@ -18,12 +19,16 @@ function digitsOnly(p: string | null): string | null {
   return d.length >= 10 ? d.slice(-10) : null;
 }
 
+function notCancelled(status: number | null): boolean {
+  return status == null || !VISIT_CANCELLED_STATUSES.has(status);
+}
+
 function buildFunnel(leads: Lead[], visits: Visit[]) {
   // Match by client_fitbase_id OR last-10-digits of phone
-  const trialBookedById   = new Set(visits.filter(v => v.is_trial && v.status !== null && [0,1,3].includes(v.status)).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
-  const trialBookedByPhone = new Set(visits.filter(v => v.is_trial && v.status !== null && [0,1,3].includes(v.status)).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
-  const visitedById        = new Set(visits.filter(v => v.is_trial && v.status === 3).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
-  const visitedByPhone     = new Set(visits.filter(v => v.is_trial && v.status === 3).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
+  const trialBookedById   = new Set(visits.filter(v => v.is_trial && notCancelled(v.status)).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
+  const trialBookedByPhone = new Set(visits.filter(v => v.is_trial && notCancelled(v.status)).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
+  const visitedById        = new Set(visits.filter(v => v.is_trial && v.status === VISIT_STATUS_VISITED).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
+  const visitedByPhone     = new Set(visits.filter(v => v.is_trial && v.status === VISIT_STATUS_VISITED).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
 
   function matched(id: number | null, phone: string | null, byId: Set<number>, byPhone: Set<string>): boolean {
     if (id != null && byId.has(id)) return true;
@@ -132,13 +137,19 @@ export function buildMetricsRouter(): Router {
 
       // Trial visits scheduled for these dates
       const { data: visitsData } = await supabase.from('fitbase_visits')
-        .select('fitbase_id,client_fitbase_id,client_name,client_phone,status,visit_date,is_trial,manager,resource')
+        .select('fitbase_id,client_fitbase_id,client_name,client_phone,status,visit_at,visit_date,is_trial,manager,resource')
         .eq('is_trial', true).gte('visit_date', from).lte('visit_date', to);
 
-      // Abonement sales in period
+      // Abonement sales in period (платные)
       const { data: salesData } = await supabase.from('fitbase_operations')
         .select('fitbase_id,op_at,amount,client_name,manager,item,pay_method')
         .gte('op_date', from).lte('op_date', to).eq('op_type', 'sale').gt('amount', 0);
+
+      // Продано услуг пробного (op_type=other, amount=0 — фильтр по item, не по op_type/amount)
+      const { data: trialSalesData } = await supabase.from('fitbase_operations')
+        .select('fitbase_id,client_name,item')
+        .gte('op_date', from).lte('op_date', to)
+        .in('item', TRIAL_SERVICE_NAMES as string[]);
 
       const { data: leadsData, error: leadsErr } = await leadsQ;
       if (leadsErr) { res.status(500).json({ error: leadsErr.message }); return; }
@@ -148,8 +159,9 @@ export function buildMetricsRouter(): Router {
       const sales = (salesData || []) as Array<Record<string, unknown>>;
 
       const inWork = allLeads.filter(l => l.status != null && l.status !== '0');
-      const trialBooked = visits; // already filtered is_trial + date
-      const visited = visits.filter(v => v.status === 3);
+      const trialBooked = visits.filter(v => notCancelled(v.status as number | null));
+      const visited = visits.filter(v => v.status === VISIT_STATUS_VISITED);
+      const trialSold = (trialSalesData || []) as Array<Record<string, unknown>>;
 
       // Source breakdown for leads
       const srcMap = new Map<string, number>();
@@ -169,8 +181,16 @@ export function buildMetricsRouter(): Router {
         steps: {
           leads:        { count: allLeads.length, items: allLeads.map(l => ({ id: l.fitbase_id, name: l.client_name, source: l.source, manager: l.manager, date: l.created_date })) },
           in_work:      { count: inWork.length,   items: inWork.map(l => ({ id: l.fitbase_id, name: l.client_name, source: l.source, manager: l.manager, date: l.created_date })) },
-          trial_booked: { count: trialBooked.length, items: trialBooked.map(v => ({ id: v.fitbase_id, name: v.client_name, date: v.visit_date, manager: v.manager })) },
-          visited:      { count: visited.length,     items: visited.map(v => ({ id: v.fitbase_id, name: v.client_name, date: v.visit_date, manager: v.manager })) },
+          trial_booked: {
+            count: trialBooked.length,
+            trial_sold_count: trialSold.length,
+            items: trialBooked.map(v => {
+              const vatStr = v.visit_at as string | null;
+              const localTime = vatStr ? new Date(new Date(vatStr).getTime() + 5 * 3600_000).toISOString().slice(11, 16) : null;
+              return { id: v.fitbase_id, name: v.client_name, date: localTime ? `${v.visit_date} ${localTime}` : v.visit_date, resource: v.resource, manager: v.manager };
+            }),
+          },
+          visited: { count: visited.length, items: visited.map(v => ({ id: v.fitbase_id, name: v.client_name, date: v.visit_date, manager: v.manager })) },
           sales:        { count: sales.length, amount: salesAmount, items: sales.map(s => ({ id: s.fitbase_id, name: s.client_name, amount: s.amount, item: s.item, date: String(s.op_at).slice(0,10) })) },
         },
         by_source,
@@ -206,10 +226,10 @@ export function buildMetricsRouter(): Router {
         .select('client_fitbase_id,client_phone,status,is_trial,visit_date,client_name').eq('is_trial', true);
       const allVisits = (visitsAll || []) as Visit[];
 
-      const trialBookedById   = new Set(allVisits.filter(v => v.status !== null && [0,1,3].includes(v.status as number)).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
-      const trialBookedByPhone = new Set(allVisits.filter(v => v.status !== null && [0,1,3].includes(v.status as number)).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
-      const visitedById        = new Set(allVisits.filter(v => v.status === 3).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
-      const visitedByPhone     = new Set(allVisits.filter(v => v.status === 3).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
+      const trialBookedById   = new Set(allVisits.filter(v => notCancelled(v.status as number | null)).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
+      const trialBookedByPhone = new Set(allVisits.filter(v => notCancelled(v.status as number | null)).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
+      const visitedById        = new Set(allVisits.filter(v => v.status === VISIT_STATUS_VISITED).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
+      const visitedByPhone     = new Set(allVisits.filter(v => v.status === VISIT_STATUS_VISITED).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
 
       function matchedLead(l: Lead, byId: Set<number>, byPhone: Set<string>) {
         if (l.client_fitbase_id != null && byId.has(l.client_fitbase_id)) return true;

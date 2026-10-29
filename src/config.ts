@@ -80,7 +80,16 @@ export const STAGE_DECISION  = 50;  // Принимает решение (Дож
 export const STAGE_NOSHOW    = 55;  // Не пришел на пробную
 
 export const TRIAL_TRAINING_ID  = 16; // event.training.id для пробного занятия
-export const TRIAL_SERVICE_NAME = 'Бесплатное пробное занятие';
+// Названия услуг/абонементов пробного — сравнение без учёта регистра/пробелов
+export const TRIAL_SERVICE_NAMES: readonly string[] = [
+  'Бесплатное пробное занятие',
+  'Абонемент: Пробное занятие',
+];
+export function isTrialServiceName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const norm = name.trim().toLowerCase();
+  return TRIAL_SERVICE_NAMES.some(t => norm === t.toLowerCase());
+}
 export const TRIAL_CHECK_HOURS  = 2;  // проверяем визит через N часов от начала
 export const AGENT_TASK_DUE_HOURS = 2;
 
@@ -88,12 +97,22 @@ export const TASK_STATUS_OPEN      = 'O';
 export const TASK_CATEGORY_CALL_ID = 2; // Звонок
 export const TASK_CATEGORY_TASK_ID = 5; // Задание
 
-// Registration statuses (string values from Fitbase)
+// Registration statuses (string values from Fitbase — for trial.ts/watch.ts API calls)
 export const REG_STATUS_BOOKED    = ['0'];
 export const REG_STATUS_CONFIRMED = ['1'];
 export const REG_STATUS_VISITED   = ['3'];
 export const REG_STATUS_CANCELLED = ['2'];
 export const REG_STATUS_NOSHOW    = ['4'];
+
+// fitbase_visits.status numeric codes (for fitbaseCrmSync / metrics)
+// 0 = записан, 1 = подтверждён, 2 = отказ/отмена, 3 = пришла, 4 = не пришла
+export const VISIT_STATUS_BOOKED    = 0;
+export const VISIT_STATUS_CONFIRMED = 1;
+export const VISIT_STATUS_REFUSED   = 2;
+export const VISIT_STATUS_VISITED   = 3;
+export const VISIT_STATUS_NOSHOW    = 4;
+// Статусы, при которых запись считается отменённой (excluded from "записи на пробное")
+export const VISIT_CANCELLED_STATUSES = new Set([VISIT_STATUS_REFUSED]);
 
 export function getResponsibleIds(): string[] {
   return env.TASK_RESPONSIBLE_IDS.split(',').map(s => s.trim()).filter(Boolean);

@@ -1,6 +1,6 @@
 import { supabase } from '../db/supabase';
 import { paginateGet } from '../http/fitbase';
-import { TRIAL_TRAINING_ID, TRIAL_SERVICE_NAME } from '../config';
+import { TRIAL_TRAINING_ID, TRIAL_SERVICE_NAMES, isTrialServiceName } from '../config';
 
 const YEK_MS = 5 * 3600_000;
 
@@ -69,43 +69,78 @@ async function syncVisits(): Promise<number> {
   const items = await paginateGet('/schedule-registration', { page_size: 100 }, 'crm-sync-visits');
   if (!items.length) return 0;
 
-  const rows = items.map(visit => {
+  // Batch-fetch client names/phones from fitbase_clients_cache by client_id
+  const clientIds = [...new Set(
+    items.map(v => (v as Record<string, unknown>).client_id).filter((id): id is number => typeof id === 'number' && id > 0)
+  )];
+  const cacheMap = new Map<number, { name: string | null; phone: string | null }>();
+  if (clientIds.length) {
+    const { data: cached } = await supabase
+      .from('fitbase_clients_cache')
+      .select('fitbase_client_id,name,phone')
+      .in('fitbase_client_id', clientIds);
+    for (const c of (cached || [])) {
+      cacheMap.set(Number(c.fitbase_client_id), { name: (c.name ?? null) as string | null, phone: (c.phone ?? null) as string | null });
+    }
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  for (const visit of items) {
     const v = visit as Record<string, unknown>;
-    const client = v.client as Record<string, unknown> | null ?? null;
-    // training, date and time are nested inside the event object
-    const event = v.event as Record<string, unknown> | null ?? null;
+    const event    = v.event    as Record<string, unknown> | null ?? null;
     const training = event?.training as Record<string, unknown> | null ?? null;
-    const manager = v.manager as Record<string, unknown> | null ?? null;
-    const resourceRaw = v.resource as Record<string, unknown> | string | null ?? null;
-    const abonementRaw = v.abonement as Record<string, unknown> | string | null ?? null;
-    const dateStr = event?.date as string | null ?? null;         // "2026-10-21"
-    const timeStr = event?.time_start as string | null ?? null;  // "10:00"
+    const trainers = Array.isArray(event?.trainers) ? (event!.trainers as Record<string, unknown>[]) : [];
+    const place    = event?.place as Record<string, unknown> | null ?? null;
+
+    const clientFitbaseId = v.client_id != null ? Number(v.client_id) : null;
+    const cached = clientFitbaseId != null ? cacheMap.get(clientFitbaseId) ?? null : null;
+
+    const dateStr  = event?.date as string | null ?? null;       // "2026-10-25"
+    const timeRaw  = event?.time_start as string | null ?? null; // "08:00:00"
+    const timeStr  = timeRaw ? timeRaw.slice(0, 5) : null;       // "08:00"
     const bookedTs = v.created_at ? Number(v.created_at) * 1000 : null;
 
     let visit_at: string | null = null;
     if (dateStr) {
-      const dtStr = timeStr ? `${dateStr}T${timeStr}:00+05:00` : `${dateStr}T00:00:00+05:00`;
-      visit_at = new Date(dtStr).toISOString();
+      try {
+        const dtStr = timeStr ? `${dateStr}T${timeStr}:00+05:00` : `${dateStr}T00:00:00+05:00`;
+        const d = new Date(dtStr);
+        if (!isNaN(d.getTime())) visit_at = d.toISOString();
+        else console.warn(`[crm-sync] invalid visit_at: ${dtStr} (id=${v.id})`);
+      } catch {
+        console.warn(`[crm-sync] visit_at parse error for id=${v.id}: ${dateStr} ${timeRaw}`);
+      }
     }
 
-    return {
-      fitbase_id: String(v.id),
-      client_fitbase_id: client?.id != null ? Number(client.id) : null,
-      client_name: (client?.full_name ?? null) as string | null,
-      client_phone: normalizePhone(client?.phone as string | null),
-      is_trial: training?.id === TRIAL_TRAINING_ID || training?.name === TRIAL_SERVICE_NAME,
-      booked_at: bookedTs ? new Date(bookedTs).toISOString() : null,
+    // client_service / client_contract → abonement name (Fitbase may send object or string)
+    const csRaw = v.client_service as Record<string, unknown> | string | null ?? null;
+    const ccRaw = v.client_contract as Record<string, unknown> | string | null ?? null;
+    const nameOf = (raw: Record<string, unknown> | string | null): string | null =>
+      typeof raw === 'string' ? raw : raw != null ? (raw.name as string ?? null) : null;
+    const abonement = nameOf(csRaw) ?? nameOf(ccRaw) ?? null;
+
+    const isTrial =
+      training?.id === TRIAL_TRAINING_ID ||
+      isTrialServiceName(training?.name as string | null) ||
+      isTrialServiceName(abonement);
+
+    rows.push({
+      fitbase_id:        String(v.id),
+      client_fitbase_id: clientFitbaseId,
+      client_name:       cached?.name ?? null,
+      client_phone:      cached?.phone ?? null,
+      is_trial:          isTrial,
+      booked_at:         bookedTs ? new Date(bookedTs).toISOString() : null,
       visit_at,
-      visit_date: dateStr,
-      status: v.status != null ? Number(v.status) : null,
-      service: (training?.name ?? null) as string | null,
-      manager: (manager?.full_name ?? null) as string | null,
-      // resource = аппарат (LPG machine etc), abonement = абонемент
-      resource: typeof resourceRaw === 'string' ? resourceRaw : (resourceRaw?.name as string ?? null),
-      abonement: typeof abonementRaw === 'string' ? abonementRaw : (abonementRaw?.name as string ?? null),
+      visit_date:        dateStr,
+      status:            v.status != null ? Number(v.status) : null,
+      service:           (training?.name ?? null) as string | null,
+      manager:           (trainers[0]?.full_name as string ?? null),
+      resource:          (place?.name as string ?? null),
+      abonement,
       raw: v,
-    };
-  });
+    });
+  }
 
   const CHUNK = 100;
   let upserted = 0;

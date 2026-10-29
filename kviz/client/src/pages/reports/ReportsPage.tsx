@@ -1306,8 +1306,8 @@ const todayStr = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
 const weekAgoStr = new Date(Date.now() + 5 * 3600_000 - 7 * 86400_000).toISOString().slice(0, 10);
 const monthAgoStr = new Date(Date.now() + 5 * 3600_000 - 30 * 86400_000).toISOString().slice(0, 10);
 
-interface DrillItem { name?: string | null; source?: string | null; manager?: string | null; date?: string | null; amount?: number | null }
-interface FunnelStep { count: number; pct?: number; amount?: number; items: DrillItem[] }
+interface DrillItem { name?: string | null; source?: string | null; manager?: string | null; date?: string | null; amount?: number | null; resource?: string | null }
+interface FunnelStep { count: number; pct?: number; amount?: number; trial_sold_count?: number; items: DrillItem[] }
 
 function DrillModal({ title, items, onClose }: { title: string; items: DrillItem[]; onClose: () => void }) {
   return (
@@ -1322,7 +1322,7 @@ function DrillModal({ title, items, onClose }: { title: string; items: DrillItem
           <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
             <div style={{ fontWeight: 600 }}>{it.name ?? '—'}</div>
             <div style={{ color: '#64748b', marginTop: 2 }}>
-              {[it.source, it.manager, it.date, it.amount != null ? `${it.amount} ₸` : null].filter(Boolean).join(' · ')}
+              {[it.source, it.resource, it.manager, it.date, it.amount != null ? `${it.amount} ₸` : null].filter(Boolean).join(' · ')}
             </div>
           </div>
         ))}
@@ -1344,6 +1344,7 @@ function FunnelView({ steps }: { steps: Array<{ label: string; step: FunnelStep 
               <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{i + 1}. {label}</div>
               <div style={{ fontSize: 26, fontWeight: 800, color: '#02BDB6' }}>{step.count}</div>
               {step.amount != null && <div style={{ fontSize: 12, color: '#263CD9', fontWeight: 600 }}>{step.amount.toLocaleString('ru')} ₸</div>}
+              {step.trial_sold_count != null && <div style={{ fontSize: 11, color: '#64748b' }}>Продано услуг: {step.trial_sold_count}</div>}
               <div style={{ fontSize: 12, color: i === 0 ? '#94a3b8' : pct >= 50 ? '#22c55e' : pct >= 20 ? '#f59e0b' : '#ef4444' }}>
                 {i === 0 ? '100%' : `${pct}% от пред.`}
               </div>

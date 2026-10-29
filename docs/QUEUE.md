@@ -48,7 +48,8 @@
 | 17 | zamery | Фикс from/to_measure_no в studio_results | ТЗ в чате | ✅ готово (текущий) |
 | 15 | infra | Документация: синхронизировать все docs/modules/*.md с кодом (пути, хэши, таблицы), добавить модуль в очередь | ТЗ в чате | ✅ готово (cd3025c + следующий коммит) |
 | 18 | crm-core, reports, crm-kassa | crm-kassa RPC-фикс (продакшен), колонки, пагинация клиентов, is_trial, async sync | `docs/tasks/18-crm-reports-kassa.md` | 🟡 частично (da948c1; ч.5 «Отчёт по замерам» не сделана; ч.7 timestamps отложены) |
-| 19 | crm-kassa | checkout/refund payload: явная сборка, правильные ключи RPC, ответ {sale_id,number,total} | ТЗ в чате | ✅ готово (текущий) |
+| 19 | crm-kassa | checkout/refund payload: явная сборка, правильные ключи RPC, ответ {sale_id,number,total} | ТЗ в чате | ✅ готово (1b45146) |
+| 20 | reports, agent | syncVisits fix (RangeError time, client_id, resource, manager); TRIAL_SERVICE_NAMES; fact-day trial_sold, статусы визитов | ТЗ в чате | ✅ готово (текущий) |
 
 ## Сделано недавно (для контекста)
 
@@ -104,5 +105,6 @@
 | 28.10.2026 | Claude | 15 Документация: все docs/modules/*.md сверены с кодом; добавлены реальные хэши, пути файлов, таблицы; модуль в очередь; Модуль-колонка в QUEUE.md | b8a3620 | Код не менялся. |
 | 29.10.2026 | Claude | 17 zamery: from/to_measure_no в studio_results — calcAllResults + одиночная кнопка, null для клиентов без замеров; дружелюбные ошибки upsert; ClientPage.tsx interface fix | текущий | SQL уже выполнен Сергеем (nullable колонки). Проверка на проде — на стороне Сергея |
 | 29.10.2026 | Claude | 18 crm-kassa: RPC params (p_shift, p), имена колонок (type/total/payment_method_id/purchased_at), цены с сервера, signed amount balance_ops; crm-core: пагинация клиентов {items,total}, .limit(10000), нормализация поиска; reports: is_trial+TRIAL_SERVICE_NAME, async /metrics/sync, auto-load FactDay/DayRhythm | da948c1 | Ч.5 (кнопка отчёт по замерам) и ч.7 (timestamps) отложены |
-| 29.10.2026 | Claude | 19 crm-kassa: checkout payload явный (type/unit_price/start_date); refund payload явный; method_id integer; ответ {sale_id,number,total}/{refund_id,amount}; GENERIC_CRM_ERROR; «Чек #N» на done-экране | текущий | Проверка на проде с «ТЕСТ Тестов» — на стороне Сергея |
+| 29.10.2026 | Claude | 19 crm-kassa: checkout payload явный (type/unit_price/start_date); refund payload явный; method_id integer; ответ {sale_id,number,total}/{refund_id,amount}; GENERIC_CRM_ERROR; «Чек #N» на done-экране | 1b45146 | Проверка на проде с «ТЕСТ Тестов» — на стороне Сергея |
+| 29.10.2026 | Claude | 20 reports/agent: syncVisits — RangeError fix (time_start slice 0..5), client_fitbase_id=v.client_id, resource/manager/abonement из event, batch cache lookup; TRIAL_SERVICE_NAMES+isTrialServiceName(); VISIT_STATUS_* константы; fact-day: trial_sold_count, notCancelled(), time+resource в items; day-rhythm/funnel: notCancelled() | текущий | После деплоя: запустить синк, проверить visit_date + is_trial по SQL из ч.3 |
 | 28.10.2026 | Claude | 16 crm-kassa fix: async fitbase-import (прогресс-бар, poll 2 сек, batch 100), phone 7XXXXXXXXXX, shift_date подтверждён | 62b3db3 | Нужно на проде: 1) проверить открытие смены; 2) запустить импорт; 3) SQL phone migration если есть старые +7 записи; 4) выполнить information_schema SQL (см. отчёт) |

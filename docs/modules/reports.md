@@ -24,8 +24,36 @@
 - Отчёт по замерам и по InBody ведут на одну страницу результатов клиента внутри «Отчётов» (фигура слева).
 - Боковая панель — слева (переехала с правой стороны).
 
+### Структура записи `/schedule-registration` (Fitbase)
+- `id`, `status` (число), `client_id` (верхний уровень — Fitbase client ID), `created_at` (unix)
+- `event.date` ("YYYY-MM-DD"), `event.time_start` ("HH:MM:SS" — срезать до HH:MM), `event.time_end`
+- `event.place.name` — аппарат (resource), `event.trainers[0].full_name` — тренер/ведущий (manager)
+- `event.training.id` / `event.training.name` — вид занятия (service)
+- `client_service`, `client_contract` — абонемент клиента (объект `{id, name}` или null); `name` → abonement
+- Объекта `client` в записи НЕТ. Полей `manager`, `resource`, `abonement` на верхнем уровне НЕТ.
+
+### Таблица статусов `fitbase_visits.status`
+| Код | Значение | Константа |
+|-----|----------|-----------|
+| 0 | Записан | `VISIT_STATUS_BOOKED` |
+| 1 | Подтверждён | `VISIT_STATUS_CONFIRMED` |
+| 2 | Отказ/отмена | `VISIT_STATUS_REFUSED` |
+| 3 | Пришла | `VISIT_STATUS_VISITED` |
+| 4 | Не пришла | `VISIT_STATUS_NOSHOW` |
+Источник: из записей Fitbase, `REG_STATUS_*` в `src/config.ts`. `VISIT_CANCELLED_STATUSES = Set([2])`.
+
+### Определение пробного занятия
+`is_trial = true` если: `event.training.id === 16` ИЛИ `isTrialServiceName(training.name)` ИЛИ `isTrialServiceName(abonement)`.
+`TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
+
 ## Сделано
-### 29.10.2026 · (текущий) · is_trial fix, async sync, auto-load
+### 29.10.2026 · (текущий) · syncVisits fix, TRIAL_SERVICE_NAMES, статусы визитов, fact-day trial_sold
+- `src/config.ts`: `TRIAL_SERVICE_NAME` → массив `TRIAL_SERVICE_NAMES` + хелпер `isTrialServiceName()`. Добавлены `VISIT_STATUS_*` числовые константы и `VISIT_CANCELLED_STATUSES = Set([2])`.
+- `fitbaseCrmSync.ts` `syncVisits()`: исправлен главный баг — `time_start "08:00:00"` → срезается до `"08:00"` (был `RangeError: Invalid time value`); `client_fitbase_id` = `v.client_id` (верхний уровень, не `v.client.id`); batch-fetch имени/телефона из `fitbase_clients_cache`; `resource` = `event.place.name`; `manager` = `event.trainers[0].full_name`; `abonement` из `client_service`/`client_contract`; `is_trial` через `isTrialServiceName()`.
+- `metrics.ts`: `buildFunnel` и `day-rhythm` — заменены хардкодные `[0,1,3]`/`=== 3` на `notCancelled()` + `VISIT_STATUS_VISITED`. `fact-day` — шаг 3 исключает `VISIT_CANCELLED_STATUSES`; добавлен запрос `trialSalesData` по `item IN TRIAL_SERVICE_NAMES` (фильтр по item, не op_type/amount); в ответе `trial_sold_count`, `visit_at` и `resource` у шага `trial_booked`.
+- `ReportsPage.tsx`: `DrillItem` + `resource`; `FunnelStep` + `trial_sold_count`; DrillModal и карточка воронки показывают аппарат и «Продано услуг: N».
+
+### 29.10.2026 · da948c1 · is_trial fix, async sync, auto-load
 - `src/config.ts`: добавлен `TRIAL_SERVICE_NAME = 'Бесплатное пробное занятие'`.
 - `fitbaseCrmSync.ts`: `is_trial` теперь проверяет и `training?.name === TRIAL_SERVICE_NAME` — исправляет нулевые «Записи на пробное».
 - `metrics.ts`: `POST /metrics/sync` стал асинхронным (мгновенный ответ, фоновая задача); добавлен `GET /metrics/sync` для опроса статуса.
@@ -41,8 +69,7 @@
 - Отчёты доступны всем (не только admin), синхронизация авторизации.
 
 ## Открытые баги
-- «Занятия и загруженность» — пусто (0 за 21–23.10).
-- «Факт дня»: «Записи на пробное» и «Пришли» могут быть 0 если обучение идёт по названию, не по ID — исправлено в fitbaseCrmSync.ts (нужен прогон синхронизации на проде для обновления данных).
+- «Занятия и загруженность» — пусто (0 за 21–23.10); причина: visit_date был null у всех 1753 записей (баг syncVisits исправлен — нужен прогон синка).
 - Боковая панель в «Отчётах» справа — должна быть слева.
 
 ## Следующее
