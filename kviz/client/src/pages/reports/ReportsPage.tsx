@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import OccupancySection from './OccupancySection';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 
@@ -1451,9 +1452,148 @@ function useSyncButton() {
   return { syncing, syncMsg, doSync };
 }
 
-interface FdSrcRow { source: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number }
-interface FdMgrRow { manager: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number; items?: DrillItem[] }
+interface FdSrcRow { source: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number }
+interface FdMgrRow { manager: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number; items?: DrillItem[] }
 interface FdCshRow { cashier: string; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number }
+
+const FD_STEP_ORDER = ['leads','in_work','trial_booked','visited','sales','renewals'] as const;
+const FD_LABELS: Record<string, string> = {
+  leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи на пробное',
+  visited: 'Пришли', sales: 'Новые продажи', renewals: 'Продления',
+};
+const CONV_STAGES = ['leads','in_work','trial_booked','visited','sales'] as const;
+type ConvStage = typeof CONV_STAGES[number];
+const CONV_LABELS: Record<ConvStage, string> = { leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи', visited: 'Пришли', sales: 'Купили (новые)' };
+const CONV_NORMS: Partial<Record<string, [number, number]>> = {
+  'in_work→trial_booked': [60, 70],
+  'trial_booked→visited': [85, 100],
+  'visited→sales': [50, 80],
+};
+
+function CrossConvPanel({ data }: { data: Record<string, FunnelStep> }) {
+  const [from, setFrom] = useState<ConvStage>('trial_booked');
+  const [to, setTo]     = useState<ConvStage>('visited');
+  const fromCount = data[from]?.count ?? 0;
+  const toCount   = data[to]?.count ?? 0;
+  const pct  = fromCount > 0 ? Math.round(100 * toCount / fromCount) : 0;
+  const norm = CONV_NORMS[`${from}→${to}`];
+  const color = norm ? (pct >= norm[0] ? '#22c55e' : '#ef4444') : '#02BDB6';
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Сквозная конверсия</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <select value={from} onChange={e => setFrom(e.target.value as ConvStage)} style={{ ...s.dateInp, padding: '5px 8px', fontSize: 12 }}>
+          {CONV_STAGES.filter(st => st !== to).map(st => <option key={st} value={st}>{CONV_LABELS[st]}</option>)}
+        </select>
+        <span style={{ color: '#94a3b8', fontWeight: 700 }}>→</span>
+        <select value={to} onChange={e => setTo(e.target.value as ConvStage)} style={{ ...s.dateInp, padding: '5px 8px', fontSize: 12 }}>
+          {CONV_STAGES.filter(st => st !== from).map(st => <option key={st} value={st}>{CONV_LABELS[st]}</option>)}
+        </select>
+        <div style={{ fontSize: 28, fontWeight: 800, color, marginLeft: 4 }}>{pct}%</div>
+        <div style={{ fontSize: 12, color: '#94a3b8' }}>{toCount} из {fromCount}</div>
+        {norm && <div style={{ fontSize: 12, color: color, fontWeight: 600 }}>норма {norm[0]}–{norm[1]}%{pct >= norm[0] ? ' ✓' : ' ↓'}</div>}
+      </div>
+      <div style={{ height: 6, background: '#f1f5f9', borderRadius: 4, marginTop: 8, position: 'relative' }}>
+        <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: color, borderRadius: 4, transition: 'width 0.3s' }} />
+        {norm && <div style={{ position: 'absolute', left: `${norm[0]}%`, top: 0, bottom: 0, width: 2, background: '#94a3b8', borderRadius: 1 }} />}
+      </div>
+    </div>
+  );
+}
+
+function CollapsibleTable({ title, storageKey, children }: { title: string; storageKey: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(storageKey) !== 'collapsed'; } catch { return true; }
+  });
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try { localStorage.setItem(storageKey, next ? 'open' : 'collapsed'); } catch {}
+  };
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button onClick={toggle} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: '0 0 6px', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: '#374151', width: '100%', textAlign: 'left' }}>
+        <span style={{ fontSize: 10, color: '#94a3b8' }}>{open ? '▾' : '▸'}</span>
+        {title}
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+const CHART_TABS = ['Менеджеры', 'Источники', 'Где проседаем', 'Кассиры'] as const;
+type ChartTab = typeof CHART_TABS[number];
+
+function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: FdSrcRow[]; byCsh: FdCshRow[]; data: Record<string, FunnelStep> }) {
+  const [tab, setTab] = useState<ChartTab>('Менеджеры');
+  const fmtK = (v: number) => v >= 1000 ? Math.round(v / 1000) + 'к' : String(Math.round(v));
+
+  const mgrData = byMgr.slice(0, 8).map(r => ({
+    name: r.manager.split(' ')[0] ?? r.manager,
+    'Новые': r.new_amount,
+    'Продления': r.renewal_amount,
+  }));
+  const srcData = bySrc.slice(0, 8).map(r => ({
+    name: r.source.length > 14 ? r.source.slice(0, 14) + '…' : r.source,
+    'Лидов': r.leads,
+    'Продажи': r.sales_count,
+  }));
+  const funnelData = FD_STEP_ORDER.map(k => ({ name: FD_LABELS[k] ?? k, count: data[k]?.count ?? 0 }));
+  const cshData = byCsh.slice(0, 8).map(r => ({
+    name: r.cashier.split(' ')[0] ?? r.cashier,
+    'Итог': r.net_amount,
+  }));
+
+  const chart = tab === 'Менеджеры' ? (
+    <BarChart data={mgrData} margin={{ top: 4, right: 8, left: 0, bottom: 20 }}>
+      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+      <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
+      <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} />
+      <Tooltip formatter={(v: number) => Math.round(v).toLocaleString('ru') + ' ₸'} />
+      <Bar dataKey="Новые" fill="#263CD9" stackId="a" />
+      <Bar dataKey="Продления" fill="#02BDB6" stackId="a" radius={[3,3,0,0]} />
+    </BarChart>
+  ) : tab === 'Источники' ? (
+    <BarChart data={srcData} margin={{ top: 4, right: 8, left: 0, bottom: 20 }}>
+      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+      <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
+      <YAxis tick={{ fontSize: 10 }} />
+      <Tooltip />
+      <Bar dataKey="Лидов" fill="#263CD9" />
+      <Bar dataKey="Продажи" fill="#02BDB6" radius={[3,3,0,0]} />
+    </BarChart>
+  ) : tab === 'Где проседаем' ? (
+    <BarChart data={funnelData} layout="vertical" margin={{ top: 4, right: 16, left: 60, bottom: 4 }}>
+      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+      <XAxis type="number" tick={{ fontSize: 10 }} />
+      <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={60} />
+      <Tooltip />
+      <Bar dataKey="count" fill="#02BDB6" radius={[0,3,3,0]} />
+    </BarChart>
+  ) : (
+    <BarChart data={cshData} margin={{ top: 4, right: 8, left: 0, bottom: 20 }}>
+      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+      <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
+      <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} />
+      <Tooltip formatter={(v: number) => Math.round(v).toLocaleString('ru') + ' ₸'} />
+      <Bar dataKey="Итог" fill="#02BDB6" radius={[3,3,0,0]} />
+    </BarChart>
+  );
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
+        {CHART_TABS.map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{ ...s.chip, ...(t === tab ? s.chipActive : {}), fontSize: 11, padding: '3px 8px' }}>
+            {t}
+          </button>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={220}>{chart}</ResponsiveContainer>
+    </div>
+  );
+}
 
 function FactDaySection() {
   const [data, setData]             = useState<Record<string, FunnelStep> | null>(null);
@@ -1466,6 +1606,7 @@ function FactDaySection() {
   const [cashier, setCashier]       = useState('');
   const [loading, setLoading]       = useState(false);
   const [mgrDrill, setMgrDrill]     = useState<{ label: string; items: DrillItem[] } | null>(null);
+  const [allCollapsed, setAllCollapsed] = useState(false);
   const { syncing, syncMsg, doSync } = useSyncButton();
   const { from, to, sources, manager, setManager, filterBar, sourceBar } = useFunnelFilters(availSources);
 
@@ -1473,7 +1614,7 @@ function FactDaySection() {
     setLoading(true);
     try {
       const sp = new URLSearchParams({ from, to });
-      sources.forEach(s => sp.append('sources', s));
+      sources.forEach(src => sp.append('sources', src));
       if (manager) sp.set('manager', manager);
       if (cashier) sp.set('cashier', cashier);
       const r = await fetch(`/kviz/api/metrics/fact-day?${sp}`, { credentials: 'include' });
@@ -1491,12 +1632,15 @@ function FactDaySection() {
 
   useEffect(() => { load(); }, [load]);
 
-  const LABELS: Record<string, string> = {
-    leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи на пробное', visited: 'Пришли', sales: 'Продажи',
-  };
   const fmt = (n: number) => Math.round(n).toLocaleString('ru');
-  const TH: React.CSSProperties = { padding: '4px 10px 4px 0', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' };
-  const TD: React.CSSProperties = { padding: '3px 10px 3px 0', fontSize: 13 };
+  const TH: React.CSSProperties = { padding: '4px 8px 4px 0', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12 };
+  const TD: React.CSSProperties = { padding: '3px 8px 3px 0', fontSize: 12 };
+
+  function toggleAllCollapsed() {
+    const next = !allCollapsed;
+    setAllCollapsed(next);
+    ['fd-src','fd-mgr','fd-csh'].forEach(k => { try { localStorage.setItem(k, next ? 'collapsed' : 'open'); } catch {} });
+  }
 
   return (
     <div style={s.section}>
@@ -1516,88 +1660,108 @@ function FactDaySection() {
         </select>
       </div>
       {sourceBar}
+
       {data && (
         <>
-          <FunnelView steps={Object.entries(data).map(([k, v]) => ({ label: LABELS[k] ?? k, step: v }))} />
-          {bySrc.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div style={s.sectionTitle}>По источникам</div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 580 }}>
-                  <thead><tr style={{ background: '#f8fafc' }}>
-                    {['Источник','Лидов','В работе','Записи','Пришли','Услуг','Продаж','Итог ₸'].map(h => <th key={h} style={TH}>{h}</th>)}
-                  </tr></thead>
-                  <tbody>
-                    {bySrc.map(r => (
-                      <tr key={r.source} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={TD}>{r.source}</td>
-                        <td style={{ ...TD, fontWeight: 700 }}>{r.leads}</td>
-                        <td style={TD}>{r.in_work}</td>
-                        <td style={TD}>{r.trial_booked}</td>
-                        <td style={TD}>{r.visited}</td>
-                        <td style={TD}>{r.trial_sold_count}</td>
-                        <td style={TD}>{r.sales_count}</td>
-                        <td style={{ ...TD, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8', fontWeight: r.net_amount !== 0 ? 700 : 400 }}>{r.net_amount !== 0 ? fmt(r.net_amount) + ' ₸' : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <FunnelView steps={FD_STEP_ORDER.filter(k => data[k] != null).map(k => ({ label: FD_LABELS[k], step: data[k] }))} />
+          <CrossConvPanel data={data} />
+
+          {/* Two-column layout: tables left, charts right */}
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ flex: '0 0 44%', minWidth: 300, maxWidth: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+                <button style={{ ...s.csvBtn, fontSize: 11, padding: '3px 10px' }} onClick={toggleAllCollapsed}>
+                  {allCollapsed ? 'Развернуть всё' : 'Свернуть всё'}
+                </button>
               </div>
+
+              {bySrc.length > 0 && (
+                <CollapsibleTable title="По источникам" storageKey="fd-src">
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480 }}>
+                      <thead><tr style={{ background: '#f8fafc' }}>
+                        {['Источник','Лидов','Записи','Пришли','Новые ₸','Продл. ₸','Итог ₸','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {bySrc.map(r => (
+                          <tr key={r.source} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={TD}>{r.source}</td>
+                            <td style={{ ...TD, fontWeight: 700 }}>{r.leads}</td>
+                            <td style={TD}>{r.trial_booked}</td>
+                            <td style={TD}>{r.visited}</td>
+                            <td style={{ ...TD, color: r.new_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
+                            <td style={{ ...TD, color: r.renewal_amount > 0 ? '#02BDB6' : '#94a3b8' }}>{r.renewal_amount > 0 ? fmt(r.renewal_amount) : '—'}</td>
+                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)}</td>
+                            <td style={{ ...TD, color: r.lead_to_buy_pct >= 20 ? '#22c55e' : '#94a3b8' }}>{r.lead_to_buy_pct > 0 ? r.lead_to_buy_pct + '%' : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CollapsibleTable>
+              )}
+
+              {byMgr.length > 0 && (
+                <CollapsibleTable title="По менеджерам" storageKey="fd-mgr">
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480 }}>
+                      <thead><tr style={{ background: '#f8fafc' }}>
+                        {['Менеджер','Лидов','Записи','Пришли','Новые ₸','Продл. ₸','Итог ₸','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {byMgr.map(r => (
+                          <tr key={r.manager} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                            onClick={() => setMgrDrill({ label: r.manager, items: r.items ?? [] })}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                            onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                            <td style={{ ...TD, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
+                            <td style={TD}>{r.leads}</td>
+                            <td style={TD}>{r.trial_booked}</td>
+                            <td style={TD}>{r.visited}</td>
+                            <td style={{ ...TD, color: r.new_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
+                            <td style={{ ...TD, color: r.renewal_amount > 0 ? '#02BDB6' : '#94a3b8' }}>{r.renewal_amount > 0 ? fmt(r.renewal_amount) : '—'}</td>
+                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)}</td>
+                            <td style={{ ...TD, color: r.lead_to_buy_pct >= 20 ? '#22c55e' : '#94a3b8' }}>{r.lead_to_buy_pct > 0 ? r.lead_to_buy_pct + '%' : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>Клик по строке — детализация лидов</div>
+                  </div>
+                </CollapsibleTable>
+              )}
+
+              {byCsh.length > 0 && (
+                <CollapsibleTable title="По кассирам" storageKey="fd-csh">
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 280 }}>
+                      <thead><tr style={{ background: '#f8fafc' }}>
+                        {['Кассир','Продаж','Продажи ₸','Возвраты ₸','Итог ₸'].map(h => <th key={h} style={TH}>{h}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {byCsh.map(r => (
+                          <tr key={r.cashier} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ ...TD, fontWeight: 600 }}>{r.cashier}</td>
+                            <td style={TD}>{r.sales_count}</td>
+                            <td style={TD}>{fmt(r.sales_amount)} ₸</td>
+                            <td style={{ ...TD, color: r.refund_amount > 0 ? '#ef4444' : '#94a3b8' }}>{r.refund_amount > 0 ? fmt(r.refund_amount) + ' ₸' : '—'}</td>
+                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)} ₸</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CollapsibleTable>
+              )}
             </div>
-          )}
-          {byMgr.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div style={s.sectionTitle}>По менеджерам</div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 620 }}>
-                  <thead><tr style={{ background: '#f8fafc' }}>
-                    {['Менеджер','Лидов','В работе','Записи','Пришли','Услуг','Продаж','Итог ₸'].map(h => <th key={h} style={TH}>{h}</th>)}
-                  </tr></thead>
-                  <tbody>
-                    {byMgr.map(r => (
-                      <tr key={r.manager} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
-                        onClick={() => setMgrDrill({ label: r.manager, items: (r.items ?? []) })}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                        <td style={{ ...TD, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
-                        <td style={TD}>{r.leads}</td>
-                        <td style={TD}>{r.in_work}</td>
-                        <td style={TD}>{r.trial_booked}</td>
-                        <td style={TD}>{r.visited}</td>
-                        <td style={TD}>{r.trial_sold_count}</td>
-                        <td style={TD}>{r.sales_count}</td>
-                        <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{r.net_amount !== 0 ? fmt(r.net_amount) + ' ₸' : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Клик по строке — детализация лидов менеджера</div>
+
+            {/* Charts right (55%) */}
+            {(byMgr.length > 0 || bySrc.length > 0) && (
+              <div style={{ flex: '1 1 300px', minWidth: 260 }}>
+                <ChartsPanel byMgr={byMgr} bySrc={bySrc} byCsh={byCsh} data={data} />
               </div>
-            </div>
-          )}
-          {byCsh.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div style={s.sectionTitle}>По кассирам</div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 400 }}>
-                  <thead><tr style={{ background: '#f8fafc' }}>
-                    {['Кассир','Продаж шт','Продажи ₸','Возвраты ₸','Итог ₸'].map(h => <th key={h} style={TH}>{h}</th>)}
-                  </tr></thead>
-                  <tbody>
-                    {byCsh.map(r => (
-                      <tr key={r.cashier} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ ...TD, fontWeight: 600 }}>{r.cashier}</td>
-                        <td style={TD}>{r.sales_count}</td>
-                        <td style={TD}>{fmt(r.sales_amount)} ₸</td>
-                        <td style={{ ...TD, color: r.refund_amount > 0 ? '#ef4444' : '#94a3b8' }}>{r.refund_amount > 0 ? fmt(r.refund_amount) + ' ₸' : '—'}</td>
-                        <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)} ₸</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
       {!data && loading && <div style={s.empty}>Загрузка…</div>}

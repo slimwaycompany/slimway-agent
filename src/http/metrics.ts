@@ -204,23 +204,36 @@ export function buildMetricsRouter(): Router {
       const manager = req.query.manager ? String(req.query.manager) : null;
       const cashier = req.query.cashier ? String(req.query.cashier) : null;
 
-      // Client → latest-lead map (all leads, no date filter)
       const clm = await buildClientLeadMap();
 
-      // All leads in period — filter in JS so by_source/by_manager always see full data
       const { data: leadsData, error: leadsErr } = await supabase.from('fitbase_leads')
         .select('fitbase_id,source,stage,status,manager,client_fitbase_id,client_phone,client_name,created_date')
         .gte('created_date', from).lte('created_date', to);
       if (leadsErr) { res.status(500).json({ error: leadsErr.message }); return; }
       const allLeads = (leadsData ?? []) as Lead[];
 
+      // Fetch ops early to build cashier→clientId set for propagating filter
+      const { data: opsRaw } = await supabase.from('fitbase_operations')
+        .select('fitbase_id,op_at,op_date,amount,client_name,manager,cashier,item,pay_method,op_type,raw')
+        .gte('op_date', from).lte('op_date', to).in('op_type', ['sale', 'refund']).gt('amount', 0);
+      const allOps = (opsRaw ?? []) as Array<Record<string, unknown>>;
+      const allSalesOps = allOps.filter(op => op.op_type === 'sale');
+      const allRefundOps = allOps.filter(op => op.op_type === 'refund');
+
+      // Cashier filter propagated to leads/visits via client IDs of matching sales
+      const cashierCids: Set<number> | null = cashier ? new Set(
+        allSalesOps
+          .filter(op => ((op.cashier as string) ?? '').toLowerCase().includes(cashier.toLowerCase()))
+          .map(op => opCid(op)).filter((x): x is number => x != null)
+      ) : null;
+
       const leads = allLeads.filter(l => {
         if (sources.length > 0 && !sources.includes(l.source ?? '')) return false;
         if (manager && !(l.manager ?? '').toLowerCase().includes(manager.toLowerCase())) return false;
+        if (cashierCids && !(l.client_fitbase_id != null && cashierCids.has(l.client_fitbase_id))) return false;
         return true;
       });
 
-      // Trial visits in period
       const allVisits = await fetchAll((off, lim) =>
         supabase.from('fitbase_visits').select('fitbase_id,client_fitbase_id,client_name,status,visit_at,visit_date,manager,resource')
           .eq('is_trial', true).gte('visit_date', from).lte('visit_date', to).range(off, off + lim - 1)
@@ -230,33 +243,52 @@ export function buildMetricsRouter(): Router {
         const cid = v.client_fitbase_id as number | null;
         if (sources.length > 0 && !sources.includes(clm.get(Number(cid))?.source ?? '')) return false;
         if (manager && !(clm.get(Number(cid))?.manager ?? '').toLowerCase().includes(manager.toLowerCase())) return false;
+        if (cashierCids && !(cid != null && cashierCids.has(Number(cid)))) return false;
         return true;
       });
 
-      // Sales + refunds in period
-      const { data: opsRaw } = await supabase.from('fitbase_operations')
-        .select('fitbase_id,op_at,op_date,amount,client_name,manager,cashier,item,pay_method,op_type,raw')
-        .gte('op_date', from).lte('op_date', to).in('op_type', ['sale', 'refund']).gt('amount', 0);
-      const allOps = (opsRaw ?? []) as Array<Record<string, unknown>>;
-      const allSalesOps = allOps.filter(op => op.op_type === 'sale');
-      const allRefundOps = allOps.filter(op => op.op_type === 'refund');
-
+      // Sales filter: source from lead map, manager from lead map (not op.manager)
       function matchesFilters(op: Record<string, unknown>): boolean {
         const cid = opCid(op);
         if (sources.length > 0 && !sources.includes(cid != null ? (clm.get(cid)?.source ?? '') : '')) return false;
-        if (manager && !(op.manager as string ?? '').toLowerCase().includes(manager.toLowerCase())) return false;
-        if (cashier && !(op.cashier as string ?? '').toLowerCase().includes(cashier.toLowerCase())) return false;
+        if (manager) {
+          const leadMgr = cid != null ? (clm.get(cid)?.manager ?? '') : '';
+          if (!leadMgr.toLowerCase().includes(manager.toLowerCase())) return false;
+        }
+        if (cashier && !((op.cashier as string) ?? '').toLowerCase().includes(cashier.toLowerCase())) return false;
         return true;
       }
       const salesOps    = allSalesOps.filter(matchesFilters);
       const refundOps   = allRefundOps.filter(matchesFilters);
       const saleOrders  = groupOrders(salesOps);
       const refundOrders = groupOrders(refundOps);
-      const salesAmount  = saleOrders.reduce((s, o) => s + o.amount, 0);
       const refundAmount = refundOrders.reduce((s, o) => s + o.amount, 0);
-      const netAmount    = salesAmount - refundAmount;
 
-      // Trial sold
+      // Renewal classification: client had a prior paid contract before this purchase date
+      const purCids = [...new Set(allSalesOps.map(op => opCid(op)).filter((x): x is number => x != null))];
+      const cbc = new Map<number, string[]>();
+      if (purCids.length > 0) {
+        const cr = await fetchAll((off, lim) =>
+          supabase.from('fitbase_contracts').select('client_fitbase_id,payment_date')
+            .in('client_fitbase_id', purCids).neq('status', 'deleted').range(off, off + lim - 1)
+        );
+        for (const c of cr) {
+          const cid = Number(c.client_fitbase_id);
+          if (!cbc.has(cid)) cbc.set(cid, []);
+          if (c.payment_date) cbc.get(cid)!.push(c.payment_date as string);
+        }
+      }
+      function isRenew(o: OrderRow): boolean {
+        return o.cid != null && o.date != null && (cbc.get(o.cid) ?? []).some(pd => pd < o.date!);
+      }
+
+      const newOrders   = saleOrders.filter(o => !isRenew(o));
+      const renewOrders = saleOrders.filter(o => isRenew(o));
+      const periodCids  = new Set(allLeads.map(l => l.client_fitbase_id).filter((x): x is number => x != null));
+      const newFromPeriod = newOrders.filter(o => o.cid != null && periodCids.has(o.cid)).length;
+      const newAmount    = newOrders.reduce((s, o) => s + o.amount, 0);
+      const renewAmount  = renewOrders.reduce((s, o) => s + o.amount, 0);
+
       const { data: trialSalesRaw } = await supabase.from('fitbase_operations')
         .select('fitbase_id,client_name,item,raw')
         .gte('op_date', from).lte('op_date', to)
@@ -266,8 +298,8 @@ export function buildMetricsRouter(): Router {
         const cid = opCid(op);
         if (sources.length > 0 && !sources.includes(cid != null ? (clm.get(cid)?.source ?? '') : '')) return false;
         if (manager) {
-          const m = cid != null ? (clm.get(cid)?.manager ?? '') : '';
-          if (!m.toLowerCase().includes(manager.toLowerCase())) return false;
+          const leadMgr = cid != null ? (clm.get(cid)?.manager ?? '') : '';
+          if (!leadMgr.toLowerCase().includes(manager.toLowerCase())) return false;
         }
         return true;
       });
@@ -276,7 +308,7 @@ export function buildMetricsRouter(): Router {
       const trialBooked = visits.filter(v => notCancelled(v.status as number | null));
       const visited     = visits.filter(v => v.status === VISIT_STATUS_VISITED);
 
-      // by_source — 7 columns
+      // by_source
       const allSrcSet = new Set<string>();
       for (const l of allLeads) allSrcSet.add(l.source ?? '(без источника)');
       const by_source = [...allSrcSet].map(src => {
@@ -287,27 +319,39 @@ export function buildMetricsRouter(): Router {
         const sTrialSold = allTrialSold.filter(op => clSrc(opCid(op), clm) === src);
         const sSaleOrds  = groupOrders(allSalesOps.filter(op => clSrc(opCid(op), clm) === src));
         const sRefOrds   = groupOrders(allRefundOps.filter(op => clSrc(opCid(op), clm) === src));
+        const sNewOrds   = sSaleOrds.filter(o => !isRenew(o));
+        const sRenOrds   = sSaleOrds.filter(o => isRenew(o));
         const sSalesAmt  = sSaleOrds.reduce((s, o) => s + o.amount, 0);
         const sRefAmt    = sRefOrds.reduce((s, o) => s + o.amount, 0);
-        return { source: src, leads: sLeads.length, in_work: sInWork.length, trial_booked: sBooked.length, visited: sVisited.length, trial_sold_count: sTrialSold.length, sales_count: sSaleOrds.length, sales_amount: sSalesAmt, refund_amount: sRefAmt, net_amount: sSalesAmt - sRefAmt };
+        const sNewAmt    = sNewOrds.reduce((s, o) => s + o.amount, 0);
+        const sRenAmt    = sRenOrds.reduce((s, o) => s + o.amount, 0);
+        const sBought    = sLeads.filter(l => l.status === '-1').length;
+        const sLtbPct    = sLeads.length > 0 ? Math.round(100 * sBought / sLeads.length) : 0;
+        return { source: src, leads: sLeads.length, in_work: sInWork.length, trial_booked: sBooked.length, visited: sVisited.length, trial_sold_count: sTrialSold.length, sales_count: sSaleOrds.length, new_count: sNewOrds.length, renewal_count: sRenOrds.length, sales_amount: sSalesAmt, new_amount: sNewAmt, renewal_amount: sRenAmt, refund_amount: sRefAmt, net_amount: sSalesAmt - sRefAmt, lead_to_buy_pct: sLtbPct };
       }).sort((a, b) => b.leads - a.leads);
 
-      // by_manager — leads+visits by lead.manager; sales by op.manager
+      // by_manager — all keyed by lead-map manager (not op.manager)
       const allMgrSet = new Set<string>();
       for (const l of allLeads) allMgrSet.add(l.manager ?? '(без менеджера)');
-      for (const op of allSalesOps) allMgrSet.add((op.manager as string) || '(без менеджера)');
+      for (const op of allSalesOps) allMgrSet.add(clMgr(opCid(op), clm));
       const by_manager = [...allMgrSet].map(mgr => {
         const mLeads     = allLeads.filter(l => (l.manager ?? '(без менеджера)') === mgr);
         const mInWork    = mLeads.filter(l => l.status != null && l.status !== '0');
         const mBooked    = allVisits.filter(v => notCancelled(v.status as number | null) && clMgr(v.client_fitbase_id as number | null, clm) === mgr);
         const mVisited   = allVisits.filter(v => v.status === VISIT_STATUS_VISITED && clMgr(v.client_fitbase_id as number | null, clm) === mgr);
         const mTrialSold = allTrialSold.filter(op => clMgr(opCid(op), clm) === mgr);
-        const mSaleOrds  = groupOrders(allSalesOps.filter(op => ((op.manager as string) || '(без менеджера)') === mgr));
-        const mRefOrds   = groupOrders(allRefundOps.filter(op => ((op.manager as string) || '(без менеджера)') === mgr));
+        const mSaleOrds  = groupOrders(allSalesOps.filter(op => clMgr(opCid(op), clm) === mgr));
+        const mRefOrds   = groupOrders(allRefundOps.filter(op => clMgr(opCid(op), clm) === mgr));
+        const mNewOrds   = mSaleOrds.filter(o => !isRenew(o));
+        const mRenOrds   = mSaleOrds.filter(o => isRenew(o));
         const mSalesAmt  = mSaleOrds.reduce((s, o) => s + o.amount, 0);
         const mRefAmt    = mRefOrds.reduce((s, o) => s + o.amount, 0);
+        const mNewAmt    = mNewOrds.reduce((s, o) => s + o.amount, 0);
+        const mRenAmt    = mRenOrds.reduce((s, o) => s + o.amount, 0);
+        const mBought    = mLeads.filter(l => l.status === '-1').length;
+        const mLtbPct    = mLeads.length > 0 ? Math.round(100 * mBought / mLeads.length) : 0;
         const items = mLeads.map(l => ({ name: l.client_name, source: l.source, manager: l.manager, date: l.created_date }));
-        return { manager: mgr, leads: mLeads.length, in_work: mInWork.length, trial_booked: mBooked.length, visited: mVisited.length, trial_sold_count: mTrialSold.length, sales_count: mSaleOrds.length, sales_amount: mSalesAmt, refund_amount: mRefAmt, net_amount: mSalesAmt - mRefAmt, items };
+        return { manager: mgr, leads: mLeads.length, in_work: mInWork.length, trial_booked: mBooked.length, visited: mVisited.length, trial_sold_count: mTrialSold.length, sales_count: mSaleOrds.length, new_count: mNewOrds.length, renewal_count: mRenOrds.length, sales_amount: mSalesAmt, new_amount: mNewAmt, renewal_amount: mRenAmt, refund_amount: mRefAmt, net_amount: mSalesAmt - mRefAmt, lead_to_buy_pct: mLtbPct, items };
       }).sort((a, b) => b.net_amount - a.net_amount);
 
       // by_cashier
@@ -322,13 +366,11 @@ export function buildMetricsRouter(): Router {
         return { cashier: csh, sales_count: cSaleOrds.length, sales_amount: cSalesAmt, refund_amount: cRefAmt, net_amount: cSalesAmt - cRefAmt };
       }).sort((a, b) => b.net_amount - a.net_amount);
 
-      // availableSources (all-time, for filter chips)
       const srcRows2 = await fetchAll((off, lim) =>
         supabase.from('fitbase_leads').select('source').not('source', 'is', null).range(off, off + lim - 1)
       );
       const availableSources = [...new Set(srcRows2.map(r => r.source as string))].sort();
 
-      // availableManagers + availableCashiers — period-filtered
       const [mgrLeadRows, mgrOpRows, cashierRows] = await Promise.all([
         supabase.from('fitbase_leads').select('manager').gte('created_date', from).lte('created_date', to).not('manager', 'is', null),
         supabase.from('fitbase_operations').select('manager').gte('op_date', from).lte('op_date', to).not('manager', 'is', null),
@@ -346,8 +388,7 @@ export function buildMetricsRouter(): Router {
           leads:        { count: leads.length,      items: leads.map(l => ({ name: l.client_name, source: l.source, manager: l.manager, date: l.created_date })) },
           in_work:      { count: inWork.length,      items: inWork.map(l => ({ name: l.client_name, source: l.source, manager: l.manager, date: l.created_date })) },
           trial_booked: {
-            count: trialBooked.length,
-            trial_sold_count: trialSold.length,
+            count: trialBooked.length, trial_sold_count: trialSold.length,
             items: trialBooked.map(v => {
               const vatStr = v.visit_at as string | null;
               const localTime = vatStr ? new Date(new Date(vatStr).getTime() + 5 * 3600_000).toISOString().slice(11, 16) : null;
@@ -356,13 +397,15 @@ export function buildMetricsRouter(): Router {
           },
           visited: { count: visited.length, items: visited.map(v => ({ name: v.client_name, date: v.visit_date, manager: v.manager })) },
           sales: {
-            count: saleOrders.length,
-            amount: salesAmount,
-            net_amount: netAmount,
-            refund_count: refundOrders.length,
-            refund_amount: refundAmount,
-            items: saleOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date })),
-            refund_items: refundOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date, manager: o.cashier })),
+            count: newOrders.length, amount: newAmount, net_amount: newAmount - refundAmount,
+            from_period_leads: newFromPeriod, from_old_leads: newOrders.length - newFromPeriod,
+            refund_count: refundOrders.length, refund_amount: refundAmount,
+            items: newOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date })),
+            refund_items: refundOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date })),
+          },
+          renewals: {
+            count: renewOrders.length, amount: renewAmount, net_amount: renewAmount,
+            items: renewOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date })),
           },
         },
         by_source,
