@@ -107,19 +107,19 @@ function groupOrders(ops: Array<Record<string, unknown>>): OrderRow[] {
   return [...map.values()];
 }
 
-function classifyPurchase(o: OrderRow, contractsByClient: Map<number, ContractRecord[]>): 'new'|'same_day'|'renewal'|'returned'|'goods' {
+function classifyPurchase(o: OrderRow, contractsByClient: Map<number, ContractRecord[]>): 'new'|'renewal'|'returned'|'goods' {
   if (o.itemType !== 'contract') return 'goods';
   if (o.cid == null || !o.date) return 'new';
   const all = contractsByClient.get(o.cid) ?? [];
+  // strictly < date so same-day purchases all see the same history and get the same category
   const valid = all.filter(c =>
     Number(c.price) > 0 &&
     !(c.name ?? '').toLowerCase().includes('пробн') &&
     c.status !== 'deleted' &&
     Number(c.fitbase_id) !== o.itemId &&
-    (c.payment_date ?? '') <= o.date!
+    (c.payment_date ?? '') < o.date!
   );
   if (valid.length === 0) return 'new';
-  if (valid.some(c => c.payment_date === o.date)) return 'same_day';
   const latest = valid.reduce((a, b) => (a.payment_date ?? '') > (b.payment_date ?? '') ? a : b);
   const prevEnd = latest.end_date;
   if (!prevEnd) return 'renewal';
@@ -315,7 +315,6 @@ export function buildMetricsRouter(): Router {
       const classify = (o: OrderRow) => classifyPurchase(o, contractsByClient);
       const newOrders      = cleanSaleOrders.filter(o => classify(o) === 'new');
       const renewOrders    = cleanSaleOrders.filter(o => classify(o) === 'renewal');
-      const sameDayOrders  = cleanSaleOrders.filter(o => classify(o) === 'same_day');
       const returnedOrders = cleanSaleOrders.filter(o => classify(o) === 'returned');
       const goodsOrders    = cleanSaleOrders.filter(o => classify(o) === 'goods');
 
@@ -323,10 +322,9 @@ export function buildMetricsRouter(): Router {
       const newFromPeriod = newOrders.filter(o => o.cid != null && periodCids.has(o.cid)).length;
       const newAmount     = newOrders.reduce((s, o) => s + o.amount, 0);
       const renewAmount   = renewOrders.reduce((s, o) => s + o.amount, 0);
-      const sameDayAmt    = sameDayOrders.reduce((s, o) => s + o.amount, 0);
       const returnedAmt   = returnedOrders.reduce((s, o) => s + o.amount, 0);
       const goodsAmt      = goodsOrders.reduce((s, o) => s + o.amount, 0);
-      const totalSalesAmt = newAmount + renewAmount + sameDayAmt + returnedAmt + goodsAmt;
+      const totalSalesAmt = newAmount + renewAmount + returnedAmt + goodsAmt;
       const totalNetAmt   = totalSalesAmt - refundAmount;
 
       const { data: trialSalesRaw } = await supabase.from('fitbase_operations')
@@ -456,10 +454,6 @@ export function buildMetricsRouter(): Router {
             items: renewOrders.map(toItem),
             refund_items: [],
             test_items: [],
-          },
-          same_day: {
-            count: sameDayOrders.length, amount: sameDayAmt,
-            items: sameDayOrders.map(toItem),
           },
           returned: {
             count: returnedOrders.length, amount: returnedAmt,
@@ -604,7 +598,7 @@ export function buildMetricsRouter(): Router {
         return raw?.item_type === 'contract';
       });
 
-      if (!contractOps.length) { res.json({ period: { from, to }, rows: [], cards: { new: 0, renewal: 0, same_day: 0, returned: 0 }, by_manager: [] }); return; }
+      if (!contractOps.length) { res.json({ period: { from, to }, rows: [], cards: { new: 0, renewal: 0, returned: 0, new_amt: 0, renewal_amt: 0, returned_amt: 0 }, by_manager: [] }); return; }
 
       // Get all contracts for involved clients
       const clientIds = [...new Set(contractOps.map(op => opCid(op)).filter((x): x is number => x != null))];
@@ -621,7 +615,7 @@ export function buildMetricsRouter(): Router {
         contractsByClient.get(c.client_fitbase_id)!.push(c);
       }
 
-      type PType = 'new' | 'same_day' | 'renewal' | 'returned';
+      type PType = 'new' | 'renewal' | 'returned';
       interface RenRow { client_name: string|null; contract_name: string|null; purchase_date: string|null; prev_name: string|null; prev_end: string|null; days_between: number|null; type: PType; manager: string|null; cashier: string|null; amount: number }
 
       const rows: RenRow[] = [];
@@ -632,28 +626,20 @@ export function buildMetricsRouter(): Router {
         const purchaseDate = op.op_date as string|null;
         const thisContract = itemId ? allContracts.find(c => c.fitbase_id === itemId) : null;
         const clientContracts = cid != null ? (contractsByClient.get(cid) ?? []) : [];
-        const paid = clientContracts.filter(c => c.status !== 'deleted' && Number(c.price) > 0 && !(c.name ?? '').toLowerCase().includes('пробн')).sort((a, b) => (a.payment_date ?? '').localeCompare(b.payment_date ?? ''));
-
+        // use strictly < purchaseDate so same-day contracts (trial or otherwise) don't count as "previous"
+        const prevContracts = clientContracts
+          .filter(c => c.status !== 'deleted' && Number(c.price) > 0 && !(c.name ?? '').toLowerCase().includes('пробн') && (c.payment_date ?? '') < (purchaseDate ?? ''))
+          .sort((a, b) => (a.payment_date ?? '').localeCompare(b.payment_date ?? ''));
         let type: PType = 'new';
-        let prev: typeof allContracts[0] | null = null;
+        let prev: typeof allContracts[0] | null = prevContracts.length > 0 ? prevContracts[prevContracts.length - 1] : null;
         let daysBetween: number | null = null;
-
-        const idx = paid.findIndex(c => c.fitbase_id === itemId);
-        if (idx > 0) {
-          prev = paid[idx - 1];
-          const pd = purchaseDate ?? '';
-          const prevPd = prev.payment_date ?? '';
-          if (pd === prevPd) {
-            type = 'same_day';
-            daysBetween = 0;
+        if (prev) {
+          const prevEnd = prev.end_date;
+          if (!prevEnd) {
+            type = 'renewal'; daysBetween = null;
           } else {
-            const prevEnd = prev.end_date;
-            if (!prevEnd) {
-              type = 'renewal'; daysBetween = null;
-            } else {
-              daysBetween = Math.floor((new Date(pd).getTime() - new Date(prevEnd).getTime()) / 86400_000);
-              type = daysBetween <= 0 ? 'renewal' : daysBetween <= 30 ? 'renewal' : 'returned';
-            }
+            daysBetween = Math.floor((new Date(purchaseDate ?? '').getTime() - new Date(prevEnd).getTime()) / 86400_000);
+            type = daysBetween <= 0 ? 'renewal' : daysBetween <= 30 ? 'renewal' : 'returned';
           }
         }
 
@@ -678,7 +664,7 @@ export function buildMetricsRouter(): Router {
         return true;
       });
 
-      const cards = { new: 0, renewal: 0, same_day: 0, returned: 0, new_amt: 0, renewal_amt: 0, same_day_amt: 0, returned_amt: 0 };
+      const cards = { new: 0, renewal: 0, returned: 0, new_amt: 0, renewal_amt: 0, returned_amt: 0 };
       for (const r of filtered) { cards[r.type]++; (cards as Record<string, number>)[r.type + '_amt'] += r.amount; }
 
       const mgrMap = new Map<string, { count: number; amount: number; renewal_count: number; renewal_amount: number }>();

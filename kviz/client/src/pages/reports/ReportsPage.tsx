@@ -1527,7 +1527,7 @@ function CrossConvPanel({ data, totalNet }: { data: Record<string, FunnelStep>; 
   const [to, setTo]     = useState<ConvStageTo>('visited');
   const fromCount = data[from]?.count ?? 0;
   const toCount   = to === 'total'
-    ? new Set([...(data.sales?.items ?? []), ...(data.renewals?.items ?? []), ...(data.same_day?.items ?? []), ...(data.returned?.items ?? [])].map(i => i.name)).size
+    ? new Set([...(data.sales?.items ?? []), ...(data.renewals?.items ?? []), ...(data.returned?.items ?? [])].map(i => i.name)).size
     : to === 'renewals' ? (data.renewals?.count ?? 0) : (data[to]?.count ?? 0);
   const pct  = fromCount > 0 ? Math.round(100 * toCount / fromCount) : 0;
   const norm = CONV_NORMS[`${from}→${to}`];
@@ -1723,9 +1723,17 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
             }
             const step = data[key];
             if (!step) return null;
-            const amt = step.amount ?? 0;
-            const pct = moneyPct(amt);
             const hasDrill = key === 'sales' || key === 'renewals';
+            let amt = step.amount ?? 0;
+            let subNote: React.ReactNode = null;
+            if (key === 'renewals') {
+              const ret = data['returned'];
+              if (ret && ret.count > 0) {
+                amt += (ret.amount ?? 0);
+                subNote = <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>из них вернулись: {ret.count} / {fmt(ret.amount ?? 0)} ₸</div>;
+              }
+            }
+            const pct = moneyPct(amt);
             return (
               <button key={key} onClick={hasDrill ? () => setSalesDrill({ label, step }) : undefined}
                 style={{ flex: '1 1 130px', minWidth: 120, background: '#fff', border: `1.5px solid ${color}30`, borderRadius: 12, padding: '10px 12px', cursor: hasDrill ? 'pointer' : 'default', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', borderTop: `3px solid ${color}` }}>
@@ -1733,16 +1741,11 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
                 <div style={{ fontSize: 22, fontWeight: 800, color }}>{step.count} шт</div>
                 <div style={{ fontSize: 12, color, fontWeight: 600 }}>{fmt(amt)} ₸</div>
                 {pct > 0 && <div style={{ fontSize: 10, color: '#94a3b8' }}>{pct}% выручки</div>}
+                {subNote}
               </button>
             );
           })}
         </div>
-        {((data.same_day?.count ?? 0) > 0 || (data.returned?.count ?? 0) > 0) && (
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
-            {(data.same_day?.count ?? 0) > 0 && <span>Сразу несколько: {data.same_day!.count} шт / {fmt(data.same_day!.amount ?? 0)} ₸ &nbsp;</span>}
-            {(data.returned?.count ?? 0) > 0 && <span>Вернулись: {data.returned!.count} шт / {fmt(data.returned!.amount ?? 0)} ₸</span>}
-          </div>
-        )}
       </div>
 
       {salesDrill && <SalesDrillModal title={salesDrill.label} step={salesDrill.step} onClose={() => setSalesDrill(null)} />}
@@ -2179,10 +2182,10 @@ function BulkResultsSection() {
 
 // ── Renewals section ──────────────────────────────────────────────────────────
 
-const RENEWAL_LABELS: Record<string, string> = { new: 'Новая', renewal: 'Продление', same_day: 'Сразу несколько', returned: 'Вернулась' };
+const RENEWAL_LABELS: Record<string, string> = { new: 'Новая', renewal: 'Продление', returned: 'Вернулась' };
 
 interface RenRow { client_name: string|null; contract_name: string|null; purchase_date: string|null; prev_name: string|null; prev_end: string|null; days_between: number|null; type: string; manager: string|null; cashier: string|null; amount: number }
-interface RenCards { new: number; renewal: number; same_day: number; returned: number; new_amt: number; renewal_amt: number; same_day_amt: number; returned_amt: number }
+interface RenCards { new: number; renewal: number; returned: number; new_amt: number; renewal_amt: number; returned_amt: number }
 interface RenMgrRow { manager: string; count: number; amount: number; renewal_count: number; renewal_amount: number }
 
 function RenewalsSection() {
@@ -2222,7 +2225,7 @@ function RenewalsSection() {
   const fmt = (n: number) => Math.round(n).toLocaleString('ru');
   const TH: React.CSSProperties = { padding: '4px 8px 4px 0', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12 };
   const TD: React.CSSProperties = { padding: '3px 8px 3px 0', fontSize: 12 };
-  const CARD_COLORS: Record<string, string> = { new: '#263CD9', renewal: '#02BDB6', same_day: '#f59e0b', returned: '#94a3b8' };
+  const CARD_COLORS: Record<string, string> = { new: '#263CD9', renewal: '#02BDB6', returned: '#94a3b8' };
 
   return (
     <div style={s.section}>
@@ -2253,7 +2256,7 @@ function RenewalsSection() {
 
       {cards && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-          {(['new', 'renewal', 'same_day', 'returned'] as const).map(k => (
+          {(['new', 'renewal', 'returned'] as const).map(k => (
             <div key={k} style={{ background: '#fff', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 120, borderTop: `3px solid ${CARD_COLORS[k]}` }}>
               <div style={{ fontSize: 11, color: '#64748b' }}>{RENEWAL_LABELS[k]}</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: CARD_COLORS[k] }}>{(cards as Record<string,number>)[k]}</div>

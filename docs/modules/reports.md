@@ -40,10 +40,10 @@
 - `fitbase_operations.amount` всегда хранится как абсолютное значение (Math.abs).
 
 ### Типы покупки абонемента (renewals)
-- **Новая** — первый платный абонемент клиента
-- **Продление** — end_date предыдущего >= даты покупки, или ≤30 дней после end_date; если end_date null — считать действующим
-- **Сразу несколько** — payment_date совпадает с предыдущим абонементом
-- **Вернулась** — >30 дней после end_date предыдущего (открытый вопрос)
+- **Новая** — нет предыдущего платного (price>0, название без «пробн», status≠deleted) контракта строго до даты покупки
+- **Продление** — есть такой контракт, и end_date предыдущего >= даты покупки или ≤30 дней после; если end_date null — renewal
+- **Вернулась** — >30 дней после end_date предыдущего
+- ~~Сразу несколько~~ — **не используется с task 27**: все покупки одного дня классифицируются одинаково (все смотрят на контракты строго до этого дня). Предыдущий = только платный, не пробный, не удалённый, **строго раньше** текущей даты (`< date`).
 
 ### Структура записи `/schedule-registration` (Fitbase)
 - `id`, `status` (число), `client_id` (верхний уровень — Fitbase client ID), `created_at` (unix)
@@ -75,6 +75,13 @@
 `TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
 
 ## Сделано
+### 30.10.2026 · (task 27) · classifyPurchase: same_day убран, «Вернулась» в карточке Продления, проценты 100%
+- `metrics.ts` `classifyPurchase`: фильтр изменён с `<= date` на `< date` — теперь контракты того же дня не учитываются как «предыдущие», тип `same_day` удалён из возвращаемых значений. Все покупки одного клиента в один день получают одну категорию (new или renewal).
+- `metrics.ts` renewals endpoint: аналогичный фикс — `prevContracts` фильтруется строго `< purchaseDate`, тип `PType` без `same_day`, cards без `same_day`.
+- `metrics.ts` fact-day: удалены `sameDayOrders`/`sameDayAmt`/`same_day` из ответа; `totalSalesAmt` = new + renewal + returned + goods.
+- `ReportsPage.tsx` `FactDayCards`: карточка «Продления» показывает `renewal.amount + returned.amount` как сумму, подстрочник «из них вернулись: N / X ₸» если returned > 0; строка «Сразу несколько / Вернулись» под карточками убрана. Проценты теперь в сумме 100% (Новые + Продления-с-вернулась + Товары = totalSalesAmt).
+- `ReportsPage.tsx` `RenewalsSection`: `same_day` убран из `RENEWAL_LABELS`, `RenCards`, `CARD_COLORS`, списка карточек и фильтра типа.
+
 ### 30.10.2026 · (task 26) · Классификация покупок: goods/new/same_day/renewal/returned, тест-возвраты, редизайн карточек
 - `metrics.ts`: `OrderRow` + `groupOrders` — добавлены `itemType` (из `raw.item_type`) и `itemId` (из `raw.item_id`).
 - `metrics.ts`: новая функция `classifyPurchase(o, contractsByClient)` — единая классификация для fact-day и renewals. `goods` = item_type != 'contract'. Предыдущий «валидный» абонемент = price>0 + name не содержит 'пробн' + status!='deleted' + fitbase_id!=текущему. `new` = нет валидных предыдущих. `same_day` = предыдущий куплен в тот же день. `renewal` = предыдущий active (end_date≥дата покупки) или ≤30 дней после end_date. `returned` = >30 дней. Исправлена корневая причина ошибки: пробные/бесплатные абонементы теперь не считаются «предыдущими».
