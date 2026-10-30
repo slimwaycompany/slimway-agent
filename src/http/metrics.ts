@@ -86,7 +86,8 @@ function opCid(op: Record<string, unknown>): number | null {
   return c?.id != null ? Number(c.id) : null;
 }
 
-interface OrderRow { amount: number; cid: number|null; manager: string|null; cashier: string|null; item: string|null; date: string|null; clientName: string|null }
+interface OrderRow { amount: number; cid: number|null; manager: string|null; cashier: string|null; item: string|null; date: string|null; clientName: string|null; itemType: string|null; itemId: number|null }
+interface ContractRecord { fitbase_id: number; client_fitbase_id: number; name: string|null; payment_date: string|null; end_date: string|null; status: string; price: number }
 
 // Group individual operation lines into orders by order_id
 function groupOrders(ops: Array<Record<string, unknown>>): OrderRow[] {
@@ -97,13 +98,33 @@ function groupOrders(ops: Array<Record<string, unknown>>): OrderRow[] {
     const cid = opCid(op);
     const ex = map.get(orderId);
     if (!ex) {
-      map.set(orderId, { amount: Number(op.amount ?? 0), cid, manager: (op.manager as string|null) ?? null, cashier: (op.cashier as string|null) ?? null, item: (op.item as string|null) ?? null, date: (op.op_date as string|null) ?? null, clientName: (op.client_name as string|null) ?? null });
+      map.set(orderId, { amount: Number(op.amount ?? 0), cid, manager: (op.manager as string|null) ?? null, cashier: (op.cashier as string|null) ?? null, item: (op.item as string|null) ?? null, date: (op.op_date as string|null) ?? null, clientName: (op.client_name as string|null) ?? null, itemType: (raw?.item_type as string|null) ?? null, itemId: raw?.item_id != null ? Number(raw.item_id) : null });
     } else {
       ex.amount += Number(op.amount ?? 0);
       if (cid != null && ex.cid == null) ex.cid = cid;
     }
   }
   return [...map.values()];
+}
+
+function classifyPurchase(o: OrderRow, contractsByClient: Map<number, ContractRecord[]>): 'new'|'same_day'|'renewal'|'returned'|'goods' {
+  if (o.itemType !== 'contract') return 'goods';
+  if (o.cid == null || !o.date) return 'new';
+  const all = contractsByClient.get(o.cid) ?? [];
+  const valid = all.filter(c =>
+    Number(c.price) > 0 &&
+    !(c.name ?? '').toLowerCase().includes('пробн') &&
+    c.status !== 'deleted' &&
+    Number(c.fitbase_id) !== o.itemId &&
+    (c.payment_date ?? '') <= o.date!
+  );
+  if (valid.length === 0) return 'new';
+  if (valid.some(c => c.payment_date === o.date)) return 'same_day';
+  const latest = valid.reduce((a, b) => (a.payment_date ?? '') > (b.payment_date ?? '') ? a : b);
+  const prevEnd = latest.end_date;
+  if (!prevEnd) return 'renewal';
+  const days = Math.floor((new Date(o.date!).getTime() - new Date(prevEnd).getTime()) / 86400_000);
+  return days <= 30 ? 'renewal' : 'returned';
 }
 
 function buildFunnel(leads: Lead[], visits: Visit[]) {
@@ -262,32 +283,51 @@ export function buildMetricsRouter(): Router {
       const refundOps   = allRefundOps.filter(matchesFilters);
       const saleOrders  = groupOrders(salesOps);
       const refundOrders = groupOrders(refundOps);
-      const refundAmount = refundOrders.reduce((s, o) => s + o.amount, 0);
 
-      // Renewal classification: client had a prior paid contract before this purchase date
+      // Fetch contracts for all clients with sales in period
       const purCids = [...new Set(allSalesOps.map(op => opCid(op)).filter((x): x is number => x != null))];
-      const cbc = new Map<number, string[]>();
+      const contractsByClient = new Map<number, ContractRecord[]>();
       if (purCids.length > 0) {
         const cr = await fetchAll((off, lim) =>
-          supabase.from('fitbase_contracts').select('client_fitbase_id,payment_date')
-            .in('client_fitbase_id', purCids).neq('status', 'deleted').range(off, off + lim - 1)
+          supabase.from('fitbase_contracts').select('fitbase_id,client_fitbase_id,name,payment_date,end_date,status,price')
+            .in('client_fitbase_id', purCids).range(off, off + lim - 1)
         );
         for (const c of cr) {
           const cid = Number(c.client_fitbase_id);
-          if (!cbc.has(cid)) cbc.set(cid, []);
-          if (c.payment_date) cbc.get(cid)!.push(c.payment_date as string);
+          if (!contractsByClient.has(cid)) contractsByClient.set(cid, []);
+          contractsByClient.get(cid)!.push(c as unknown as ContractRecord);
         }
       }
-      function isRenew(o: OrderRow): boolean {
-        return o.cid != null && o.date != null && (cbc.get(o.cid) ?? []).some(pd => pd < o.date!);
-      }
 
-      const newOrders   = saleOrders.filter(o => !isRenew(o));
-      const renewOrders = saleOrders.filter(o => isRenew(o));
-      const periodCids  = new Set(allLeads.map(l => l.client_fitbase_id).filter((x): x is number => x != null));
+      // Test detection: sale + refund of same (cid, itemId) on same date → excluded entirely
+      const orderKey = (o: OrderRow) => o.cid != null && o.itemId != null && o.date ? `${o.cid}:${o.itemId}:${o.date}` : null;
+      const saleKeySet = new Set<string>();
+      for (const o of saleOrders) { const k = orderKey(o); if (k) saleKeySet.add(k); }
+      const testKeys = new Set<string>();
+      for (const o of refundOrders) { const k = orderKey(o); if (k && saleKeySet.has(k)) testKeys.add(k); }
+      const isTest = (o: OrderRow) => { const k = orderKey(o); return k != null && testKeys.has(k); };
+
+      const cleanSaleOrders   = saleOrders.filter(o => !isTest(o));
+      const cleanRefundOrders = refundOrders.filter(o => !isTest(o));
+      const testSaleOrders    = saleOrders.filter(isTest);
+      const refundAmount      = cleanRefundOrders.reduce((s, o) => s + o.amount, 0);
+
+      const classify = (o: OrderRow) => classifyPurchase(o, contractsByClient);
+      const newOrders      = cleanSaleOrders.filter(o => classify(o) === 'new');
+      const renewOrders    = cleanSaleOrders.filter(o => classify(o) === 'renewal');
+      const sameDayOrders  = cleanSaleOrders.filter(o => classify(o) === 'same_day');
+      const returnedOrders = cleanSaleOrders.filter(o => classify(o) === 'returned');
+      const goodsOrders    = cleanSaleOrders.filter(o => classify(o) === 'goods');
+
+      const periodCids    = new Set(allLeads.map(l => l.client_fitbase_id).filter((x): x is number => x != null));
       const newFromPeriod = newOrders.filter(o => o.cid != null && periodCids.has(o.cid)).length;
-      const newAmount    = newOrders.reduce((s, o) => s + o.amount, 0);
-      const renewAmount  = renewOrders.reduce((s, o) => s + o.amount, 0);
+      const newAmount     = newOrders.reduce((s, o) => s + o.amount, 0);
+      const renewAmount   = renewOrders.reduce((s, o) => s + o.amount, 0);
+      const sameDayAmt    = sameDayOrders.reduce((s, o) => s + o.amount, 0);
+      const returnedAmt   = returnedOrders.reduce((s, o) => s + o.amount, 0);
+      const goodsAmt      = goodsOrders.reduce((s, o) => s + o.amount, 0);
+      const totalSalesAmt = newAmount + renewAmount + sameDayAmt + returnedAmt + goodsAmt;
+      const totalNetAmt   = totalSalesAmt - refundAmount;
 
       const { data: trialSalesRaw } = await supabase.from('fitbase_operations')
         .select('fitbase_id,client_name,item,raw')
@@ -317,16 +357,17 @@ export function buildMetricsRouter(): Router {
         const sBooked    = allVisits.filter(v => notCancelled(v.status as number | null) && clSrc(v.client_fitbase_id as number | null, clm) === src);
         const sVisited   = allVisits.filter(v => v.status === VISIT_STATUS_VISITED && clSrc(v.client_fitbase_id as number | null, clm) === src);
         const sTrialSold = allTrialSold.filter(op => clSrc(opCid(op), clm) === src);
-        const sSaleOrds  = groupOrders(allSalesOps.filter(op => clSrc(opCid(op), clm) === src));
-        const sRefOrds   = groupOrders(allRefundOps.filter(op => clSrc(opCid(op), clm) === src));
-        const sNewOrds   = sSaleOrds.filter(o => !isRenew(o));
-        const sRenOrds   = sSaleOrds.filter(o => isRenew(o));
+        const sSaleOrds  = groupOrders(allSalesOps.filter(op => clSrc(opCid(op), clm) === src)).filter(o => !isTest(o));
+        const sRefOrds   = groupOrders(allRefundOps.filter(op => clSrc(opCid(op), clm) === src)).filter(o => !isTest(o));
+        const sNewOrds   = sSaleOrds.filter(o => classify(o) === 'new');
+        const sRenOrds   = sSaleOrds.filter(o => classify(o) === 'renewal');
         const sSalesAmt  = sSaleOrds.reduce((s, o) => s + o.amount, 0);
         const sRefAmt    = sRefOrds.reduce((s, o) => s + o.amount, 0);
         const sNewAmt    = sNewOrds.reduce((s, o) => s + o.amount, 0);
         const sRenAmt    = sRenOrds.reduce((s, o) => s + o.amount, 0);
-        const sBought    = sLeads.filter(l => l.status === '-1').length;
-        const sLtbPct    = sLeads.length > 0 ? Math.round(100 * sBought / sLeads.length) : 0;
+        const sLeadCids  = new Set(sLeads.map(l => l.client_fitbase_id).filter((x): x is number => x != null));
+        const sBuyers    = new Set(sSaleOrds.map(o => o.cid).filter((x): x is number => x != null && sLeadCids.has(x)));
+        const sLtbPct    = sLeads.length > 0 ? Math.round(100 * sBuyers.size / sLeads.length) : 0;
         return { source: src, leads: sLeads.length, in_work: sInWork.length, trial_booked: sBooked.length, visited: sVisited.length, trial_sold_count: sTrialSold.length, sales_count: sSaleOrds.length, new_count: sNewOrds.length, renewal_count: sRenOrds.length, sales_amount: sSalesAmt, new_amount: sNewAmt, renewal_amount: sRenAmt, refund_amount: sRefAmt, net_amount: sSalesAmt - sRefAmt, lead_to_buy_pct: sLtbPct };
       }).sort((a, b) => b.leads - a.leads);
 
@@ -340,16 +381,17 @@ export function buildMetricsRouter(): Router {
         const mBooked    = allVisits.filter(v => notCancelled(v.status as number | null) && clMgr(v.client_fitbase_id as number | null, clm) === mgr);
         const mVisited   = allVisits.filter(v => v.status === VISIT_STATUS_VISITED && clMgr(v.client_fitbase_id as number | null, clm) === mgr);
         const mTrialSold = allTrialSold.filter(op => clMgr(opCid(op), clm) === mgr);
-        const mSaleOrds  = groupOrders(allSalesOps.filter(op => clMgr(opCid(op), clm) === mgr));
-        const mRefOrds   = groupOrders(allRefundOps.filter(op => clMgr(opCid(op), clm) === mgr));
-        const mNewOrds   = mSaleOrds.filter(o => !isRenew(o));
-        const mRenOrds   = mSaleOrds.filter(o => isRenew(o));
+        const mSaleOrds  = groupOrders(allSalesOps.filter(op => clMgr(opCid(op), clm) === mgr)).filter(o => !isTest(o));
+        const mRefOrds   = groupOrders(allRefundOps.filter(op => clMgr(opCid(op), clm) === mgr)).filter(o => !isTest(o));
+        const mNewOrds   = mSaleOrds.filter(o => classify(o) === 'new');
+        const mRenOrds   = mSaleOrds.filter(o => classify(o) === 'renewal');
         const mSalesAmt  = mSaleOrds.reduce((s, o) => s + o.amount, 0);
         const mRefAmt    = mRefOrds.reduce((s, o) => s + o.amount, 0);
         const mNewAmt    = mNewOrds.reduce((s, o) => s + o.amount, 0);
         const mRenAmt    = mRenOrds.reduce((s, o) => s + o.amount, 0);
-        const mBought    = mLeads.filter(l => l.status === '-1').length;
-        const mLtbPct    = mLeads.length > 0 ? Math.round(100 * mBought / mLeads.length) : 0;
+        const mLeadCids  = new Set(mLeads.map(l => l.client_fitbase_id).filter((x): x is number => x != null));
+        const mBuyers    = new Set(mSaleOrds.map(o => o.cid).filter((x): x is number => x != null && mLeadCids.has(x)));
+        const mLtbPct    = mLeads.length > 0 ? Math.round(100 * mBuyers.size / mLeads.length) : 0;
         const items = mLeads.map(l => ({ name: l.client_name, source: l.source, manager: l.manager, date: l.created_date }));
         return { manager: mgr, leads: mLeads.length, in_work: mInWork.length, trial_booked: mBooked.length, visited: mVisited.length, trial_sold_count: mTrialSold.length, sales_count: mSaleOrds.length, new_count: mNewOrds.length, renewal_count: mRenOrds.length, sales_amount: mSalesAmt, new_amount: mNewAmt, renewal_amount: mRenAmt, refund_amount: mRefAmt, net_amount: mSalesAmt - mRefAmt, lead_to_buy_pct: mLtbPct, items };
       }).sort((a, b) => b.net_amount - a.net_amount);
@@ -382,6 +424,7 @@ export function buildMetricsRouter(): Router {
       ])].filter(Boolean).sort();
       const availableCashiers = [...new Set((cashierRows.data ?? []).map(r => r.cashier as string))].filter(Boolean).sort();
 
+      const toItem = (o: OrderRow) => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date });
       res.json({
         period: { from, to },
         steps: {
@@ -397,15 +440,41 @@ export function buildMetricsRouter(): Router {
           },
           visited: { count: visited.length, items: visited.map(v => ({ name: v.client_name, date: v.visit_date, manager: v.manager })) },
           sales: {
-            count: newOrders.length, amount: newAmount, net_amount: newAmount - refundAmount,
+            count: newOrders.length, amount: newAmount, net_amount: newAmount,
             from_period_leads: newFromPeriod, from_old_leads: newOrders.length - newFromPeriod,
-            refund_count: refundOrders.length, refund_amount: refundAmount,
-            items: newOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date })),
-            refund_items: refundOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date })),
+            refund_count: cleanRefundOrders.filter(o => classifyPurchase(o, contractsByClient) === 'new' || o.itemId == null).length,
+            refund_amount: cleanRefundOrders.reduce((s, o) => s + o.amount, 0),
+            test_count: testSaleOrders.filter(o => classify(o) === 'new' || o.itemType === 'contract').length,
+            test_amount: testSaleOrders.reduce((s, o) => s + o.amount, 0),
+            items: newOrders.map(toItem),
+            refund_items: cleanRefundOrders.map(toItem),
+            test_items: testSaleOrders.map(toItem),
           },
           renewals: {
             count: renewOrders.length, amount: renewAmount, net_amount: renewAmount,
-            items: renewOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date })),
+            refund_count: 0, refund_amount: 0, test_count: 0, test_amount: 0,
+            items: renewOrders.map(toItem),
+            refund_items: [],
+            test_items: [],
+          },
+          same_day: {
+            count: sameDayOrders.length, amount: sameDayAmt,
+            items: sameDayOrders.map(toItem),
+          },
+          returned: {
+            count: returnedOrders.length, amount: returnedAmt,
+            items: returnedOrders.map(toItem),
+          },
+          goods: {
+            count: goodsOrders.length, amount: goodsAmt,
+            items: goodsOrders.map(toItem),
+          },
+          total_net: {
+            amount: totalNetAmt,
+            sales_amount: totalSalesAmt,
+            refund_amount: refundAmount,
+            test_count: testSaleOrders.length,
+            test_amount: testSaleOrders.reduce((s, o) => s + o.amount, 0),
           },
         },
         by_source,
@@ -540,10 +609,10 @@ export function buildMetricsRouter(): Router {
       // Get all contracts for involved clients
       const clientIds = [...new Set(contractOps.map(op => opCid(op)).filter((x): x is number => x != null))];
       const contractsRaw = await fetchAll((off, lim) =>
-        supabase.from('fitbase_contracts').select('fitbase_id,client_fitbase_id,name,payment_date,begin_date,end_date,status')
+        supabase.from('fitbase_contracts').select('fitbase_id,client_fitbase_id,name,payment_date,begin_date,end_date,status,price')
           .in('client_fitbase_id', clientIds).range(off, off + lim - 1)
       );
-      const allContracts = contractsRaw as unknown as Array<{ fitbase_id: number; client_fitbase_id: number; name: string|null; payment_date: string|null; begin_date: string|null; end_date: string|null; status: string }>;
+      const allContracts = contractsRaw as unknown as Array<{ fitbase_id: number; client_fitbase_id: number; name: string|null; payment_date: string|null; begin_date: string|null; end_date: string|null; status: string; price: number }>;
 
       // Group contracts by client
       const contractsByClient = new Map<number, typeof allContracts>();
@@ -563,7 +632,7 @@ export function buildMetricsRouter(): Router {
         const purchaseDate = op.op_date as string|null;
         const thisContract = itemId ? allContracts.find(c => c.fitbase_id === itemId) : null;
         const clientContracts = cid != null ? (contractsByClient.get(cid) ?? []) : [];
-        const paid = clientContracts.filter(c => c.status !== 'deleted').sort((a, b) => (a.payment_date ?? '').localeCompare(b.payment_date ?? ''));
+        const paid = clientContracts.filter(c => c.status !== 'deleted' && Number(c.price) > 0 && !(c.name ?? '').toLowerCase().includes('пробн')).sort((a, b) => (a.payment_date ?? '').localeCompare(b.payment_date ?? ''));
 
         let type: PType = 'new';
         let prev: typeof allContracts[0] | null = null;

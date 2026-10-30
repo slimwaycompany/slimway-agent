@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import OccupancySection from './OccupancySection';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 
@@ -1310,7 +1310,8 @@ const weekAgoStr = new Date(Date.now() + 5 * 3600_000 - 7 * 86400_000).toISOStri
 const monthAgoStr = new Date(Date.now() + 5 * 3600_000 - 30 * 86400_000).toISOString().slice(0, 10);
 
 interface DrillItem { name?: string | null; source?: string | null; manager?: string | null; date?: string | null; amount?: number | null; resource?: string | null; item?: string | null }
-interface FunnelStep { count: number; pct?: number; amount?: number; net_amount?: number; refund_count?: number; refund_amount?: number; trial_sold_count?: number; items: DrillItem[]; refund_items?: DrillItem[] }
+interface FunnelStep { count: number; pct?: number; amount?: number; net_amount?: number; refund_count?: number; refund_amount?: number; test_count?: number; test_amount?: number; trial_sold_count?: number; items: DrillItem[]; refund_items?: DrillItem[]; test_items?: DrillItem[] }
+interface FdTotalNet { amount: number; sales_amount: number; refund_amount: number; test_count: number; test_amount: number }
 
 function DrillModal({ title, items, onClose }: { title: string; items: DrillItem[]; onClose: () => void }) {
   return (
@@ -1334,6 +1335,70 @@ function DrillModal({ title, items, onClose }: { title: string; items: DrillItem
   );
 }
 
+function SalesDrillModal({ title, step, onClose }: { title: string; step: FunnelStep; onClose: () => void }) {
+  const [tab, setTab] = useState<0|1|2>(0);
+  const fmt = (n: number) => Math.round(n).toLocaleString('ru');
+  const cols = [
+    { label: 'Покупки', items: step.items, count: step.count, amount: step.amount ?? 0, color: '#263CD9' },
+    { label: 'Чистые возвраты', items: step.refund_items ?? [], count: step.refund_count ?? 0, amount: step.refund_amount ?? 0, color: '#ef4444' },
+    { label: 'Тест', items: step.test_items ?? [], count: step.test_count ?? 0, amount: step.test_amount ?? 0, color: '#f59e0b' },
+  ];
+  const isNarrow = typeof window !== 'undefined' && window.innerWidth < 480;
+  const items = cols[tab].items;
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={{ ...s.modal, maxHeight: '85vh', overflow: 'auto', minWidth: 320 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{title}</h3>
+          <button style={s.cancelBtn} onClick={onClose}>✕</button>
+        </div>
+        {isNarrow ? (
+          <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+            {cols.map((c, i) => (
+              <button key={i} onClick={() => setTab(i as 0|1|2)}
+                style={{ ...s.chip, ...(tab === i ? s.chipActive : {}), flex: 1, fontSize: 11 }}>
+                {c.label} ({c.count})
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
+            {cols.map((c, i) => (
+              <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 10px', borderTop: `3px solid ${c.color}` }}>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{c.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.count}</div>
+                <div style={{ fontSize: 11, color: '#374151' }}>{fmt(c.amount)} ₸</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {!isNarrow && (
+          <div style={{ fontSize: 12, color: '#374151', marginBottom: 10, padding: '6px 10px', background: '#f0fdf4', borderRadius: 6 }}>
+            Итог: {fmt(step.amount ?? 0)} − {fmt(step.refund_amount ?? 0)} = <b>{fmt((step.amount ?? 0) - (step.refund_amount ?? 0))} ₸</b>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+          {cols.map((c, i) => (
+            <button key={i} onClick={() => setTab(i as 0|1|2)}
+              style={{ ...s.chip, ...(tab === i ? s.chipActive : {}), fontSize: 11 }}>
+              {c.label} ({c.count})
+            </button>
+          ))}
+        </div>
+        {items.length === 0 && <div style={s.empty}>Нет данных</div>}
+        {items.map((it, i) => (
+          <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+            <div style={{ fontWeight: 600 }}>{it.name ?? '—'}</div>
+            <div style={{ color: '#64748b', marginTop: 1 }}>
+              {[it.item, it.date, it.amount != null ? fmt(it.amount) + ' ₸' : null].filter(Boolean).join(' · ')}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FunnelView({ steps }: { steps: Array<{ label: string; step: FunnelStep }> }) {
   const [drill, setDrill] = useState<{ label: string; items: DrillItem[] } | null>(null);
   const fmt = (n: number) => Math.round(n).toLocaleString('ru');
@@ -1342,31 +1407,13 @@ function FunnelView({ steps }: { steps: Array<{ label: string; step: FunnelStep 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
         {steps.map(({ label, step }, i) => {
           const pct = step.pct != null ? step.pct : (i === 0 ? 100 : steps[i - 1].step.count > 0 ? Math.round(100 * step.count / steps[i - 1].step.count) : 0);
-          const hasSalesBreakdown = step.net_amount != null;
           return (
             <button key={label} onClick={() => setDrill({ label, items: step.items })}
               style={{ flex: '1 1 130px', minWidth: 120, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
               <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{i + 1}. {label}</div>
-              {hasSalesBreakdown ? (
-                <>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#02BDB6' }}>{fmt(step.net_amount!)} ₸</div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                    Продажи {step.count} шт / {fmt(step.amount ?? 0)} ₸
-                  </div>
-                  {(step.refund_count ?? 0) > 0 && (
-                    <button style={{ display: 'block', fontSize: 11, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', fontFamily: 'inherit' }}
-                      onClick={e => { e.stopPropagation(); setDrill({ label: 'Возвраты', items: step.refund_items ?? [] }); }}>
-                      Возвраты {step.refund_count} шт / {fmt(step.refund_amount ?? 0)} ₸
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: '#02BDB6' }}>{step.count}</div>
-                  {step.amount != null && <div style={{ fontSize: 12, color: '#263CD9', fontWeight: 600 }}>{fmt(step.amount)} ₸</div>}
-                  {step.trial_sold_count != null && <div style={{ fontSize: 11, color: '#64748b' }}>Продано услуг: {step.trial_sold_count}</div>}
-                </>
-              )}
+              <div style={{ fontSize: 26, fontWeight: 800, color: '#02BDB6' }}>{step.count}</div>
+              {step.amount != null && <div style={{ fontSize: 12, color: '#263CD9', fontWeight: 600 }}>{fmt(step.amount)} ₸</div>}
+              {step.trial_sold_count != null && <div style={{ fontSize: 11, color: '#64748b' }}>Продано услуг: {step.trial_sold_count}</div>}
               <div style={{ fontSize: 12, color: i === 0 ? '#94a3b8' : pct >= 50 ? '#22c55e' : pct >= 20 ? '#f59e0b' : '#ef4444' }}>
                 {i === 0 ? '100%' : `${pct}% от пред.`}
               </div>
@@ -1459,22 +1506,29 @@ interface FdCshRow { cashier: string; sales_count: number; sales_amount: number;
 const FD_STEP_ORDER = ['leads','in_work','trial_booked','visited','sales','renewals'] as const;
 const FD_LABELS: Record<string, string> = {
   leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи на пробное',
-  visited: 'Пришли', sales: 'Новые продажи', renewals: 'Продления',
+  visited: 'Пришли', sales: 'Новые', renewals: 'Продления',
+  same_day: 'Сразу несколько', returned: 'Вернулась', goods: 'Товары/услуги', total_net: 'Итог касса',
 };
-const CONV_STAGES = ['leads','in_work','trial_booked','visited','sales'] as const;
-type ConvStage = typeof CONV_STAGES[number];
-const CONV_LABELS: Record<ConvStage, string> = { leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи', visited: 'Пришли', sales: 'Купили (новые)' };
+const CONV_STAGES_FROM = ['leads','in_work','trial_booked','visited'] as const;
+const CONV_STAGES_TO   = ['in_work','trial_booked','visited','sales','renewals','total'] as const;
+type ConvStageFrom = typeof CONV_STAGES_FROM[number];
+type ConvStageTo   = typeof CONV_STAGES_TO[number];
+type ConvStage = ConvStageFrom | ConvStageTo;
+const CONV_LABELS_FROM: Record<ConvStageFrom, string> = { leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи', visited: 'Пришли' };
+const CONV_LABELS_TO: Record<ConvStageTo, string> = { in_work: 'В работе', trial_booked: 'Записи', visited: 'Пришли', sales: 'Купили (новые)', renewals: 'Продления', total: 'Купили (всего)' };
 const CONV_NORMS: Partial<Record<string, [number, number]>> = {
   'in_work→trial_booked': [60, 70],
   'trial_booked→visited': [85, 100],
   'visited→sales': [50, 80],
 };
 
-function CrossConvPanel({ data }: { data: Record<string, FunnelStep> }) {
-  const [from, setFrom] = useState<ConvStage>('trial_booked');
-  const [to, setTo]     = useState<ConvStage>('visited');
+function CrossConvPanel({ data, totalNet }: { data: Record<string, FunnelStep>; totalNet: FdTotalNet | null }) {
+  const [from, setFrom] = useState<ConvStageFrom>('trial_booked');
+  const [to, setTo]     = useState<ConvStageTo>('visited');
   const fromCount = data[from]?.count ?? 0;
-  const toCount   = data[to]?.count ?? 0;
+  const toCount   = to === 'total'
+    ? new Set([...(data.sales?.items ?? []), ...(data.renewals?.items ?? []), ...(data.same_day?.items ?? []), ...(data.returned?.items ?? [])].map(i => i.name)).size
+    : to === 'renewals' ? (data.renewals?.count ?? 0) : (data[to]?.count ?? 0);
   const pct  = fromCount > 0 ? Math.round(100 * toCount / fromCount) : 0;
   const norm = CONV_NORMS[`${from}→${to}`];
   const color = norm ? (pct >= norm[0] ? '#22c55e' : '#ef4444') : '#02BDB6';
@@ -1482,12 +1536,12 @@ function CrossConvPanel({ data }: { data: Record<string, FunnelStep> }) {
     <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Сквозная конверсия</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <select value={from} onChange={e => setFrom(e.target.value as ConvStage)} style={{ ...s.dateInp, padding: '5px 8px', fontSize: 12 }}>
-          {CONV_STAGES.filter(st => st !== to).map(st => <option key={st} value={st}>{CONV_LABELS[st]}</option>)}
+        <select value={from} onChange={e => setFrom(e.target.value as ConvStageFrom)} style={{ ...s.dateInp, padding: '5px 8px', fontSize: 12 }}>
+          {CONV_STAGES_FROM.map(st => <option key={st} value={st}>{CONV_LABELS_FROM[st]}</option>)}
         </select>
         <span style={{ color: '#94a3b8', fontWeight: 700 }}>→</span>
-        <select value={to} onChange={e => setTo(e.target.value as ConvStage)} style={{ ...s.dateInp, padding: '5px 8px', fontSize: 12 }}>
-          {CONV_STAGES.filter(st => st !== from).map(st => <option key={st} value={st}>{CONV_LABELS[st]}</option>)}
+        <select value={to} onChange={e => setTo(e.target.value as ConvStageTo)} style={{ ...s.dateInp, padding: '5px 8px', fontSize: 12 }}>
+          {CONV_STAGES_TO.map(st => <option key={st} value={st}>{CONV_LABELS_TO[st]}</option>)}
         </select>
         <div style={{ fontSize: 28, fontWeight: 800, color, marginLeft: 4 }}>{pct}%</div>
         <div style={{ fontSize: 12, color: '#94a3b8' }}>{toCount} из {fromCount}</div>
@@ -1497,6 +1551,9 @@ function CrossConvPanel({ data }: { data: Record<string, FunnelStep> }) {
         <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: color, borderRadius: 4, transition: 'width 0.3s' }} />
         {norm && <div style={{ position: 'absolute', left: `${norm[0]}%`, top: 0, bottom: 0, width: 2, background: '#94a3b8', borderRadius: 1 }} />}
       </div>
+      {totalNet && totalNet.test_count > 0 && (
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>Тестов (куп. и сразу вернули): {totalNet.test_count} шт</div>
+      )}
     </div>
   );
 }
@@ -1529,12 +1586,12 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
   const fmtK = (v: number) => v >= 1000 ? Math.round(v / 1000) + 'к' : String(Math.round(v));
 
   const mgrData = byMgr.slice(0, 8).map(r => ({
-    name: r.manager.split(' ')[0] ?? r.manager,
+    name: r.manager.split(' ').slice(0, 2).join(' '),
     'Новые': r.new_amount,
     'Продления': r.renewal_amount,
   }));
   const srcData = bySrc.slice(0, 8).map(r => ({
-    name: r.source.length > 14 ? r.source.slice(0, 14) + '…' : r.source,
+    name: r.source.length > 18 ? r.source.slice(0, 18) + '…' : r.source,
     'Лидов': r.leads,
     'Продажи': r.sales_count,
   }));
@@ -1550,6 +1607,7 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
       <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
       <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} />
       <Tooltip formatter={(v: number) => Math.round(v).toLocaleString('ru') + ' ₸'} />
+      <Legend wrapperStyle={{ fontSize: 11 }} />
       <Bar dataKey="Новые" fill="#263CD9" stackId="a" />
       <Bar dataKey="Продления" fill="#02BDB6" stackId="a" radius={[3,3,0,0]} />
     </BarChart>
@@ -1595,8 +1653,106 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
   );
 }
 
+function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; totalNet: FdTotalNet | null }) {
+  const [salesDrill, setSalesDrill] = useState<{ label: string; step: FunnelStep } | null>(null);
+  const fmt = (n: number) => Math.round(n).toLocaleString('ru');
+
+  const funnelSteps: Array<{ key: string; label: string }> = [
+    { key: 'leads', label: 'Лиды' },
+    { key: 'in_work', label: 'В работе' },
+    { key: 'trial_booked', label: 'Записи' },
+    { key: 'visited', label: 'Пришли' },
+  ];
+  const moneySteps: Array<{ key: string; label: string; color: string }> = [
+    { key: 'sales', label: 'Новые', color: '#263CD9' },
+    { key: 'renewals', label: 'Продления', color: '#02BDB6' },
+    { key: 'goods', label: 'Товары/услуги', color: '#f59e0b' },
+    { key: 'total_net', label: 'Итог касса', color: '#22c55e' },
+  ];
+
+  const totalSalesAmt = totalNet?.sales_amount ?? 0;
+  const totalNetAmt   = totalNet?.amount ?? 0;
+  const refundAmt     = totalNet?.refund_amount ?? 0;
+
+  function moneyPct(amount: number) {
+    return totalSalesAmt > 0 ? Math.round(100 * amount / totalSalesAmt) : 0;
+  }
+
+  return (
+    <>
+      <div style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Воронка</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {funnelSteps.map(({ key, label }, i) => {
+            const step = data[key];
+            if (!step) return null;
+            const prev = i > 0 ? data[funnelSteps[i-1].key]?.count ?? 0 : 0;
+            const pct = i === 0 ? 100 : prev > 0 ? Math.round(100 * step.count / prev) : 0;
+            return (
+              <button key={key} onClick={() => {}}
+                style={{ flex: '1 1 100px', minWidth: 90, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '10px 12px', cursor: 'default', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#02BDB6' }}>{step.count}</div>
+                {step.trial_sold_count != null && <div style={{ fontSize: 10, color: '#64748b' }}>услуг: {step.trial_sold_count}</div>}
+                <div style={{ fontSize: 11, color: i === 0 ? '#94a3b8' : pct >= 50 ? '#22c55e' : pct >= 20 ? '#f59e0b' : '#ef4444' }}>
+                  {i === 0 ? '100%' : `${pct}% от пред.`}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Деньги</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {moneySteps.map(({ key, label, color }) => {
+            if (key === 'total_net') {
+              return (
+                <div key={key} style={{ flex: '1 1 130px', minWidth: 120, background: '#fff', border: `1.5px solid ${color}30`, borderRadius: 12, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', borderTop: `3px solid ${color}` }}>
+                  <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>Итог касса</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color }}>{fmt(totalNetAmt)} ₸</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>продажи {fmt(totalSalesAmt)} ₸</div>
+                  {refundAmt > 0 && (
+                    <div style={{ fontSize: 10, color: '#ef4444', marginTop: 1 }}>
+                      возвраты −{fmt(refundAmt)} ₸{(totalNet?.test_count ?? 0) > 0 ? ` (тест ${totalNet!.test_count})` : ''}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            const step = data[key];
+            if (!step) return null;
+            const amt = step.amount ?? 0;
+            const pct = moneyPct(amt);
+            const hasDrill = key === 'sales' || key === 'renewals';
+            return (
+              <button key={key} onClick={hasDrill ? () => setSalesDrill({ label, step }) : undefined}
+                style={{ flex: '1 1 130px', minWidth: 120, background: '#fff', border: `1.5px solid ${color}30`, borderRadius: 12, padding: '10px 12px', cursor: hasDrill ? 'pointer' : 'default', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', borderTop: `3px solid ${color}` }}>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color }}>{step.count} шт</div>
+                <div style={{ fontSize: 12, color, fontWeight: 600 }}>{fmt(amt)} ₸</div>
+                {pct > 0 && <div style={{ fontSize: 10, color: '#94a3b8' }}>{pct}% выручки</div>}
+              </button>
+            );
+          })}
+        </div>
+        {((data.same_day?.count ?? 0) > 0 || (data.returned?.count ?? 0) > 0) && (
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
+            {(data.same_day?.count ?? 0) > 0 && <span>Сразу несколько: {data.same_day!.count} шт / {fmt(data.same_day!.amount ?? 0)} ₸ &nbsp;</span>}
+            {(data.returned?.count ?? 0) > 0 && <span>Вернулись: {data.returned!.count} шт / {fmt(data.returned!.amount ?? 0)} ₸</span>}
+          </div>
+        )}
+      </div>
+
+      {salesDrill && <SalesDrillModal title={salesDrill.label} step={salesDrill.step} onClose={() => setSalesDrill(null)} />}
+    </>
+  );
+}
+
 function FactDaySection() {
   const [data, setData]             = useState<Record<string, FunnelStep> | null>(null);
+  const [totalNet, setTotalNet]     = useState<FdTotalNet | null>(null);
   const [bySrc, setBySrc]           = useState<FdSrcRow[]>([]);
   const [byMgr, setByMgr]           = useState<FdMgrRow[]>([]);
   const [byCsh, setByCsh]           = useState<FdCshRow[]>([]);
@@ -1621,6 +1777,7 @@ function FactDaySection() {
       if (!r.ok) return;
       const d = await r.json();
       setData(d.steps);
+      setTotalNet(d.steps?.total_net ?? null);
       setBySrc(d.by_source ?? []);
       setByMgr(d.by_manager ?? []);
       setByCsh(d.by_cashier ?? []);
@@ -1633,8 +1790,11 @@ function FactDaySection() {
   useEffect(() => { load(); }, [load]);
 
   const fmt = (n: number) => Math.round(n).toLocaleString('ru');
-  const TH: React.CSSProperties = { padding: '4px 8px 4px 0', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12 };
-  const TD: React.CSSProperties = { padding: '3px 8px 3px 0', fontSize: 12 };
+  const TH: React.CSSProperties = { padding: '4px 8px', textAlign: 'right', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12 };
+  const THL: React.CSSProperties = { ...TH, textAlign: 'left' };
+  const TD: React.CSSProperties = { padding: '3px 8px', fontSize: 12, textAlign: 'right' };
+  const TDL: React.CSSProperties = { ...TD, textAlign: 'left' };
+  const rowBg = (i: number): React.CSSProperties => ({ background: i % 2 === 1 ? '#f8fafc' : '' });
 
   function toggleAllCollapsed() {
     const next = !allCollapsed;
@@ -1663,8 +1823,8 @@ function FactDaySection() {
 
       {data && (
         <>
-          <FunnelView steps={FD_STEP_ORDER.filter(k => data[k] != null).map(k => ({ label: FD_LABELS[k], step: data[k] }))} />
-          <CrossConvPanel data={data} />
+          <FactDayCards data={data} totalNet={totalNet} />
+          <CrossConvPanel data={data} totalNet={totalNet} />
 
           {/* Two-column layout: tables left, charts right */}
           <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -1678,23 +1838,34 @@ function FactDaySection() {
               {bySrc.length > 0 && (
                 <CollapsibleTable title="По источникам" storageKey="fd-src">
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480 }}>
-                      <thead><tr style={{ background: '#f8fafc' }}>
-                        {['Источник','Лидов','Записи','Пришли','Новые ₸','Продл. ₸','Итог ₸','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
+                    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480, width: '100%' }}>
+                      <thead><tr style={{ background: '#f1f5f9' }}>
+                        <th style={THL}>Источник</th>
+                        {['Лидов','Записи','Пришли','Новые','Продл.','Итог','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
                       </tr></thead>
                       <tbody>
-                        {bySrc.map(r => (
-                          <tr key={r.source} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={TD}>{r.source}</td>
-                            <td style={{ ...TD, fontWeight: 700 }}>{r.leads}</td>
-                            <td style={TD}>{r.trial_booked}</td>
-                            <td style={TD}>{r.visited}</td>
+                        {bySrc.map((r, i) => (
+                          <tr key={r.source} style={rowBg(i)}>
+                            <td style={TDL}>{r.source}</td>
+                            <td style={{ ...TD, fontWeight: 700 }}>{r.leads || '—'}</td>
+                            <td style={TD}>{r.trial_booked || '—'}</td>
+                            <td style={TD}>{r.visited || '—'}</td>
                             <td style={{ ...TD, color: r.new_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
                             <td style={{ ...TD, color: r.renewal_amount > 0 ? '#02BDB6' : '#94a3b8' }}>{r.renewal_amount > 0 ? fmt(r.renewal_amount) : '—'}</td>
                             <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)}</td>
                             <td style={{ ...TD, color: r.lead_to_buy_pct >= 20 ? '#22c55e' : '#94a3b8' }}>{r.lead_to_buy_pct > 0 ? r.lead_to_buy_pct + '%' : '—'}</td>
                           </tr>
                         ))}
+                        <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc', fontWeight: 700 }}>
+                          <td style={TDL}>Итого</td>
+                          <td style={TD}>{bySrc.reduce((s, r) => s + r.leads, 0)}</td>
+                          <td style={TD}>{bySrc.reduce((s, r) => s + r.trial_booked, 0)}</td>
+                          <td style={TD}>{bySrc.reduce((s, r) => s + r.visited, 0)}</td>
+                          <td style={{ ...TD, color: '#263CD9' }}>{fmt(bySrc.reduce((s, r) => s + r.new_amount, 0))}</td>
+                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(bySrc.reduce((s, r) => s + r.renewal_amount, 0))}</td>
+                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(bySrc.reduce((s, r) => s + r.net_amount, 0))}</td>
+                          <td style={TD}></td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -1704,26 +1875,37 @@ function FactDaySection() {
               {byMgr.length > 0 && (
                 <CollapsibleTable title="По менеджерам" storageKey="fd-mgr">
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480 }}>
-                      <thead><tr style={{ background: '#f8fafc' }}>
-                        {['Менеджер','Лидов','Записи','Пришли','Новые ₸','Продл. ₸','Итог ₸','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
+                    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480, width: '100%' }}>
+                      <thead><tr style={{ background: '#f1f5f9' }}>
+                        <th style={THL}>Менеджер</th>
+                        {['Лидов','Записи','Пришли','Новые','Продл.','Итог','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
                       </tr></thead>
                       <tbody>
-                        {byMgr.map(r => (
-                          <tr key={r.manager} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                        {byMgr.map((r, i) => (
+                          <tr key={r.manager} style={{ ...rowBg(i), cursor: 'pointer' }}
                             onClick={() => setMgrDrill({ label: r.manager, items: r.items ?? [] })}
-                            onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                            onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                            <td style={{ ...TD, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
-                            <td style={TD}>{r.leads}</td>
-                            <td style={TD}>{r.trial_booked}</td>
-                            <td style={TD}>{r.visited}</td>
+                            onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
+                            onMouseLeave={e => (e.currentTarget.style.background = rowBg(i).background ?? '')}>
+                            <td style={{ ...TDL, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
+                            <td style={{ ...TD, fontWeight: 700 }}>{r.leads || '—'}</td>
+                            <td style={TD}>{r.trial_booked || '—'}</td>
+                            <td style={TD}>{r.visited || '—'}</td>
                             <td style={{ ...TD, color: r.new_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
                             <td style={{ ...TD, color: r.renewal_amount > 0 ? '#02BDB6' : '#94a3b8' }}>{r.renewal_amount > 0 ? fmt(r.renewal_amount) : '—'}</td>
                             <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)}</td>
                             <td style={{ ...TD, color: r.lead_to_buy_pct >= 20 ? '#22c55e' : '#94a3b8' }}>{r.lead_to_buy_pct > 0 ? r.lead_to_buy_pct + '%' : '—'}</td>
                           </tr>
                         ))}
+                        <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc', fontWeight: 700 }}>
+                          <td style={TDL}>Итого</td>
+                          <td style={TD}>{byMgr.reduce((s, r) => s + r.leads, 0)}</td>
+                          <td style={TD}>{byMgr.reduce((s, r) => s + r.trial_booked, 0)}</td>
+                          <td style={TD}>{byMgr.reduce((s, r) => s + r.visited, 0)}</td>
+                          <td style={{ ...TD, color: '#263CD9' }}>{fmt(byMgr.reduce((s, r) => s + r.new_amount, 0))}</td>
+                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(byMgr.reduce((s, r) => s + r.renewal_amount, 0))}</td>
+                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(byMgr.reduce((s, r) => s + r.net_amount, 0))}</td>
+                          <td style={TD}></td>
+                        </tr>
                       </tbody>
                     </table>
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>Клик по строке — детализация лидов</div>
@@ -1734,20 +1916,28 @@ function FactDaySection() {
               {byCsh.length > 0 && (
                 <CollapsibleTable title="По кассирам" storageKey="fd-csh">
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 280 }}>
-                      <thead><tr style={{ background: '#f8fafc' }}>
-                        {['Кассир','Продаж','Продажи ₸','Возвраты ₸','Итог ₸'].map(h => <th key={h} style={TH}>{h}</th>)}
+                    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 280, width: '100%' }}>
+                      <thead><tr style={{ background: '#f1f5f9' }}>
+                        <th style={THL}>Кассир</th>
+                        {['Продаж','Продажи','Возвраты','Итог'].map(h => <th key={h} style={TH}>{h}</th>)}
                       </tr></thead>
                       <tbody>
-                        {byCsh.map(r => (
-                          <tr key={r.cashier} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ ...TD, fontWeight: 600 }}>{r.cashier}</td>
-                            <td style={TD}>{r.sales_count}</td>
-                            <td style={TD}>{fmt(r.sales_amount)} ₸</td>
-                            <td style={{ ...TD, color: r.refund_amount > 0 ? '#ef4444' : '#94a3b8' }}>{r.refund_amount > 0 ? fmt(r.refund_amount) + ' ₸' : '—'}</td>
-                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)} ₸</td>
+                        {byCsh.map((r, i) => (
+                          <tr key={r.cashier} style={rowBg(i)}>
+                            <td style={{ ...TDL, fontWeight: 600 }}>{r.cashier}</td>
+                            <td style={TD}>{r.sales_count || '—'}</td>
+                            <td style={TD}>{r.sales_amount > 0 ? fmt(r.sales_amount) : '—'}</td>
+                            <td style={{ ...TD, color: r.refund_amount > 0 ? '#ef4444' : '#94a3b8' }}>{r.refund_amount > 0 ? fmt(r.refund_amount) : '—'}</td>
+                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)}</td>
                           </tr>
                         ))}
+                        <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc', fontWeight: 700 }}>
+                          <td style={TDL}>Итого</td>
+                          <td style={TD}>{byCsh.reduce((s, r) => s + r.sales_count, 0)}</td>
+                          <td style={TD}>{fmt(byCsh.reduce((s, r) => s + r.sales_amount, 0))}</td>
+                          <td style={{ ...TD, color: '#ef4444' }}>{fmt(byCsh.reduce((s, r) => s + r.refund_amount, 0))}</td>
+                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(byCsh.reduce((s, r) => s + r.net_amount, 0))}</td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>

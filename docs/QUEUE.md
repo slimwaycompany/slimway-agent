@@ -55,6 +55,7 @@
 | 23 | reports, agent | Синк лидов/абонементов, продажи=заказы+возвраты, кассир, продления, контроль 4 920 000 ₸ | ТЗ в чате | ✅ готово (55dc7a4, 497ab40) |
 | 24 | reports, agent | clSrc/clMgr Number(); fetchAll лимит 1000; лок синка в finally; шаги синка независимы; phone fallback через fitbase_clients_cache | ТЗ в чате | ✅ готово (8995ef4) |
 | 25 | reports | Факт дня: карточка «Продления», isRenew через fitbase_contracts, фильтр менеджера→clm, фильтр кассира→leads/visits, сквозная конверсия, графики recharts, 2-колонки, сворачиваемые таблицы | ТЗ в чате | ✅ готово (3711ac3) |
+| 26 | reports | classifyPurchase: goods/new/same_day/renewal/returned; тест-возвраты исключены; двухрядные карточки; SalesDrillModal 3 кол.; CrossConv+Купили(всего)+Продления; таблицы: right-align/Итого/stripe; полные имена в графиках | ТЗ в чате | ✅ готово (текущий) |
 
 ## Сделано недавно (для контекста)
 
