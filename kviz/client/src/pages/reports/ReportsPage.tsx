@@ -30,7 +30,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,8 +101,9 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
   {
     title: 'Маркетинг', adminOnly: true,
     items: [
-      { id: 'fact-day',   label: 'Факт дня',      desc: 'Что произошло в период', adminOnly: true },
-      { id: 'day-rhythm', label: 'Дневной такт',  desc: 'Судьба лидов периода',   adminOnly: true },
+      { id: 'fact-day',      label: 'Факт дня',           desc: 'Что произошло в период',                  adminOnly: true },
+      { id: 'day-rhythm',    label: 'Дневной такт',       desc: 'Судьба лидов периода',                    adminOnly: true },
+      { id: 'daily-metrics', label: 'Метрики по дням',    desc: 'Воронка и продажи по дням месяца',         adminOnly: true },
     ],
   },
 ];
@@ -177,12 +178,13 @@ export default function ReportsPage() {
       {section === 'tasks'          && <TasksSection isAdmin={isAdmin} />}
       {section === 'measures'       && <MeasuresSection />}
       {section === 'inbody'         && <InBodySection />}
-      {section === 'fact-day'       && isAdmin && <FactDaySection />}
+      {section === 'fact-day'       && isAdmin && <FactDaySection onOpenDailyMetrics={month => { try { sessionStorage.setItem('daily-metrics-month', month); } catch {} openSection('daily-metrics'); }} />}
       {section === 'day-rhythm'     && isAdmin && <DayRhythmSection />}
       {section === 'sales'          && isAdmin && <SalesSection />}
       {section === 'renewals'       && isAdmin && <RenewalsSection />}
       {section === 'occupancy'      && isAdmin && <OccupancySection />}
       {section === 'studio'         && <StudioSection isAdmin={isAdmin} />}
+      {section === 'daily-metrics'  && isAdmin && <DailyMetricsSection />}
     </div>
   );
 }
@@ -1789,7 +1791,7 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
   );
 }
 
-function FactDaySection() {
+function FactDaySection({ onOpenDailyMetrics }: { onOpenDailyMetrics?: (month: string) => void } = {}) {
   const [data, setData]             = useState<Record<string, FunnelStep> | null>(null);
   const [totalNet, setTotalNet]     = useState<FdTotalNet | null>(null);
   const [bySrc, setBySrc]           = useState<FdSrcRow[]>([]);
@@ -1846,6 +1848,9 @@ function FactDaySection() {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <button style={s.csvBtn} onClick={doSync} disabled={syncing}>{syncing ? 'Запуск…' : '↺ Обновить Fitbase'}</button>
         {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
+        {onOpenDailyMetrics && (
+          <button style={s.csvBtn} onClick={() => onOpenDailyMetrics(from.slice(0, 7))}>📅 Метрики по дням</button>
+        )}
       </div>
       {filterBar}
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -2357,6 +2362,320 @@ function RenewalsSection() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Daily Metrics ─────────────────────────────────────────────────────────────
+
+interface DayItem {
+  date: string; is_day_off: boolean; is_future: boolean;
+  budget: number | null; on_shift: string[];
+  leads_plan: number; sales_plan: number;
+  leads_fact: number; qual_fact: number; booked_fact: number; visited_fact: number;
+  bought_fact: number; funnel_sales_amt: number;
+  sales_fact: number; by_cashier: Record<string, number>; orders_count: number;
+  sales_cumulative: number; sales_forecast: number;
+}
+interface DailyResp {
+  month: string; days: DayItem[]; totals: Record<string, number>;
+  month_plan: { leads_plan: number | null; sales_plan: number | null } | null;
+  availableSources: string[]; availableManagers: string[];
+  availableCashiers: string[]; availableStaff: string[];
+}
+
+const DOW_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const MONTH_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+function DailyMetricsSection() {
+  const todayStr = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
+  const [month, setMonth] = useState<string>(() => {
+    try { return sessionStorage.getItem('daily-metrics-month') || todayStr.slice(0, 7); } catch { return todayStr.slice(0, 7); }
+  });
+  const [buy, setBuy]   = useState<'all'|'new'>('all');
+  const [data, setData] = useState<DailyResp | null>(null);
+  const [loading, setLoading] = useState(false);
+  // Month plan
+  const [planLeads, setPlanLeads] = useState('');
+  const [planSales, setPlanSales] = useState('');
+  const [planSaving, setPlanSaving] = useState(false);
+  const [showPlanEdit, setShowPlanEdit] = useState(false);
+  // Day edit modal
+  const [editDay, setEditDay]   = useState<DayItem | null>(null);
+  const [dBudget, setDBudget]   = useState('');
+  const [dIsOff, setDIsOff]     = useState(false);
+  const [dOnShift, setDOnShift] = useState<string[]>([]);
+  const [dLeadsPlan, setDLeadsPlan] = useState('');
+  const [dSalesPlan, setDSalesPlan] = useState('');
+  const [daySaving, setDaySaving]   = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const sp = new URLSearchParams({ month, buy });
+      const r = await fetch(`/kviz/api/metrics/daily?${sp}`, { credentials: 'include' });
+      if (!r.ok) return;
+      const d: DailyResp = await r.json();
+      setData(d);
+      setPlanLeads(d.month_plan?.leads_plan?.toString() ?? '');
+      setPlanSales(d.month_plan?.sales_plan?.toString() ?? '');
+    } catch {} finally { setLoading(false); }
+  }, [month, buy]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function navMonth(delta: number) {
+    const [y, m] = month.split('-').map(Number);
+    const nd = new Date(y, m - 1 + delta, 1);
+    const nm = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}`;
+    setMonth(nm);
+    try { sessionStorage.setItem('daily-metrics-month', nm); } catch {}
+  }
+
+  async function savePlan() {
+    setPlanSaving(true);
+    try {
+      const r = await fetch('/kviz/api/metrics/month-plan', {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month, leads_plan: planLeads ? Number(planLeads) : null, sales_plan: planSales ? Number(planSales) : null }),
+      });
+      if (r.ok) { setShowPlanEdit(false); await load(); }
+    } catch {} finally { setPlanSaving(false); }
+  }
+
+  function openDayEdit(d: DayItem) {
+    setEditDay(d);
+    setDBudget(d.budget?.toString() ?? '');
+    setDIsOff(d.is_day_off);
+    setDOnShift([...d.on_shift]);
+    setDLeadsPlan('');
+    setDSalesPlan('');
+  }
+
+  async function saveDayInput() {
+    if (!editDay) return;
+    setDaySaving(true);
+    try {
+      const r = await fetch('/kviz/api/metrics/day-input', {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: editDay.date, is_day_off: dIsOff,
+          budget: dBudget ? Number(dBudget) : null,
+          on_shift: dOnShift,
+          leads_plan: dLeadsPlan ? Number(dLeadsPlan) : null,
+          sales_plan: dSalesPlan ? Number(dSalesPlan) : null,
+        }),
+      });
+      if (r.ok) { setEditDay(null); await load(); }
+    } catch {} finally { setDaySaving(false); }
+  }
+
+  const fmt  = (n: number | null | undefined) => n != null ? Math.round(n).toLocaleString('ru') : '—';
+  const fmtT = (n: number | null | undefined) => n != null ? Math.round(n).toLocaleString('ru') + ' ₸' : '—';
+
+  if (loading && !data) return <div style={{ ...s.section, color: '#64748b', fontSize: 13 }}>Загрузка…</div>;
+
+  const days  = data?.days ?? [];
+  const tots  = data?.totals ?? {} as Record<string, number>;
+  const staff = data?.availableStaff ?? [];
+
+  const [yr, mo] = month.split('-').map(Number);
+  const monthLabel = `${MONTH_RU[mo - 1]} ${yr}`;
+
+  // Table styles
+  const TH_LABEL: React.CSSProperties = { padding: '5px 8px', fontSize: 11, fontWeight: 700, color: '#374151', textAlign: 'left', position: 'sticky', left: 0, top: 0, zIndex: 4, background: '#f8fafc', minWidth: 140, maxWidth: 140, boxShadow: '2px 0 4px rgba(0,0,0,0.06)', borderBottom: '1px solid #e2e8f0' };
+  const TH_DAY: React.CSSProperties  = { padding: '3px 4px', fontSize: 11, fontWeight: 600, textAlign: 'center', position: 'sticky', top: 0, zIndex: 1, background: '#f8fafc', minWidth: 46, maxWidth: 46, cursor: 'pointer', borderBottom: '1px solid #e2e8f0' };
+  const TH_TOT: React.CSSProperties  = { padding: '3px 6px', fontSize: 11, fontWeight: 700, textAlign: 'right', position: 'sticky', top: 0, right: 0, zIndex: 2, background: '#f8fafc', minWidth: 72, boxShadow: '-2px 0 4px rgba(0,0,0,0.04)', borderBottom: '1px solid #e2e8f0' };
+  const TD_LABEL: React.CSSProperties = { padding: '3px 8px', fontSize: 12, fontWeight: 600, color: '#374151', position: 'sticky', left: 0, background: '#fff', boxShadow: '2px 0 4px rgba(0,0,0,0.04)', zIndex: 1, whiteSpace: 'nowrap' };
+  const TD: React.CSSProperties      = { padding: '2px 4px', fontSize: 12, textAlign: 'right', whiteSpace: 'nowrap' };
+  const TD_TOT: React.CSSProperties  = { padding: '2px 6px', fontSize: 12, fontWeight: 700, textAlign: 'right', position: 'sticky', right: 0, background: '#fff', boxShadow: '-2px 0 4px rgba(0,0,0,0.04)', zIndex: 1, whiteSpace: 'nowrap' };
+  const SEC_HD: React.CSSProperties  = { background: '#f1f5f9', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.07em', padding: '4px 8px', position: 'sticky', left: 0 };
+
+  function dayBg(d: DayItem): React.CSSProperties {
+    if (d.date === todayStr) return { background: '#eff6ff' };
+    if (d.is_day_off) return { background: '#f8fafc' };
+    return {};
+  }
+
+  function numStyle(v: number, colorKey?: string): React.CSSProperties {
+    const base: React.CSSProperties = { ...TD };
+    if (v === 0) base.color = '#d1d5db';
+    else if (colorKey === 'sales') base.color = '#059669';
+    else if (colorKey === 'leads') base.color = '#263CD9';
+    return base;
+  }
+
+  type DayField = keyof DayItem;
+  function row(label: string, field: DayField, fmtFn: (v: number) => string, colorKey?: string, totField?: string) {
+    return (
+      <tr key={label}>
+        <td style={TD_LABEL}>{label}</td>
+        {days.map(d => {
+          const raw = d[field];
+          const v = typeof raw === 'number' ? raw : null;
+          return <td key={d.date} style={{ ...numStyle(v ?? 0, colorKey), ...dayBg(d) }}>{v != null ? fmtFn(v) : '—'}</td>;
+        })}
+        <td style={TD_TOT}>{fmtFn(tots[totField ?? field as string] ?? 0)}</td>
+      </tr>
+    );
+  }
+
+  function textRow(label: string, render: (d: DayItem) => string) {
+    return (
+      <tr key={label}>
+        <td style={TD_LABEL}>{label}</td>
+        {days.map(d => <td key={d.date} style={{ ...TD, textAlign: 'center', ...dayBg(d), color: '#374151', fontSize: 11 }}>{render(d)}</td>)}
+        <td style={TD_TOT}>—</td>
+      </tr>
+    );
+  }
+
+  // Chart data
+  const chartData = days.map(d => ({ name: String(parseInt(d.date.slice(8))), plan: d.sales_plan, fact: d.is_future ? null : d.sales_fact }));
+
+  return (
+    <div style={s.section}>
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <button style={s.csvBtn} onClick={() => navMonth(-1)}>‹</button>
+        <span style={{ fontWeight: 700, fontSize: 14, minWidth: 160, textAlign: 'center' }}>{monthLabel}</span>
+        <button style={s.csvBtn} onClick={() => navMonth(1)}>›</button>
+        <button style={{ ...s.chip, ...(buy === 'all' ? s.chipActive : {}) }} onClick={() => setBuy('all')}>Все продажи</button>
+        <button style={{ ...s.chip, ...(buy === 'new' ? s.chipActive : {}) }} onClick={() => setBuy('new')}>Только новые</button>
+        <button style={s.csvBtn} onClick={() => setShowPlanEdit(v => !v)}>
+          {data?.month_plan?.sales_plan ? `📋 План: ${fmt(data.month_plan.sales_plan)} ₸` : '📋 Задать план'}
+        </button>
+        {loading && <span style={{ fontSize: 12, color: '#6b7280' }}>Загрузка…</span>}
+      </div>
+
+      {/* Month plan edit */}
+      {showPlanEdit && (
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', marginBottom: 12, display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Лиды в месяц (план)</div>
+            <input type="number" value={planLeads} onChange={e => setPlanLeads(e.target.value)} style={{ ...s.dateInp, width: 120 }} placeholder="—" />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Выручка в месяц ₸ (план)</div>
+            <input type="number" value={planSales} onChange={e => setPlanSales(e.target.value)} style={{ ...s.dateInp, width: 160 }} placeholder="—" />
+          </div>
+          <button style={s.saveBtn} onClick={savePlan} disabled={planSaving}>{planSaving ? 'Сохранение…' : 'Сохранить'}</button>
+          <button style={s.cancelBtn} onClick={() => setShowPlanEdit(false)}>Отмена</button>
+        </div>
+      )}
+
+      {/* Transposed table */}
+      {days.length > 0 && (
+        <div style={{ overflowX: 'auto', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', marginBottom: 20 }}>
+          <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <thead>
+              <tr>
+                <th style={TH_LABEL}>Показатель</th>
+                {days.map(d => {
+                  const dow = DOW_RU[new Date(d.date).getDay()];
+                  return (
+                    <th key={d.date} style={{ ...TH_DAY, ...dayBg(d), color: d.is_day_off ? '#94a3b8' : d.date === todayStr ? '#263CD9' : '#374151' }}
+                      onClick={() => openDayEdit(d)} title="Настроить день">
+                      <div>{d.date.slice(8)}</div>
+                      <div style={{ fontSize: 9, fontWeight: 400 }}>{dow}</div>
+                    </th>
+                  );
+                })}
+                <th style={TH_TOT}>Итого</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Воронка лидов */}
+              <tr><td colSpan={days.length + 2} style={SEC_HD}>Воронка лидов</td></tr>
+              {row('Лиды план',  'leads_plan',  String,  undefined, 'leads_plan')}
+              {row('Лиды факт',  'leads_fact',  String,  'leads',   'leads_fact')}
+              {row('Квал',       'qual_fact',   String,  undefined, 'qual_fact')}
+              {row('Записались', 'booked_fact', String,  undefined, 'booked_fact')}
+              {row('Пришли',     'visited_fact',String,  undefined, 'visited_fact')}
+              {row('Купили',     'bought_fact', String,  undefined, 'bought_fact')}
+              {row('Продажи ₸', 'funnel_sales_amt', fmtT, 'sales', 'funnel_sales_amt')}
+              {/* Продажи */}
+              <tr><td colSpan={days.length + 2} style={{ ...SEC_HD, position: 'static' }}>Продажи</td></tr>
+              {row('Выручка план ₸',  'sales_plan',       fmtT, undefined, 'sales_plan')}
+              {row('Выручка факт ₸',  'sales_fact',       fmtT, 'sales',   'sales_fact')}
+              {row('Накопл. ₸',       'sales_cumulative', fmtT)}
+              {row('Прогноз ₸',       'sales_forecast',   fmtT)}
+              {row('Бюджет ₸',        'budget',           fmtT)}
+              {textRow('На смене',    d => d.on_shift.join(', ') || '—')}
+              {textRow('Выходной',    d => d.is_day_off ? '✓' : '')}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Chart */}
+      {days.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Выручка по дням</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} />
+              <Tooltip formatter={(v: number) => Math.round(v).toLocaleString('ru') + ' ₸'} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="plan" name="План" fill="#e2e8f0" />
+              <Bar dataKey="fact" name="Факт" fill="#02BDB6" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Day edit modal */}
+      {editDay && (
+        <div style={s.overlay} onClick={() => setEditDay(null)}>
+          <div style={{ ...s.modal, maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <h3 style={s.mh3}>
+              {editDay.date.split('-').reverse().join('.')} — {DOW_RU[new Date(editDay.date).getDay()]}
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, cursor: 'pointer' }}>
+                <input type="checkbox" checked={dIsOff} onChange={e => setDIsOff(e.target.checked)} />
+                Выходной день
+              </label>
+            </div>
+            {!dIsOff && (
+              <>
+                <MField label="Бюджет ₸">
+                  <input type="number" style={s.inp} value={dBudget} onChange={e => setDBudget(e.target.value)} placeholder="—" />
+                </MField>
+                <MField label="Лиды план (переопределить)">
+                  <input type="number" style={s.inp} value={dLeadsPlan} onChange={e => setDLeadsPlan(e.target.value)} placeholder={`авто: ${editDay.leads_plan}`} />
+                </MField>
+                <MField label="Выручка план ₸ (переопределить)">
+                  <input type="number" style={s.inp} value={dSalesPlan} onChange={e => setDSalesPlan(e.target.value)} placeholder={`авто: ${editDay.sales_plan}`} />
+                </MField>
+                {staff.length > 0 && (
+                  <MField label="На смене">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                      {staff.map(name => (
+                        <label key={name} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+                          <input type="checkbox"
+                            checked={dOnShift.includes(name)}
+                            onChange={e => setDOnShift(prev => e.target.checked ? [...prev, name] : prev.filter(n => n !== name))}
+                          />
+                          {name}
+                        </label>
+                      ))}
+                    </div>
+                  </MField>
+                )}
+              </>
+            )}
+            <div style={s.mBtns}>
+              <button style={s.cancelBtn} onClick={() => setEditDay(null)}>Отмена</button>
+              <button style={s.saveBtn} onClick={saveDayInput} disabled={daySaving}>{daySaving ? 'Сохранение…' : 'Сохранить'}</button>
+            </div>
           </div>
         </div>
       )}

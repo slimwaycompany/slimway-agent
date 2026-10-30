@@ -729,5 +729,232 @@ export function buildMetricsRouter(): Router {
     res.json(syncJob ?? { status: 'idle' });
   });
 
+  // ── Daily metrics by day ────────────────────────────────────────────────────
+
+  router.get('/kviz/api/metrics/daily', async (req: Request, res: Response) => {
+    if (!isAdmin(req, res)) return;
+    try {
+      const yekNow   = new Date(Date.now() + 5 * 3600_000);
+      const month    = /^\d{4}-\d{2}$/.test(String(req.query.month)) ? String(req.query.month) : yekNow.toISOString().slice(0, 7);
+      const todayStr = yekNow.toISOString().slice(0, 10);
+      const buyFilter = String(req.query.buy || 'all') as 'all' | 'new';
+      const sources: string[] = Array.isArray(req.query.sources) ? req.query.sources.map(String) : req.query.sources ? [String(req.query.sources)] : [];
+      const manager = req.query.manager ? String(req.query.manager) : null;
+
+      const [yr, mo] = month.split('-').map(Number);
+      const from = `${month}-01`;
+      const daysInMonth = new Date(yr, mo, 0).getDate();
+      const to = `${month}-${String(daysInMonth).padStart(2, '0')}`;
+      const BRANCH = '00000000-0000-0000-0000-000000000001';
+
+      const [planRes, dayInputRes, staffRes] = await Promise.all([
+        supabase.from('metrics_month_plan').select('leads_plan,sales_plan').eq('month', month).eq('branch_id', BRANCH).maybeSingle(),
+        supabase.from('metrics_day_input').select('date,is_day_off,budget,on_shift,leads_plan,sales_plan').eq('branch_id', BRANCH).gte('date', from).lte('date', to),
+        supabase.from('app_users').select('display_name').order('display_name'),
+      ]);
+
+      const monthPlan = planRes.data as { leads_plan: number | null; sales_plan: number | null } | null;
+      const diMap = new Map<string, Record<string, unknown>>();
+      for (const d of (dayInputRes.data ?? [])) diMap.set(d.date as string, d as Record<string, unknown>);
+      const availableStaff = (staffRes.data ?? []).map((u: Record<string, unknown>) => u.display_name as string).filter(Boolean);
+
+      const allDates: string[] = [];
+      for (let d = 1; d <= daysInMonth; d++) allDates.push(`${month}-${String(d).padStart(2, '0')}`);
+
+      const isDayOff = (date: string): boolean => {
+        const di = diMap.get(date);
+        return di?.is_day_off != null ? (di.is_day_off as boolean) : (date === from);
+      };
+
+      // Plan distribution
+      const workingDays = allDates.filter(d => !isDayOff(d));
+      const mLeadsPlan = monthPlan?.leads_plan != null ? Number(monthPlan.leads_plan) : null;
+      const mSalesPlan = monthPlan?.sales_plan != null ? Number(monthPlan.sales_plan) : null;
+      const wdNoLeadsOvr = workingDays.filter(d => (diMap.get(d)?.leads_plan as number | null) == null);
+      const wdNoSalesOvr = workingDays.filter(d => (diMap.get(d)?.sales_plan as number | null) == null);
+      const leadsOvrSum  = workingDays.reduce((s, d) => s + ((diMap.get(d)?.leads_plan as number | null) != null ? Number(diMap.get(d)!.leads_plan) : 0), 0);
+      const salesOvrSum  = workingDays.reduce((s, d) => s + ((diMap.get(d)?.sales_plan as number | null) != null ? Number(diMap.get(d)!.sales_plan) : 0), 0);
+
+      const getDayLeadsPlan = (date: string): number => {
+        if (isDayOff(date)) return 0;
+        const di = diMap.get(date);
+        if (di?.leads_plan != null) return Number(di.leads_plan);
+        return mLeadsPlan != null && wdNoLeadsOvr.length > 0 ? Math.round((mLeadsPlan - leadsOvrSum) / wdNoLeadsOvr.length) : 0;
+      };
+      const getDaySalesPlan = (date: string): number => {
+        if (isDayOff(date)) return 0;
+        const di = diMap.get(date);
+        if (di?.sales_plan != null) return Number(di.sales_plan);
+        return mSalesPlan != null && wdNoSalesOvr.length > 0 ? Math.round((mSalesPlan - salesOvrSum) / wdNoSalesOvr.length) : 0;
+      };
+
+      const clm = await buildClientLeadMap();
+
+      const { data: leadsRaw } = await supabase.from('fitbase_leads')
+        .select('fitbase_id,source,stage,funnel,status,manager,client_fitbase_id,client_phone,client_name,created_date')
+        .gte('created_date', from).lte('created_date', to);
+      const allLeads = ((leadsRaw ?? []) as Lead[]).filter(l => {
+        if (sources.length > 0 && !sources.includes(l.source ?? '')) return false;
+        if (manager && !(l.manager ?? '').toLowerCase().includes(manager.toLowerCase())) return false;
+        return true;
+      });
+
+      const visitsRaw = await fetchAll((off, lim) =>
+        supabase.from('fitbase_visits').select('client_fitbase_id,client_phone,status,is_trial,visit_date')
+          .eq('is_trial', true).gte('visit_date', from).lte('visit_date', to).range(off, off + lim - 1)
+      );
+      const allVisits = visitsRaw.filter(v => {
+        const cid = v.client_fitbase_id as number | null;
+        if (sources.length > 0 && !sources.includes(clm.get(Number(cid))?.source ?? '')) return false;
+        if (manager && !(clm.get(Number(cid))?.manager ?? '').toLowerCase().includes(manager.toLowerCase())) return false;
+        return true;
+      });
+
+      const { data: opsRaw } = await supabase.from('fitbase_operations')
+        .select('fitbase_id,op_date,amount,client_name,manager,cashier,item,op_type,raw')
+        .gte('op_date', from).lte('op_date', to).in('op_type', ['sale', 'refund']).gt('amount', 0);
+      const allOps = (opsRaw ?? []) as Array<Record<string, unknown>>;
+
+      // Month-level test detection
+      const mSaleOrds = groupOrders(allOps.filter(o => o.op_type === 'sale'));
+      const mRefOrds  = groupOrders(allOps.filter(o => o.op_type === 'refund'));
+      const oKey = (o: OrderRow) => o.cid != null && o.itemId != null && o.date ? `${o.cid}:${o.itemId}:${o.date}` : null;
+      const saleKeys = new Set<string>(); for (const o of mSaleOrds) { const k = oKey(o); if (k) saleKeys.add(k); }
+      const testKeys = new Set<string>(); for (const o of mRefOrds)  { const k = oKey(o); if (k && saleKeys.has(k)) testKeys.add(k); }
+      const isTest = (o: OrderRow) => { const k = oKey(o); return k != null && testKeys.has(k); };
+
+      const purCids = [...new Set(allOps.filter(o => o.op_type === 'sale').map(o => opCid(o)).filter((x): x is number => x != null))];
+      const contractsByClient = new Map<number, ContractRecord[]>();
+      if (purCids.length > 0) {
+        const cr = await fetchAll((off, lim) =>
+          supabase.from('fitbase_contracts').select('fitbase_id,client_fitbase_id,name,payment_date,end_date,status,price')
+            .in('client_fitbase_id', purCids).range(off, off + lim - 1)
+        );
+        for (const c of cr) {
+          const cid = Number(c.client_fitbase_id);
+          if (!contractsByClient.has(cid)) contractsByClient.set(cid, []);
+          contractsByClient.get(cid)!.push(c as unknown as ContractRecord);
+        }
+      }
+
+      const opMatchesFlt = (op: Record<string, unknown>): boolean => {
+        const cid = opCid(op);
+        if (sources.length > 0 && !sources.includes(cid != null ? (clm.get(cid)?.source ?? '') : '')) return false;
+        if (manager) { const lm = cid != null ? (clm.get(cid)?.manager ?? '') : ''; if (!lm.toLowerCase().includes(manager.toLowerCase())) return false; }
+        return true;
+      };
+
+      let salesCumulative = 0;
+      let pastWorkingCount = 0;
+      const classify = (o: OrderRow) => classifyPurchase(o, contractsByClient);
+
+      const days = allDates.map(date => {
+        const di      = diMap.get(date);
+        const dayOff  = isDayOff(date);
+        const isFuture = date > todayStr;
+
+        const dayLeads  = allLeads.filter(l => l.created_date === date);
+        const dayVisits = allVisits.filter(v => v.visit_date === date);
+
+        const daySaleOps = allOps.filter(op => op.op_type === 'sale' && op.op_date === date);
+        const dayRefOps  = allOps.filter(op => op.op_type === 'refund' && op.op_date === date);
+
+        // Studio total (no source/manager filter)
+        const cleanSaleAll = groupOrders(daySaleOps).filter(o => !isTest(o));
+        const cleanRefAll  = groupOrders(dayRefOps).filter(o => !isTest(o));
+        const salesFact    = cleanSaleAll.reduce((s, o) => s + o.amount, 0) - cleanRefAll.reduce((s, o) => s + o.amount, 0);
+
+        salesCumulative += salesFact;
+        if (!dayOff && !isFuture) pastWorkingCount++;
+
+        // Filtered cols for funnel
+        const filtSaleOrds = groupOrders(daySaleOps.filter(opMatchesFlt)).filter(o => !isTest(o));
+        const filtRefOrds  = groupOrders(dayRefOps.filter(opMatchesFlt)).filter(o => !isTest(o));
+        const buyOrds    = buyFilter === 'new' ? filtSaleOrds.filter(o => classify(o) === 'new') : filtSaleOrds;
+        const buyRefOrds = buyFilter === 'new' ? filtRefOrds.filter(o => classify(o) === 'new') : filtRefOrds;
+        const uniqueBuyers = new Set(buyOrds.map(o => o.cid).filter((x): x is number => x != null));
+        const funnelSalesAmt = buyOrds.reduce((s, o) => s + o.amount, 0) - buyRefOrds.reduce((s, o) => s + o.amount, 0);
+
+        const byCashier: Record<string, number> = {};
+        for (const o of cleanSaleAll) { const c = o.cashier ?? ''; byCashier[c] = (byCashier[c] ?? 0) + o.amount; }
+        for (const o of cleanRefAll)  { const c = o.cashier ?? ''; byCashier[c] = (byCashier[c] ?? 0) - o.amount; }
+
+        const forecast = !isFuture && pastWorkingCount > 0 && workingDays.length > 0
+          ? Math.round(salesCumulative / pastWorkingCount * workingDays.length) : 0;
+
+        return {
+          date, is_day_off: dayOff, is_future: isFuture,
+          budget:     di?.budget != null ? Number(di.budget) : null,
+          on_shift:   (di?.on_shift as string[] | null) ?? [],
+          leads_plan: getDayLeadsPlan(date), sales_plan: getDaySalesPlan(date),
+          leads_fact: dayLeads.length,
+          qual_fact:    dayLeads.filter(l => l.client_fitbase_id != null).length,
+          booked_fact:  dayVisits.filter(v => notCancelled(v.status as number | null)).length,
+          visited_fact: dayVisits.filter(v => v.status === VISIT_STATUS_VISITED).length,
+          bought_fact:  uniqueBuyers.size, funnel_sales_amt: funnelSalesAmt,
+          sales_fact: salesFact, by_cashier: byCashier, orders_count: cleanSaleAll.length,
+          sales_cumulative: salesCumulative, sales_forecast: forecast,
+        };
+      });
+
+      const totals = {
+        leads_plan:       days.reduce((s, d) => s + d.leads_plan, 0),
+        sales_plan:       days.reduce((s, d) => s + d.sales_plan, 0),
+        leads_fact:       days.reduce((s, d) => s + d.leads_fact, 0),
+        qual_fact:        days.reduce((s, d) => s + d.qual_fact, 0),
+        booked_fact:      days.reduce((s, d) => s + d.booked_fact, 0),
+        visited_fact:     days.reduce((s, d) => s + d.visited_fact, 0),
+        bought_fact:      days.reduce((s, d) => s + d.bought_fact, 0),
+        funnel_sales_amt: days.reduce((s, d) => s + d.funnel_sales_amt, 0),
+        sales_fact:       days.reduce((s, d) => s + d.sales_fact, 0),
+        orders_count:     days.reduce((s, d) => s + d.orders_count, 0),
+      };
+
+      const [srcRaw, mgrRaw, cshRes] = await Promise.all([
+        fetchAll((off, lim) => supabase.from('fitbase_leads').select('source').not('source', 'is', null).range(off, off + lim - 1)),
+        fetchAll((off, lim) => supabase.from('fitbase_leads').select('manager').not('manager', 'is', null).range(off, off + lim - 1)),
+        supabase.from('fitbase_operations').select('cashier').gte('op_date', from).lte('op_date', to).not('cashier', 'is', null),
+      ]);
+      const availableSources  = [...new Set(srcRaw.map(r => r.source as string))].sort();
+      const availableManagers = [...new Set(mgrRaw.map(r => r.manager as string))].sort();
+      const availableCashiers = [...new Set((cshRes.data ?? []).map(r => r.cashier as string))].filter(Boolean).sort();
+
+      res.json({ month, days, totals, month_plan: monthPlan, availableSources, availableManagers, availableCashiers, availableStaff });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  router.put('/kviz/api/metrics/month-plan', async (req: Request, res: Response) => {
+    if (!isAdmin(req, res)) return;
+    try {
+      const { month, leads_plan, sales_plan } = req.body as { month?: string; leads_plan?: number | null; sales_plan?: number | null };
+      if (!month || !/^\d{4}-\d{2}$/.test(month)) { res.status(400).json({ error: 'Неверный month' }); return; }
+      const BRANCH = '00000000-0000-0000-0000-000000000001';
+      const payload: Record<string, unknown> = { month, branch_id: BRANCH };
+      if (leads_plan !== undefined) payload.leads_plan = leads_plan;
+      if (sales_plan !== undefined) payload.sales_plan = sales_plan;
+      const { error } = await supabase.from('metrics_month_plan').upsert(payload, { onConflict: 'month,branch_id' });
+      if (error) { res.status(500).json({ error: 'Ошибка сохранения плана' }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  router.put('/kviz/api/metrics/day-input', async (req: Request, res: Response) => {
+    if (!isAdmin(req, res)) return;
+    try {
+      const { date, is_day_off, budget, on_shift, leads_plan, sales_plan } = req.body as { date?: string; is_day_off?: boolean; budget?: number | null; on_shift?: string[]; leads_plan?: number | null; sales_plan?: number | null };
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ error: 'Неверный date' }); return; }
+      const BRANCH = '00000000-0000-0000-0000-000000000001';
+      const payload: Record<string, unknown> = { date, branch_id: BRANCH };
+      if (is_day_off !== undefined) payload.is_day_off = is_day_off;
+      if (budget !== undefined) payload.budget = budget;
+      if (on_shift !== undefined) payload.on_shift = on_shift;
+      if (leads_plan !== undefined) payload.leads_plan = leads_plan;
+      if (sales_plan !== undefined) payload.sales_plan = sales_plan;
+      const { error } = await supabase.from('metrics_day_input').upsert(payload, { onConflict: 'date,branch_id' });
+      if (error) { res.status(500).json({ error: 'Ошибка сохранения данных дня' }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   return router;
 }

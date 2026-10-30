@@ -58,6 +58,7 @@
 | 26 | reports | classifyPurchase: goods/new/same_day/renewal/returned; тест-возвраты исключены; двухрядные карточки; SalesDrillModal 3 кол.; CrossConv+Купили(всего)+Продления; таблицы: right-align/Итого/stripe; полные имена в графиках | ТЗ в чате | ✅ готово (532449e) |
 | 27 | reports | classifyPurchase: фикс same_day (строгий <); «Сразу несколько» не категория — входит в new/renewal; «Вернулась» в карточке «Продления»; проценты от суммарных продаж 100% | ТЗ в чате | ✅ готово (bc6d822) |
 | 28 | reports | Квал = client_fitbase_id != null; «Живые» под карточкой Квал + дрилл-модал; колонка Живые в По источникам / По менеджерам | ТЗ в чате | ✅ готово (текущий) |
+| 29 | reports | Метрики по дням: экран, транспонированная таблица воронка+продажи, план месяца, редактор дня, BarChart | ТЗ в чате | ✅ готово (текущий) |
 
 ## Сделано недавно (для контекста)
 
@@ -120,3 +121,4 @@
 | 29.10.2026 | Claude | 22 scriptolog: дерево (66 узлов, 2.8/3.11/блок 8), KZ-тексты (55 узлов), check-tree +5 проверок, RU/KZ переключатель, hub «↩ К развилке», чтение переписки (MutationObserver), диагностика (admin), автостарт, KZ-детект, sent detection | текущий | SQL не нужен. Селекторы сообщений EasyChat нужно проверить на живом интерфейсе. |
 | 30.10.2026 | Claude | 27 reports: classifyPurchase strict < (same_day убран); renewals endpoint — prevContracts < date; FactDayCards — «Вернулась» в карточке Продления, проценты 100%; RenewalsSection — same_day убран | bc6d822 | SQL не нужен. Проверка на проде — на стороне Сергея. |
 | 30.10.2026 | Claude | 28 reports: Квал=client_fitbase_id!=null (Lead.funnel добавлен); isAlive=funnel in Новые заявки/Новички/Постоянные && stage!=Отказ; alive_count+alive_items в fact-day; alive_count в by_source/by_manager; day-rhythm qualified; «Живые:N» кнопка под карточкой Квал + дрилл-модал; колонка Живые в таблицах | текущий | SQL не нужен. Проверка на проде — на стороне Сергея. |
+| 30.10.2026 | Claude | 29 reports: GET /daily (воронка+продажи по дням), PUT /month-plan, PUT /day-input; DailyMetricsSection (транспонированная таблица, навигация по месяцам, buy all/new, план, редактор дня, BarChart); кнопка «Метрики по дням» в FactDaySection | текущий | Нужен SQL: см. ниже. Проверка на проде — на стороне Сергея. |
