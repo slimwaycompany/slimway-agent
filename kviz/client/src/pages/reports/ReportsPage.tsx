@@ -29,7 +29,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -84,7 +84,8 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
   {
     title: 'Продажи', adminOnly: true,
     items: [
-      { id: 'sales',  label: 'Отчёт по продажам', desc: 'Операции Fitbase, разбивка', adminOnly: true },
+      { id: 'sales',    label: 'Отчёт по продажам', desc: 'Операции Fitbase, разбивка', adminOnly: true },
+      { id: 'renewals', label: 'Продления',           desc: 'Новые, продления, вернулись', adminOnly: true },
     ],
   },
   {
@@ -178,6 +179,7 @@ export default function ReportsPage() {
       {section === 'fact-day'       && isAdmin && <FactDaySection />}
       {section === 'day-rhythm'     && isAdmin && <DayRhythmSection />}
       {section === 'sales'          && isAdmin && <SalesSection />}
+      {section === 'renewals'       && isAdmin && <RenewalsSection />}
       {section === 'occupancy'      && isAdmin && <OccupancySection />}
       {section === 'studio'         && <StudioSection isAdmin={isAdmin} />}
     </div>
@@ -1306,8 +1308,8 @@ const todayStr = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
 const weekAgoStr = new Date(Date.now() + 5 * 3600_000 - 7 * 86400_000).toISOString().slice(0, 10);
 const monthAgoStr = new Date(Date.now() + 5 * 3600_000 - 30 * 86400_000).toISOString().slice(0, 10);
 
-interface DrillItem { name?: string | null; source?: string | null; manager?: string | null; date?: string | null; amount?: number | null; resource?: string | null }
-interface FunnelStep { count: number; pct?: number; amount?: number; trial_sold_count?: number; items: DrillItem[] }
+interface DrillItem { name?: string | null; source?: string | null; manager?: string | null; date?: string | null; amount?: number | null; resource?: string | null; item?: string | null }
+interface FunnelStep { count: number; pct?: number; amount?: number; net_amount?: number; refund_count?: number; refund_amount?: number; trial_sold_count?: number; items: DrillItem[]; refund_items?: DrillItem[] }
 
 function DrillModal({ title, items, onClose }: { title: string; items: DrillItem[]; onClose: () => void }) {
   return (
@@ -1322,7 +1324,7 @@ function DrillModal({ title, items, onClose }: { title: string; items: DrillItem
           <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
             <div style={{ fontWeight: 600 }}>{it.name ?? '—'}</div>
             <div style={{ color: '#64748b', marginTop: 2 }}>
-              {[it.source, it.resource, it.manager, it.date, it.amount != null ? `${it.amount} ₸` : null].filter(Boolean).join(' · ')}
+              {[it.item, it.source, it.resource, it.manager, it.date, it.amount != null ? Math.round(it.amount).toLocaleString('ru') + ' ₸' : null].filter(Boolean).join(' · ')}
             </div>
           </div>
         ))}
@@ -1333,18 +1335,37 @@ function DrillModal({ title, items, onClose }: { title: string; items: DrillItem
 
 function FunnelView({ steps }: { steps: Array<{ label: string; step: FunnelStep }> }) {
   const [drill, setDrill] = useState<{ label: string; items: DrillItem[] } | null>(null);
+  const fmt = (n: number) => Math.round(n).toLocaleString('ru');
   return (
     <>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
         {steps.map(({ label, step }, i) => {
           const pct = step.pct != null ? step.pct : (i === 0 ? 100 : steps[i - 1].step.count > 0 ? Math.round(100 * step.count / steps[i - 1].step.count) : 0);
+          const hasSalesBreakdown = step.net_amount != null;
           return (
             <button key={label} onClick={() => setDrill({ label, items: step.items })}
               style={{ flex: '1 1 130px', minWidth: 120, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
               <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{i + 1}. {label}</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: '#02BDB6' }}>{step.count}</div>
-              {step.amount != null && <div style={{ fontSize: 12, color: '#263CD9', fontWeight: 600 }}>{step.amount.toLocaleString('ru')} ₸</div>}
-              {step.trial_sold_count != null && <div style={{ fontSize: 11, color: '#64748b' }}>Продано услуг: {step.trial_sold_count}</div>}
+              {hasSalesBreakdown ? (
+                <>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#02BDB6' }}>{fmt(step.net_amount!)} ₸</div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                    Продажи {step.count} шт / {fmt(step.amount ?? 0)} ₸
+                  </div>
+                  {(step.refund_count ?? 0) > 0 && (
+                    <button style={{ display: 'block', fontSize: 11, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', fontFamily: 'inherit' }}
+                      onClick={e => { e.stopPropagation(); setDrill({ label: 'Возвраты', items: step.refund_items ?? [] }); }}>
+                      Возвраты {step.refund_count} шт / {fmt(step.refund_amount ?? 0)} ₸
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: '#02BDB6' }}>{step.count}</div>
+                  {step.amount != null && <div style={{ fontSize: 12, color: '#263CD9', fontWeight: 600 }}>{fmt(step.amount)} ₸</div>}
+                  {step.trial_sold_count != null && <div style={{ fontSize: 11, color: '#64748b' }}>Продано услуг: {step.trial_sold_count}</div>}
+                </>
+              )}
               <div style={{ fontSize: 12, color: i === 0 ? '#94a3b8' : pct >= 50 ? '#22c55e' : pct >= 20 ? '#f59e0b' : '#ef4444' }}>
                 {i === 0 ? '100%' : `${pct}% от пред.`}
               </div>
@@ -1429,15 +1450,19 @@ function useSyncButton() {
   return { syncing, syncMsg, doSync };
 }
 
-interface FdSrcRow { source: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_amount: number }
-interface FdMgrRow { manager: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; sales_amount: number; items?: DrillItem[] }
+interface FdSrcRow { source: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number }
+interface FdMgrRow { manager: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number; items?: DrillItem[] }
+interface FdCshRow { cashier: string; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number }
 
 function FactDaySection() {
   const [data, setData]             = useState<Record<string, FunnelStep> | null>(null);
   const [bySrc, setBySrc]           = useState<FdSrcRow[]>([]);
   const [byMgr, setByMgr]           = useState<FdMgrRow[]>([]);
+  const [byCsh, setByCsh]           = useState<FdCshRow[]>([]);
   const [availSources, setAvailSrc] = useState<string[]>([]);
   const [availMgr, setAvailMgr]     = useState<string[]>([]);
+  const [availCsh, setAvailCsh]     = useState<string[]>([]);
+  const [cashier, setCashier]       = useState('');
   const [loading, setLoading]       = useState(false);
   const [mgrDrill, setMgrDrill]     = useState<{ label: string; items: DrillItem[] } | null>(null);
   const { syncing, syncMsg, doSync } = useSyncButton();
@@ -1449,16 +1474,19 @@ function FactDaySection() {
       const sp = new URLSearchParams({ from, to });
       sources.forEach(s => sp.append('sources', s));
       if (manager) sp.set('manager', manager);
+      if (cashier) sp.set('cashier', cashier);
       const r = await fetch(`/kviz/api/metrics/fact-day?${sp}`, { credentials: 'include' });
       if (!r.ok) return;
       const d = await r.json();
       setData(d.steps);
       setBySrc(d.by_source ?? []);
       setByMgr(d.by_manager ?? []);
+      setByCsh(d.by_cashier ?? []);
       setAvailSrc(d.availableSources ?? []);
       setAvailMgr(d.availableManagers ?? []);
+      setAvailCsh(d.availableCashiers ?? []);
     } catch {} finally { setLoading(false); }
-  }, [from, to, sources, manager]);
+  }, [from, to, sources, manager, cashier]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1476,10 +1504,14 @@ function FactDaySection() {
         {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
       </div>
       {filterBar}
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <select value={manager} onChange={e => setManager(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
           <option value="">Все менеджеры</option>
           {availMgr.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select value={cashier} onChange={e => setCashier(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
+          <option value="">Все кассиры</option>
+          {availCsh.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
       {sourceBar}
@@ -1490,9 +1522,9 @@ function FactDaySection() {
             <div style={{ marginTop: 16 }}>
               <div style={s.sectionTitle}>По источникам</div>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 500 }}>
+                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 580 }}>
                   <thead><tr style={{ background: '#f8fafc' }}>
-                    {['Источник','Лидов','В работе','Записи','Пришли','Услуг','Сумма'].map(h => <th key={h} style={TH}>{h}</th>)}
+                    {['Источник','Лидов','В работе','Записи','Пришли','Услуг','Продаж','Итог ₸'].map(h => <th key={h} style={TH}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {bySrc.map(r => (
@@ -1503,7 +1535,8 @@ function FactDaySection() {
                         <td style={TD}>{r.trial_booked}</td>
                         <td style={TD}>{r.visited}</td>
                         <td style={TD}>{r.trial_sold_count}</td>
-                        <td style={{ ...TD, color: r.sales_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.sales_amount > 0 ? fmt(r.sales_amount) + ' ₸' : '—'}</td>
+                        <td style={TD}>{r.sales_count}</td>
+                        <td style={{ ...TD, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8', fontWeight: r.net_amount !== 0 ? 700 : 400 }}>{r.net_amount !== 0 ? fmt(r.net_amount) + ' ₸' : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1515,9 +1548,9 @@ function FactDaySection() {
             <div style={{ marginTop: 16 }}>
               <div style={s.sectionTitle}>По менеджерам</div>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 600 }}>
+                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 620 }}>
                   <thead><tr style={{ background: '#f8fafc' }}>
-                    {['Менеджер','Лидов','В работе','Записи','Пришли','Услуг','Продаж','Сумма'].map(h => <th key={h} style={TH}>{h}</th>)}
+                    {['Менеджер','Лидов','В работе','Записи','Пришли','Услуг','Продаж','Итог ₸'].map(h => <th key={h} style={TH}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {byMgr.map(r => (
@@ -1532,12 +1565,35 @@ function FactDaySection() {
                         <td style={TD}>{r.visited}</td>
                         <td style={TD}>{r.trial_sold_count}</td>
                         <td style={TD}>{r.sales_count}</td>
-                        <td style={{ ...TD, fontWeight: 700, color: r.sales_amount > 0 ? '#02BDB6' : '#94a3b8' }}>{r.sales_amount > 0 ? fmt(r.sales_amount) + ' ₸' : '—'}</td>
+                        <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{r.net_amount !== 0 ? fmt(r.net_amount) + ' ₸' : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Клик по строке — детализация лидов менеджера</div>
+              </div>
+            </div>
+          )}
+          {byCsh.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={s.sectionTitle}>По кассирам</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 400 }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    {['Кассир','Продаж шт','Продажи ₸','Возвраты ₸','Итог ₸'].map(h => <th key={h} style={TH}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {byCsh.map(r => (
+                      <tr key={r.cashier} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ ...TD, fontWeight: 600 }}>{r.cashier}</td>
+                        <td style={TD}>{r.sales_count}</td>
+                        <td style={TD}>{fmt(r.sales_amount)} ₸</td>
+                        <td style={{ ...TD, color: r.refund_amount > 0 ? '#ef4444' : '#94a3b8' }}>{r.refund_amount > 0 ? fmt(r.refund_amount) + ' ₸' : '—'}</td>
+                        <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)} ₸</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -1761,6 +1817,150 @@ function BulkResultsSection() {
         <button style={s.csvBtn} onClick={loadPreview} disabled={loading}>
           {loading ? '…' : 'Предпросмотр'}
         </button>
+      )}
+    </div>
+  );
+}
+
+// ── Renewals section ──────────────────────────────────────────────────────────
+
+const RENEWAL_LABELS: Record<string, string> = { new: 'Новая', renewal: 'Продление', same_day: 'Сразу несколько', returned: 'Вернулась' };
+
+interface RenRow { client_name: string|null; contract_name: string|null; purchase_date: string|null; prev_name: string|null; prev_end: string|null; days_between: number|null; type: string; manager: string|null; cashier: string|null; amount: number }
+interface RenCards { new: number; renewal: number; same_day: number; returned: number; new_amt: number; renewal_amt: number; same_day_amt: number; returned_amt: number }
+interface RenMgrRow { manager: string; count: number; amount: number; renewal_count: number; renewal_amount: number }
+
+function RenewalsSection() {
+  const [from, setFrom]     = useState(monthStart);
+  const [to, setTo]         = useState(today);
+  const [cards, setCards]   = useState<RenCards | null>(null);
+  const [rows, setRows]     = useState<RenRow[]>([]);
+  const [byMgr, setByMgr]  = useState<RenMgrRow[]>([]);
+  const [availMgr, setAvailMgr] = useState<string[]>([]);
+  const [availCsh, setAvailCsh] = useState<string[]>([]);
+  const [filterMgr, setFilterMgr]   = useState('');
+  const [filterCsh, setFilterCsh]   = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { syncing, syncMsg, doSync } = useSyncButton();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const sp = new URLSearchParams({ from, to });
+      if (filterMgr)  sp.set('manager', filterMgr);
+      if (filterCsh)  sp.set('cashier', filterCsh);
+      if (filterType) sp.set('type', filterType);
+      const r = await fetch(`/kviz/api/metrics/renewals?${sp}`, { credentials: 'include' });
+      if (!r.ok) return;
+      const d = await r.json();
+      setCards(d.cards ?? null);
+      setRows(d.rows ?? []);
+      setByMgr(d.by_manager ?? []);
+      setAvailMgr(d.availableManagers ?? []);
+      setAvailCsh(d.availableCashiers ?? []);
+    } catch {} finally { setLoading(false); }
+  }, [from, to, filterMgr, filterCsh, filterType]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const fmt = (n: number) => Math.round(n).toLocaleString('ru');
+  const TH: React.CSSProperties = { padding: '4px 8px 4px 0', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12 };
+  const TD: React.CSSProperties = { padding: '3px 8px 3px 0', fontSize: 12 };
+  const CARD_COLORS: Record<string, string> = { new: '#263CD9', renewal: '#02BDB6', same_day: '#f59e0b', returned: '#94a3b8' };
+
+  return (
+    <div style={s.section}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <button style={s.csvBtn} onClick={doSync} disabled={syncing}>{syncing ? 'Запуск…' : '↺ Обновить Fitbase'}</button>
+        {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
+      </div>
+      <div style={s.filterRow}>
+        <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
+        <span style={{ color: '#64748b' }}>—</span>
+        <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
+        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <select value={filterMgr} onChange={e => setFilterMgr(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
+          <option value="">Все менеджеры</option>
+          {availMgr.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select value={filterCsh} onChange={e => setFilterCsh(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
+          <option value="">Все кассиры</option>
+          {availCsh.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
+          <option value="">Все типы</option>
+          {Object.entries(RENEWAL_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
+
+      {cards && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+          {(['new', 'renewal', 'same_day', 'returned'] as const).map(k => (
+            <div key={k} style={{ background: '#fff', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 120, borderTop: `3px solid ${CARD_COLORS[k]}` }}>
+              <div style={{ fontSize: 11, color: '#64748b' }}>{RENEWAL_LABELS[k]}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: CARD_COLORS[k] }}>{(cards as Record<string,number>)[k]}</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>{fmt((cards as Record<string,number>)[k + '_amt'])} ₸</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rows.length === 0 && !loading && <div style={s.empty}>Нет данных за период</div>}
+
+      {rows.length > 0 && (
+        <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ background: '#f1f5f9' }}>
+              {['Клиент','Абонемент','Дата','Предыдущий','Оконч.','Дней','Тип','Менеджер','Кассир','Сумма'].map(h => (
+                <th key={h} style={TH}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ ...TD, fontWeight: 600 }}>{r.client_name ?? '—'}</td>
+                  <td style={{ ...TD, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.contract_name ?? '—'}</td>
+                  <td style={{ ...TD, whiteSpace: 'nowrap' }}>{r.purchase_date ?? '—'}</td>
+                  <td style={{ ...TD, color: '#64748b', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.prev_name ?? '—'}</td>
+                  <td style={{ ...TD, whiteSpace: 'nowrap', color: '#64748b' }}>{r.prev_end ?? '—'}</td>
+                  <td style={TD}>{r.days_between ?? '—'}</td>
+                  <td style={{ ...TD, color: CARD_COLORS[r.type] ?? '#374151', fontWeight: 600 }}>{RENEWAL_LABELS[r.type] ?? r.type}</td>
+                  <td style={TD}>{r.manager ?? '—'}</td>
+                  <td style={TD}>{r.cashier ?? '—'}</td>
+                  <td style={{ ...TD, fontWeight: 700, color: '#263CD9' }}>{fmt(r.amount)} ₸</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {byMgr.length > 0 && (
+        <div>
+          <div style={s.sectionTitle}>По менеджерам</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 400 }}>
+              <thead><tr style={{ background: '#f8fafc' }}>
+                {['Менеджер','Всего','Сумма','Продлений','Сумма продл.','Доля'].map(h => <th key={h} style={TH}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {byMgr.map(r => (
+                  <tr key={r.manager} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ ...TD, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
+                    <td style={TD}>{r.count}</td>
+                    <td style={TD}>{fmt(r.amount)} ₸</td>
+                    <td style={{ ...TD, color: '#02BDB6', fontWeight: 700 }}>{r.renewal_count}</td>
+                    <td style={TD}>{fmt(r.renewal_amount)} ₸</td>
+                    <td style={TD}>{r.count > 0 ? Math.round(100 * r.renewal_count / r.count) + '%' : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );

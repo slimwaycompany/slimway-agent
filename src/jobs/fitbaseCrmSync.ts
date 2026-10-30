@@ -1,6 +1,15 @@
 import { supabase } from '../db/supabase';
-import { paginateGet } from '../http/fitbase';
+import { paginateGet, rawGet } from '../http/fitbase';
 import { TRIAL_TRAINING_ID, TRIAL_SERVICE_NAMES, isTrialServiceName } from '../config';
+
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+
+function toDate(v: unknown): string | null {
+  if (!v) return null;
+  if (typeof v === 'string' && /^\d{4}-/.test(v)) return v.slice(0, 10);
+  const n = Number(v);
+  return n > 0 ? yekDate(n * 1000) : null;
+}
 
 const YEK_MS = 5 * 3600_000;
 
@@ -32,9 +41,8 @@ async function syncLeads(): Promise<number> {
     const step = l.funnel_step as Record<string, unknown> | null ?? null;
     const funnel = (step?.purchase_funnel as Record<string, unknown> | null)?.name as string ?? null;
     const stage = step?.name as string ?? null;
-    const client = l.client as Record<string, unknown> | null ?? null;
     const source = (l.advertising_source as Record<string, unknown> | null)?.name as string ?? null;
-    const responsible = l.responsible as Record<string, unknown> | null ?? null;
+    const manager_obj = l.manager as Record<string, unknown> | null ?? null;
     return {
       fitbase_id: String(l.id),
       created_at: createdAt,
@@ -43,10 +51,10 @@ async function syncLeads(): Promise<number> {
       funnel,
       stage,
       status: step?.id != null ? String(step.id) : null,
-      manager: (responsible?.full_name ?? null) as string | null,
-      client_fitbase_id: client?.id != null ? Number(client.id) : null,
-      client_name: (client?.full_name ?? l.name ?? null) as string | null,
-      client_phone: normalizePhone((client?.phone ?? l.phone) as string | null),
+      manager: (manager_obj?.full_name ?? null) as string | null,
+      client_fitbase_id: l.client_id != null ? Number(l.client_id) : null,
+      client_name: ([l.name, l.surname].filter(Boolean).join(' ') || null) as string | null,
+      client_phone: normalizePhone(l.phone as string | null),
       updated_at: updTs ? new Date(updTs).toISOString() : null,
       raw: l,
     };
@@ -155,10 +163,65 @@ async function syncVisits(): Promise<number> {
   return upserted;
 }
 
+async function syncContracts(): Promise<number> {
+  // Collect client_ids from operations with item_type = 'contract'
+  const { data: opsData } = await supabase.from('fitbase_operations').select('raw');
+  const clientIds = new Set<number>();
+  for (const op of (opsData ?? [])) {
+    const raw = op.raw as Record<string, unknown>;
+    if (raw?.item_type === 'contract') {
+      const cid = (raw.client as Record<string, unknown> | null)?.id;
+      if (cid != null) clientIds.add(Number(cid));
+    }
+  }
+  if (clientIds.size === 0) return 0;
+
+  let upserted = 0;
+  const ids = [...clientIds];
+  for (let i = 0; i < ids.length; i++) {
+    if (i > 0) await sleep(300 + Math.random() * 200);
+    const cid = ids[i];
+    try {
+      const resp = await rawGet(`/client-contract?client_id=${cid}`);
+      const items = (resp.items ?? []) as Record<string, unknown>[];
+      if (!items.length) continue;
+      const rows = items.map(c => {
+        const ticket = c.ticket as Record<string, unknown> | null;
+        const ci = ticket?.contract_item as Record<string, unknown> | null;
+        return {
+          fitbase_id: Number(c.id),
+          client_fitbase_id: cid,
+          name: (ci?.name ?? (c.item as Record<string, unknown> | null)?.name ?? null) as string | null,
+          status: c.deleted_at ? 'deleted' : c.closed ? 'closed' : 'active',
+          price: Number(c.price ?? c.price_full ?? 0),
+          payment_date: toDate(c.payment_date),
+          begin_date: toDate(c.begin_date),
+          activation_date: toDate(c.activation_date),
+          end_date: toDate(c.end_date),
+          raw: c,
+          synced_at: new Date().toISOString(),
+        };
+      });
+      const { data, error } = await supabase
+        .from('fitbase_contracts')
+        .upsert(rows, { onConflict: 'fitbase_id' })
+        .select('fitbase_id');
+      if (error) console.warn(`[crm-sync] contracts client=${cid}: ${error.message}`);
+      else upserted += (data ?? []).length;
+    } catch (e) {
+      const msg = (e as Error).message ?? '';
+      if (/4\d\d/.test(msg)) { console.warn(`[crm-sync] contracts 4xx client=${cid}`); continue; }
+      throw e;
+    }
+  }
+  return upserted;
+}
+
 export async function runFitbaseCrmSync(): Promise<Record<string, unknown>> {
   console.log('[crm-sync] starting');
   const leads = await syncLeads();
   const visits = await syncVisits();
-  console.log(`[crm-sync] done: leads=${leads} visits=${visits}`);
-  return { leads, visits };
+  const contracts = await syncContracts();
+  console.log(`[crm-sync] done: leads=${leads} visits=${visits} contracts=${contracts}`);
+  return { leads, visits, contracts };
 }

@@ -49,6 +49,26 @@ function opCid(op: Record<string, unknown>): number | null {
   return c?.id != null ? Number(c.id) : null;
 }
 
+interface OrderRow { amount: number; cid: number|null; manager: string|null; cashier: string|null; item: string|null; date: string|null; clientName: string|null }
+
+// Group individual operation lines into orders by order_id
+function groupOrders(ops: Array<Record<string, unknown>>): OrderRow[] {
+  const map = new Map<string, OrderRow>();
+  for (const op of ops) {
+    const raw = op.raw as Record<string, unknown>;
+    const orderId = String(raw?.order_id ?? op.fitbase_id);
+    const cid = opCid(op);
+    const ex = map.get(orderId);
+    if (!ex) {
+      map.set(orderId, { amount: Number(op.amount ?? 0), cid, manager: (op.manager as string|null) ?? null, cashier: (op.cashier as string|null) ?? null, item: (op.item as string|null) ?? null, date: (op.op_date as string|null) ?? null, clientName: (op.client_name as string|null) ?? null });
+    } else {
+      ex.amount += Number(op.amount ?? 0);
+      if (cid != null && ex.cid == null) ex.cid = cid;
+    }
+  }
+  return [...map.values()];
+}
+
 function buildFunnel(leads: Lead[], visits: Visit[]) {
   const trialBookedById   = new Set(visits.filter(v => v.is_trial && notCancelled(v.status)).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
   const trialBookedByPhone = new Set(visits.filter(v => v.is_trial && notCancelled(v.status)).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
@@ -141,6 +161,7 @@ export function buildMetricsRouter(): Router {
       const to   = String(req.query.to   || new Date().toISOString().slice(0, 10));
       const sources: string[] = Array.isArray(req.query.sources) ? req.query.sources.map(String) : req.query.sources ? [String(req.query.sources)] : [];
       const manager = req.query.manager ? String(req.query.manager) : null;
+      const cashier = req.query.cashier ? String(req.query.cashier) : null;
 
       // Client → latest-lead map (all leads, no date filter)
       const clm = await buildClientLeadMap();
@@ -164,7 +185,6 @@ export function buildMetricsRouter(): Router {
         .eq('is_trial', true).gte('visit_date', from).lte('visit_date', to);
       const allVisits = (visitsData ?? []) as Array<Record<string, unknown>>;
 
-      // Filter visits via clientLeadMap (source by last lead, manager by last lead)
       const visits = allVisits.filter(v => {
         const cid = v.client_fitbase_id as number | null;
         if (sources.length > 0 && !sources.includes(clm.get(Number(cid))?.source ?? '')) return false;
@@ -172,19 +192,28 @@ export function buildMetricsRouter(): Router {
         return true;
       });
 
-      // Sales in period
-      const { data: salesRaw } = await supabase.from('fitbase_operations')
-        .select('fitbase_id,op_at,amount,client_name,manager,item,pay_method,raw')
-        .gte('op_date', from).lte('op_date', to).eq('op_type', 'sale').gt('amount', 0);
-      const allSales = (salesRaw ?? []) as Array<Record<string, unknown>>;
+      // Sales + refunds in period
+      const { data: opsRaw } = await supabase.from('fitbase_operations')
+        .select('fitbase_id,op_at,op_date,amount,client_name,manager,cashier,item,pay_method,op_type,raw')
+        .gte('op_date', from).lte('op_date', to).in('op_type', ['sale', 'refund']).gt('amount', 0);
+      const allOps = (opsRaw ?? []) as Array<Record<string, unknown>>;
+      const allSalesOps = allOps.filter(op => op.op_type === 'sale');
+      const allRefundOps = allOps.filter(op => op.op_type === 'refund');
 
-      // Sales: source via clientLeadMap; manager via op.manager
-      const sales = allSales.filter(op => {
+      function matchesFilters(op: Record<string, unknown>): boolean {
         const cid = opCid(op);
         if (sources.length > 0 && !sources.includes(cid != null ? (clm.get(cid)?.source ?? '') : '')) return false;
         if (manager && !(op.manager as string ?? '').toLowerCase().includes(manager.toLowerCase())) return false;
+        if (cashier && !(op.cashier as string ?? '').toLowerCase().includes(cashier.toLowerCase())) return false;
         return true;
-      });
+      }
+      const salesOps    = allSalesOps.filter(matchesFilters);
+      const refundOps   = allRefundOps.filter(matchesFilters);
+      const saleOrders  = groupOrders(salesOps);
+      const refundOrders = groupOrders(refundOps);
+      const salesAmount  = saleOrders.reduce((s, o) => s + o.amount, 0);
+      const refundAmount = refundOrders.reduce((s, o) => s + o.amount, 0);
+      const netAmount    = salesAmount - refundAmount;
 
       // Trial sold
       const { data: trialSalesRaw } = await supabase.from('fitbase_operations')
@@ -205,9 +234,8 @@ export function buildMetricsRouter(): Router {
       const inWork      = leads.filter(l => l.status != null && l.status !== '0');
       const trialBooked = visits.filter(v => notCancelled(v.status as number | null));
       const visited     = visits.filter(v => v.status === VISIT_STATUS_VISITED);
-      const salesAmount = sales.reduce((s: number, op) => s + Number(op.amount ?? 0), 0);
 
-      // by_source — 6 columns, computed from all unfiltered data
+      // by_source — 7 columns
       const allSrcSet = new Set<string>();
       for (const l of allLeads) allSrcSet.add(l.source ?? '(без источника)');
       const by_source = [...allSrcSet].map(src => {
@@ -216,34 +244,58 @@ export function buildMetricsRouter(): Router {
         const sBooked    = allVisits.filter(v => notCancelled(v.status as number | null) && clSrc(v.client_fitbase_id as number | null, clm) === src);
         const sVisited   = allVisits.filter(v => v.status === VISIT_STATUS_VISITED && clSrc(v.client_fitbase_id as number | null, clm) === src);
         const sTrialSold = allTrialSold.filter(op => clSrc(opCid(op), clm) === src);
-        const sSalesAmt  = allSales.filter(op => clSrc(opCid(op), clm) === src).reduce((s, op) => s + Number(op.amount ?? 0), 0);
-        return { source: src, leads: sLeads.length, in_work: sInWork.length, trial_booked: sBooked.length, visited: sVisited.length, trial_sold_count: sTrialSold.length, sales_amount: sSalesAmt };
+        const sSaleOrds  = groupOrders(allSalesOps.filter(op => clSrc(opCid(op), clm) === src));
+        const sRefOrds   = groupOrders(allRefundOps.filter(op => clSrc(opCid(op), clm) === src));
+        const sSalesAmt  = sSaleOrds.reduce((s, o) => s + o.amount, 0);
+        const sRefAmt    = sRefOrds.reduce((s, o) => s + o.amount, 0);
+        return { source: src, leads: sLeads.length, in_work: sInWork.length, trial_booked: sBooked.length, visited: sVisited.length, trial_sold_count: sTrialSold.length, sales_count: sSaleOrds.length, sales_amount: sSalesAmt, refund_amount: sRefAmt, net_amount: sSalesAmt - sRefAmt };
       }).sort((a, b) => b.leads - a.leads);
 
-      // by_manager — 8 columns
+      // by_manager — leads+visits by lead.manager; sales by op.manager
       const allMgrSet = new Set<string>();
       for (const l of allLeads) allMgrSet.add(l.manager ?? '(без менеджера)');
-      for (const op of allSales) allMgrSet.add((op.manager as string) || '(без менеджера)');
+      for (const op of allSalesOps) allMgrSet.add((op.manager as string) || '(без менеджера)');
       const by_manager = [...allMgrSet].map(mgr => {
         const mLeads     = allLeads.filter(l => (l.manager ?? '(без менеджера)') === mgr);
         const mInWork    = mLeads.filter(l => l.status != null && l.status !== '0');
         const mBooked    = allVisits.filter(v => notCancelled(v.status as number | null) && clMgr(v.client_fitbase_id as number | null, clm) === mgr);
         const mVisited   = allVisits.filter(v => v.status === VISIT_STATUS_VISITED && clMgr(v.client_fitbase_id as number | null, clm) === mgr);
         const mTrialSold = allTrialSold.filter(op => clMgr(opCid(op), clm) === mgr);
-        const mSales     = allSales.filter(op => ((op.manager as string) || '(без менеджера)') === mgr);
-        const mSalesAmt  = mSales.reduce((s, op) => s + Number(op.amount ?? 0), 0);
+        const mSaleOrds  = groupOrders(allSalesOps.filter(op => ((op.manager as string) || '(без менеджера)') === mgr));
+        const mRefOrds   = groupOrders(allRefundOps.filter(op => ((op.manager as string) || '(без менеджера)') === mgr));
+        const mSalesAmt  = mSaleOrds.reduce((s, o) => s + o.amount, 0);
+        const mRefAmt    = mRefOrds.reduce((s, o) => s + o.amount, 0);
         const items = mLeads.map(l => ({ name: l.client_name, source: l.source, manager: l.manager, date: l.created_date }));
-        return { manager: mgr, leads: mLeads.length, in_work: mInWork.length, trial_booked: mBooked.length, visited: mVisited.length, trial_sold_count: mTrialSold.length, sales_count: mSales.length, sales_amount: mSalesAmt, items };
-      }).sort((a, b) => b.sales_amount - a.sales_amount);
+        return { manager: mgr, leads: mLeads.length, in_work: mInWork.length, trial_booked: mBooked.length, visited: mVisited.length, trial_sold_count: mTrialSold.length, sales_count: mSaleOrds.length, sales_amount: mSalesAmt, refund_amount: mRefAmt, net_amount: mSalesAmt - mRefAmt, items };
+      }).sort((a, b) => b.net_amount - a.net_amount);
 
+      // by_cashier
+      const allCshSet = new Set<string>();
+      for (const op of allSalesOps) allCshSet.add((op.cashier as string) || '(без кассира)');
+      for (const op of allRefundOps) allCshSet.add((op.cashier as string) || '(без кассира)');
+      const by_cashier = [...allCshSet].map(csh => {
+        const cSaleOrds = groupOrders(allSalesOps.filter(op => ((op.cashier as string) || '(без кассира)') === csh));
+        const cRefOrds  = groupOrders(allRefundOps.filter(op => ((op.cashier as string) || '(без кассира)') === csh));
+        const cSalesAmt = cSaleOrds.reduce((s, o) => s + o.amount, 0);
+        const cRefAmt   = cRefOrds.reduce((s, o) => s + o.amount, 0);
+        return { cashier: csh, sales_count: cSaleOrds.length, sales_amount: cSalesAmt, refund_amount: cRefAmt, net_amount: cSalesAmt - cRefAmt };
+      }).sort((a, b) => b.net_amount - a.net_amount);
+
+      // availableSources (all-time, for filter chips)
       const { data: srcRows } = await supabase.from('fitbase_leads').select('source').not('source', 'is', null);
       const availableSources = [...new Set((srcRows ?? []).map(r => r.source as string))].sort();
-      const { data: mgrLeadRows } = await supabase.from('fitbase_leads').select('manager').not('manager', 'is', null);
-      const { data: mgrOpRows } = await supabase.from('fitbase_operations').select('manager').not('manager', 'is', null);
+
+      // availableManagers + availableCashiers — period-filtered
+      const [mgrLeadRows, mgrOpRows, cashierRows] = await Promise.all([
+        supabase.from('fitbase_leads').select('manager').gte('created_date', from).lte('created_date', to).not('manager', 'is', null),
+        supabase.from('fitbase_operations').select('manager').gte('op_date', from).lte('op_date', to).not('manager', 'is', null),
+        supabase.from('fitbase_operations').select('cashier').gte('op_date', from).lte('op_date', to).not('cashier', 'is', null),
+      ]);
       const availableManagers = [...new Set([
-        ...(mgrLeadRows ?? []).map(r => r.manager as string),
-        ...(mgrOpRows ?? []).map(r => r.manager as string),
+        ...(mgrLeadRows.data ?? []).map(r => r.manager as string),
+        ...(mgrOpRows.data ?? []).map(r => r.manager as string),
       ])].filter(Boolean).sort();
+      const availableCashiers = [...new Set((cashierRows.data ?? []).map(r => r.cashier as string))].filter(Boolean).sort();
 
       res.json({
         period: { from, to },
@@ -260,12 +312,22 @@ export function buildMetricsRouter(): Router {
             }),
           },
           visited: { count: visited.length, items: visited.map(v => ({ name: v.client_name, date: v.visit_date, manager: v.manager })) },
-          sales:   { count: sales.length, amount: salesAmount, items: sales.map(s => ({ name: s.client_name, amount: s.amount, item: s.item, date: String(s.op_at).slice(0, 10) })) },
+          sales: {
+            count: saleOrders.length,
+            amount: salesAmount,
+            net_amount: netAmount,
+            refund_count: refundOrders.length,
+            refund_amount: refundAmount,
+            items: saleOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date })),
+            refund_items: refundOrders.map(o => ({ name: o.clientName, amount: o.amount, item: o.item, date: o.date, manager: o.cashier })),
+          },
         },
         by_source,
         by_manager,
+        by_cashier,
         availableSources,
         availableManagers,
+        availableCashiers,
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -359,8 +421,125 @@ export function buildMetricsRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // Renewals: classify contract purchases in period
+  router.get('/kviz/api/metrics/renewals', async (req: Request, res: Response) => {
+    if (!isAdmin(req, res)) return;
+    try {
+      const from = String(req.query.from || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10));
+      const to   = String(req.query.to   || new Date().toISOString().slice(0, 10));
+      const filterManager = req.query.manager ? String(req.query.manager) : null;
+      const filterCashier = req.query.cashier ? String(req.query.cashier) : null;
+      const filterType    = req.query.type ? String(req.query.type) : null;
+
+      // Contract sale ops in period (item_type='contract' in raw, op_type='sale')
+      const { data: opsData } = await supabase.from('fitbase_operations')
+        .select('fitbase_id,amount,op_date,client_name,manager,cashier,raw')
+        .gte('op_date', from).lte('op_date', to).eq('op_type', 'sale').gt('amount', 0);
+      const contractOps = ((opsData ?? []) as Array<Record<string, unknown>>).filter(op => {
+        const raw = op.raw as Record<string, unknown>;
+        return raw?.item_type === 'contract';
+      });
+
+      if (!contractOps.length) { res.json({ period: { from, to }, rows: [], cards: { new: 0, renewal: 0, same_day: 0, returned: 0 }, by_manager: [] }); return; }
+
+      // Get all contracts for involved clients
+      const clientIds = [...new Set(contractOps.map(op => opCid(op)).filter((x): x is number => x != null))];
+      const { data: contractsData } = await supabase.from('fitbase_contracts')
+        .select('fitbase_id,client_fitbase_id,name,payment_date,begin_date,end_date,status')
+        .in('client_fitbase_id', clientIds);
+      const allContracts = (contractsData ?? []) as Array<{ fitbase_id: number; client_fitbase_id: number; name: string|null; payment_date: string|null; begin_date: string|null; end_date: string|null; status: string }>;
+
+      // Group contracts by client
+      const contractsByClient = new Map<number, typeof allContracts>();
+      for (const c of allContracts) {
+        if (!contractsByClient.has(c.client_fitbase_id)) contractsByClient.set(c.client_fitbase_id, []);
+        contractsByClient.get(c.client_fitbase_id)!.push(c);
+      }
+
+      type PType = 'new' | 'same_day' | 'renewal' | 'returned';
+      interface RenRow { client_name: string|null; contract_name: string|null; purchase_date: string|null; prev_name: string|null; prev_end: string|null; days_between: number|null; type: PType; manager: string|null; cashier: string|null; amount: number }
+
+      const rows: RenRow[] = [];
+      for (const op of contractOps) {
+        const cid = opCid(op);
+        const raw = op.raw as Record<string, unknown>;
+        const itemId = Number(raw?.item_id ?? 0);
+        const purchaseDate = op.op_date as string|null;
+        const thisContract = itemId ? allContracts.find(c => c.fitbase_id === itemId) : null;
+        const clientContracts = cid != null ? (contractsByClient.get(cid) ?? []) : [];
+        const paid = clientContracts.filter(c => c.status !== 'deleted').sort((a, b) => (a.payment_date ?? '').localeCompare(b.payment_date ?? ''));
+
+        let type: PType = 'new';
+        let prev: typeof allContracts[0] | null = null;
+        let daysBetween: number | null = null;
+
+        const idx = paid.findIndex(c => c.fitbase_id === itemId);
+        if (idx > 0) {
+          prev = paid[idx - 1];
+          const pd = purchaseDate ?? '';
+          const prevPd = prev.payment_date ?? '';
+          if (pd === prevPd) {
+            type = 'same_day';
+            daysBetween = 0;
+          } else {
+            const prevEnd = prev.end_date;
+            if (!prevEnd) {
+              type = 'renewal'; daysBetween = null;
+            } else {
+              daysBetween = Math.floor((new Date(pd).getTime() - new Date(prevEnd).getTime()) / 86400_000);
+              type = daysBetween <= 0 ? 'renewal' : daysBetween <= 30 ? 'renewal' : 'returned';
+            }
+          }
+        }
+
+        rows.push({
+          client_name: op.client_name as string|null,
+          contract_name: thisContract?.name ?? (raw?.item as Record<string,unknown>)?.name as string|null ?? null,
+          purchase_date: purchaseDate,
+          prev_name: prev?.name ?? null,
+          prev_end: prev?.end_date ?? null,
+          days_between: daysBetween,
+          type,
+          manager: op.manager as string|null,
+          cashier: op.cashier as string|null,
+          amount: Number(op.amount ?? 0),
+        });
+      }
+
+      const filtered = rows.filter(r => {
+        if (filterManager && !(r.manager ?? '').toLowerCase().includes(filterManager.toLowerCase())) return false;
+        if (filterCashier && !(r.cashier ?? '').toLowerCase().includes(filterCashier.toLowerCase())) return false;
+        if (filterType && r.type !== filterType) return false;
+        return true;
+      });
+
+      const cards = { new: 0, renewal: 0, same_day: 0, returned: 0, new_amt: 0, renewal_amt: 0, same_day_amt: 0, returned_amt: 0 };
+      for (const r of filtered) { cards[r.type]++; (cards as Record<string, number>)[r.type + '_amt'] += r.amount; }
+
+      const mgrMap = new Map<string, { count: number; amount: number; renewal_count: number; renewal_amount: number }>();
+      for (const r of filtered) {
+        const m = r.manager ?? '(без менеджера)';
+        if (!mgrMap.has(m)) mgrMap.set(m, { count: 0, amount: 0, renewal_count: 0, renewal_amount: 0 });
+        const mx = mgrMap.get(m)!; mx.count++; mx.amount += r.amount;
+        if (r.type === 'renewal') { mx.renewal_count++; mx.renewal_amount += r.amount; }
+      }
+      const by_manager = [...mgrMap.entries()].map(([manager, d]) => ({ manager, ...d })).sort((a, b) => b.amount - a.amount);
+
+      // period-filtered available lists
+      const [mgrLeadR, mgrOpR, cashierR] = await Promise.all([
+        supabase.from('fitbase_leads').select('manager').gte('created_date', from).lte('created_date', to).not('manager', 'is', null),
+        supabase.from('fitbase_operations').select('manager').gte('op_date', from).lte('op_date', to).not('manager', 'is', null),
+        supabase.from('fitbase_operations').select('cashier').gte('op_date', from).lte('op_date', to).not('cashier', 'is', null),
+      ]);
+      const availableManagers = [...new Set([...(mgrLeadR.data ?? []).map(r => r.manager as string), ...(mgrOpR.data ?? []).map(r => r.manager as string)])].filter(Boolean).sort();
+      const availableCashiers = [...new Set((cashierR.data ?? []).map(r => r.cashier as string))].filter(Boolean).sort();
+
+      res.json({ period: { from, to }, cards, rows: filtered, by_manager, availableManagers, availableCashiers });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // Async CRM sync — POST starts job, GET returns status
-  let syncJob: { status: 'running' | 'done' | 'error'; leads?: number; visits?: number; error?: string; synced_at?: string } | null = null;
+  let syncJob: { status: 'running' | 'done' | 'error'; leads?: number; visits?: number; contracts?: number; error?: string; synced_at?: string } | null = null;
 
   router.post('/kviz/api/metrics/sync', (req: Request, res: Response) => {
     if (!isAdmin(req, res)) return;
@@ -375,7 +554,7 @@ export function buildMetricsRouter(): Router {
         await releaseLock('fitbase-crm-sync');
         const now = new Date().toISOString();
         await supabase.from('sync_state').upsert({ key: 'fitbase_crm_synced_at', value: now }, { onConflict: 'key' });
-        syncJob = { status: 'done', leads: stats.leads as number, visits: stats.visits as number, synced_at: now };
+        syncJob = { status: 'done', leads: stats.leads as number, visits: stats.visits as number, contracts: stats.contracts as number, synced_at: now };
       } catch (e) {
         await releaseLock('fitbase-crm-sync').catch(() => {});
         syncJob = { status: 'error', error: String(e) };
