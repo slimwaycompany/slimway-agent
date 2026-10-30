@@ -4,6 +4,22 @@ import { TRIAL_TRAINING_ID, TRIAL_SERVICE_NAMES, isTrialServiceName } from '../c
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAll(build: (off: number, lim: number) => any): Promise<Record<string, unknown>[]> {
+  const PAGE = 1000;
+  const all: Record<string, unknown>[] = [];
+  let off = 0;
+  while (true) {
+    const { data, error } = await build(off, PAGE);
+    if (error) throw new Error((error as { message: string }).message);
+    if (!data?.length) break;
+    all.push(...(data as Record<string, unknown>[]));
+    if ((data as unknown[]).length < PAGE) break;
+    off += PAGE;
+  }
+  return all;
+}
+
 function toDate(v: unknown): string | null {
   if (!v) return null;
   if (typeof v === 'string' && /^\d{4}-/.test(v)) return v.slice(0, 10);
@@ -165,9 +181,11 @@ async function syncVisits(): Promise<number> {
 
 async function syncContracts(): Promise<number> {
   // Collect client_ids from operations with item_type = 'contract'
-  const { data: opsData } = await supabase.from('fitbase_operations').select('raw');
+  const opsData = await fetchAll((off, lim) =>
+    supabase.from('fitbase_operations').select('raw').range(off, off + lim - 1)
+  );
   const clientIds = new Set<number>();
-  for (const op of (opsData ?? [])) {
+  for (const op of opsData) {
     const raw = op.raw as Record<string, unknown>;
     if (raw?.item_type === 'contract') {
       const cid = (raw.client as Record<string, unknown> | null)?.id;
@@ -219,9 +237,11 @@ async function syncContracts(): Promise<number> {
 
 export async function runFitbaseCrmSync(): Promise<Record<string, unknown>> {
   console.log('[crm-sync] starting');
-  const leads = await syncLeads();
-  const visits = await syncVisits();
-  const contracts = await syncContracts();
-  console.log(`[crm-sync] done: leads=${leads} visits=${visits} contracts=${contracts}`);
-  return { leads, visits, contracts };
+  let leads = 0, visits = 0, contracts = 0;
+  const errors: string[] = [];
+  try { leads = await syncLeads(); } catch (e) { const m = (e as Error).message; errors.push(`leads: ${m}`); console.error('[crm-sync] leads error:', m); }
+  try { visits = await syncVisits(); } catch (e) { const m = (e as Error).message; errors.push(`visits: ${m}`); console.error('[crm-sync] visits error:', m); }
+  try { contracts = await syncContracts(); } catch (e) { const m = (e as Error).message; errors.push(`contracts: ${m}`); console.error('[crm-sync] contracts error:', m); }
+  console.log(`[crm-sync] done: leads=${leads} visits=${visits} contracts=${contracts}${errors.length ? ` errors=[${errors.join('; ')}]` : ''}`);
+  return { leads, visits, contracts, ...(errors.length ? { errors } : {}) };
 }

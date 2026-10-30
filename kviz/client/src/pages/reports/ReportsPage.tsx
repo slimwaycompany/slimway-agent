@@ -1434,7 +1434,8 @@ function useSyncButton() {
         const r = await fetch('/kviz/api/metrics/sync', { credentials: 'include' });
         const d = await r.json().catch(() => ({}));
         if (d.status === 'done') {
-          setSyncMsg(`Синхронизировано: лидов ${d.leads ?? '?'}, записей ${d.visits ?? '?'}`);
+          const base = `Синхронизировано: лидов ${d.leads ?? '?'}, записей ${d.visits ?? '?'}, абонементов ${d.contracts ?? '?'}`;
+          setSyncMsg(d.error ? `${base}. Ошибки: ${d.error}` : base);
           setSyncing(false);
         } else if (d.status === 'error') {
           setSyncMsg(d.error || 'Ошибка синхронизации');

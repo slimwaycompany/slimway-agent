@@ -19,27 +19,64 @@ function digitsOnly(p: string | null): string | null {
   return d.length >= 10 ? d.slice(-10) : null;
 }
 
+// Paginate any Supabase select in 1000-row pages
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAll(build: (off: number, lim: number) => any): Promise<Record<string, unknown>[]> {
+  const PAGE = 1000;
+  const all: Record<string, unknown>[] = [];
+  let off = 0;
+  while (true) {
+    const { data, error } = await build(off, PAGE);
+    if (error) throw new Error((error as { message: string }).message);
+    if (!data?.length) break;
+    all.push(...(data as Record<string, unknown>[]));
+    if ((data as unknown[]).length < PAGE) break;
+    off += PAGE;
+  }
+  return all;
+}
+
 function notCancelled(status: number | null): boolean {
   return status == null || !VISIT_CANCELLED_STATUSES.has(status);
 }
 
-// Returns latest lead (by created_at) per client_fitbase_id
+// Returns latest lead (by created_at) per client_fitbase_id; phone fallback via fitbase_clients_cache
 async function buildClientLeadMap(): Promise<Map<number, { source: string | null; manager: string | null }>> {
-  const { data } = await supabase.from('fitbase_leads')
-    .select('client_fitbase_id,source,manager,created_at')
-    .not('client_fitbase_id', 'is', null)
-    .order('created_at', { ascending: true }); // ascending → last write per key = latest lead
+  const leads = await fetchAll((off, lim) =>
+    supabase.from('fitbase_leads').select('client_fitbase_id,source,manager,created_at,client_phone')
+      .not('client_fitbase_id', 'is', null).order('created_at', { ascending: true }).range(off, off + lim - 1)
+  );
   const map = new Map<number, { source: string | null; manager: string | null }>();
-  for (const l of (data ?? [])) map.set(Number(l.client_fitbase_id), { source: l.source ?? null, manager: l.manager ?? null });
+  const byPhone = new Map<string, { source: string | null; manager: string | null }>();
+  for (const l of leads) {
+    const info = { source: (l.source as string | null) ?? null, manager: (l.manager as string | null) ?? null };
+    map.set(Number(l.client_fitbase_id), info);
+    const ph = digitsOnly(l.client_phone as string | null);
+    if (ph) byPhone.set(ph, info); // ascending order — last write = latest lead
+  }
+  // Phone-based fallback: clients not in fitbase_leads by ID → look up via cache phone
+  if (byPhone.size > 0) {
+    const cache = await fetchAll((off, lim) =>
+      supabase.from('fitbase_clients_cache').select('fitbase_client_id,phone').range(off, off + lim - 1)
+    );
+    for (const cc of cache) {
+      const cid = Number(cc.fitbase_client_id);
+      if (map.has(cid)) continue;
+      const ph = digitsOnly(cc.phone as string | null);
+      if (!ph) continue;
+      const info = byPhone.get(ph);
+      if (info) map.set(cid, info);
+    }
+  }
   return map;
 }
 
 function clSrc(id: number | null | undefined, clm: Map<number, { source: string | null; manager: string | null }>): string {
-  return (id != null ? clm.get(id)?.source : null) ?? '(без источника)';
+  return (id != null ? clm.get(Number(id))?.source : null) ?? '(без источника)';
 }
 
 function clMgr(id: number | null | undefined, clm: Map<number, { source: string | null; manager: string | null }>): string {
-  return (id != null ? clm.get(id)?.manager : null) ?? '(без менеджера)';
+  return (id != null ? clm.get(Number(id))?.manager : null) ?? '(без менеджера)';
 }
 
 // Extract Fitbase client.id from fitbase_operations.raw
@@ -116,11 +153,11 @@ export function buildMetricsRouter(): Router {
 
       const allLeads = (leads || []) as Lead[];
 
-      const { data: v } = await supabase
-        .from('fitbase_visits')
-        .select('client_fitbase_id,status,is_trial,client_phone')
-        .eq('is_trial', true);
-      const allVisits = (v || []) as Visit[];
+      const visitsRaw = await fetchAll((off, lim) =>
+        supabase.from('fitbase_visits').select('client_fitbase_id,status,is_trial,client_phone')
+          .eq('is_trial', true).range(off, off + lim - 1)
+      );
+      const allVisits = visitsRaw as unknown as Visit[];
 
       const funnel = buildFunnel(allLeads, allVisits);
 
@@ -144,10 +181,14 @@ export function buildMetricsRouter(): Router {
         .sort((a, b) => b[1].length - a[1].length)
         .map(([mgr, mLeads]) => ({ manager: mgr, ...buildFunnel(mLeads, allVisits) }));
 
-      const { data: srcRows } = await supabase.from('fitbase_leads').select('source').not('source', 'is', null);
-      const availableSources = [...new Set((srcRows || []).map(r => r.source as string))].sort();
-      const { data: mgrRows } = await supabase.from('fitbase_leads').select('manager').not('manager', 'is', null);
-      const availableManagers = [...new Set((mgrRows || []).map(r => r.manager as string))].sort();
+      const srcRaw = await fetchAll((off, lim) =>
+        supabase.from('fitbase_leads').select('source').not('source', 'is', null).range(off, off + lim - 1)
+      );
+      const availableSources = [...new Set(srcRaw.map(r => r.source as string))].sort();
+      const mgrRaw = await fetchAll((off, lim) =>
+        supabase.from('fitbase_leads').select('manager').not('manager', 'is', null).range(off, off + lim - 1)
+      );
+      const availableManagers = [...new Set(mgrRaw.map(r => r.manager as string))].sort();
 
       res.json({ period: { from: fromDate, to: toDate }, funnel, by_source, by_manager, availableSources, availableManagers });
     } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -180,10 +221,10 @@ export function buildMetricsRouter(): Router {
       });
 
       // Trial visits in period
-      const { data: visitsData } = await supabase.from('fitbase_visits')
-        .select('fitbase_id,client_fitbase_id,client_name,status,visit_at,visit_date,manager,resource')
-        .eq('is_trial', true).gte('visit_date', from).lte('visit_date', to);
-      const allVisits = (visitsData ?? []) as Array<Record<string, unknown>>;
+      const allVisits = await fetchAll((off, lim) =>
+        supabase.from('fitbase_visits').select('fitbase_id,client_fitbase_id,client_name,status,visit_at,visit_date,manager,resource')
+          .eq('is_trial', true).gte('visit_date', from).lte('visit_date', to).range(off, off + lim - 1)
+      );
 
       const visits = allVisits.filter(v => {
         const cid = v.client_fitbase_id as number | null;
@@ -282,8 +323,10 @@ export function buildMetricsRouter(): Router {
       }).sort((a, b) => b.net_amount - a.net_amount);
 
       // availableSources (all-time, for filter chips)
-      const { data: srcRows } = await supabase.from('fitbase_leads').select('source').not('source', 'is', null);
-      const availableSources = [...new Set((srcRows ?? []).map(r => r.source as string))].sort();
+      const srcRows2 = await fetchAll((off, lim) =>
+        supabase.from('fitbase_leads').select('source').not('source', 'is', null).range(off, off + lim - 1)
+      );
+      const availableSources = [...new Set(srcRows2.map(r => r.source as string))].sort();
 
       // availableManagers + availableCashiers — period-filtered
       const [mgrLeadRows, mgrOpRows, cashierRows] = await Promise.all([
@@ -355,9 +398,11 @@ export function buildMetricsRouter(): Router {
       });
 
       // All trial visits for matching
-      const { data: visitsAll } = await supabase.from('fitbase_visits')
-        .select('client_fitbase_id,client_phone,status,is_trial').eq('is_trial', true);
-      const allVisits = (visitsAll ?? []) as Visit[];
+      const visitsAllRaw = await fetchAll((off, lim) =>
+        supabase.from('fitbase_visits').select('client_fitbase_id,client_phone,status,is_trial')
+          .eq('is_trial', true).range(off, off + lim - 1)
+      );
+      const allVisits = visitsAllRaw as unknown as Visit[];
 
       const trialBookedById    = new Set(allVisits.filter(v => notCancelled(v.status)).map(v => v.client_fitbase_id).filter((x): x is number => x != null));
       const trialBookedByPhone = new Set(allVisits.filter(v => notCancelled(v.status)).map(v => digitsOnly(v.client_phone)).filter((x): x is string => x != null));
@@ -408,13 +453,19 @@ export function buildMetricsRouter(): Router {
         return { manager: mgr, leads: mLeads.length, qualified: mQual.length, booked: mBook.length, visited: mVis.length, bought: mBuy.length };
       }).sort((a, b) => b.leads - a.leads);
 
-      const { data: srcRows } = await supabase.from('fitbase_leads').select('source').not('source', 'is', null);
-      const availableSources = [...new Set((srcRows ?? []).map(r => r.source as string))].sort();
-      const { data: mgrLeadRows } = await supabase.from('fitbase_leads').select('manager').not('manager', 'is', null);
-      const { data: mgrOpRows } = await supabase.from('fitbase_operations').select('manager').not('manager', 'is', null);
+      const srcRaw3 = await fetchAll((off, lim) =>
+        supabase.from('fitbase_leads').select('source').not('source', 'is', null).range(off, off + lim - 1)
+      );
+      const availableSources = [...new Set(srcRaw3.map(r => r.source as string))].sort();
+      const mgrLeadRaw3 = await fetchAll((off, lim) =>
+        supabase.from('fitbase_leads').select('manager').not('manager', 'is', null).range(off, off + lim - 1)
+      );
+      const mgrOpRaw3 = await fetchAll((off, lim) =>
+        supabase.from('fitbase_operations').select('manager').not('manager', 'is', null).range(off, off + lim - 1)
+      );
       const availableManagers = [...new Set([
-        ...(mgrLeadRows ?? []).map(r => r.manager as string),
-        ...(mgrOpRows ?? []).map(r => r.manager as string),
+        ...mgrLeadRaw3.map(r => r.manager as string),
+        ...mgrOpRaw3.map(r => r.manager as string),
       ])].filter(Boolean).sort();
 
       res.json({ period: { from, to }, steps, by_source, by_manager, availableSources, availableManagers });
@@ -432,10 +483,11 @@ export function buildMetricsRouter(): Router {
       const filterType    = req.query.type ? String(req.query.type) : null;
 
       // Contract sale ops in period (item_type='contract' in raw, op_type='sale')
-      const { data: opsData } = await supabase.from('fitbase_operations')
-        .select('fitbase_id,amount,op_date,client_name,manager,cashier,raw')
-        .gte('op_date', from).lte('op_date', to).eq('op_type', 'sale').gt('amount', 0);
-      const contractOps = ((opsData ?? []) as Array<Record<string, unknown>>).filter(op => {
+      const opsData = await fetchAll((off, lim) =>
+        supabase.from('fitbase_operations').select('fitbase_id,amount,op_date,client_name,manager,cashier,raw')
+          .gte('op_date', from).lte('op_date', to).eq('op_type', 'sale').gt('amount', 0).range(off, off + lim - 1)
+      );
+      const contractOps = opsData.filter(op => {
         const raw = op.raw as Record<string, unknown>;
         return raw?.item_type === 'contract';
       });
@@ -444,10 +496,11 @@ export function buildMetricsRouter(): Router {
 
       // Get all contracts for involved clients
       const clientIds = [...new Set(contractOps.map(op => opCid(op)).filter((x): x is number => x != null))];
-      const { data: contractsData } = await supabase.from('fitbase_contracts')
-        .select('fitbase_id,client_fitbase_id,name,payment_date,begin_date,end_date,status')
-        .in('client_fitbase_id', clientIds);
-      const allContracts = (contractsData ?? []) as Array<{ fitbase_id: number; client_fitbase_id: number; name: string|null; payment_date: string|null; begin_date: string|null; end_date: string|null; status: string }>;
+      const contractsRaw = await fetchAll((off, lim) =>
+        supabase.from('fitbase_contracts').select('fitbase_id,client_fitbase_id,name,payment_date,begin_date,end_date,status')
+          .in('client_fitbase_id', clientIds).range(off, off + lim - 1)
+      );
+      const allContracts = contractsRaw as unknown as Array<{ fitbase_id: number; client_fitbase_id: number; name: string|null; payment_date: string|null; begin_date: string|null; end_date: string|null; status: string }>;
 
       // Group contracts by client
       const contractsByClient = new Map<number, typeof allContracts>();
@@ -547,17 +600,26 @@ export function buildMetricsRouter(): Router {
     syncJob = { status: 'running' };
     res.json({ status: 'started' });
     (async () => {
+      let locked = false;
       try {
-        const locked = await acquireLock('fitbase-crm-sync', 10 * 60);
-        if (!locked) { syncJob = { status: 'error', error: 'Уже запущено' }; return; }
+        locked = await acquireLock('fitbase-crm-sync', 10 * 60);
+        if (!locked) { syncJob = { status: 'error', error: 'Обновление уже идёт, подождите' }; return; }
         const stats = await runFitbaseCrmSync();
-        await releaseLock('fitbase-crm-sync');
         const now = new Date().toISOString();
         await supabase.from('sync_state').upsert({ key: 'fitbase_crm_synced_at', value: now }, { onConflict: 'key' });
-        syncJob = { status: 'done', leads: stats.leads as number, visits: stats.visits as number, contracts: stats.contracts as number, synced_at: now };
+        const stepErrors = stats.errors as string[] | undefined;
+        syncJob = {
+          status: 'done',
+          leads: stats.leads as number,
+          visits: stats.visits as number,
+          contracts: stats.contracts as number,
+          synced_at: now,
+          ...(stepErrors?.length ? { error: stepErrors.join('; ') } : {}),
+        };
       } catch (e) {
-        await releaseLock('fitbase-crm-sync').catch(() => {});
         syncJob = { status: 'error', error: String(e) };
+      } finally {
+        if (locked) await releaseLock('fitbase-crm-sync').catch(() => {});
       }
     })();
   });

@@ -52,7 +52,8 @@
 | 20 | reports, agent | syncVisits fix (RangeError time, client_id, resource, manager); TRIAL_SERVICE_NAMES; fact-day trial_sold, статусы визитов | ТЗ в чате | ✅ готово (74f4a78) |
 | 21 | reports | clientLeadMap; фильтр источника+менеджера на всех 5 шагах; by_source 6 кол.; by_manager 8 кол. с дриллом | ТЗ в чате | ✅ готово (текущий) |
 | 22 | scriptolog | Лояльное дерево, блок 8, KZ-тексты, RU/KZ, ↩К развилке, чтение переписки | `docs/tasks/22-scriptolog-loyal-kk.md` | ✅ готово |
-| 23 | reports, agent | Синк лидов/абонементов, продажи=заказы+возвраты, кассир, продления, контроль 4 920 000 ₸ | ТЗ в чате | 🟡 частично (55dc7a4; ч.1-5 реализованы; проверка на проде — на стороне Сергея) |
+| 23 | reports, agent | Синк лидов/абонементов, продажи=заказы+возвраты, кассир, продления, контроль 4 920 000 ₸ | ТЗ в чате | ✅ готово (55dc7a4, 497ab40) |
+| 24 | reports, agent | clSrc/clMgr Number(); fetchAll лимит 1000; лок синка в finally; шаги синка независимы; phone fallback через fitbase_clients_cache | ТЗ в чате | 🟡 частично (проверка на проде — на стороне Сергея) |
 
 ## Сделано недавно (для контекста)
 

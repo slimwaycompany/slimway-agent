@@ -54,6 +54,10 @@
 ### до 28.10.2026 · 6a264e0 · синхронизация операций Fitbase
 - `fitbaseOps.ts`, `/run/fitbase-ops`, sync_state.
 
+### 30.10.2026 · (задача 24) · fetchAll + шаги синка независимы
+- `fitbaseCrmSync.ts`: добавлен `fetchAll` — `syncContracts` читает все `fitbase_operations.raw` постранично (был лимит 1000).
+- `runFitbaseCrmSync`: каждый шаг в своём try/catch; ошибка `syncContracts` больше не прерывает syncLeads и syncVisits; возвращает `{ leads, visits, contracts, errors? }`.
+
 ### 30.10.2026 · 55dc7a4 · syncLeads fix + syncContracts
 - `syncLeads`: `manager = l.manager.full_name` (был `responsible` → всегда null); `client_fitbase_id = l.client_id` (был `client.id` → null); `client_name = l.name + l.surname`; `client_phone = normalizePhone(l.phone)`.
 - Новая функция `syncContracts`: собирает уникальные client_fitbase_id из `fitbase_operations` (raw.item_type='contract'), для каждого запрашивает `GET /client-contract?client_id=…`, upsert в `fitbase_contracts`. Пауза 300–500 мс между запросами, 4xx не ретраит.

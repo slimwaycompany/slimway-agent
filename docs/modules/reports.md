@@ -63,11 +63,24 @@
 | 4 | Не пришла | `VISIT_STATUS_NOSHOW` |
 Источник: из записей Fitbase, `REG_STATUS_*` в `src/config.ts`. `VISIT_CANCELLED_STATUSES = Set([2])`.
 
+### Связка клиент → лид (buildClientLeadMap)
+- Ключ Map — `Number(client_fitbase_id)`. Supabase возвращает bigint-колонки как строки; без `Number()` Map.get не находит запись — было 0 по Записям и Пришли в «По источникам» / «По менеджерам».
+- `clSrc(id, clm)` и `clMgr(id, clm)` делают `clm.get(Number(id))`.
+- Запасной ключ — телефон: если `client_fitbase_id` клиента не находится в map, ищем его телефон через `fitbase_clients_cache` → сравниваем с `fitbase_leads.client_phone` через `digitsOnly` (последние 10 цифр).
+- Все запросы Supabase, где строк > 1000, идут через `fetchAll()` (постраничный perебор по 1000). Критичные: `buildClientLeadMap` (все лиды), `visitsAll` в day-rhythm, visits в funnel/fact-day, operации в syncContracts.
+- Лок синка `fitbase-crm-sync` снимается в `finally`, каждый шаг синка в своём try/catch.
+
 ### Определение пробного занятия
 `is_trial = true` если: `event.training.id === 16` ИЛИ `isTrialServiceName(training.name)` ИЛИ `isTrialServiceName(abonement)`.
 `TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
 
 ## Сделано
+### 30.10.2026 · (задача 24) · clSrc/clMgr Number(), fetchAll лимит 1000, лок finally, phone fallback
+- `metrics.ts`: `clSrc()`/`clMgr()` исправлены: `clm.get(Number(id))` вместо `clm.get(id)` — bigint из Supabase приходит как строка, Map имеет числовые ключи → записи и приходы уходили в «(без источника)».
+- `metrics.ts`: добавлен хелпер `fetchAll(build)` — постраничный перебор по 1000 строк до конца. Применён к: `buildClientLeadMap` (все лиды), visits в fact-day/funnel, visitsAll в day-rhythm, srcRows/mgrRows (all-time), operации и контракты в renewals. `syncContracts` в fitbaseCrmSync.ts — тоже `fetchAll` для all operations.
+- `buildClientLeadMap`: phone fallback — для клиентов без лида по client_fitbase_id ищет телефон в `fitbase_clients_cache` → сравнивает с `fitbase_leads.client_phone` через `digitsOnly`. Возвращает тот же `Map<number, {source,manager}>`, callers не меняются.
+- Лок синка снимается в `finally` (не зависит от ошибки). Каждый шаг (`syncLeads`/`syncVisits`/`syncContracts`) в своём try/catch — ошибка одного шага не отменяет остальные. При `!locked` — «Обновление уже идёт, подождите». Фронт показывает count + ошибки шагов.
+
 ### 30.10.2026 · 55dc7a4 · продажи=заказы+возвраты, кассир, абонементы, продления
 - `fitbaseCrmSync`: `syncLeads` — исправлен маппинг (`l.manager`, `l.client_id`, `l.phone` вместо `responsible`/`client`). Добавлен `syncContracts` — `GET /client-contract?client_id=…` для клиентов с операциями item_type='contract', upsert в `fitbase_contracts`.
 - `metrics.ts`: `fact-day` — запрос sale+refund-операций, группировка по `raw.order_id`; карточка «5. Продажи» возвращает `net_amount`/`refund_count`/`refund_amount`; фильтр `cashier`; `by_source`/`by_manager` содержат `sales_count`/`net_amount`; `by_cashier` таблица; `availableManagers`/`availableCashiers` фильтруются по выбранному периоду.
