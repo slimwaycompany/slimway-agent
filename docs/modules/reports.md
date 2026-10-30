@@ -75,6 +75,13 @@
 `TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
 
 ## Сделано
+### 30.10.2026 · 3711ac3 · Факт дня: продления, сквозная конверсия, фильтры, графики (задача 25)
+- `metrics.ts` fact-day: разделение продаж на новые/продления через `fitbase_contracts` (isRenew = client_fitbase_id имеет предыдущий payment_date). Карточка `steps.renewals` (новая). `steps.sales` = только новые, поля `from_period_leads`/`from_old_leads`.
+- `metrics.ts` fact-day: фильтр `manager` на продажах теперь по lead-map (clMgr), не op.manager. Фильтр `cashier` распространяется на лиды/визиты через `cashierCids` (client_id всех продаж кассира). `by_manager` теперь keyed по clMgr (не op.manager). Перемещён fetch ops перед filter leads/visits.
+- `metrics.ts` fact-day: `by_source`/`by_manager` добавлены `new_count`, `renewal_count`, `new_amount`, `renewal_amount`, `lead_to_buy_pct` (% лидов со статусом '-1' / всего лидов).
+- `ReportsPage.tsx`: FunnelView показывает 6 карточек (порядок `FD_STEP_ORDER`). Панель «Сквозная конверсия» — два селекта, норма (В работе→Записи 60-70%, Записи→Пришли 85%+, Пришли→Купили 50-80%), цветовой бар. Двухколоночный макет: таблицы 44% + графики recharts 55%. Сворачиваемые таблицы (CollapsibleTable, localStorage, «Свернуть всё»). Новые колонки: Новые ₸, Продл. ₸, Итог ₸, Л→П%. Панель ChartsPanel 4 вкладки: Менеджеры (stacked bar новые/продления), Источники (лидов/продажи), Где проседаем (horizontal bar), Кассиры.
+- Установлен `recharts@3.10.1`.
+
 ### 30.10.2026 · (задача 24) · clSrc/clMgr Number(), fetchAll лимит 1000, лок finally, phone fallback
 - `metrics.ts`: `clSrc()`/`clMgr()` исправлены: `clm.get(Number(id))` вместо `clm.get(id)` — bigint из Supabase приходит как строка, Map имеет числовые ключи → записи и приходы уходили в «(без источника)».
 - `metrics.ts`: добавлен хелпер `fetchAll(build)` — постраничный перебор по 1000 строк до конца. Применён к: `buildClientLeadMap` (все лиды), visits в fact-day/funnel, visitsAll в day-rhythm, srcRows/mgrRows (all-time), operации и контракты в renewals. `syncContracts` в fitbaseCrmSync.ts — тоже `fetchAll` для all operations.
