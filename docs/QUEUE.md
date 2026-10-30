@@ -56,7 +56,8 @@
 | 24 | reports, agent | clSrc/clMgr Number(); fetchAll лимит 1000; лок синка в finally; шаги синка независимы; phone fallback через fitbase_clients_cache | ТЗ в чате | ✅ готово (8995ef4) |
 | 25 | reports | Факт дня: карточка «Продления», isRenew через fitbase_contracts, фильтр менеджера→clm, фильтр кассира→leads/visits, сквозная конверсия, графики recharts, 2-колонки, сворачиваемые таблицы | ТЗ в чате | ✅ готово (3711ac3) |
 | 26 | reports | classifyPurchase: goods/new/same_day/renewal/returned; тест-возвраты исключены; двухрядные карточки; SalesDrillModal 3 кол.; CrossConv+Купили(всего)+Продления; таблицы: right-align/Итого/stripe; полные имена в графиках | ТЗ в чате | ✅ готово (532449e) |
-| 27 | reports | classifyPurchase: фикс same_day (строгий <); «Сразу несколько» не категория — входит в new/renewal; «Вернулась» в карточке «Продления»; проценты от суммарных продаж 100% | ТЗ в чате | ✅ готово (текущий) |
+| 27 | reports | classifyPurchase: фикс same_day (строгий <); «Сразу несколько» не категория — входит в new/renewal; «Вернулась» в карточке «Продления»; проценты от суммарных продаж 100% | ТЗ в чате | ✅ готово (bc6d822) |
+| 28 | reports | Квал = client_fitbase_id != null; «Живые» под карточкой Квал + дрилл-модал; колонка Живые в По источникам / По менеджерам | ТЗ в чате | ✅ готово (текущий) |
 
 ## Сделано недавно (для контекста)
 
@@ -117,4 +118,5 @@
 | 28.10.2026 | Claude | 16 crm-kassa fix: async fitbase-import (прогресс-бар, poll 2 сек, batch 100), phone 7XXXXXXXXXX, shift_date подтверждён | 62b3db3 | Нужно на проде: 1) проверить открытие смены; 2) запустить импорт; 3) SQL phone migration если есть старые +7 записи; 4) выполнить information_schema SQL (см. отчёт) |
 | 29.10.2026 | Claude | 21 reports: clientLeadMap; фильтр source+manager на шагах 3,4,5 через карточку клиента; by_source 6 колонок; by_manager 8 колонок с дриллом; chipActive border fix; всегда-видимый dropdown менеджера; day-rhythm: аналогичные таблицы | текущий | Проверка на проде — на стороне Сергея. Нет SQL. |
 | 29.10.2026 | Claude | 22 scriptolog: дерево (66 узлов, 2.8/3.11/блок 8), KZ-тексты (55 узлов), check-tree +5 проверок, RU/KZ переключатель, hub «↩ К развилке», чтение переписки (MutationObserver), диагностика (admin), автостарт, KZ-детект, sent detection | текущий | SQL не нужен. Селекторы сообщений EasyChat нужно проверить на живом интерфейсе. |
-| 30.10.2026 | Claude | 27 reports: classifyPurchase strict < (same_day убран); renewals endpoint — prevContracts < date; FactDayCards — «Вернулась» в карточке Продления, проценты 100%; RenewalsSection — same_day убран | текущий | SQL не нужен. Проверка на проде — на стороне Сергея. |
+| 30.10.2026 | Claude | 27 reports: classifyPurchase strict < (same_day убран); renewals endpoint — prevContracts < date; FactDayCards — «Вернулась» в карточке Продления, проценты 100%; RenewalsSection — same_day убран | bc6d822 | SQL не нужен. Проверка на проде — на стороне Сергея. |
+| 30.10.2026 | Claude | 28 reports: Квал=client_fitbase_id!=null (Lead.funnel добавлен); isAlive=funnel in Новые заявки/Новички/Постоянные && stage!=Отказ; alive_count+alive_items в fact-day; alive_count в by_source/by_manager; day-rhythm qualified; «Живые:N» кнопка под карточкой Квал + дрилл-модал; колонка Живые в таблицах | текущий | SQL не нужен. Проверка на проде — на стороне Сергея. |

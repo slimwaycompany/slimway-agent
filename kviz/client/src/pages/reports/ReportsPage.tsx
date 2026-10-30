@@ -1310,7 +1310,8 @@ const weekAgoStr = new Date(Date.now() + 5 * 3600_000 - 7 * 86400_000).toISOStri
 const monthAgoStr = new Date(Date.now() + 5 * 3600_000 - 30 * 86400_000).toISOString().slice(0, 10);
 
 interface DrillItem { name?: string | null; source?: string | null; manager?: string | null; date?: string | null; amount?: number | null; resource?: string | null; item?: string | null }
-interface FunnelStep { count: number; pct?: number; amount?: number; net_amount?: number; refund_count?: number; refund_amount?: number; test_count?: number; test_amount?: number; trial_sold_count?: number; items: DrillItem[]; refund_items?: DrillItem[]; test_items?: DrillItem[] }
+interface AliveItem { name: string|null; funnel: string|null; stage: string|null; manager: string|null }
+interface FunnelStep { count: number; pct?: number; amount?: number; net_amount?: number; refund_count?: number; refund_amount?: number; test_count?: number; test_amount?: number; trial_sold_count?: number; alive_count?: number; alive_items?: AliveItem[]; items: DrillItem[]; refund_items?: DrillItem[]; test_items?: DrillItem[] }
 interface FdTotalNet { amount: number; sales_amount: number; refund_amount: number; test_count: number; test_amount: number }
 
 function DrillModal({ title, items, onClose }: { title: string; items: DrillItem[]; onClose: () => void }) {
@@ -1499,13 +1500,13 @@ function useSyncButton() {
   return { syncing, syncMsg, doSync };
 }
 
-interface FdSrcRow { source: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number }
-interface FdMgrRow { manager: string; leads: number; in_work: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number; items?: DrillItem[] }
+interface FdSrcRow { source: string; leads: number; in_work: number; alive_count: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number }
+interface FdMgrRow { manager: string; leads: number; in_work: number; alive_count: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number; items?: DrillItem[] }
 interface FdCshRow { cashier: string; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number }
 
 const FD_STEP_ORDER = ['leads','in_work','trial_booked','visited','sales','renewals'] as const;
 const FD_LABELS: Record<string, string> = {
-  leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи на пробное',
+  leads: 'Лиды', in_work: 'Квал', trial_booked: 'Записи на пробное',
   visited: 'Пришли', sales: 'Новые', renewals: 'Продления',
   same_day: 'Сразу несколько', returned: 'Вернулась', goods: 'Товары/услуги', total_net: 'Итог касса',
 };
@@ -1514,8 +1515,8 @@ const CONV_STAGES_TO   = ['in_work','trial_booked','visited','sales','renewals',
 type ConvStageFrom = typeof CONV_STAGES_FROM[number];
 type ConvStageTo   = typeof CONV_STAGES_TO[number];
 type ConvStage = ConvStageFrom | ConvStageTo;
-const CONV_LABELS_FROM: Record<ConvStageFrom, string> = { leads: 'Лиды', in_work: 'В работе', trial_booked: 'Записи', visited: 'Пришли' };
-const CONV_LABELS_TO: Record<ConvStageTo, string> = { in_work: 'В работе', trial_booked: 'Записи', visited: 'Пришли', sales: 'Купили (новые)', renewals: 'Продления', total: 'Купили (всего)' };
+const CONV_LABELS_FROM: Record<ConvStageFrom, string> = { leads: 'Лиды', in_work: 'Квал', trial_booked: 'Записи', visited: 'Пришли' };
+const CONV_LABELS_TO: Record<ConvStageTo, string> = { in_work: 'Квал', trial_booked: 'Записи', visited: 'Пришли', sales: 'Купили (новые)', renewals: 'Продления', total: 'Купили (всего)' };
 const CONV_NORMS: Partial<Record<string, [number, number]>> = {
   'in_work→trial_booked': [60, 70],
   'trial_booked→visited': [85, 100],
@@ -1655,11 +1656,12 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
 
 function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; totalNet: FdTotalNet | null }) {
   const [salesDrill, setSalesDrill] = useState<{ label: string; step: FunnelStep } | null>(null);
+  const [aliveDrill, setAliveDrill] = useState<AliveItem[] | null>(null);
   const fmt = (n: number) => Math.round(n).toLocaleString('ru');
 
   const funnelSteps: Array<{ key: string; label: string }> = [
     { key: 'leads', label: 'Лиды' },
-    { key: 'in_work', label: 'В работе' },
+    { key: 'in_work', label: 'Квал' },
     { key: 'trial_booked', label: 'Записи' },
     { key: 'visited', label: 'Пришли' },
   ];
@@ -1697,11 +1699,45 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
                 <div style={{ fontSize: 11, color: i === 0 ? '#94a3b8' : pct >= 50 ? '#22c55e' : pct >= 20 ? '#f59e0b' : '#ef4444' }}>
                   {i === 0 ? '100%' : `${pct}% от пред.`}
                 </div>
+                {key === 'in_work' && step.alive_count != null && (
+                  <button onClick={e => { e.stopPropagation(); setAliveDrill(step.alive_items ?? []); }}
+                    style={{ fontSize: 10, color: '#02BDB6', marginTop: 3, cursor: 'pointer', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>
+                    Живые: {step.alive_count}
+                  </button>
+                )}
               </button>
             );
           })}
         </div>
       </div>
+
+      {aliveDrill && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setAliveDrill(null)}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 20, maxWidth: 640, width: '90%', maxHeight: '80vh', overflow: 'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontWeight: 700 }}>Живые лиды — {aliveDrill.length} шт</div>
+              <button onClick={() => setAliveDrill(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+            </div>
+            <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
+              <thead><tr style={{ background: '#f1f5f9' }}>
+                {['Клиент','Воронка','Этап','Менеджер'].map(h => <th key={h} style={{ padding: '4px 8px', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {aliveDrill.map((l, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '3px 8px', fontWeight: 600 }}>{l.name ?? '—'}</td>
+                    <td style={{ padding: '3px 8px' }}>{l.funnel ?? '—'}</td>
+                    <td style={{ padding: '3px 8px' }}>{l.stage ?? '—'}</td>
+                    <td style={{ padding: '3px 8px' }}>{l.manager ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Деньги</div>
@@ -1844,13 +1880,14 @@ function FactDaySection() {
                     <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480, width: '100%' }}>
                       <thead><tr style={{ background: '#f1f5f9' }}>
                         <th style={THL}>Источник</th>
-                        {['Лидов','Записи','Пришли','Новые','Продл.','Итог','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
+                        {['Лидов','Живые','Записи','Пришли','Новые','Продл.','Итог','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
                       </tr></thead>
                       <tbody>
                         {bySrc.map((r, i) => (
                           <tr key={r.source} style={rowBg(i)}>
                             <td style={TDL}>{r.source}</td>
                             <td style={{ ...TD, fontWeight: 700 }}>{r.leads || '—'}</td>
+                            <td style={{ ...TD, color: '#02BDB6' }}>{r.alive_count || '—'}</td>
                             <td style={TD}>{r.trial_booked || '—'}</td>
                             <td style={TD}>{r.visited || '—'}</td>
                             <td style={{ ...TD, color: r.new_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
@@ -1862,6 +1899,7 @@ function FactDaySection() {
                         <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc', fontWeight: 700 }}>
                           <td style={TDL}>Итого</td>
                           <td style={TD}>{bySrc.reduce((s, r) => s + r.leads, 0)}</td>
+                          <td style={{ ...TD, color: '#02BDB6' }}>{bySrc.reduce((s, r) => s + (r.alive_count ?? 0), 0)}</td>
                           <td style={TD}>{bySrc.reduce((s, r) => s + r.trial_booked, 0)}</td>
                           <td style={TD}>{bySrc.reduce((s, r) => s + r.visited, 0)}</td>
                           <td style={{ ...TD, color: '#263CD9' }}>{fmt(bySrc.reduce((s, r) => s + r.new_amount, 0))}</td>
@@ -1881,7 +1919,7 @@ function FactDaySection() {
                     <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480, width: '100%' }}>
                       <thead><tr style={{ background: '#f1f5f9' }}>
                         <th style={THL}>Менеджер</th>
-                        {['Лидов','Записи','Пришли','Новые','Продл.','Итог','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
+                        {['Лидов','Живые','Записи','Пришли','Новые','Продл.','Итог','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
                       </tr></thead>
                       <tbody>
                         {byMgr.map((r, i) => (
@@ -1891,6 +1929,7 @@ function FactDaySection() {
                             onMouseLeave={e => (e.currentTarget.style.background = rowBg(i).background ?? '')}>
                             <td style={{ ...TDL, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
                             <td style={{ ...TD, fontWeight: 700 }}>{r.leads || '—'}</td>
+                            <td style={{ ...TD, color: '#02BDB6' }}>{r.alive_count || '—'}</td>
                             <td style={TD}>{r.trial_booked || '—'}</td>
                             <td style={TD}>{r.visited || '—'}</td>
                             <td style={{ ...TD, color: r.new_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
@@ -1902,6 +1941,7 @@ function FactDaySection() {
                         <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc', fontWeight: 700 }}>
                           <td style={TDL}>Итого</td>
                           <td style={TD}>{byMgr.reduce((s, r) => s + r.leads, 0)}</td>
+                          <td style={{ ...TD, color: '#02BDB6' }}>{byMgr.reduce((s, r) => s + (r.alive_count ?? 0), 0)}</td>
                           <td style={TD}>{byMgr.reduce((s, r) => s + r.trial_booked, 0)}</td>
                           <td style={TD}>{byMgr.reduce((s, r) => s + r.visited, 0)}</td>
                           <td style={{ ...TD, color: '#263CD9' }}>{fmt(byMgr.reduce((s, r) => s + r.new_amount, 0))}</td>

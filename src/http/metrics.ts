@@ -5,7 +5,7 @@ import { acquireLock, releaseLock } from '../core/lock';
 import { runFitbaseCrmSync } from '../jobs/fitbaseCrmSync';
 import { TRIAL_SERVICE_NAMES, VISIT_STATUS_VISITED, VISIT_CANCELLED_STATUSES } from '../config';
 
-interface Lead { fitbase_id: string; source: string | null; stage: string | null; status: string | null; manager: string | null; client_fitbase_id: number | null; client_phone: string | null; client_name: string | null; created_date: string | null }
+interface Lead { fitbase_id: string; source: string | null; stage: string | null; funnel: string | null; status: string | null; manager: string | null; client_fitbase_id: number | null; client_phone: string | null; client_name: string | null; created_date: string | null }
 interface Visit { client_fitbase_id: number | null; status: number | null; is_trial: boolean; client_phone: string | null }
 
 function isAdmin(req: Request, res: Response): boolean {
@@ -141,7 +141,7 @@ function buildFunnel(leads: Lead[], visits: Visit[]) {
 
   return {
     leads:        leads.length,
-    in_work:      leads.filter(l => l.status != null && l.status !== '0').length,
+    in_work:      leads.filter(l => l.client_fitbase_id != null).length,
     trial_booked: leads.filter(l => matched(l.client_fitbase_id, l.client_phone, trialBookedById, trialBookedByPhone)).length,
     visited:      leads.filter(l => matched(l.client_fitbase_id, l.client_phone, visitedById, visitedByPhone)).length,
     bought:       leads.filter(l => l.status === '-1').length,
@@ -228,7 +228,7 @@ export function buildMetricsRouter(): Router {
       const clm = await buildClientLeadMap();
 
       const { data: leadsData, error: leadsErr } = await supabase.from('fitbase_leads')
-        .select('fitbase_id,source,stage,status,manager,client_fitbase_id,client_phone,client_name,created_date')
+        .select('fitbase_id,source,stage,funnel,status,manager,client_fitbase_id,client_phone,client_name,created_date')
         .gte('created_date', from).lte('created_date', to);
       if (leadsErr) { res.status(500).json({ error: leadsErr.message }); return; }
       const allLeads = (leadsData ?? []) as Lead[];
@@ -342,7 +342,9 @@ export function buildMetricsRouter(): Router {
         return true;
       });
 
-      const inWork      = leads.filter(l => l.status != null && l.status !== '0');
+      const isAlive = (l: Lead) => ['Новые заявки', 'Новички', 'Постоянные'].includes(l.funnel ?? '') && l.stage !== 'Отказ';
+      const qual        = leads.filter(l => l.client_fitbase_id != null);
+      const alive       = leads.filter(isAlive);
       const trialBooked = visits.filter(v => notCancelled(v.status as number | null));
       const visited     = visits.filter(v => v.status === VISIT_STATUS_VISITED);
 
@@ -351,7 +353,7 @@ export function buildMetricsRouter(): Router {
       for (const l of allLeads) allSrcSet.add(l.source ?? '(без источника)');
       const by_source = [...allSrcSet].map(src => {
         const sLeads     = allLeads.filter(l => (l.source ?? '(без источника)') === src);
-        const sInWork    = sLeads.filter(l => l.status != null && l.status !== '0');
+        const sQual      = sLeads.filter(l => l.client_fitbase_id != null);
         const sBooked    = allVisits.filter(v => notCancelled(v.status as number | null) && clSrc(v.client_fitbase_id as number | null, clm) === src);
         const sVisited   = allVisits.filter(v => v.status === VISIT_STATUS_VISITED && clSrc(v.client_fitbase_id as number | null, clm) === src);
         const sTrialSold = allTrialSold.filter(op => clSrc(opCid(op), clm) === src);
@@ -366,7 +368,7 @@ export function buildMetricsRouter(): Router {
         const sLeadCids  = new Set(sLeads.map(l => l.client_fitbase_id).filter((x): x is number => x != null));
         const sBuyers    = new Set(sSaleOrds.map(o => o.cid).filter((x): x is number => x != null && sLeadCids.has(x)));
         const sLtbPct    = sLeads.length > 0 ? Math.round(100 * sBuyers.size / sLeads.length) : 0;
-        return { source: src, leads: sLeads.length, in_work: sInWork.length, trial_booked: sBooked.length, visited: sVisited.length, trial_sold_count: sTrialSold.length, sales_count: sSaleOrds.length, new_count: sNewOrds.length, renewal_count: sRenOrds.length, sales_amount: sSalesAmt, new_amount: sNewAmt, renewal_amount: sRenAmt, refund_amount: sRefAmt, net_amount: sSalesAmt - sRefAmt, lead_to_buy_pct: sLtbPct };
+        return { source: src, leads: sLeads.length, in_work: sQual.length, alive_count: sLeads.filter(isAlive).length, trial_booked: sBooked.length, visited: sVisited.length, trial_sold_count: sTrialSold.length, sales_count: sSaleOrds.length, new_count: sNewOrds.length, renewal_count: sRenOrds.length, sales_amount: sSalesAmt, new_amount: sNewAmt, renewal_amount: sRenAmt, refund_amount: sRefAmt, net_amount: sSalesAmt - sRefAmt, lead_to_buy_pct: sLtbPct };
       }).sort((a, b) => b.leads - a.leads);
 
       // by_manager — all keyed by lead-map manager (not op.manager)
@@ -375,7 +377,7 @@ export function buildMetricsRouter(): Router {
       for (const op of allSalesOps) allMgrSet.add(clMgr(opCid(op), clm));
       const by_manager = [...allMgrSet].map(mgr => {
         const mLeads     = allLeads.filter(l => (l.manager ?? '(без менеджера)') === mgr);
-        const mInWork    = mLeads.filter(l => l.status != null && l.status !== '0');
+        const mQual      = mLeads.filter(l => l.client_fitbase_id != null);
         const mBooked    = allVisits.filter(v => notCancelled(v.status as number | null) && clMgr(v.client_fitbase_id as number | null, clm) === mgr);
         const mVisited   = allVisits.filter(v => v.status === VISIT_STATUS_VISITED && clMgr(v.client_fitbase_id as number | null, clm) === mgr);
         const mTrialSold = allTrialSold.filter(op => clMgr(opCid(op), clm) === mgr);
@@ -391,7 +393,7 @@ export function buildMetricsRouter(): Router {
         const mBuyers    = new Set(mSaleOrds.map(o => o.cid).filter((x): x is number => x != null && mLeadCids.has(x)));
         const mLtbPct    = mLeads.length > 0 ? Math.round(100 * mBuyers.size / mLeads.length) : 0;
         const items = mLeads.map(l => ({ name: l.client_name, source: l.source, manager: l.manager, date: l.created_date }));
-        return { manager: mgr, leads: mLeads.length, in_work: mInWork.length, trial_booked: mBooked.length, visited: mVisited.length, trial_sold_count: mTrialSold.length, sales_count: mSaleOrds.length, new_count: mNewOrds.length, renewal_count: mRenOrds.length, sales_amount: mSalesAmt, new_amount: mNewAmt, renewal_amount: mRenAmt, refund_amount: mRefAmt, net_amount: mSalesAmt - mRefAmt, lead_to_buy_pct: mLtbPct, items };
+        return { manager: mgr, leads: mLeads.length, in_work: mQual.length, alive_count: mLeads.filter(isAlive).length, trial_booked: mBooked.length, visited: mVisited.length, trial_sold_count: mTrialSold.length, sales_count: mSaleOrds.length, new_count: mNewOrds.length, renewal_count: mRenOrds.length, sales_amount: mSalesAmt, new_amount: mNewAmt, renewal_amount: mRenAmt, refund_amount: mRefAmt, net_amount: mSalesAmt - mRefAmt, lead_to_buy_pct: mLtbPct, items };
       }).sort((a, b) => b.net_amount - a.net_amount);
 
       // by_cashier
@@ -427,7 +429,7 @@ export function buildMetricsRouter(): Router {
         period: { from, to },
         steps: {
           leads:        { count: leads.length,      items: leads.map(l => ({ name: l.client_name, source: l.source, manager: l.manager, date: l.created_date })) },
-          in_work:      { count: inWork.length,      items: inWork.map(l => ({ name: l.client_name, source: l.source, manager: l.manager, date: l.created_date })) },
+          in_work:      { count: qual.length, alive_count: alive.length, alive_items: alive.map(l => ({ name: l.client_name, funnel: l.funnel, stage: l.stage, manager: l.manager })), items: qual.map(l => ({ name: l.client_name, source: l.source, manager: l.manager, date: l.created_date })) },
           trial_booked: {
             count: trialBooked.length, trial_sold_count: trialSold.length,
             items: trialBooked.map(v => {
@@ -521,7 +523,7 @@ export function buildMetricsRouter(): Router {
         return d != null && byPhone.has(d);
       }
 
-      const qualified = cohort.filter(l => l.status != null && l.status !== '0');
+      const qualified = cohort.filter(l => l.client_fitbase_id != null);
       const booked    = qualified.filter(l => matchedLead(l, trialBookedById, trialBookedByPhone));
       const visited   = booked.filter(l => matchedLead(l, visitedById, visitedByPhone));
       const bought    = cohort.filter(l => l.status === '-1');
@@ -540,7 +542,7 @@ export function buildMetricsRouter(): Router {
       for (const l of allLeads) allSrcSet.add(l.source ?? '(без источника)');
       const by_source = [...allSrcSet].map(src => {
         const sLeads = allLeads.filter(l => (l.source ?? '(без источника)') === src);
-        const sQual  = sLeads.filter(l => l.status != null && l.status !== '0');
+        const sQual  = sLeads.filter(l => l.client_fitbase_id != null);
         const sBook  = sQual.filter(l => matchedLead(l, trialBookedById, trialBookedByPhone));
         const sVis   = sBook.filter(l => matchedLead(l, visitedById, visitedByPhone));
         const sBuy   = sLeads.filter(l => l.status === '-1');
@@ -552,7 +554,7 @@ export function buildMetricsRouter(): Router {
       for (const l of allLeads) allMgrSet.add(l.manager ?? '(без менеджера)');
       const by_manager = [...allMgrSet].map(mgr => {
         const mLeads = allLeads.filter(l => (l.manager ?? '(без менеджера)') === mgr);
-        const mQual  = mLeads.filter(l => l.status != null && l.status !== '0');
+        const mQual  = mLeads.filter(l => l.client_fitbase_id != null);
         const mBook  = mQual.filter(l => matchedLead(l, trialBookedById, trialBookedByPhone));
         const mVis   = mBook.filter(l => matchedLead(l, visitedById, visitedByPhone));
         const mBuy   = mLeads.filter(l => l.status === '-1');
