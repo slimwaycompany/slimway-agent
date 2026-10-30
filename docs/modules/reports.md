@@ -17,6 +17,9 @@
 - `manager_task_done`, `manager_task_templates` — задачи менеджера (вкладка «Менеджер» в отчётах)
 - `cash_closings`, `staff_shifts` — смены (вкладка «Менеджер → Смены»)
 
+## Таблицы
+- `fitbase_contracts` (новая) — абонементы клиентов Fitbase: fitbase_id, client_fitbase_id, name, status, price, payment_date, begin_date, activation_date, end_date, raw. Синхронизируется в `/run/fitbase-crm-sync`.
+
 ## Ключевые решения
 - Колонки: **Менеджер** (Задачи — менеджер свои, админ свои + все; Смены), **Продажи** (отчёт по продажам), **Клиенты** (замеры тела, InBody, результаты студии со ссылкой на ТВ), **Маркетинг** (Факт дня, Дневной такт). «Настройки» из отчётов перенесены во вкладку Настройки (28.10).
 - Отчёт по продажам: фильтры кассир, менеджер, товар, тип оплаты; период день/неделя/месяц/свой; кнопка «Обновить FB».
@@ -25,6 +28,22 @@
 - `fitbase_operations.raw` — полный ответ Fitbase API; `raw.client.id` = Fitbase client ID операции (для связки с лидом).
 - Отчёт по замерам и по InBody ведут на одну страницу результатов клиента внутри «Отчётов» (фигура слева).
 - Боковая панель — слева (переехала с правой стороны).
+
+### Структура `/lead` и `/finance-operation`
+- `/lead`: `id`, `name`, `surname`, `phone`, `client_id` (Fitbase client id, null для новых), `manager.full_name` (менеджер лида), `advertising_source.name` (источник), `funnel_step.*`, `created_at` (unix-строка)
+- `/finance-operation` (через `/till-order-steps`): `id`, `order_id` (все строки одного заказа — один order_id), `item_id` (id абонемента клиента для item_type='contract'), `item_type`, `item.name`, `amount` (отрицательный у возврата), `manager.full_name`, `created_by_user.full_name` (кассир), `client.id`, `payment_type`
+
+### Продажи, возвраты, заказы
+- Продажа = один заказ (`order_id`): все строки заказа суммируются. Считаем count distinct order_id.
+- Возврат (`op_type='refund'`): учитывается в день возврата (вариант Б). Связь с продажей: для абонементов — по `item_id`; для товаров — `client_id + item_type + item_id`.
+- Кассир = `created_by_user.full_name`, менеджер = `manager.full_name`.
+- `fitbase_operations.amount` всегда хранится как абсолютное значение (Math.abs).
+
+### Типы покупки абонемента (renewals)
+- **Новая** — первый платный абонемент клиента
+- **Продление** — end_date предыдущего >= даты покупки, или ≤30 дней после end_date; если end_date null — считать действующим
+- **Сразу несколько** — payment_date совпадает с предыдущим абонементом
+- **Вернулась** — >30 дней после end_date предыдущего (открытый вопрос)
 
 ### Структура записи `/schedule-registration` (Fitbase)
 - `id`, `status` (число), `client_id` (верхний уровень — Fitbase client ID), `created_at` (unix)
@@ -49,7 +68,13 @@
 `TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
 
 ## Сделано
-### 29.10.2026 · (текущий) · фильтр источника и менеджера на всех шагах, by_source/by_manager таблицы
+### 30.10.2026 · 55dc7a4 · продажи=заказы+возвраты, кассир, абонементы, продления
+- `fitbaseCrmSync`: `syncLeads` — исправлен маппинг (`l.manager`, `l.client_id`, `l.phone` вместо `responsible`/`client`). Добавлен `syncContracts` — `GET /client-contract?client_id=…` для клиентов с операциями item_type='contract', upsert в `fitbase_contracts`.
+- `metrics.ts`: `fact-day` — запрос sale+refund-операций, группировка по `raw.order_id`; карточка «5. Продажи» возвращает `net_amount`/`refund_count`/`refund_amount`; фильтр `cashier`; `by_source`/`by_manager` содержат `sales_count`/`net_amount`; `by_cashier` таблица; `availableManagers`/`availableCashiers` фильтруются по выбранному периоду.
+- `metrics.ts`: новый `GET /kviz/api/metrics/renewals` — классифицирует покупки абонементов (new/renewal/same_day/returned) по данным `fitbase_contracts`; карточки, таблица, by_manager.
+- `ReportsPage.tsx`: FunnelView — продажи показывают нетто + «Продажи N шт / X ₸ · Возвраты M шт / Y ₸» с кнопкой дрилла; кассир-dropdown в FactDay; таблица по кассирам; by_source с «Продаж / Итог ₸»; новая секция «Продления» в колонке Продажи.
+
+### 29.10.2026 · (предыдущий) · фильтр источника и менеджера на всех шагах, by_source/by_manager таблицы
 - `metrics.ts`: добавлен `buildClientLeadMap()` — все лиды без фильтра по дате, группировка по `client_fitbase_id`, последняя запись (по created_at ascending). Хелперы `clSrc`, `clMgr`, `opCid` (из `raw.client.id`). Лиды в period теперь загружаются без SQL фильтра по source/manager — фильтрация в JS, чтобы `by_source`/`by_manager` всегда показывали полный разрез. Шаги 3,4 (визиты) и trial_sold фильтруются через `clientLeadMap`. Шаг 5 (продажи): source через clientLeadMap, manager через `op.manager`. `by_source` расширен до 6 колонок (source, leads, in_work, trial_booked, visited, trial_sold_count, sales_amount). Добавлен `by_manager` 8 колонок с `items[]` для дрилла. `availableManagers` объединяет `fitbase_leads.manager` + `fitbase_operations.manager`. Аналогично для `day-rhythm` (by_source и by_manager с 5 шагами воронки).
 - `ReportsPage.tsx`: исправлен `chipActive` (border вместо borderColor). Dropdown менеджера показывается всегда. Таблицы by_source и by_manager с прокруткой; by_manager — клик открывает DrillModal.
 
@@ -75,10 +100,13 @@
 - Отчёты доступны всем (не только admin), синхронизация авторизации.
 
 ## Открытые баги
-- «Занятия и загруженность» — пусто (0 за 21–23.10); причина: visit_date был null у всех 1753 записей (баг syncVisits исправлен — нужен прогон синка).
-- Боковая панель в «Отчётах» справа — должна быть слева.
+- «Занятия и загруженность» — пусто (0 за 21–23.10); причина: visit_date был null (баг syncVisits исправлен — нужен прогон синка).
+- Renewals: `type='returned'` — «вопрос открытый», показывается как отдельный тип.
 
 ## Следующее
-- Новый отчёт для админа: Менеджер → «Работа с клиентами» (по истории скриптолога `script_events`) — чтобы проверять работу менеджеров.
-- «Занятия и загруженность»: сколько записано за период, на каких аппаратах, по каким абонементам/услугам, фильтры списками.
-- Позже отчёты по продажам из своей Кассы (`crm_sales`).
+- После деплоя: запустить «Обновить Fitbase» → синк лидов/визитов/абонементов → проверить Факт дня 01.10–30.10 (итог = 4 920 000 ₸, возвраты = 642 000 ₸).
+- Проверить select count(*), count(manager), count(client_fitbase_id) from fitbase_leads where created_date >= '2026-10-01'.
+- Проверить select count(*), count(end_date) from fitbase_contracts.
+- Новый отчёт для админа: Менеджер → «Работа с клиентами» (по `script_events`).
+- «Занятия и загруженность»: по аппаратам, абонементам, фильтры.
+- Отчёты из своей Кассы (`crm_sales`).

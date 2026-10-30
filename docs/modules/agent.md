@@ -54,7 +54,12 @@
 ### до 28.10.2026 · 6a264e0 · синхронизация операций Fitbase
 - `fitbaseOps.ts`, `/run/fitbase-ops`, sync_state.
 
-### 29.10.2026 · (текущий) · syncVisits fix — client_id, time, resource, manager, abonement
+### 30.10.2026 · 55dc7a4 · syncLeads fix + syncContracts
+- `syncLeads`: `manager = l.manager.full_name` (был `responsible` → всегда null); `client_fitbase_id = l.client_id` (был `client.id` → null); `client_name = l.name + l.surname`; `client_phone = normalizePhone(l.phone)`.
+- Новая функция `syncContracts`: собирает уникальные client_fitbase_id из `fitbase_operations` (raw.item_type='contract'), для каждого запрашивает `GET /client-contract?client_id=…`, upsert в `fitbase_contracts`. Пауза 300–500 мс между запросами, 4xx не ретраит.
+- `runFitbaseCrmSync` теперь возвращает `{ leads, visits, contracts }`.
+
+### 29.10.2026 · (предыдущий) · syncVisits fix — client_id, time, resource, manager, abonement
 - `syncVisits`: `client_fitbase_id = v.client_id` (не `v.client.id`); `time_start "08:00:00"` → slice 0..5 (был RangeError); `resource = event.place.name`; `manager = event.trainers[0].full_name`; `abonement` из `client_service`/`client_contract`; `is_trial` через `isTrialServiceName()`; batch-fetch имён из `fitbase_clients_cache`.
 
 ### до 28.10.2026 · 44f8e05 · fitbaseCrmSync
