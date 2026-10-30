@@ -2484,6 +2484,11 @@ function DailyMetricsSection() {
   const tots  = data?.totals ?? {} as Record<string, number>;
   const staff = data?.availableStaff ?? [];
 
+  // Derived for table
+  const allCashiers  = [...new Set(days.flatMap(d => Object.keys(d.by_cashier)))].filter(Boolean).sort();
+  const budgetTotal  = days.reduce((s, d) => s + (d.budget ?? 0), 0);
+  const forecastFinal = [...days].reverse().find(d => d.sales_forecast > 0)?.sales_forecast ?? 0;
+
   const [yr, mo] = month.split('-').map(Number);
   const monthLabel = `${MONTH_RU[mo - 1]} ${yr}`;
 
@@ -2511,7 +2516,8 @@ function DailyMetricsSection() {
   }
 
   type DayField = keyof DayItem;
-  function row(label: string, field: DayField, fmtFn: (v: number) => string, colorKey?: string, totField?: string) {
+  function row(label: string, field: DayField, fmtFn: (v: number) => string, colorKey?: string, totField?: string, totOverride?: number) {
+    const totalVal = totOverride !== undefined ? totOverride : (tots[totField ?? field as string] ?? 0);
     return (
       <tr key={label}>
         <td style={TD_LABEL}>{label}</td>
@@ -2520,7 +2526,7 @@ function DailyMetricsSection() {
           const v = typeof raw === 'number' ? raw : null;
           return <td key={d.date} style={{ ...numStyle(v ?? 0, colorKey), ...dayBg(d) }}>{v != null ? fmtFn(v) : '—'}</td>;
         })}
-        <td style={TD_TOT}>{fmtFn(tots[totField ?? field as string] ?? 0)}</td>
+        <td style={TD_TOT}>{fmtFn(totalVal)}</td>
       </tr>
     );
   }
@@ -2603,9 +2609,22 @@ function DailyMetricsSection() {
               <tr><td colSpan={days.length + 2} style={{ ...SEC_HD, position: 'static' }}>Продажи</td></tr>
               {row('Выручка план ₸',  'sales_plan',       fmtT, undefined, 'sales_plan')}
               {row('Выручка факт ₸',  'sales_fact',       fmtT, 'sales',   'sales_fact')}
-              {row('Накопл. ₸',       'sales_cumulative', fmtT)}
-              {row('Прогноз ₸',       'sales_forecast',   fmtT)}
-              {row('Бюджет ₸',        'budget',           fmtT)}
+              {allCashiers.map(cashier => {
+                const cashierTotal = days.reduce((s, d) => s + (d.by_cashier[cashier] ?? 0), 0);
+                return (
+                  <tr key={`csh-${cashier}`}>
+                    <td style={{ ...TD_LABEL, fontWeight: 400, fontSize: 11, paddingLeft: 20, color: '#64748b' }}>{cashier || '(без кассира)'}</td>
+                    {days.map(d => {
+                      const v = d.by_cashier[cashier] ?? 0;
+                      return <td key={d.date} style={{ ...TD, fontSize: 11, color: v > 0 ? '#059669' : v < 0 ? '#ef4444' : '#d1d5db', ...dayBg(d) }}>{v !== 0 ? fmtT(v) : ''}</td>;
+                    })}
+                    <td style={{ ...TD_TOT, fontWeight: 600, fontSize: 11 }}>{fmtT(cashierTotal)}</td>
+                  </tr>
+                );
+              })}
+              {row('Накопл. ₸',       'sales_cumulative', fmtT, undefined, undefined, tots.sales_fact)}
+              {row('Прогноз ₸',       'sales_forecast',   fmtT, undefined, undefined, forecastFinal)}
+              {row('Бюджет ₸',        'budget',           fmtT, undefined, undefined, budgetTotal)}
               {textRow('На смене',    d => d.on_shift.join(', ') || '—')}
               {textRow('Выходной',    d => d.is_day_off ? '✓' : '')}
             </tbody>

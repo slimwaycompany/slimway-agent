@@ -16,9 +16,10 @@
 - `fitbase_leads`, `fitbase_visits` — для воронки
 - `manager_task_done`, `manager_task_templates` — задачи менеджера (вкладка «Менеджер» в отчётах)
 - `cash_closings`, `staff_shifts` — смены (вкладка «Менеджер → Смены»)
-
-## Таблицы
-- `fitbase_contracts` (новая) — абонементы клиентов Fitbase: fitbase_id, client_fitbase_id, name, status, price, payment_date, begin_date, activation_date, end_date, raw. Синхронизируется в `/run/fitbase-crm-sync`.
+- `fitbase_contracts` — абонементы клиентов Fitbase: fitbase_id, client_fitbase_id, name, status, price, payment_date, begin_date, activation_date, end_date, raw. Синхронизируется в `/run/fitbase-crm-sync`.
+- `metrics_month_plan` — план месяца: `branch_id uuid`, `month date` (ВСЕГДА первое число месяца `YYYY-MM-01`), `leads_plan integer`, `sales_plan numeric`, `updated_by text`, `updated_at timestamptz`. PK `(branch_id, month)`.
+- `metrics_day_input` — настройки дня: `branch_id uuid`, `day date`, `budget numeric`, `leads_plan integer`, `sales_plan numeric`, `is_day_off boolean`, `on_shift text[] NOT NULL DEFAULT '{}'`, `updated_by text`, `updated_at timestamptz`. PK `(branch_id, day)`.
+- `sync_state` — метки синхронизации (key=`fitbase_ops_synced_at`).
 
 ## Ключевые решения
 - Колонки: **Менеджер** (Задачи — менеджер свои, админ свои + все; Смены), **Продажи** (отчёт по продажам), **Клиенты** (замеры тела, InBody, результаты студии со ссылкой на ТВ), **Маркетинг** (Факт дня, Дневной такт). «Настройки» из отчётов перенесены во вкладку Настройки (28.10).
@@ -75,6 +76,13 @@
 `TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
 
 ## Сделано
+### 30.10.2026 · (task 30) · Фикс схемы metrics таблиц, строки по кассирам, admin-check API продаж
+- `src/http/metrics.ts` GET `/daily`: чтение из `metrics_day_input` по колонке `day` (не `date`); план месяца запрашивается по `from` (= `YYYY-MM-01`); ошибки планRes/dayInputRes логируются в `console.error`.
+- `src/http/metrics.ts` PUT `/month-plan`: `month` сохраняется как `YYYY-MM-01` (DATE тип в БД); добавлены `updated_by`/`updated_at`; `onConflict: 'branch_id,month'` (правильный порядок PK).
+- `src/http/metrics.ts` PUT `/day-input`: поле сохраняется как `day` (не `date`); добавлены `updated_by`/`updated_at`; `on_shift` всегда пишется (`[]` если не передан, т. к. NOT NULL); `onConflict: 'branch_id,day'`; ошибки Postgres → лог, пользователю — русский текст.
+- `src/http/cash.ts`: добавлена проверка `admin` в `GET /kviz/api/cash/sync-time` (было без проверки роли).
+- `kviz/client/src/pages/reports/ReportsPage.tsx` `DailyMetricsSection`: строки кассиров под «Выручка факт ₸» (мелкий шрифт, отступ, итого); хелпер `row` получил 6-й параметр `totOverride`; исправлены итоги для Накопл./Прогноз/Бюджет.
+
 ### 30.10.2026 · (task 29) · Метрики по дням: экран, таблица по дням, план, редактор дня, chart
 - `src/http/metrics.ts`: добавлены три эндпоинта:
   - `GET /kviz/api/metrics/daily?month=YYYY-MM&buy=all|new` — все дни месяца одним ответом; поля: leads/qual/booked/visited/bought/funnel_sales_amt (с buy-фильтром), sales_fact (студийный итог), by_cashier, orders_count, sales_cumulative, sales_forecast (накопительная / прошедшие рабочие дни × рабочих дней); план распределяется пропорционально на рабочие дни (1-е число = выходной по умолчанию) с учётом переопределений.

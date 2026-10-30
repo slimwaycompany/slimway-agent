@@ -42,8 +42,10 @@ export function buildCashRouter(): Router {
     }
   });
 
-  // GET /kviz/api/cash/sync-time — last sync time
+  // GET /kviz/api/cash/sync-time — last sync time (admin only)
   r.get('/kviz/api/cash/sync-time', async (_req, res) => {
+    const session = getSession(_req);
+    if (!session || session.role !== 'admin') { res.status(403).json({ error: 'Доступно только администратору' }); return; }
     try {
       const { data } = await supabase.from('sync_state').select('value').eq('key', 'fitbase_ops_synced_at').maybeSingle();
       res.json({ synced_at: data?.value ?? null });

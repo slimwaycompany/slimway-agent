@@ -59,6 +59,7 @@
 | 27 | reports | classifyPurchase: фикс same_day (строгий <); «Сразу несколько» не категория — входит в new/renewal; «Вернулась» в карточке «Продления»; проценты от суммарных продаж 100% | ТЗ в чате | ✅ готово (bc6d822) |
 | 28 | reports | Квал = client_fitbase_id != null; «Живые» под карточкой Квал + дрилл-модал; колонка Живые в По источникам / По менеджерам | ТЗ в чате | ✅ готово (текущий) |
 | 29 | reports | Метрики по дням: экран, транспонированная таблица воронка+продажи, план месяца, редактор дня, BarChart | ТЗ в чате | ✅ готово (текущий) |
+| 30 | reports, manager | Фикс схемы metrics (day/month DATE, PK-порядок, updated_by/at, on_shift NOT NULL), строки кассиров в DailyMetrics, admin-check /cash/sync-time | ТЗ в чате | ✅ готово (текущий) |
 
 ## Сделано недавно (для контекста)
 
@@ -122,3 +123,4 @@
 | 30.10.2026 | Claude | 27 reports: classifyPurchase strict < (same_day убран); renewals endpoint — prevContracts < date; FactDayCards — «Вернулась» в карточке Продления, проценты 100%; RenewalsSection — same_day убран | bc6d822 | SQL не нужен. Проверка на проде — на стороне Сергея. |
 | 30.10.2026 | Claude | 28 reports: Квал=client_fitbase_id!=null (Lead.funnel добавлен); isAlive=funnel in Новые заявки/Новички/Постоянные && stage!=Отказ; alive_count+alive_items в fact-day; alive_count в by_source/by_manager; day-rhythm qualified; «Живые:N» кнопка под карточкой Квал + дрилл-модал; колонка Живые в таблицах | текущий | SQL не нужен. Проверка на проде — на стороне Сергея. |
 | 30.10.2026 | Claude | 29 reports: GET /daily (воронка+продажи по дням), PUT /month-plan, PUT /day-input; DailyMetricsSection (транспонированная таблица, навигация по месяцам, buy all/new, план, редактор дня, BarChart); кнопка «Метрики по дням» в FactDaySection | текущий | Нужен SQL: см. ниже. Проверка на проде — на стороне Сергея. |
+| 30.10.2026 | Claude | 30 reports/manager: фикс метрик (day/month DATE, PK branch_id+day, updated_by/at, on_shift NOT NULL всегда []); строки кассиров под «Выручка факт» (row totOverride); admin-check GET /cash/sync-time | текущий | SQL не нужен. Проверка на проде — на стороне Сергея. |

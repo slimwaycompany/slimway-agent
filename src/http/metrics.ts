@@ -748,14 +748,17 @@ export function buildMetricsRouter(): Router {
       const BRANCH = '00000000-0000-0000-0000-000000000001';
 
       const [planRes, dayInputRes, staffRes] = await Promise.all([
-        supabase.from('metrics_month_plan').select('leads_plan,sales_plan').eq('month', month).eq('branch_id', BRANCH).maybeSingle(),
-        supabase.from('metrics_day_input').select('date,is_day_off,budget,on_shift,leads_plan,sales_plan').eq('branch_id', BRANCH).gte('date', from).lte('date', to),
+        supabase.from('metrics_month_plan').select('leads_plan,sales_plan').eq('month', from).eq('branch_id', BRANCH).maybeSingle(),
+        supabase.from('metrics_day_input').select('day,is_day_off,budget,on_shift,leads_plan,sales_plan').eq('branch_id', BRANCH).gte('day', from).lte('day', to),
         supabase.from('app_users').select('display_name').order('display_name'),
       ]);
 
+      if (planRes.error) console.error('[daily] metrics_month_plan read error:', planRes.error.message);
+      if (dayInputRes.error) console.error('[daily] metrics_day_input read error:', dayInputRes.error.message);
+
       const monthPlan = planRes.data as { leads_plan: number | null; sales_plan: number | null } | null;
       const diMap = new Map<string, Record<string, unknown>>();
-      for (const d of (dayInputRes.data ?? [])) diMap.set(d.date as string, d as Record<string, unknown>);
+      for (const d of (dayInputRes.data ?? [])) diMap.set(d.day as string, d as Record<string, unknown>);
       const availableStaff = (staffRes.data ?? []).map((u: Record<string, unknown>) => u.display_name as string).filter(Boolean);
 
       const allDates: string[] = [];
@@ -929,11 +932,13 @@ export function buildMetricsRouter(): Router {
       const { month, leads_plan, sales_plan } = req.body as { month?: string; leads_plan?: number | null; sales_plan?: number | null };
       if (!month || !/^\d{4}-\d{2}$/.test(month)) { res.status(400).json({ error: 'Неверный month' }); return; }
       const BRANCH = '00000000-0000-0000-0000-000000000001';
-      const payload: Record<string, unknown> = { month, branch_id: BRANCH };
+      const monthDate = `${month}-01`; // month column is DATE, always store first day
+      const session = getSession(req)!;
+      const payload: Record<string, unknown> = { month: monthDate, branch_id: BRANCH, updated_by: session.display_name, updated_at: new Date().toISOString() };
       if (leads_plan !== undefined) payload.leads_plan = leads_plan;
       if (sales_plan !== undefined) payload.sales_plan = sales_plan;
-      const { error } = await supabase.from('metrics_month_plan').upsert(payload, { onConflict: 'month,branch_id' });
-      if (error) { res.status(500).json({ error: 'Ошибка сохранения плана' }); return; }
+      const { error } = await supabase.from('metrics_month_plan').upsert(payload, { onConflict: 'branch_id,month' });
+      if (error) { console.error('[month-plan] upsert error:', error.message); res.status(500).json({ error: 'Ошибка сохранения плана' }); return; }
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -944,14 +949,15 @@ export function buildMetricsRouter(): Router {
       const { date, is_day_off, budget, on_shift, leads_plan, sales_plan } = req.body as { date?: string; is_day_off?: boolean; budget?: number | null; on_shift?: string[]; leads_plan?: number | null; sales_plan?: number | null };
       if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ error: 'Неверный date' }); return; }
       const BRANCH = '00000000-0000-0000-0000-000000000001';
-      const payload: Record<string, unknown> = { date, branch_id: BRANCH };
+      const session = getSession(req)!;
+      const payload: Record<string, unknown> = { day: date, branch_id: BRANCH, updated_by: session.display_name, updated_at: new Date().toISOString() };
       if (is_day_off !== undefined) payload.is_day_off = is_day_off;
       if (budget !== undefined) payload.budget = budget;
-      if (on_shift !== undefined) payload.on_shift = on_shift;
-      if (leads_plan !== undefined) payload.leads_plan = leads_plan;
-      if (sales_plan !== undefined) payload.sales_plan = sales_plan;
-      const { error } = await supabase.from('metrics_day_input').upsert(payload, { onConflict: 'date,branch_id' });
-      if (error) { res.status(500).json({ error: 'Ошибка сохранения данных дня' }); return; }
+      payload.on_shift = Array.isArray(on_shift) ? on_shift : []; // not null — column has NOT NULL default '{}'
+      if (leads_plan !== undefined) payload.leads_plan = leads_plan !== null && leads_plan !== 0 ? leads_plan : null;
+      if (sales_plan !== undefined) payload.sales_plan = sales_plan !== null && sales_plan !== 0 ? sales_plan : null;
+      const { error } = await supabase.from('metrics_day_input').upsert(payload, { onConflict: 'branch_id,day' });
+      if (error) { console.error('[day-input] upsert error:', error.message); res.status(500).json({ error: 'Ошибка сохранения данных дня' }); return; }
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
