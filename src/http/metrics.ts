@@ -21,7 +21,7 @@ function digitsOnly(p: string | null): string | null {
 
 // Paginate any Supabase select in 1000-row pages
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAll(build: (off: number, lim: number) => any): Promise<Record<string, unknown>[]> {
+export async function fetchAll(build: (off: number, lim: number) => any): Promise<Record<string, unknown>[]> {
   const PAGE = 1000;
   const all: Record<string, unknown>[] = [];
   let off = 0;
@@ -80,17 +80,17 @@ function clMgr(id: number | null | undefined, clm: Map<number, { source: string 
 }
 
 // Extract Fitbase client.id from fitbase_operations.raw
-function opCid(op: Record<string, unknown>): number | null {
+export function opCid(op: Record<string, unknown>): number | null {
   const raw = op.raw as Record<string, unknown> | null;
   const c = raw?.client as Record<string, unknown> | null;
   return c?.id != null ? Number(c.id) : null;
 }
 
-interface OrderRow { amount: number; cid: number|null; manager: string|null; cashier: string|null; item: string|null; date: string|null; clientName: string|null; itemType: string|null; itemId: number|null }
-interface ContractRecord { fitbase_id: number; client_fitbase_id: number; name: string|null; payment_date: string|null; end_date: string|null; status: string; price: number }
+export interface OrderRow { amount: number; cid: number|null; manager: string|null; cashier: string|null; item: string|null; date: string|null; clientName: string|null; itemType: string|null; itemId: number|null }
+export interface ContractRecord { fitbase_id: number; client_fitbase_id: number; name: string|null; payment_date: string|null; end_date: string|null; status: string; price: number }
 
 // Group individual operation lines into orders by order_id
-function groupOrders(ops: Array<Record<string, unknown>>): OrderRow[] {
+export function groupOrders(ops: Array<Record<string, unknown>>): OrderRow[] {
   const map = new Map<string, OrderRow>();
   for (const op of ops) {
     const raw = op.raw as Record<string, unknown>;
@@ -107,7 +107,7 @@ function groupOrders(ops: Array<Record<string, unknown>>): OrderRow[] {
   return [...map.values()];
 }
 
-function classifyPurchase(o: OrderRow, contractsByClient: Map<number, ContractRecord[]>): 'new'|'renewal'|'returned'|'goods' {
+export function classifyPurchase(o: OrderRow, contractsByClient: Map<number, ContractRecord[]>): 'new'|'renewal'|'returned'|'goods' {
   if (o.itemType !== 'contract') return 'goods';
   if (o.cid == null || !o.date) return 'new';
   const all = contractsByClient.get(o.cid) ?? [];
@@ -747,10 +747,11 @@ export function buildMetricsRouter(): Router {
       const to = `${month}-${String(daysInMonth).padStart(2, '0')}`;
       const BRANCH = '00000000-0000-0000-0000-000000000001';
 
-      const [planRes, dayInputRes, staffRes] = await Promise.all([
+      const [planRes, dayInputRes, staffRes, sellerPlanRes] = await Promise.all([
         supabase.from('metrics_month_plan').select('leads_plan,sales_plan').eq('month', from).eq('branch_id', BRANCH).maybeSingle(),
         supabase.from('metrics_day_input').select('day,is_day_off,budget,on_shift,leads_plan,sales_plan').eq('branch_id', BRANCH).gte('day', from).lte('day', to),
         supabase.from('app_users').select('display_name').order('display_name'),
+        supabase.from('metrics_seller_plan').select('seller,sales_plan').eq('branch_id', BRANCH).eq('month', from),
       ]);
 
       if (planRes.error) console.error('[daily] metrics_month_plan read error:', planRes.error.message);
@@ -760,6 +761,8 @@ export function buildMetricsRouter(): Router {
       const diMap = new Map<string, Record<string, unknown>>();
       for (const d of (dayInputRes.data ?? [])) diMap.set(d.day as string, d as Record<string, unknown>);
       const availableStaff = (staffRes.data ?? []).map((u: Record<string, unknown>) => u.display_name as string).filter(Boolean);
+      const sellerPlansData: Record<string, number> = {};
+      for (const sp of (sellerPlanRes.data ?? [])) sellerPlansData[sp.seller as string] = Number(sp.sales_plan);
 
       const allDates: string[] = [];
       for (let d = 1; d <= daysInMonth; d++) allDates.push(`${month}-${String(d).padStart(2, '0')}`);
@@ -922,7 +925,7 @@ export function buildMetricsRouter(): Router {
       const availableManagers = [...new Set(mgrRaw.map(r => r.manager as string))].sort();
       const availableCashiers = [...new Set((cshRes.data ?? []).map(r => r.cashier as string))].filter(Boolean).sort();
 
-      res.json({ month, days, totals, month_plan: monthPlan, availableSources, availableManagers, availableCashiers, availableStaff });
+      res.json({ month, days, totals, month_plan: monthPlan, seller_plans: sellerPlansData, availableSources, availableManagers, availableCashiers, availableStaff });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -939,6 +942,38 @@ export function buildMetricsRouter(): Router {
       if (sales_plan !== undefined) payload.sales_plan = sales_plan;
       const { error } = await supabase.from('metrics_month_plan').upsert(payload, { onConflict: 'branch_id,month' });
       if (error) { console.error('[month-plan] upsert error:', error.message); res.status(500).json({ error: 'Ошибка сохранения плана' }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Seller plan ────────────────────────────────────────────────────────────────
+
+  router.get('/kviz/api/metrics/seller-plan', async (req: Request, res: Response) => {
+    if (!isAdmin(req, res)) return;
+    try {
+      const month = /^\d{4}-\d{2}$/.test(String(req.query.month)) ? String(req.query.month) : new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 7);
+      const BRANCH_SP = '00000000-0000-0000-0000-000000000001';
+      const { data, error } = await supabase.from('metrics_seller_plan')
+        .select('seller,sales_plan').eq('branch_id', BRANCH_SP).eq('month', `${month}-01`);
+      if (error) { console.error('[seller-plan] read:', error.message); res.status(500).json({ error: 'Ошибка загрузки планов продавцов' }); return; }
+      res.json(data ?? []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  router.put('/kviz/api/metrics/seller-plan', async (req: Request, res: Response) => {
+    if (!isAdmin(req, res)) return;
+    try {
+      const { month, seller, sales_plan } = req.body as { month?: string; seller?: string; sales_plan?: number | null };
+      if (!month || !/^\d{4}-\d{2}$/.test(month)) { res.status(400).json({ error: 'Неверный month' }); return; }
+      if (!seller) { res.status(400).json({ error: 'Не указан продавец' }); return; }
+      const BRANCH_SP = '00000000-0000-0000-0000-000000000001';
+      const session = getSession(req)!;
+      const { error } = await supabase.from('metrics_seller_plan').upsert({
+        branch_id: BRANCH_SP, month: `${month}-01`, seller,
+        sales_plan: sales_plan != null ? Number(sales_plan) : 0,
+        updated_by: session.display_name, updated_at: new Date().toISOString(),
+      }, { onConflict: 'branch_id,month,seller' });
+      if (error) { console.error('[seller-plan] upsert:', error.message); res.status(500).json({ error: 'Ошибка сохранения плана продавца' }); return; }
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });

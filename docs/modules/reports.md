@@ -9,7 +9,8 @@
 - `kviz/client/src/pages/reports/ReportsPage.tsx` — главная страница отчётов (колонки: Менеджер, Продажи, Клиенты, Маркетинг)
 - `kviz/client/src/pages/reports/OccupancySection.tsx` — секция «Занятия и загруженность»
 - `kviz/client/src/pages/MetricsPage.tsx` — вкладка «Воронка»: метрики лидов/визитов/продаж из `fitbase_leads`/`fitbase_visits`
-- `src/http/metrics.ts` — API `/kviz/api/metrics/*`: факт дня, дневной такт, данные по воронке
+- `src/http/metrics.ts` — API `/kviz/api/metrics/*`: факт дня, дневной такт, данные по воронке; экспортирует `fetchAll`, `groupOrders`, `classifyPurchase`, `opCid`, `OrderRow`, `ContractRecord`
+- `src/http/payroll.ts` — API `/kviz/api/payroll/*`: расчёт зарплат, настройки сотрудника, закрытие/открытие месяца
 
 ## Таблицы
 - `fitbase_operations` — продажи/операции из Fitbase (подтягиваются кнопкой, только новые)
@@ -20,6 +21,9 @@
 - `metrics_month_plan` — план месяца: `branch_id uuid`, `month date` (ВСЕГДА первое число месяца `YYYY-MM-01`), `leads_plan integer`, `sales_plan numeric`, `updated_by text`, `updated_at timestamptz`. PK `(branch_id, month)`.
 - `metrics_day_input` — настройки дня: `branch_id uuid`, `day date`, `budget numeric`, `leads_plan integer`, `sales_plan numeric`, `is_day_off boolean`, `on_shift text[] NOT NULL DEFAULT '{}'`, `updated_by text`, `updated_at timestamptz`. PK `(branch_id, day)`.
 - `sync_state` — метки синхронизации (key=`fitbase_ops_synced_at`).
+- `metrics_seller_plan` — план по кассиру на месяц: `branch_id uuid`, `month date` (первое число месяца), `seller text`, `sales_plan numeric`, `updated_by text`, `updated_at timestamptz`. PK `(branch_id, month, seller)`.
+- `payroll_month_employee` — настройки расчёта зарплаты сотрудника: `branch_id`, `month date`, `employee text`, `shift_rate numeric`, `shifts_count int|null`, `new_sales_pct numeric`, `renewal_pct numeric default 2`, `goods_pct numeric`, `plan_bonus numeric default 30000`, `premium numeric`, `deduction numeric`, `advance numeric`, `note text|null`. PK `(branch_id, month, employee)`.
+- `payroll_month_close` — снэпшот закрытого расчёта: `branch_id`, `month date`, `snapshot jsonb not null`, `closed_by text`, `closed_at timestamptz`. PK `(branch_id, month)`.
 
 ## Ключевые решения
 - Колонки: **Менеджер** (Задачи — менеджер свои, админ свои + все; Смены), **Продажи** (отчёт по продажам), **Клиенты** (замеры тела, InBody, результаты студии со ссылкой на ТВ), **Маркетинг** (Факт дня, Дневной такт). «Настройки» из отчётов перенесены во вкладку Настройки (28.10).
@@ -76,6 +80,14 @@
 `TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
 
 ## Сделано
+### 03.11.2026 · (task 31) · Зарплата: план по кассирам в DailyMetrics, линейные графики, PayrollSection
+- `src/http/metrics.ts`: экспортированы `fetchAll`, `OrderRow`, `ContractRecord`, `groupOrders`, `classifyPurchase`, `opCid` — нужны в payroll.ts. GET `/daily` — добавлен `seller_plans` в ответ (`metrics_seller_plan` за месяц). Новые эндпоинты: `GET /kviz/api/metrics/seller-plan` и `PUT /kviz/api/metrics/seller-plan` (admin-only, upsert по `branch_id,month,seller`).
+- `src/http/payroll.ts` (новый): `computePayroll(month)` — классифицирует продажи/возвраты, атрибутирует возвраты оригинальному кассиру (история 2 года), читает смены из `metrics_day_input.on_shift`, берёт черновик настроек из предыдущего месяца. `buildPayrollRouter()` — 4 эндпоинта: `GET /kviz/api/payroll`, `PUT /kviz/api/payroll/employee`, `POST /kviz/api/payroll/close`, `POST /kviz/api/payroll/reopen`.
+- `src/http/kviz.ts`: подключён `buildPayrollRouter()`.
+- `kviz/client/src/pages/reports/ReportsPage.tsx`:
+  - `DailyMetricsSection`: план по кассирам (seller_plans), блок ввода планов продавцов в шапке; строки кассиров подсвечены зелёным/красным по факт≥план; план/день = план_месяца / рабочих_дней; список «На смене» берётся из `availableCashiers` (fitbase). Grafika заменена на два `LineChart` с чекбоксами (деньги ₸ / штуки), ReferenceArea для выходных, dual Y-axis (бюджет/стоимость лида), состояние чекбоксов в localStorage.
+  - `PayrollSection` (новый): шапка с навигацией по месяцам, статус Открыт/Закрыт, кнопки «Закрыть месяц» / «Открыть заново» с подтверждением; широкая таблица с двойным заголовком (Смены/Новые/Продления/Товары/План/Итого/К выплате); inline-редактирование ячеек (клик→инпут, Enter/Esc); drill-попап на базовые суммы; карточки на мобильных (375px через CSS-медиа); Скачать xlsx.
+
 ### 30.10.2026 · (task 30) · Фикс схемы metrics таблиц, строки по кассирам, admin-check API продаж
 - `src/http/metrics.ts` GET `/daily`: чтение из `metrics_day_input` по колонке `day` (не `date`); план месяца запрашивается по `from` (= `YYYY-MM-01`); ошибки планRes/dayInputRes логируются в `console.error`.
 - `src/http/metrics.ts` PUT `/month-plan`: `month` сохраняется как `YYYY-MM-01` (DATE тип в БД); добавлены `updated_by`/`updated_at`; `onConflict: 'branch_id,month'` (правильный порядок PK).
@@ -174,6 +186,11 @@
 - Renewals: `type='returned'` — «вопрос открытый», показывается как отдельный тип.
 
 ## Следующее
+- «Метрики по дням» — график динамики (записано 03.11, ТЗ не собирать до команды): ниже текущей таблицы метрик линейный график по дням месяца (образец — график «План и Факт» из листа Сергея: дни по оси X с днями недели, линии план и факт), чтобы видеть пики и просадки по дням. Вид переключается галочками (можно включать несколько линий сразу):
+  - продажи: общий факт, общий план, факт по каждому продавцу (кассиру), план одного продавца (план продавца — продумать, откуда берётся: доля общего плана или отдельный ввод)
+  - лиды: факт и план по лидам
+  - стоимость лида, бюджет
+  - разные единицы (₸ и шт) — две оси Y или отдельные режимы, продумать
 - Одним ТЗ: автозагрузка отчётов Замеры / InBody / Продажи + крон Fitbase (/run/fitbase-ops 15 мин, /run/fitbase-crm-sync 30 мин, 08–23) + отчёт «Товары»
 - После деплоя: запустить «Обновить Fitbase» → синк лидов/визитов/абонементов → проверить Факт дня 01.10–30.10 (итог = 4 920 000 ₸, возвраты = 642 000 ₸).
 - Проверить select count(*), count(manager), count(client_fitbase_id) from fitbase_leads where created_date >= '2026-10-01'.

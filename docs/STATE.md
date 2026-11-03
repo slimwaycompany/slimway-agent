@@ -12,7 +12,7 @@
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟡 | 30.10.2026 | Закрытие смены из Fitbase — тестовый режим; GET /cash/sync-time теперь admin-only |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 28.10.2026 | Не трогаем, может быть скрыта |
 | Замеры и InBody | `modules/zamery.md` | Замеры и отчёты | 🟢 | 29.10.2026 | Фикс from/to_measure_no в studio_results; выгрузка в общий работает для клиентов только с InBody |
-| Отчёты | `modules/reports.md` | Замеры и отчёты | 🟢 | 30.10.2026 | Фикс схемы metrics (day/month как DATE, branch_id,day PK), строки кассиров в DailyMetrics, admin-check sync-time |
+| Отчёты | `modules/reports.md` | Замеры и отчёты | 🟢 | 03.11.2026 | Зарплата: plan по кассирам в DailyMetrics, LineChart ×2, PayrollSection с inline-редактом и закрытием месяца |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 29.10.2026 | Задача 22: лояльное дерево (66 узлов), KZ-тексты, RU/KZ, ↩К развилке, чтение переписки |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |

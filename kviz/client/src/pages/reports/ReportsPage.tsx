@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea } from 'recharts';
 import OccupancySection from './OccupancySection';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 
@@ -30,7 +30,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,6 +87,7 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
     items: [
       { id: 'sales',    label: 'Отчёт по продажам', desc: 'Операции Fitbase, разбивка', adminOnly: true },
       { id: 'renewals', label: 'Продления',           desc: 'Новые, продления, вернулись', adminOnly: true },
+      { id: 'payroll',  label: 'Зарплата',            desc: 'Расчёт зарплаты сотрудников', adminOnly: true },
     ],
   },
   {
@@ -185,6 +186,7 @@ export default function ReportsPage() {
       {section === 'occupancy'      && isAdmin && <OccupancySection />}
       {section === 'studio'         && <StudioSection isAdmin={isAdmin} />}
       {section === 'daily-metrics'  && isAdmin && <DailyMetricsSection />}
+      {section === 'payroll'        && isAdmin && <PayrollSection />}
     </div>
   );
 }
@@ -2383,12 +2385,15 @@ interface DayItem {
 interface DailyResp {
   month: string; days: DayItem[]; totals: Record<string, number>;
   month_plan: { leads_plan: number | null; sales_plan: number | null } | null;
+  seller_plans: Record<string, number>;
   availableSources: string[]; availableManagers: string[];
   availableCashiers: string[]; availableStaff: string[];
 }
 
 const DOW_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTH_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+const SELLER_COLORS = ['#f59e0b','#8b5cf6','#ec4899','#f97316','#06b6d4','#84cc16','#ef4444'];
 
 function DailyMetricsSection() {
   const todayStr = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
@@ -2398,11 +2403,13 @@ function DailyMetricsSection() {
   const [buy, setBuy]   = useState<'all'|'new'>('all');
   const [data, setData] = useState<DailyResp | null>(null);
   const [loading, setLoading] = useState(false);
-  // Month plan
   const [planLeads, setPlanLeads] = useState('');
   const [planSales, setPlanSales] = useState('');
   const [planSaving, setPlanSaving] = useState(false);
   const [showPlanEdit, setShowPlanEdit] = useState(false);
+  // Seller plan edits: name → value string
+  const [spEdits, setSpEdits] = useState<Record<string, string>>({});
+  const [spSaving, setSpSaving] = useState(false);
   // Day edit modal
   const [editDay, setEditDay]   = useState<DayItem | null>(null);
   const [dBudget, setDBudget]   = useState('');
@@ -2411,6 +2418,13 @@ function DailyMetricsSection() {
   const [dLeadsPlan, setDLeadsPlan] = useState('');
   const [dSalesPlan, setDSalesPlan] = useState('');
   const [daySaving, setDaySaving]   = useState(false);
+  // Chart checkboxes (localStorage)
+  const [moneyChecks, setMoneyChecks] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('dm-chart-money') || 'null') || ['sales_fact','sales_plan']; } catch { return ['sales_fact','sales_plan']; }
+  });
+  const [countChecks, setCountChecks] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('dm-chart-count') || 'null') || ['leads_fact','leads_plan']; } catch { return ['leads_fact','leads_plan']; }
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2422,10 +2436,29 @@ function DailyMetricsSection() {
       setData(d);
       setPlanLeads(d.month_plan?.leads_plan?.toString() ?? '');
       setPlanSales(d.month_plan?.sales_plan?.toString() ?? '');
+      // Init seller plan edits from response
+      const init: Record<string, string> = {};
+      for (const [k, v] of Object.entries(d.seller_plans ?? {})) init[k] = String(v || '');
+      setSpEdits(init);
     } catch {} finally { setLoading(false); }
   }, [month, buy]);
 
   useEffect(() => { load(); }, [load]);
+
+  function toggleMoney(key: string) {
+    setMoneyChecks(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      try { localStorage.setItem('dm-chart-money', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+  function toggleCount(key: string) {
+    setCountChecks(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      try { localStorage.setItem('dm-chart-count', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
 
   function navMonth(delta: number) {
     const [y, m] = month.split('-').map(Number);
@@ -2443,8 +2476,20 @@ function DailyMetricsSection() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ month, leads_plan: planLeads ? Number(planLeads) : null, sales_plan: planSales ? Number(planSales) : null }),
       });
-      if (r.ok) { setShowPlanEdit(false); await load(); }
+      if (r.ok) { await load(); }
     } catch {} finally { setPlanSaving(false); }
+  }
+
+  async function saveSellerPlan(seller: string, value: string) {
+    setSpSaving(true);
+    try {
+      await fetch('/kviz/api/metrics/seller-plan', {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month, seller, sales_plan: value ? Number(value) : 0 }),
+      });
+      await load();
+    } catch {} finally { setSpSaving(false); }
   }
 
   function openDayEdit(d: DayItem) {
@@ -2482,17 +2527,19 @@ function DailyMetricsSection() {
 
   const days  = data?.days ?? [];
   const tots  = data?.totals ?? {} as Record<string, number>;
-  const staff = data?.availableStaff ?? [];
+  const sellerPlans = data?.seller_plans ?? {};
 
-  // Derived for table
+  // "На смене" staff list: cashiers from this month + already-saved on_shift names
+  const staff = [...new Set([...(data?.availableCashiers ?? []), ...days.flatMap(d => d.on_shift)])].filter(Boolean).sort();
+
   const allCashiers  = [...new Set(days.flatMap(d => Object.keys(d.by_cashier)))].filter(Boolean).sort();
   const budgetTotal  = days.reduce((s, d) => s + (d.budget ?? 0), 0);
   const forecastFinal = [...days].reverse().find(d => d.sales_forecast > 0)?.sales_forecast ?? 0;
+  const workingDays  = days.filter(d => !d.is_day_off).length;
 
   const [yr, mo] = month.split('-').map(Number);
   const monthLabel = `${MONTH_RU[mo - 1]} ${yr}`;
 
-  // Table styles
   const TH_LABEL: React.CSSProperties = { padding: '5px 8px', fontSize: 11, fontWeight: 700, color: '#374151', textAlign: 'left', position: 'sticky', left: 0, top: 0, zIndex: 4, background: '#f8fafc', minWidth: 140, maxWidth: 140, boxShadow: '2px 0 4px rgba(0,0,0,0.06)', borderBottom: '1px solid #e2e8f0' };
   const TH_DAY: React.CSSProperties  = { padding: '3px 4px', fontSize: 11, fontWeight: 600, textAlign: 'center', position: 'sticky', top: 0, zIndex: 1, background: '#f8fafc', minWidth: 46, maxWidth: 46, cursor: 'pointer', borderBottom: '1px solid #e2e8f0' };
   const TH_TOT: React.CSSProperties  = { padding: '3px 6px', fontSize: 11, fontWeight: 700, textAlign: 'right', position: 'sticky', top: 0, right: 0, zIndex: 2, background: '#f8fafc', minWidth: 72, boxShadow: '-2px 0 4px rgba(0,0,0,0.04)', borderBottom: '1px solid #e2e8f0' };
@@ -2541,8 +2588,117 @@ function DailyMetricsSection() {
     );
   }
 
-  // Chart data
-  const chartData = days.map(d => ({ name: String(parseInt(d.date.slice(8))), plan: d.sales_plan, fact: d.is_future ? null : d.sales_fact }));
+  // Chart: numeric x axis with custom tick
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const DayTick = ({ x, y, payload }: any) => {
+    const idx = payload.value as number;
+    const d = days[idx - 1];
+    if (!d) return null;
+    const dow = DOW_RU[new Date(d.date).getDay()];
+    const isOff = d.is_day_off;
+    const isToday = d.date === todayStr;
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text x={0} y={0} dy={12} textAnchor="middle" fontSize={9} fill={isToday ? '#263CD9' : isOff ? '#94a3b8' : '#64748b'}>{d.date.slice(8)}</text>
+        <text x={0} y={0} dy={22} textAnchor="middle" fontSize={8} fill={isOff ? '#b0b8c8' : '#9ca3af'}>{dow}</text>
+      </g>
+    );
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const MoneyTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = days[(label as number) - 1];
+    if (!d) return null;
+    const planVal = d.sales_plan;
+    return (
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.date.split('-').reverse().slice(0,2).join('.')} {DOW_RU[new Date(d.date).getDay()]}</div>
+        {payload.map((p: { name: string; value: number | null; color: string }) => {
+          if (p.value == null) return null;
+          const isFact = p.name.startsWith('Факт') || p.name.startsWith('ф_');
+          const belowPlan = isFact && p.value < planVal;
+          return (
+            <div key={p.name} style={{ color: belowPlan ? '#ef4444' : p.color, marginTop: 2 }}>
+              {p.name}: {Math.round(p.value).toLocaleString('ru')} ₸
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const CountTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = days[(label as number) - 1];
+    if (!d) return null;
+    const planVal = d.leads_plan;
+    return (
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.date.split('-').reverse().slice(0,2).join('.')} {DOW_RU[new Date(d.date).getDay()]}</div>
+        {payload.map((p: { name: string; value: number | null; color: string }) => {
+          if (p.value == null) return null;
+          const isFact = p.name === 'Лиды факт';
+          const belowPlan = isFact && p.value < planVal;
+          return (
+            <div key={p.name} style={{ color: belowPlan ? '#ef4444' : p.color, marginTop: 2 }}>{p.name}: {p.value}</div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const chartBase = days.map((d, i) => {
+    const idx = i + 1;
+    const base: Record<string, number | null> = {
+      idx,
+      sales_fact: d.is_future ? null : d.sales_fact,
+      sales_plan: d.sales_plan,
+      budget: d.budget,
+      lead_cost: (d.budget != null && d.leads_fact > 0) ? Math.round(d.budget / d.leads_fact) : null,
+      leads_fact: d.is_future ? null : d.leads_fact,
+      leads_plan: d.leads_plan,
+      qual_fact:   d.is_future ? null : d.qual_fact,
+      booked_fact: d.is_future ? null : d.booked_fact,
+      visited_fact: d.is_future ? null : d.visited_fact,
+      bought_fact:  d.is_future ? null : d.bought_fact,
+      orders_count: d.is_future ? null : d.orders_count,
+    };
+    for (const cashier of allCashiers) {
+      base[`f_${cashier}`] = d.is_future ? null : (d.by_cashier[cashier] ?? 0);
+    }
+    for (const [cashier, plan] of Object.entries(sellerPlans)) {
+      base[`p_${cashier}`] = (!d.is_day_off && workingDays > 0) ? Math.round(plan / workingDays) : 0;
+    }
+    return base;
+  });
+
+  // Chart line definitions
+  const MONEY_LINES: { key: string; name: string; color: string; dashed?: boolean; yAxisId?: string }[] = [
+    { key: 'sales_fact', name: 'Факт продаж', color: '#02BDB6' },
+    { key: 'sales_plan', name: 'План продаж', color: '#8892C8', dashed: true },
+    ...allCashiers.flatMap((cashier, i) => [
+      { key: `f_${cashier}`, name: `ф_${cashier}`, color: SELLER_COLORS[i % SELLER_COLORS.length] },
+      { key: `p_${cashier}`, name: `пл_${cashier}`, color: SELLER_COLORS[i % SELLER_COLORS.length], dashed: true },
+    ]),
+    { key: 'budget',    name: 'Бюджет',        color: '#94a3b8', yAxisId: 'right' },
+    { key: 'lead_cost', name: 'Стоимость лида', color: '#f59e0b', yAxisId: 'right' },
+  ];
+  const COUNT_LINES: { key: string; name: string; color: string; dashed?: boolean }[] = [
+    { key: 'leads_fact',   name: 'Лиды факт',    color: '#263CD9' },
+    { key: 'leads_plan',   name: 'Лиды план',     color: '#94a3b8', dashed: true },
+    { key: 'qual_fact',    name: 'Квал',          color: '#02BDB6' },
+    { key: 'booked_fact',  name: 'Записаны',      color: '#8b5cf6' },
+    { key: 'visited_fact', name: 'Пришли',        color: '#f59e0b' },
+    { key: 'bought_fact',  name: 'Купили',        color: '#22c55e' },
+    { key: 'orders_count', name: 'Кол-во продаж', color: '#ec4899' },
+  ];
+
+  const offDays = days.filter(d => d.is_day_off).map((d, _i) => {
+    const idx = days.indexOf(d) + 1;
+    return { x1: idx - 0.5, x2: idx + 0.5 };
+  });
 
   return (
     <div style={s.section}>
@@ -2559,19 +2715,44 @@ function DailyMetricsSection() {
         {loading && <span style={{ fontSize: 12, color: '#6b7280' }}>Загрузка…</span>}
       </div>
 
-      {/* Month plan edit */}
+      {/* Month plan + seller plans */}
       {showPlanEdit && (
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', marginBottom: 12, display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Лиды в месяц (план)</div>
-            <input type="number" value={planLeads} onChange={e => setPlanLeads(e.target.value)} style={{ ...s.dateInp, width: 120 }} placeholder="—" />
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Лиды в месяц (план)</div>
+              <input type="number" value={planLeads} onChange={e => setPlanLeads(e.target.value)} style={{ ...s.dateInp, width: 120 }} placeholder="—" />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Выручка в месяц ₸ (план)</div>
+              <input type="number" value={planSales} onChange={e => setPlanSales(e.target.value)} style={{ ...s.dateInp, width: 160 }} placeholder="—" />
+            </div>
+            <button style={s.saveBtn} onClick={savePlan} disabled={planSaving}>{planSaving ? 'Сохранение…' : 'Сохранить план'}</button>
+            <button style={s.cancelBtn} onClick={() => setShowPlanEdit(false)}>Закрыть</button>
           </div>
-          <div>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Выручка в месяц ₸ (план)</div>
-            <input type="number" value={planSales} onChange={e => setPlanSales(e.target.value)} style={{ ...s.dateInp, width: 160 }} placeholder="—" />
-          </div>
-          <button style={s.saveBtn} onClick={savePlan} disabled={planSaving}>{planSaving ? 'Сохранение…' : 'Сохранить'}</button>
-          <button style={s.cancelBtn} onClick={() => setShowPlanEdit(false)}>Отмена</button>
+          {/* Per-seller plans */}
+          {staff.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>План продавца на месяц ₸</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                {[...new Set([...staff, ...Object.keys(sellerPlans)])].sort().map(seller => (
+                  <div key={seller} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{seller}</div>
+                    <input
+                      type="number"
+                      value={spEdits[seller] ?? (sellerPlans[seller] ? String(sellerPlans[seller]) : '')}
+                      onChange={e => setSpEdits(prev => ({ ...prev, [seller]: e.target.value }))}
+                      onBlur={e => saveSellerPlan(seller, e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveSellerPlan(seller, (e.target as HTMLInputElement).value); }}
+                      style={{ ...s.dateInp, width: '100%' }}
+                      placeholder="—"
+                      disabled={spSaving}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2596,7 +2777,6 @@ function DailyMetricsSection() {
               </tr>
             </thead>
             <tbody>
-              {/* Воронка лидов */}
               <tr><td colSpan={days.length + 2} style={SEC_HD}>Воронка лидов</td></tr>
               {row('Лиды план',  'leads_plan',  String,  undefined, 'leads_plan')}
               {row('Лиды факт',  'leads_fact',  String,  'leads',   'leads_fact')}
@@ -2605,49 +2785,100 @@ function DailyMetricsSection() {
               {row('Пришли',     'visited_fact',String,  undefined, 'visited_fact')}
               {row('Купили',     'bought_fact', String,  undefined, 'bought_fact')}
               {row('Продажи ₸', 'funnel_sales_amt', fmtT, 'sales', 'funnel_sales_amt')}
-              {/* Продажи */}
               <tr><td colSpan={days.length + 2} style={{ ...SEC_HD, position: 'static' }}>Продажи</td></tr>
               {row('Выручка план ₸',  'sales_plan',       fmtT, undefined, 'sales_plan')}
               {row('Выручка факт ₸',  'sales_fact',       fmtT, 'sales',   'sales_fact')}
-              {allCashiers.map(cashier => {
+              {allCashiers.map((cashier, ci) => {
                 const cashierTotal = days.reduce((s, d) => s + (d.by_cashier[cashier] ?? 0), 0);
+                const sellerMonthPlan = sellerPlans[cashier];
+                const dayPlan = sellerMonthPlan != null && workingDays > 0 ? Math.round(sellerMonthPlan / workingDays) : null;
+                const sellerColor = SELLER_COLORS[ci % SELLER_COLORS.length];
                 return (
                   <tr key={`csh-${cashier}`}>
                     <td style={{ ...TD_LABEL, fontWeight: 400, fontSize: 11, paddingLeft: 20, color: '#64748b' }}>{cashier || '(без кассира)'}</td>
                     {days.map(d => {
                       const v = d.by_cashier[cashier] ?? 0;
-                      return <td key={d.date} style={{ ...TD, fontSize: 11, color: v > 0 ? '#059669' : v < 0 ? '#ef4444' : '#d1d5db', ...dayBg(d) }}>{v !== 0 ? fmtT(v) : ''}</td>;
+                      const bg = dayPlan != null && !d.is_day_off
+                        ? (v >= dayPlan ? { background: '#f0fdf4' } : { background: '#fff5f5' })
+                        : {};
+                      return (
+                        <td key={d.date} style={{ ...TD, fontSize: 11, ...dayBg(d), ...bg }}>
+                          {v !== 0 && <div style={{ color: v > 0 ? sellerColor : '#ef4444' }}>{fmtT(v)}</div>}
+                          {dayPlan != null && !d.is_day_off && (
+                            <div style={{ fontSize: 9, color: '#94a3b8' }}>{fmtT(dayPlan)}</div>
+                          )}
+                        </td>
+                      );
                     })}
                     <td style={{ ...TD_TOT, fontWeight: 600, fontSize: 11 }}>{fmtT(cashierTotal)}</td>
                   </tr>
                 );
               })}
-              {row('Накопл. ₸',       'sales_cumulative', fmtT, undefined, undefined, tots.sales_fact)}
-              {row('Прогноз ₸',       'sales_forecast',   fmtT, undefined, undefined, forecastFinal)}
-              {row('Бюджет ₸',        'budget',           fmtT, undefined, undefined, budgetTotal)}
-              {textRow('На смене',    d => d.on_shift.join(', ') || '—')}
-              {textRow('Выходной',    d => d.is_day_off ? '✓' : '')}
+              {row('Накопл. ₸',  'sales_cumulative', fmtT, undefined, undefined, tots.sales_fact)}
+              {row('Прогноз ₸',  'sales_forecast',   fmtT, undefined, undefined, forecastFinal)}
+              {row('Бюджет ₸',   'budget',           fmtT, undefined, undefined, budgetTotal)}
+              {textRow('На смене',  d => d.on_shift.join(', ') || '—')}
+              {textRow('Выходной', d => d.is_day_off ? '✓' : '')}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Chart */}
+      {/* Charts */}
       {days.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Выручка по дням</div>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} />
-              <Tooltip formatter={(v: number) => Math.round(v).toLocaleString('ru') + ' ₸'} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="plan" name="План" fill="#e2e8f0" />
-              <Bar dataKey="fact" name="Факт" fill="#02BDB6" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <>
+          {/* Money chart */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Деньги, ₸</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+              {MONEY_LINES.map(l => (
+                <label key={l.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', padding: '2px 6px', borderRadius: 6, background: moneyChecks.includes(l.key) ? '#f0fdf4' : '#f8fafc', border: `1px solid ${moneyChecks.includes(l.key) ? l.color : '#e2e8f0'}` }}>
+                  <input type="checkbox" checked={moneyChecks.includes(l.key)} onChange={() => toggleMoney(l.key)} style={{ accentColor: l.color, marginRight: 2 }} />
+                  <span style={{ color: l.color }}>{l.name}</span>
+                  {l.yAxisId === 'right' && <span style={{ fontSize: 10, color: '#94a3b8' }}>(R)</span>}
+                </label>
+              ))}
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={chartBase} margin={{ top: 4, right: 48, left: 0, bottom: 28 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                {offDays.map((od, i) => <ReferenceArea key={i} x1={od.x1} x2={od.x2} fill="#f1f5f9" fillOpacity={0.8} />)}
+                <XAxis dataKey="idx" type="number" domain={[1, days.length]} ticks={days.map((_, i) => i + 1)} tick={<DayTick />} tickLine={false} height={32} />
+                <YAxis yAxisId="left" tick={{ fontSize: 9 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} width={40} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 9 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} width={40} label={{ value: '₸', angle: -90, position: 'insideRight', fontSize: 10 }} />
+                <Tooltip content={<MoneyTooltip />} />
+                {MONEY_LINES.filter(l => moneyChecks.includes(l.key)).map(l => (
+                  <Line key={l.key} yAxisId={l.yAxisId ?? 'left'} dataKey={l.key} name={l.name} stroke={l.color} strokeWidth={l.dashed ? 1.5 : 2} strokeDasharray={l.dashed ? '5 4' : undefined} dot={false} connectNulls={false} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Count chart */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Штуки</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+              {COUNT_LINES.map(l => (
+                <label key={l.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', padding: '2px 6px', borderRadius: 6, background: countChecks.includes(l.key) ? '#f0fdf4' : '#f8fafc', border: `1px solid ${countChecks.includes(l.key) ? l.color : '#e2e8f0'}` }}>
+                  <input type="checkbox" checked={countChecks.includes(l.key)} onChange={() => toggleCount(l.key)} style={{ accentColor: l.color, marginRight: 2 }} />
+                  <span style={{ color: l.color }}>{l.name}</span>
+                </label>
+              ))}
+            </div>
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={chartBase} margin={{ top: 4, right: 8, left: 0, bottom: 28 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                {offDays.map((od, i) => <ReferenceArea key={i} x1={od.x1} x2={od.x2} fill="#f1f5f9" fillOpacity={0.8} />)}
+                <XAxis dataKey="idx" type="number" domain={[1, days.length]} ticks={days.map((_, i) => i + 1)} tick={<DayTick />} tickLine={false} height={32} />
+                <YAxis tick={{ fontSize: 9 }} width={30} />
+                <Tooltip content={<CountTooltip />} />
+                {COUNT_LINES.filter(l => countChecks.includes(l.key)).map(l => (
+                  <Line key={l.key} dataKey={l.key} name={l.name} stroke={l.color} strokeWidth={l.dashed ? 1.5 : 2} strokeDasharray={l.dashed ? '5 4' : undefined} dot={false} connectNulls={false} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </>
       )}
 
       {/* Day edit modal */}
@@ -2694,6 +2925,372 @@ function DailyMetricsSection() {
             <div style={s.mBtns}>
               <button style={s.cancelBtn} onClick={() => setEditDay(null)}>Отмена</button>
               <button style={s.saveBtn} onClick={saveDayInput} disabled={daySaving}>{daySaving ? 'Сохранение…' : 'Сохранить'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Payroll section ───────────────────────────────────────────────────────────
+
+function PayrollSection() {
+  const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  const [month, setMonth] = useState<string>(() => {
+    const d = new Date(Date.now() + 5 * 3600_000);
+    const day = d.getUTCDate(), m = d.getUTCMonth(), y = d.getUTCFullYear();
+    if (day <= 5) {
+      const pm = m === 0 ? 12 : m, py = m === 0 ? y - 1 : y;
+      return `${py}-${String(pm).padStart(2,'0')}`;
+    }
+    return `${y}-${String(m+1).padStart(2,'0')}`;
+  });
+
+  interface DrillItem { name: string|null; amount: number; date: string|null; is_refund: boolean; orig_date?: string|null }
+  interface EmpSettings { shift_rate: number; shifts_count: number|null; new_sales_pct: number; renewal_pct: number; goods_pct: number; plan_bonus: number; premium: number; deduction: number; advance: number; note: string|null }
+  interface PayrollRow {
+    employee: string; is_draft: boolean;
+    new_sales: number; renewals: number; goods: number;
+    new_items: DrillItem[]; renewal_items: DrillItem[]; goods_items: DrillItem[];
+    fact_sales: number; plan_amount: number|null; plan_pct: number|null; plan_achieved: boolean;
+    shifts_from_schedule: number; settings: EmpSettings;
+    shifts_amt: number; new_pct_amt: number; renewal_pct_amt: number; goods_pct_amt: number;
+    plan_bonus_amt: number; total_earned: number; to_pay: number;
+  }
+  interface PayrollData {
+    month: string; closed: boolean; closed_by?: string; closed_at?: string;
+    rows: PayrollRow[];
+    totals: { new_sales: number; renewals: number; goods: number; shifts_amt: number; total_earned: number; to_pay: number };
+  }
+
+  const [data, setData] = useState<PayrollData|null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string|null>(null);
+  const [saving, setSaving] = useState(false);
+  const [editCell, setEditCell] = useState<{employee:string; field:string; value:string}|null>(null);
+  const [drill, setDrill] = useState<{employee:string; label:string; items:DrillItem[]}|null>(null);
+  const [confirming, setConfirming] = useState<'close'|'reopen'|null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const r = await fetch(`/kviz/api/payroll?month=${month}`, { credentials:'include' });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error ?? 'Ошибка'); return; }
+      setData(d);
+    } catch { setErr('Ошибка соединения'); }
+    finally { setLoading(false); }
+  }, [month]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function navMonth(dir: 1|-1) {
+    const [y, m] = month.split('-').map(Number);
+    const d = new Date(y, m - 1 + dir, 1);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  }
+
+  async function saveCell() {
+    if (!editCell || saving) return;
+    setSaving(true); setErr(null);
+    const val = editCell.value.trim();
+    const body: Record<string, unknown> = { month, employee: editCell.employee };
+    body[editCell.field] = editCell.field === 'note' ? (val || null) : (val === '' ? null : Number(val));
+    const r = await fetch('/kviz/api/payroll/employee', {
+      method: 'PUT', credentials:'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    setSaving(false);
+    if (r.ok) { setEditCell(null); load(); }
+    else { const d = await r.json(); setErr(d.error ?? 'Ошибка сохранения'); }
+  }
+
+  async function doClose() {
+    setSaving(true);
+    const r = await fetch('/kviz/api/payroll/close', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({month}) });
+    setSaving(false); setConfirming(null);
+    if (r.ok) load(); else { const d = await r.json(); setErr(d.error ?? 'Ошибка закрытия'); }
+  }
+
+  async function doReopen() {
+    setSaving(true);
+    const r = await fetch('/kviz/api/payroll/reopen', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({month}) });
+    setSaving(false); setConfirming(null);
+    if (r.ok) load(); else { const d = await r.json(); setErr(d.error ?? 'Ошибка открытия'); }
+  }
+
+  function downloadXlsx() {
+    if (!data) return;
+    const rows = data.rows.map(r => ({
+      'Сотрудник': r.employee,
+      'Смен': r.settings.shifts_count ?? r.shifts_from_schedule,
+      'Ставка': r.settings.shift_rate,
+      'Итого смены': r.shifts_amt,
+      'База новые': r.new_sales,
+      '% новые': r.settings.new_sales_pct,
+      'Новые ₸': r.new_pct_amt,
+      'База продл.': r.renewals,
+      '% продл.': r.settings.renewal_pct,
+      'Продл. ₸': r.renewal_pct_amt,
+      'База товары': r.goods,
+      '% товары': r.settings.goods_pct,
+      'Товары ₸': r.goods_pct_amt,
+      'Факт ₸': r.fact_sales,
+      'План ₸': r.plan_amount ?? '',
+      '% плана': r.plan_pct != null ? `${r.plan_pct}%` : '',
+      'Бонус план': r.plan_bonus_amt,
+      'Премия': r.settings.premium,
+      'Удержание': r.settings.deduction,
+      'Итого': r.total_earned,
+      'Аванс': r.settings.advance,
+      'К выплате': r.to_pay,
+      'Заметка': r.settings.note ?? '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Зарплата');
+    XLSX.writeFile(wb, `payroll_${month}.xlsx`);
+  }
+
+  const fmt = (n: number) => n.toLocaleString('ru');
+  const closed = data?.closed ?? false;
+  const monthLabel = MONTH_NAMES[parseInt(month.slice(5,7)) - 1] + ' ' + month.slice(0,4);
+
+  const thSt: React.CSSProperties = { padding: '6px 8px', border: '1px solid #e2e8f0', fontWeight: 700, fontSize: 11, color: '#374151', whiteSpace: 'nowrap', background: '#f1f5f9', textAlign: 'center' };
+  const th2St: React.CSSProperties = { ...thSt, fontWeight: 600, fontSize: 10, color: '#64748b', background: '#f8fafc' };
+  const tdSt: React.CSSProperties = { padding: '5px 7px', border: '1px solid #e2e8f0', fontSize: 12, textAlign: 'right', verticalAlign: 'middle' };
+  const tdLSt: React.CSSProperties = { ...tdSt, textAlign: 'left' };
+
+  function renderCell(employee: string, field: string, value: string|number|null, locked: boolean) {
+    const active = editCell?.employee === employee && editCell?.field === field;
+    if (active) {
+      return (
+        <input
+          autoFocus
+          style={{ width: 64, fontSize: 12, padding: '2px 4px', border: '1px solid #02BDB6', borderRadius: 4, textAlign: 'right', fontFamily: 'inherit' }}
+          value={editCell!.value}
+          onChange={e => setEditCell({ ...editCell!, value: e.target.value })}
+          onKeyDown={e => { if (e.key === 'Enter') saveCell(); if (e.key === 'Escape') setEditCell(null); }}
+          disabled={saving}
+        />
+      );
+    }
+    const display = value === null || value === '' ? '—' : String(value);
+    return (
+      <span
+        style={{ cursor: locked ? 'default' : 'pointer', padding: '1px 3px', borderRadius: 3, color: locked ? undefined : '#263CD9', fontSize: 12,
+          borderBottom: locked ? undefined : '1px dotted #263CD9' }}
+        onClick={() => { if (!locked) setEditCell({ employee, field, value: value == null ? '' : String(value) }); }}
+      >{display}</span>
+    );
+  }
+
+  return (
+    <div style={{ padding: '12px 16px', overflow: 'auto', height: 'calc(100vh - 56px)', fontFamily: "'Manrope',system-ui,sans-serif" }}>
+      <style>{`
+        @media (max-width: 500px) { .pr-wide { display: none !important; } .pr-cards { display: block !important; } }
+        @media (min-width: 501px) { .pr-cards { display: none !important; } }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:2 }}>
+          <button style={{ background:'none', border:'1px solid #e2e8f0', borderRadius:6, width:28, height:28, cursor:'pointer', fontSize:16, fontFamily:'inherit' }} onClick={() => navMonth(-1)}>‹</button>
+          <span style={{ fontWeight:700, fontSize:15, minWidth:150, textAlign:'center' }}>{monthLabel}</span>
+          <button style={{ background:'none', border:'1px solid #e2e8f0', borderRadius:6, width:28, height:28, cursor:'pointer', fontSize:16, fontFamily:'inherit' }} onClick={() => navMonth(1)}>›</button>
+        </div>
+        {data && (
+          closed
+            ? <span style={{ background:'#fef3c7', color:'#92400e', borderRadius:6, padding:'3px 10px', fontSize:12, fontWeight:600 }}>
+                Закрыт {fmtDate(data.closed_at!.slice(0,10))} · {data.closed_by}
+              </span>
+            : <span style={{ background:'#d1fae5', color:'#065f46', borderRadius:6, padding:'3px 10px', fontSize:12, fontWeight:600 }}>Открыт</span>
+        )}
+        {data && !closed && <button style={s.saveBtn} onClick={() => setConfirming('close')} disabled={saving}>Закрыть месяц</button>}
+        {data && closed && <button style={s.cancelBtn} onClick={() => setConfirming('reopen')} disabled={saving}>Открыть заново</button>}
+        <button style={{ ...s.csvBtn, marginLeft:'auto' }} onClick={downloadXlsx} disabled={!data}>Скачать xlsx</button>
+      </div>
+
+      {err && <div style={s.errBox}>{err}</div>}
+      {loading && <div style={{ color:'#6b7280', fontSize:13 }}>Загрузка…</div>}
+
+      {data && (
+        <>
+          {/* Wide table */}
+          <div className="pr-wide" style={{ overflowX:'auto', marginBottom:16 }}>
+            <table style={{ borderCollapse:'collapse', fontSize:12, minWidth:900 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thSt, minWidth:120 }} rowSpan={2}>Сотрудник</th>
+                  <th style={thSt} colSpan={3}>Смены</th>
+                  <th style={thSt} colSpan={3}>Новые</th>
+                  <th style={thSt} colSpan={3}>Продления</th>
+                  <th style={thSt} colSpan={3}>Товары</th>
+                  <th style={thSt} colSpan={3}>План</th>
+                  <th style={thSt} rowSpan={2}>Премия</th>
+                  <th style={thSt} rowSpan={2}>Удерж.</th>
+                  <th style={thSt} rowSpan={2}>Итого</th>
+                  <th style={thSt} rowSpan={2}>Аванс</th>
+                  <th style={thSt} rowSpan={2}>К выплате</th>
+                </tr>
+                <tr>
+                  <th style={th2St}>кол-во</th><th style={th2St}>ставка</th><th style={th2St}>₸</th>
+                  <th style={th2St}>база</th><th style={th2St}>%</th><th style={th2St}>₸</th>
+                  <th style={th2St}>база</th><th style={th2St}>%</th><th style={th2St}>₸</th>
+                  <th style={th2St}>база</th><th style={th2St}>%</th><th style={th2St}>₸</th>
+                  <th style={th2St}>факт/план</th><th style={th2St}>%</th><th style={th2St}>бонус</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map(row => (
+                  <tr key={row.employee} style={{ background: row.is_draft ? '#fffbeb' : '#fff' }}>
+                    <td style={tdLSt}>
+                      {row.employee}
+                      {row.is_draft && <span style={{ color:'#f59e0b', fontSize:10, marginLeft:4 }} title="Настройки из предыдущего месяца">●</span>}
+                    </td>
+                    {/* Смены */}
+                    <td style={tdSt}>
+                      {renderCell(row.employee, 'shifts_count', row.settings.shifts_count, closed)}
+                      {row.settings.shifts_count == null && (
+                        <span style={{ color:'#9ca3af', fontSize:10, marginLeft:3 }} title="Подсчитано из «На смене»">({row.shifts_from_schedule})</span>
+                      )}
+                    </td>
+                    <td style={tdSt}>{renderCell(row.employee, 'shift_rate', row.settings.shift_rate, closed)}</td>
+                    <td style={tdSt}>{fmt(row.shifts_amt)}</td>
+                    {/* Новые */}
+                    <td style={{ ...tdSt, color:'#263CD9', cursor:'pointer', textDecoration:'underline dotted' }}
+                      onClick={() => setDrill({ employee: row.employee, label:'Новые', items: row.new_items })}>
+                      {fmt(row.new_sales)}
+                    </td>
+                    <td style={tdSt}>{renderCell(row.employee, 'new_sales_pct', row.settings.new_sales_pct, closed)}</td>
+                    <td style={tdSt}>{fmt(row.new_pct_amt)}</td>
+                    {/* Продления */}
+                    <td style={{ ...tdSt, color:'#263CD9', cursor:'pointer', textDecoration:'underline dotted' }}
+                      onClick={() => setDrill({ employee: row.employee, label:'Продления', items: row.renewal_items })}>
+                      {fmt(row.renewals)}
+                    </td>
+                    <td style={tdSt}>{renderCell(row.employee, 'renewal_pct', row.settings.renewal_pct, closed)}</td>
+                    <td style={tdSt}>{fmt(row.renewal_pct_amt)}</td>
+                    {/* Товары */}
+                    <td style={{ ...tdSt, color:'#263CD9', cursor:'pointer', textDecoration:'underline dotted' }}
+                      onClick={() => setDrill({ employee: row.employee, label:'Товары', items: row.goods_items })}>
+                      {fmt(row.goods)}
+                    </td>
+                    <td style={tdSt}>{renderCell(row.employee, 'goods_pct', row.settings.goods_pct, closed)}</td>
+                    <td style={tdSt}>{fmt(row.goods_pct_amt)}</td>
+                    {/* План */}
+                    <td style={tdSt}>
+                      <span style={{ color: row.plan_amount != null ? (row.plan_achieved ? '#16a34a' : '#dc2626') : undefined }}>{fmt(row.fact_sales)}</span>
+                      {row.plan_amount != null && <span style={{ color:'#9ca3af' }}>/{fmt(row.plan_amount)}</span>}
+                    </td>
+                    <td style={tdSt}>{row.plan_pct != null ? `${row.plan_pct}%` : '—'}</td>
+                    <td style={tdSt}>
+                      {renderCell(row.employee, 'plan_bonus', row.settings.plan_bonus, closed)}
+                      {row.plan_amount != null && (
+                        <span style={{ color: row.plan_achieved ? '#16a34a' : '#dc2626', marginLeft:3, fontSize:11 }}>
+                          {row.plan_achieved ? '✓' : '✗'}
+                        </span>
+                      )}
+                    </td>
+                    <td style={tdSt}>{renderCell(row.employee, 'premium', row.settings.premium, closed)}</td>
+                    <td style={tdSt}>{renderCell(row.employee, 'deduction', row.settings.deduction, closed)}</td>
+                    <td style={{ ...tdSt, fontWeight:700 }}>{fmt(row.total_earned)}</td>
+                    <td style={tdSt}>{renderCell(row.employee, 'advance', row.settings.advance, closed)}</td>
+                    <td style={{ ...tdSt, fontWeight:700, color:'#02BDB6' }}>{fmt(row.to_pay)}</td>
+                  </tr>
+                ))}
+                <tr style={{ background:'#f1f5f9', fontWeight:700 }}>
+                  <td style={tdLSt}>Итого</td>
+                  <td style={tdSt} colSpan={2}></td>
+                  <td style={tdSt}>{fmt(data.totals.shifts_amt)}</td>
+                  <td style={tdSt}>{fmt(data.totals.new_sales)}</td>
+                  <td style={tdSt} colSpan={2}></td>
+                  <td style={tdSt}>{fmt(data.totals.renewals)}</td>
+                  <td style={tdSt} colSpan={2}></td>
+                  <td style={tdSt}>{fmt(data.totals.goods)}</td>
+                  <td style={tdSt} colSpan={7}></td>
+                  <td style={tdSt}>{fmt(data.totals.total_earned)}</td>
+                  <td style={tdSt}></td>
+                  <td style={{ ...tdSt, color:'#02BDB6' }}>{fmt(data.totals.to_pay)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="pr-cards">
+            {data.rows.map(row => (
+              <div key={row.employee} style={{ background:'#fff', borderRadius:10, padding:'12px 14px', marginBottom:8, boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
+                <div style={{ fontWeight:700, fontSize:14, marginBottom:6 }}>
+                  {row.employee}
+                  {row.is_draft && <span style={{ color:'#f59e0b', fontSize:10, marginLeft:4 }}>● черновик</span>}
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'3px 12px', fontSize:12, color:'#374151' }}>
+                  <span>Смены: {row.settings.shifts_count ?? row.shifts_from_schedule} × {fmt(row.settings.shift_rate)} = <b>{fmt(row.shifts_amt)}</b></span>
+                  <span>Новые: {fmt(row.new_sales)} · {row.settings.new_sales_pct}% · <b>{fmt(row.new_pct_amt)}</b></span>
+                  <span>Продл.: {fmt(row.renewals)} · {row.settings.renewal_pct}% · <b>{fmt(row.renewal_pct_amt)}</b></span>
+                  <span>Товары: {fmt(row.goods)} · {row.settings.goods_pct}% · <b>{fmt(row.goods_pct_amt)}</b></span>
+                  <span>
+                    План: <span style={{ color: row.plan_amount != null ? (row.plan_achieved ? '#16a34a' : '#dc2626') : undefined }}>
+                      {fmt(row.fact_sales)}{row.plan_amount != null ? `/${fmt(row.plan_amount)}` : ''}
+                    </span>
+                    {row.plan_amount != null && <span style={{ marginLeft:4 }}>{row.plan_achieved ? '✓' : '✗'} {fmt(row.plan_bonus_amt)}</span>}
+                  </span>
+                  <span>Премия: {fmt(row.settings.premium)} · Удерж.: {fmt(row.settings.deduction)}</span>
+                  <span style={{ fontWeight:700 }}>Итого: {fmt(row.total_earned)} ₸</span>
+                  <span style={{ fontWeight:700, color:'#02BDB6' }}>К выплате: {fmt(row.to_pay)} ₸</span>
+                </div>
+                {row.settings.note && <div style={{ color:'#64748b', fontSize:11, marginTop:4 }}>{row.settings.note}</div>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Drill popup */}
+      {drill && (
+        <div style={s.overlay} onClick={e => { if (e.target === e.currentTarget) setDrill(null); }}>
+          <div style={s.modal}>
+            <div style={{ fontWeight:700, fontSize:15, marginBottom:12 }}>{drill.employee} — {drill.label}</div>
+            {drill.items.length === 0
+              ? <div style={{ color:'#9ca3af', fontSize:13 }}>Нет операций</div>
+              : drill.items.map((it, i) => (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:'1px solid #f1f5f9', fontSize:13, gap:8 }}>
+                    <span>
+                      {it.is_refund && <span style={{ color:'#dc2626', marginRight:4 }}>↩</span>}
+                      {it.name ?? '—'}
+                      {it.date && <span style={{ color:'#9ca3af', fontSize:11, marginLeft:4 }}>{fmtDate(it.date)}</span>}
+                      {it.is_refund && it.orig_date && <span style={{ color:'#9ca3af', fontSize:11 }}> (прод. {fmtDate(it.orig_date)})</span>}
+                    </span>
+                    <span style={{ fontWeight:600, color: it.amount < 0 ? '#dc2626' : '#059669', whiteSpace:'nowrap' }}>
+                      {it.amount >= 0 ? '+' : ''}{fmt(it.amount)} ₸
+                    </span>
+                  </div>
+                ))
+            }
+            <button style={{ ...s.cancelBtn, marginTop:14 }} onClick={() => setDrill(null)}>Закрыть</button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm close / reopen */}
+      {confirming && (
+        <div style={s.overlay}>
+          <div style={{ ...s.modal, maxWidth:340 }}>
+            <div style={s.mh3}>{confirming === 'close' ? 'Закрыть месяц?' : 'Открыть заново?'}</div>
+            <div style={{ color:'#6b7280', fontSize:13, marginBottom:20 }}>
+              {confirming === 'close'
+                ? 'Данные зафиксируются. Редактирование заблокируется.'
+                : 'Месяц будет открыт снова. Редактирование разблокируется.'}
+            </div>
+            <div style={s.mBtns}>
+              <button style={s.cancelBtn} onClick={() => setConfirming(null)} disabled={saving}>Отмена</button>
+              <button style={s.saveBtn} onClick={confirming === 'close' ? doClose : doReopen} disabled={saving}>
+                {saving ? 'Подождите…' : confirming === 'close' ? 'Закрыть' : 'Открыть'}
+              </button>
             </div>
           </div>
         </div>
