@@ -61,6 +61,7 @@
 | 29 | reports | Метрики по дням: экран, транспонированная таблица воронка+продажи, план месяца, редактор дня, BarChart | ТЗ в чате | ✅ готово (текущий) |
 | 30 | reports, manager | Фикс схемы metrics (day/month DATE, PK-порядок, updated_by/at, on_shift NOT NULL), строки кассиров в DailyMetrics, admin-check /cash/sync-time | ТЗ в чате | ✅ готово (текущий) |
 | 31 | reports | Зарплата: план по кассирам в DailyMetrics (seller-plan API), LineChart×2 с чекбоксами, PayrollSection (расчёт, inline-редактирование, закрытие месяца, xlsx) | ТЗ в чате | ✅ готово (текущий) |
+| 32 | reports, fin | Финансы: fin_staff/fin_expense_groups/fin_expense_items/fin_week_input, SettingsPage «Финансы», TBU-сводка, PayrollSection display_name/hidden/plan_bonus_on, TbuSection (каскад, тренд, таблица с редактом) | ТЗ в чате | ✅ готово (текущий) |
 
 ## Сделано недавно (для контекста)
 
@@ -80,6 +81,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 03.11.2026 | Claude | 32: Финансы — fin.ts (router, staffMap, TBU, week-input), SettingsPage «Финансы» (3 таба), PayrollSection display_name/hidden/plan_bonus_on/overall_plan, TbuSection (tiles, waterfall, trend, table) | текущий | SQL таблицы уже созданы Сергеем. Проверка UI на проде — на стороне Сергея |
 | 03.11.2026 | Claude | 31: Зарплата — seller-plan API, LineChart×2, PayrollSection | текущий | Проверка интерфейса и реальных данных — на стороне Сергея |
 |------|-------|--------|--------------------|------------|
 | 26.10.2026 | Claude | 11: Скриптолог — API + страница + расширение | 948e2f0 | ⛔ нужен docs/sales-tree.md (файл с фразами скриптов) — предоставить Сергею. Схема таблиц: см. ниже. |

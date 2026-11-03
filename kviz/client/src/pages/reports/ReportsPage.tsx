@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea, Cell } from 'recharts';
 import OccupancySection from './OccupancySection';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 
@@ -30,7 +30,20 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu';
+
+interface TbuPeriod {
+  label: string; from: string; to: string;
+  revenue: number; rev_contracts: number; rev_goods: number;
+  marginal_income: number; skd: number; result: number;
+  tbu: number | null; tbu_pct: number | null; cumulative: number;
+  waterfall: { name: string; value: number; running: number; is_milestone: boolean }[];
+}
+interface TbuTableRow {
+  id: string; name: string; indent: number; is_milestone: boolean;
+  values: (number | null)[]; kind?: string; item_id?: string;
+}
+interface TbuData { mode: string; salary: string; periods: TbuPeriod[]; table_rows: TbuTableRow[]; }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -88,6 +101,7 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
       { id: 'sales',    label: 'Отчёт по продажам', desc: 'Операции Fitbase, разбивка', adminOnly: true },
       { id: 'renewals', label: 'Продления',           desc: 'Новые, продления, вернулись', adminOnly: true },
       { id: 'payroll',  label: 'Зарплата',            desc: 'Расчёт зарплаты сотрудников', adminOnly: true },
+      { id: 'tbu',      label: 'ТБУ',                desc: 'Точка безубыточности, каскад', adminOnly: true },
     ],
   },
   {
@@ -187,6 +201,7 @@ export default function ReportsPage() {
       {section === 'studio'         && <StudioSection isAdmin={isAdmin} />}
       {section === 'daily-metrics'  && isAdmin && <DailyMetricsSection />}
       {section === 'payroll'        && isAdmin && <PayrollSection />}
+      {section === 'tbu'            && isAdmin && <TbuSection />}
     </div>
   );
 }
@@ -2949,12 +2964,13 @@ function PayrollSection() {
   });
 
   interface DrillItem { name: string|null; amount: number; date: string|null; is_refund: boolean; orig_date?: string|null }
-  interface EmpSettings { shift_rate: number; shifts_count: number|null; new_sales_pct: number; renewal_pct: number; goods_pct: number; plan_bonus: number; premium: number; deduction: number; advance: number; note: string|null }
+  interface EmpSettings { shift_rate: number; shifts_count: number|null; new_sales_pct: number; renewal_pct: number; goods_pct: number; plan_bonus: number; plan_bonus_on: boolean; premium: number; deduction: number; advance: number; note: string|null }
   interface PayrollRow {
-    employee: string; is_draft: boolean;
+    employee: string; display_name: string; hidden: boolean; is_draft: boolean;
     new_sales: number; renewals: number; goods: number;
     new_items: DrillItem[]; renewal_items: DrillItem[]; goods_items: DrillItem[];
-    fact_sales: number; plan_amount: number|null; plan_pct: number|null; plan_achieved: boolean;
+    fact_sales: number; plan_amount: number|null; plan_pct: number|null;
+    plan_bonus_on: boolean;
     shifts_from_schedule: number; settings: EmpSettings;
     shifts_amt: number; new_pct_amt: number; renewal_pct_amt: number; goods_pct_amt: number;
     plan_bonus_amt: number; total_earned: number; to_pay: number;
@@ -2963,6 +2979,7 @@ function PayrollSection() {
     month: string; closed: boolean; closed_by?: string; closed_at?: string;
     rows: PayrollRow[];
     totals: { new_sales: number; renewals: number; goods: number; shifts_amt: number; total_earned: number; to_pay: number };
+    overall_plan_fact?: number; overall_plan_amount?: number | null; overall_plan_achieved?: boolean;
   }
 
   const [data, setData] = useState<PayrollData|null>(null);
@@ -2972,6 +2989,7 @@ function PayrollSection() {
   const [editCell, setEditCell] = useState<{employee:string; field:string; value:string}|null>(null);
   const [drill, setDrill] = useState<{employee:string; label:string; items:DrillItem[]}|null>(null);
   const [confirming, setConfirming] = useState<'close'|'reopen'|null>(null);
+  const [showHidden, setShowHidden] = useState(() => { try { return localStorage.getItem('payroll-show-hidden') === '1'; } catch { return false; } });
 
   const load = useCallback(async () => {
     setLoading(true); setErr(null);
@@ -3117,8 +3135,26 @@ function PayrollSection() {
       {err && <div style={s.errBox}>{err}</div>}
       {loading && <div style={{ color:'#6b7280', fontSize:13 }}>Загрузка…</div>}
 
+      {data && data.overall_plan_amount != null && (
+        <div style={{ background: data.overall_plan_achieved ? '#f0fdf4' : '#fff5f5', border: `1px solid ${data.overall_plan_achieved ? '#86efac' : '#fca5a5'}`, borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 13, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 700 }}>Общий план студии:</span>
+          <span style={{ color: data.overall_plan_achieved ? '#15803d' : '#dc2626', fontWeight: 700 }}>
+            {fmt(data.overall_plan_fact ?? 0)} / {fmt(data.overall_plan_amount)} ₸
+          </span>
+          <span style={{ color: data.overall_plan_achieved ? '#15803d' : '#dc2626' }}>
+            {data.overall_plan_achieved ? '✓ выполнен (бонусы начислены)' : '✗ не выполнен (бонусы не начислены)'}
+          </span>
+        </div>
+      )}
+
       {data && (
         <>
+          <div style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
+            <label style={{ display:'flex', gap:6, alignItems:'center', fontSize:12, cursor:'pointer', color:'#64748b' }}>
+              <input type="checkbox" checked={showHidden} onChange={e => { setShowHidden(e.target.checked); try { localStorage.setItem('payroll-show-hidden', e.target.checked ? '1' : '0'); } catch {} }} />
+              Показать скрытых сотрудников
+            </label>
+          </div>
           {/* Wide table */}
           <div className="pr-wide" style={{ overflowX:'auto', marginBottom:16 }}>
             <table style={{ borderCollapse:'collapse', fontSize:12, minWidth:900 }}>
@@ -3145,10 +3181,11 @@ function PayrollSection() {
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map(row => (
-                  <tr key={row.employee} style={{ background: row.is_draft ? '#fffbeb' : '#fff' }}>
+                {data.rows.filter(r => showHidden || !r.hidden).map(row => (
+                  <tr key={row.employee} style={{ background: row.is_draft ? '#fffbeb' : '#fff', opacity: row.hidden ? 0.6 : 1 }}>
                     <td style={tdLSt}>
-                      {row.employee}
+                      {row.display_name || row.employee}
+                      {row.hidden && <span style={{ color:'#94a3b8', fontSize:10, marginLeft:4 }} title="Скрыт в отчётах">👁</span>}
                       {row.is_draft && <span style={{ color:'#f59e0b', fontSize:10, marginLeft:4 }} title="Настройки из предыдущего месяца">●</span>}
                     </td>
                     {/* Смены */}
@@ -3188,12 +3225,15 @@ function PayrollSection() {
                     </td>
                     <td style={tdSt}>{row.plan_pct != null ? `${row.plan_pct}%` : '—'}</td>
                     <td style={tdSt}>
-                      {renderCell(row.employee, 'plan_bonus', row.settings.plan_bonus, closed)}
-                      {row.plan_amount != null && (
-                        <span style={{ color: row.plan_achieved ? '#16a34a' : '#dc2626', marginLeft:3, fontSize:11 }}>
-                          {row.plan_achieved ? '✓' : '✗'}
-                        </span>
-                      )}
+                      <label style={{ display:'flex', alignItems:'center', gap:3, justifyContent:'flex-end', fontSize:11, cursor: closed ? 'default' : 'pointer' }}>
+                        <input type="checkbox" checked={row.plan_bonus_on} disabled={closed}
+                          onChange={async e => {
+                            await fetch('/kviz/api/payroll/employee', { method:'PUT', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ month, employee: row.employee, plan_bonus_on: e.target.checked }) });
+                            load();
+                          }} />
+                        <span>{renderCell(row.employee, 'plan_bonus', row.settings.plan_bonus, closed)}</span>
+                      </label>
+                      {row.plan_bonus_amt > 0 && <span style={{ color:'#16a34a', fontSize:10 }}> ✓</span>}
                     </td>
                     <td style={tdSt}>{renderCell(row.employee, 'premium', row.settings.premium, closed)}</td>
                     <td style={tdSt}>{renderCell(row.employee, 'deduction', row.settings.deduction, closed)}</td>
@@ -3222,10 +3262,11 @@ function PayrollSection() {
 
           {/* Mobile cards */}
           <div className="pr-cards">
-            {data.rows.map(row => (
-              <div key={row.employee} style={{ background:'#fff', borderRadius:10, padding:'12px 14px', marginBottom:8, boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
+            {data.rows.filter(r => showHidden || !r.hidden).map(row => (
+              <div key={row.employee} style={{ background:'#fff', borderRadius:10, padding:'12px 14px', marginBottom:8, boxShadow:'0 1px 3px rgba(0,0,0,0.06)', opacity: row.hidden ? 0.6 : 1 }}>
                 <div style={{ fontWeight:700, fontSize:14, marginBottom:6 }}>
-                  {row.employee}
+                  {row.display_name || row.employee}
+                  {row.hidden && <span style={{ color:'#94a3b8', fontSize:10, marginLeft:4 }}>👁</span>}
                   {row.is_draft && <span style={{ color:'#f59e0b', fontSize:10, marginLeft:4 }}>● черновик</span>}
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'3px 12px', fontSize:12, color:'#374151' }}>
@@ -3234,10 +3275,8 @@ function PayrollSection() {
                   <span>Продл.: {fmt(row.renewals)} · {row.settings.renewal_pct}% · <b>{fmt(row.renewal_pct_amt)}</b></span>
                   <span>Товары: {fmt(row.goods)} · {row.settings.goods_pct}% · <b>{fmt(row.goods_pct_amt)}</b></span>
                   <span>
-                    План: <span style={{ color: row.plan_amount != null ? (row.plan_achieved ? '#16a34a' : '#dc2626') : undefined }}>
-                      {fmt(row.fact_sales)}{row.plan_amount != null ? `/${fmt(row.plan_amount)}` : ''}
-                    </span>
-                    {row.plan_amount != null && <span style={{ marginLeft:4 }}>{row.plan_achieved ? '✓' : '✗'} {fmt(row.plan_bonus_amt)}</span>}
+                    Бонус план: {row.plan_bonus_on ? '✓' : '—'}
+                    {row.plan_bonus_amt > 0 && <b style={{ color:'#16a34a' }}> +{fmt(row.plan_bonus_amt)}</b>}
                   </span>
                   <span>Премия: {fmt(row.settings.premium)} · Удерж.: {fmt(row.settings.deduction)}</span>
                   <span style={{ fontWeight:700 }}>Итого: {fmt(row.total_earned)} ₸</span>
@@ -3293,6 +3332,203 @@ function PayrollSection() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TBU Section ───────────────────────────────────────────────────────────────
+
+function TbuSection() {
+  const [mode, setMode]     = useState<'week'|'month'>('week');
+  const [salary, setSalary] = useState<'max'|'current'>('max');
+  const [data, setData]     = useState<TbuData|null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr]         = useState('');
+  const [editing, setEditing] = useState<Record<string, string>>({});
+  const fmt = (n: number) => Math.round(n).toLocaleString('ru');
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr('');
+    try {
+      const r = await fetch(`/kviz/api/fin/tbu?mode=${mode}&salary=${salary}`, { credentials:'include' });
+      if (r.status === 401) { window.parent?.postMessage({ type:'auth-required' }, '*'); return; }
+      const j = await r.json();
+      if (!r.ok) { setErr(j.error || 'Ошибка'); return; }
+      setData(j);
+    } catch { setErr('Ошибка сети'); } finally { setLoading(false); }
+  }, [mode, salary]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function saveWeekInput(period: TbuPeriod, itemId: string, val: string) {
+    const amount = val.trim() === '' ? null : Number(val.replace(/\s/g, ''));
+    await fetch('/kviz/api/fin/week-input', {
+      method: 'PUT', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ week_start: period.from, item_id: itemId, amount }),
+    });
+    load();
+  }
+
+  const last = data?.periods[data.periods.length - 1];
+
+  const wfData = last?.waterfall.map(w => ({
+    name: w.name,
+    base: w.is_milestone ? 0 : Math.min(w.running, w.running - w.value),
+    delta: Math.abs(w.value),
+    is_milestone: w.is_milestone,
+    negative: !w.is_milestone && w.value < 0,
+  })) ?? [];
+
+  const trendData = data?.periods.map(p => ({
+    name: p.label, revenue: p.revenue, tbu: p.tbu ?? 0, result: p.result,
+  })) ?? [];
+
+  const thSt: React.CSSProperties = { padding:'6px 8px', border:'1px solid #e2e8f0', fontWeight:700, fontSize:11, color:'#374151', whiteSpace:'nowrap', background:'#f1f5f9', textAlign:'center' };
+  const tdSt: React.CSSProperties = { padding:'5px 7px', border:'1px solid #e2e8f0', fontSize:12, textAlign:'right', verticalAlign:'middle' };
+  const tdLSt: React.CSSProperties = { ...tdSt, textAlign:'left' };
+
+  const tiles = last ? [
+    { label:'Выручка',           val: fmt(last.revenue) + ' ₸' },
+    { label:'Маржинальный доход',val: fmt(last.marginal_income) + ' ₸' },
+    { label:'СКД',               val: fmt(last.skd) + ' ₸' },
+    { label:'Итог',              val: fmt(last.result) + ' ₸', color: last.result >= 0 ? '#16a34a' : '#dc2626' },
+    { label:'ТБУ',               val: last.tbu != null ? fmt(last.tbu) + ' ₸' : '—' },
+    { label:'Выполнение ТБУ',    val: last.tbu_pct != null ? `${last.tbu_pct}%` : '—',
+      color: last.tbu_pct != null ? (last.tbu_pct >= 100 ? '#16a34a' : last.tbu_pct >= 80 ? '#f59e0b' : '#dc2626') : undefined },
+  ] : [];
+
+  return (
+    <div style={s.section}>
+      {/* Controls */}
+      <div style={{ marginBottom:16, display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ display:'flex', border:'1px solid #e2e8f0', borderRadius:8, overflow:'hidden' }}>
+          {(['week','month'] as const).map(m => (
+            <button key={m} onClick={() => setMode(m)} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontFamily:'inherit', fontSize:13, background: mode===m ? '#02BDB6' : '#fff', color: mode===m ? '#fff' : '#374151', fontWeight: mode===m ? 700 : 400 }}>
+              {m === 'week' ? 'По неделям' : 'По месяцам'}
+            </button>
+          ))}
+        </div>
+        <div style={{ display:'flex', border:'1px solid #e2e8f0', borderRadius:8, overflow:'hidden' }}>
+          {(['max','current'] as const).map(sm => (
+            <button key={sm} onClick={() => setSalary(sm)} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontFamily:'inherit', fontSize:13, background: salary===sm ? '#263CD9' : '#fff', color: salary===sm ? '#fff' : '#374151', fontWeight: salary===sm ? 700 : 400 }}>
+              {sm === 'max' ? 'Макс. зарплата' : 'Факт зарплаты'}
+            </button>
+          ))}
+        </div>
+        <button onClick={load} style={{ padding:'6px 12px', border:'1px solid #e2e8f0', borderRadius:8, background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>↻</button>
+        {loading && <span style={{ fontSize:12, color:'#9ca3af' }}>Загрузка…</span>}
+        {err && <span style={{ fontSize:12, color:'#dc2626' }}>{err}</span>}
+      </div>
+
+      {last && (
+        <>
+          {/* Tiles */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:10, marginBottom:20 }}>
+            {tiles.map(t => (
+              <div key={t.label} style={{ background:'#fff', borderRadius:10, padding:'12px 14px', boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
+                <div style={{ fontSize:11, color:'#64748b', marginBottom:4 }}>{t.label}</div>
+                <div style={{ fontSize:16, fontWeight:700, color: t.color ?? '#1a202c' }}>{t.val}</div>
+                {t.label === 'Выручка' && <div style={{ fontSize:10, color:'#9ca3af' }}>{last.label}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* Waterfall */}
+          <div style={{ background:'#fff', borderRadius:12, padding:'16px', marginBottom:20, boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div style={{ fontWeight:700, fontSize:13, marginBottom:12, color:'#374151' }}>Каскад — {last.label}</div>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={wfData} margin={{ top:0, right:10, left:10, bottom:50 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize:10 }} angle={-35} textAnchor="end" interval={0} />
+                <YAxis tickFormatter={v => `${Math.round((v as number)/1000)}к`} tick={{ fontSize:10 }} />
+                <Tooltip formatter={(v: unknown) => fmt(v as number) + ' ₸'} />
+                <Bar dataKey="base" stackId="w" fill="transparent" isAnimationActive={false} />
+                <Bar dataKey="delta" stackId="w" radius={[3,3,0,0]} isAnimationActive={false}>
+                  {wfData.map((entry, i) => (
+                    <Cell key={i} fill={entry.is_milestone ? '#02BDB6' : entry.negative ? '#ef4444' : '#22c55e'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Trend chart */}
+          {trendData.length > 1 && (
+            <div style={{ background:'#fff', borderRadius:12, padding:'16px', marginBottom:20, boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div style={{ fontWeight:700, fontSize:13, marginBottom:12, color:'#374151' }}>Динамика</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={trendData} margin={{ top:0, right:10, left:10, bottom:30 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" tick={{ fontSize:10 }} angle={-25} textAnchor="end" interval={0} />
+                  <YAxis tickFormatter={v => `${Math.round((v as number)/1000)}к`} tick={{ fontSize:10 }} />
+                  <Tooltip formatter={(v: unknown) => fmt(v as number) + ' ₸'} />
+                  <Legend />
+                  <Line dataKey="revenue" name="Выручка" stroke="#02BDB6" strokeWidth={2} dot={false} />
+                  <Line dataKey="tbu"     name="ТБУ"     stroke="#dc2626" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                  <Line dataKey="result"  name="Итог"    stroke="#263CD9" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Table */}
+      {data && (
+        <div style={{ background:'#fff', borderRadius:12, boxShadow:'0 1px 3px rgba(0,0,0,0.06)', overflow:'auto' }}>
+          <table style={{ borderCollapse:'collapse', fontSize:12, minWidth: data.periods.length * 100 + 200 }}>
+            <thead>
+              <tr>
+                <th style={{ ...thSt, minWidth:180, textAlign:'left', position:'sticky', left:0, zIndex:2 }}>Показатель</th>
+                {data.periods.map(p => <th key={p.from} style={{ ...thSt, minWidth:90 }}>{p.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {data.table_rows.map(row => (
+                <tr key={row.id} style={{ background: row.is_milestone ? '#f0fdf4' : '#fff', fontWeight: row.is_milestone ? 700 : 400 }}>
+                  <td style={{ ...tdLSt, position:'sticky', left:0, background: row.is_milestone ? '#f0fdf4' : '#fff', zIndex:1, paddingLeft: 8 + row.indent * 16 }}>
+                    {row.name}
+                  </td>
+                  {data.periods.map((p, pi) => {
+                    const edKey = `${p.from}_${row.item_id}`;
+                    const isEditable = mode === 'week' && row.kind === 'week' && !!row.item_id;
+                    const val = row.values[pi];
+                    if (isEditable) {
+                      const draft = editing[edKey];
+                      return (
+                        <td key={p.from} style={{ ...tdSt, padding:'2px 4px' }}>
+                          <input type="number" value={draft !== undefined ? draft : (val ?? '')}
+                            style={{ width:80, fontSize:11, padding:'2px 4px', border:'1px solid #e2e8f0', borderRadius:4, textAlign:'right' as const, fontFamily:'inherit' }}
+                            onChange={e => setEditing(prev => ({ ...prev, [edKey]: e.target.value }))}
+                            onBlur={() => {
+                              if (draft !== undefined) {
+                                saveWeekInput(p, row.item_id!, draft);
+                                setEditing(prev => { const n = { ...prev }; delete n[edKey]; return n; });
+                              }
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && draft !== undefined) {
+                                saveWeekInput(p, row.item_id!, draft);
+                                setEditing(prev => { const n = { ...prev }; delete n[edKey]; return n; });
+                              }
+                            }}
+                          />
+                        </td>
+                      );
+                    }
+                    return (
+                      <td key={p.from} style={{ ...tdSt, color: val != null && val < 0 ? '#dc2626' : undefined }}>
+                        {val != null ? fmt(val) : '—'}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

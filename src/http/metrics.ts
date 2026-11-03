@@ -4,6 +4,7 @@ import { getSession } from './auth';
 import { acquireLock, releaseLock } from '../core/lock';
 import { runFitbaseCrmSync } from '../jobs/fitbaseCrmSync';
 import { TRIAL_SERVICE_NAMES, VISIT_STATUS_VISITED, VISIT_CANCELLED_STATUSES } from '../config';
+import { getStaffMap } from './fin';
 
 interface Lead { fitbase_id: string; source: string | null; stage: string | null; funnel: string | null; status: string | null; manager: string | null; client_fitbase_id: number | null; client_phone: string | null; client_name: string | null; created_date: string | null }
 interface Visit { client_fitbase_id: number | null; status: number | null; is_trial: boolean; client_phone: string | null }
@@ -747,11 +748,12 @@ export function buildMetricsRouter(): Router {
       const to = `${month}-${String(daysInMonth).padStart(2, '0')}`;
       const BRANCH = '00000000-0000-0000-0000-000000000001';
 
-      const [planRes, dayInputRes, staffRes, sellerPlanRes] = await Promise.all([
+      const [planRes, dayInputRes, staffRes, sellerPlanRes, finStaffMap] = await Promise.all([
         supabase.from('metrics_month_plan').select('leads_plan,sales_plan').eq('month', from).eq('branch_id', BRANCH).maybeSingle(),
         supabase.from('metrics_day_input').select('day,is_day_off,budget,on_shift,leads_plan,sales_plan').eq('branch_id', BRANCH).gte('day', from).lte('day', to),
         supabase.from('app_users').select('display_name').order('display_name'),
         supabase.from('metrics_seller_plan').select('seller,sales_plan').eq('branch_id', BRANCH).eq('month', from),
+        getStaffMap(),
       ]);
 
       if (planRes.error) console.error('[daily] metrics_month_plan read error:', planRes.error.message);
@@ -925,7 +927,8 @@ export function buildMetricsRouter(): Router {
       const availableManagers = [...new Set(mgrRaw.map(r => r.manager as string))].sort();
       const availableCashiers = [...new Set((cshRes.data ?? []).map(r => r.cashier as string))].filter(Boolean).sort();
 
-      res.json({ month, days, totals, month_plan: monthPlan, seller_plans: sellerPlansData, availableSources, availableManagers, availableCashiers, availableStaff });
+      const staff = [...finStaffMap.entries()].map(([fitbase_name, info]) => ({ fitbase_name, display_name: info.display_name, hidden: info.hidden }));
+      res.json({ month, days, totals, month_plan: monthPlan, seller_plans: sellerPlansData, availableSources, availableManagers, availableCashiers, availableStaff, staff });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

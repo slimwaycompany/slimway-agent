@@ -10,6 +10,7 @@ import { buildCashRouter } from './cash';
 import { buildInbodyRouter } from './inbody';
 import { buildMetricsRouter } from './metrics';
 import { buildPayrollRouter } from './payroll';
+import { buildFinRouter } from './fin';
 import { buildCrmRouter } from './crm';
 import { addLeadNote } from './fitbase';
 
@@ -308,6 +309,7 @@ export function mountKvizRoutes(app: Application): void {
     app.use(buildInbodyRouter());
     app.use(buildMetricsRouter());
     app.use(buildPayrollRouter());
+    app.use(buildFinRouter());
     app.use(buildCrmRouter());
   } catch (e) {
     console.warn('[kviz] failed to mount routes:', (e as Error).message);

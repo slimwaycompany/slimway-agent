@@ -11,6 +11,7 @@
 - `kviz/client/src/pages/MetricsPage.tsx` — вкладка «Воронка»: метрики лидов/визитов/продаж из `fitbase_leads`/`fitbase_visits`
 - `src/http/metrics.ts` — API `/kviz/api/metrics/*`: факт дня, дневной такт, данные по воронке; экспортирует `fetchAll`, `groupOrders`, `classifyPurchase`, `opCid`, `OrderRow`, `ContractRecord`
 - `src/http/payroll.ts` — API `/kviz/api/payroll/*`: расчёт зарплат, настройки сотрудника, закрытие/открытие месяца
+- `src/http/fin.ts` — API `/kviz/api/fin/*`: CRUD fin_staff, fin_expense_groups, fin_expense_items, week-input, tbu-summary, tbu; экспортирует `getStaffMap()` (кэш 60 с)
 
 ## Таблицы
 - `fitbase_operations` — продажи/операции из Fitbase (подтягиваются кнопкой, только новые)
@@ -24,6 +25,10 @@
 - `metrics_seller_plan` — план по кассиру на месяц: `branch_id uuid`, `month date` (первое число месяца), `seller text`, `sales_plan numeric`, `updated_by text`, `updated_at timestamptz`. PK `(branch_id, month, seller)`.
 - `payroll_month_employee` — настройки расчёта зарплаты сотрудника: `branch_id`, `month date`, `employee text`, `shift_rate numeric`, `shifts_count int|null`, `new_sales_pct numeric`, `renewal_pct numeric default 2`, `goods_pct numeric`, `plan_bonus numeric default 30000`, `premium numeric`, `deduction numeric`, `advance numeric`, `note text|null`. PK `(branch_id, month, employee)`.
 - `payroll_month_close` — снэпшот закрытого расчёта: `branch_id`, `month date`, `snapshot jsonb not null`, `closed_by text`, `closed_at timestamptz`. PK `(branch_id, month)`.
+- `fin_staff` — сотрудники финансового модуля: `branch_id`, `display_name`, `fitbase_name`, `monthly_salary`, `hidden_in_reports bool`, `in_payroll bool`, `is_active bool`, `sort int`, `note`, `updated_by`, `updated_at`. Кэшируется 60 с в `getStaffMap()`.
+- `fin_expense_groups` — группы расходов: `id`, `branch_id`, `name`, `level` (revenue/margin/skd), `sort`, `is_active`, `system_key` (salary — спецгруппа), `updated_*`.
+- `fin_expense_items` — статьи расходов: `id`, `group_id`, `branch_id`, `name`, `kind` (fixed/pct/week), `amount_month`, `pct`, `pct_base` (revenue_all/revenue_contracts/margin), `sort`, `is_active`, `note`, `updated_*`. kind=week — вводится понедельно.
+- `fin_week_input` — недельный ввод статей kind=week: `branch_id`, `week_start date` (четверг), `item_id uuid`, `amount numeric`. UK `(branch_id,week_start,item_id)`.
 
 ## Ключевые решения
 - Колонки: **Менеджер** (Задачи — менеджер свои, админ свои + все; Смены), **Продажи** (отчёт по продажам), **Клиенты** (замеры тела, InBody, результаты студии со ссылкой на ТВ), **Маркетинг** (Факт дня, Дневной такт). «Настройки» из отчётов перенесены во вкладку Настройки (28.10).
@@ -80,6 +85,16 @@
 `TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
 
 ## Сделано
+### 03.11.2026 · (task 32) · Финансы: fin.ts, SettingsPage, PayrollSection plan_bonus_on, TbuSection
+- `src/http/fin.ts` (новый): `getStaffMap()` (кэш 60 с), `buildFinRouter()` — все эндпоинты `/kviz/api/fin/*`: CRUD сотрудников (`fin_staff`), fitbase-names, CRUD групп (`fin_expense_groups` с nested items), CRUD статей (`fin_expense_items`), week-input (upsert/delete), tbu-summary, tbu (вычисление каскада по неделям/месяцам).
+- `src/http/kviz.ts`: подключён `buildFinRouter()`.
+- `src/http/metrics.ts`: в GET `/daily` добавлен 5-й параллельный запрос `getStaffMap()` → поле `staff: [{fitbase_name, display_name, hidden}]` в ответе.
+- `src/http/payroll.ts`: двухфазный расчёт. Фаза 1 — факты каждого сотрудника. Фаза 2 — `overall_plan_achieved` (сумма всех fact_sales >= metrics_month_plan.sales_plan). Фаза 3 — `plan_bonus_amt = plan_bonus_on && overall_plan_achieved ? plan_bonus : 0`. Список сотрудников = union(fin_staff in_payroll, кассиры с операциями, с настройками). `plan_bonus_on` из предыдущего месяца не переносится. Каждая строка включает `display_name`, `hidden`, `plan_bonus_on`. Ответ: `overall_plan_fact`, `overall_plan_amount`, `overall_plan_achieved`.
+- `kviz/client/src/pages/crm/SettingsPage.tsx`: секция «Финансы» (иконка 💰) с TBU-панелью сверху (из tbu-summary) и 3 табами: Сотрудники (CRUD fin_staff, fitbase_name dropdown из .all), Статьи расходов (группы с nested items, level/note), Нормативы (заглушка).
+- `kviz/client/src/pages/reports/ReportsPage.tsx`:
+  - `PayrollSection`: поля `display_name`, `hidden`, `plan_bonus_on` в интерфейсах; `overall_plan_*` в PayrollData; банер плана над таблицей; `showHidden` toggle (localStorage `payroll-show-hidden`); план-бонус — чекбокс с немедленным сохранением через PUT; display_name в строках и карточках.
+  - `TbuSection` (новый): mode week/month, salary max/current; tiles (выручка/маржа/СКД/итог/ТБУ/выполнение); waterfall recharts stacked BarChart (base transparent + delta colored); trend LineChart (выручка/ТБУ/итог); таблица с sticky первой колонкой, indent, is_milestone; inline-редактирование ячеек kind=week через PUT week-input.
+
 ### 03.11.2026 · (task 31) · Зарплата: план по кассирам в DailyMetrics, линейные графики, PayrollSection
 - `src/http/metrics.ts`: экспортированы `fetchAll`, `OrderRow`, `ContractRecord`, `groupOrders`, `classifyPurchase`, `opCid` — нужны в payroll.ts. GET `/daily` — добавлен `seller_plans` в ответ (`metrics_seller_plan` за месяц). Новые эндпоинты: `GET /kviz/api/metrics/seller-plan` и `PUT /kviz/api/metrics/seller-plan` (admin-only, upsert по `branch_id,month,seller`).
 - `src/http/payroll.ts` (новый): `computePayroll(month)` — классифицирует продажи/возвраты, атрибутирует возвраты оригинальному кассиру (история 2 года), читает смены из `metrics_day_input.on_shift`, берёт черновик настроек из предыдущего месяца. `buildPayrollRouter()` — 4 эндпоинта: `GET /kviz/api/payroll`, `PUT /kviz/api/payroll/employee`, `POST /kviz/api/payroll/close`, `POST /kviz/api/payroll/reopen`.

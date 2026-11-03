@@ -14,7 +14,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service';
+type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -1379,6 +1379,320 @@ function ServiceSection() {
   );
 }
 
+// ── Finance section ────────────────────────────────────────────────────────────
+
+interface FinStaff { id: string; fitbase_name: string; display_name: string; hidden_in_reports: boolean; in_payroll: boolean; is_active: boolean }
+interface ExpenseGroup { id: string; name: string; level: string; sort: number; is_active: boolean; items?: ExpenseItem[] }
+interface ExpenseItem { id: string; group_id: string; name: string; kind: string; amount_month: number|null; pct: number|null; pct_base: string|null; sort: number; note: string|null; is_active: boolean }
+
+function FinanceSection() {
+  const [tab, setTab] = useState<'staff'|'expenses'|'norms'>('staff');
+  const [tbu, setTbu] = useState<{ tbu_month: number | null; tbu_week: number | null } | null>(null);
+
+  useEffect(() => {
+    fetch('/kviz/api/fin/tbu-summary', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d) setTbu(d); }).catch(() => {});
+  }, []);
+
+  return (
+    <div style={{ ...S.section, padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* TBU panel */}
+      {tbu?.tbu_month != null && (
+        <div style={{ padding: '10px 20px', background: 'linear-gradient(135deg,#f0fdf4,#ecfdf5)', borderBottom: '1px solid #d1fae5', display: 'flex', gap: 24, alignItems: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: '#065f46', fontWeight: 700 }}>ТБУ:</span>
+          <span style={{ fontWeight: 800, fontSize: 16, color: '#059669' }}>{Math.round(tbu.tbu_month).toLocaleString('ru')} ₸/мес</span>
+          {tbu.tbu_week != null && <span style={{ fontSize: 12, color: '#6b7280' }}>неделя: {Math.round(tbu.tbu_week).toLocaleString('ru')} ₸</span>}
+        </div>
+      )}
+      {/* Tab bar */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '8px 20px 0', background: '#fff', flexShrink: 0 }}>
+        {(['staff','expenses','norms'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)} style={{ ...S.subNavBtn, ...(tab === t ? S.subNavActive : {}), marginRight: 6, borderRadius: '8px 8px 0 0', borderBottom: tab === t ? 'none' : undefined }}>
+            {t === 'staff' ? 'Сотрудники' : t === 'expenses' ? 'Статьи расходов' : 'Нормативы'}
+          </button>
+        ))}
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+        {tab === 'staff'    && <FinStaffTab />}
+        {tab === 'expenses' && <FinExpensesTab />}
+        {tab === 'norms'    && (
+          <div style={{ color: '#6b7280', fontSize: 14, paddingTop: 20 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#374151' }}>Нормативы</div>
+            Плановые ставки для отчёта ТБУ. Будет добавлено позже.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FinStaffTab() {
+  const [rows, setRows] = useState<FinStaff[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [edit, setEdit] = useState<FinStaff | 'new' | null>(null);
+  const [confirm, setConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [err, setErr] = useState('');
+
+  const load = useCallback(async () => {
+    const [r1, r2] = await Promise.all([
+      fetch('/kviz/api/fin/staff', { credentials: 'include' }).then(r => r.json()),
+      fetch('/kviz/api/fin/fitbase-names', { credentials: 'include' }).then(r => r.json()),
+    ]);
+    if (Array.isArray(r1)) setRows(r1 as FinStaff[]);
+    const names = (r2 as Record<string,unknown>)?.all;
+    if (Array.isArray(names)) setSuggestions(names as string[]);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const draft: FinStaff = { id: '', fitbase_name: '', display_name: '', hidden_in_reports: false, in_payroll: true, is_active: true };
+  const cur = edit === 'new' ? draft : edit;
+
+  async function save() {
+    if (!cur) return;
+    setErr('');
+    const body = { fitbase_name: cur.fitbase_name.trim(), display_name: cur.display_name.trim(), hidden_in_reports: cur.hidden_in_reports, in_payroll: cur.in_payroll, is_active: cur.is_active };
+    if (!body.fitbase_name || !body.display_name) { setErr('Заполните оба поля имени'); return; }
+    const { ok, data } = await api(edit === 'new' ? 'POST' : 'PUT', edit === 'new' ? '/kviz/api/fin/staff' : `/kviz/api/fin/staff/${cur.id}`, body);
+    if (!ok) { setErr((data as Record<string,string>).error ?? 'Ошибка'); return; }
+    setEdit(null); load();
+  }
+
+  async function del(id: string) {
+    const { ok, data } = await api('DELETE', `/kviz/api/fin/staff/${id}`);
+    if (!ok) { setErr((data as Record<string,string>).error ?? 'Ошибка'); }
+    setConfirm(null); load();
+  }
+
+  return (
+    <>
+      <div style={S.subheader}>
+        <span style={S.subTitle}>Список сотрудников</span>
+        <button style={S.addBtn} onClick={() => setEdit('new')}>+ Добавить</button>
+      </div>
+      {err && <div style={S.errBox}>{err}</div>}
+      <div style={S.list}>
+        {rows.length === 0 && <div style={S.empty}>Нет сотрудников</div>}
+        {rows.map(r => (
+          <div key={r.id} style={S.row}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{r.display_name}</div>
+              <span style={S.meta}>{r.fitbase_name}{r.hidden_in_reports ? ' · скрыт' : ''}{!r.in_payroll ? ' · без ЗП' : ''}{!r.is_active ? ' · неактивен' : ''}</span>
+            </div>
+            <div style={S.rowActions}>
+              <button style={S.editBtn} onClick={() => { setErr(''); setEdit(r); }}>Изм.</button>
+              <button style={S.delBtn} onClick={() => setConfirm({ id: r.id, name: r.display_name })}>Удалить</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {cur && (
+        <Modal title={edit === 'new' ? 'Новый сотрудник' : 'Редактировать'} onClose={() => setEdit(null)}>
+          {err && <div style={S.errBox}>{err}</div>}
+          <Field label="Имя в Fitbase (кассир)">
+            <input style={S.inp} value={cur.fitbase_name} onChange={e => setEdit({ ...cur, fitbase_name: e.target.value })}
+              list="fb-names-list" placeholder="Как в Fitbase" />
+            <datalist id="fb-names-list">{suggestions.map(s => <option key={s} value={s} />)}</datalist>
+          </Field>
+          <Field label="Отображаемое имя">
+            <input style={S.inp} value={cur.display_name} onChange={e => setEdit({ ...cur, display_name: e.target.value })} placeholder="Как показывать в отчётах" />
+          </Field>
+          <Field label="">
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={cur.in_payroll} onChange={e => setEdit({ ...cur, in_payroll: e.target.checked })} />
+              Включить в расчёт зарплаты
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', marginTop: 6 }}>
+              <input type="checkbox" checked={cur.hidden_in_reports} onChange={e => setEdit({ ...cur, hidden_in_reports: e.target.checked })} />
+              Скрыть в метриках (итоги учитываются)
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', marginTop: 6 }}>
+              <input type="checkbox" checked={cur.is_active} onChange={e => setEdit({ ...cur, is_active: e.target.checked })} />
+              Активен
+            </label>
+          </Field>
+          <div style={S.mBtns}>
+            <button style={S.cancelBtn} onClick={() => setEdit(null)}>Отмена</button>
+            <button style={S.saveBtn} onClick={save}>Сохранить</button>
+          </div>
+        </Modal>
+      )}
+      {confirm && (
+        <ConfirmModal message={`Удалить сотрудника «${confirm.name}»?`} onConfirm={() => del(confirm.id)} onClose={() => setConfirm(null)} />
+      )}
+    </>
+  );
+}
+
+function FinExpensesTab() {
+  const [groups, setGroups] = useState<ExpenseGroup[]>([]);
+  const [editGroup, setEditGroup] = useState<ExpenseGroup | 'new' | null>(null);
+  const [editItem, setEditItem] = useState<{ item: ExpenseItem | 'new'; groupId: string } | null>(null);
+  const [confirmDel, setConfirmDel] = useState<{ type: 'group'|'item'; id: string; name: string } | null>(null);
+  const [err, setErr] = useState('');
+
+  const load = useCallback(async () => {
+    const r = await fetch('/kviz/api/fin/expense-groups', { credentials: 'include' }).then(r => r.json());
+    if (Array.isArray(r)) setGroups((r as ExpenseGroup[]).filter(g => g.is_active).sort((a, b) => a.sort - b.sort));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const LEVEL_LABELS: Record<string, string> = { revenue: 'Выручка', margin: 'Маржа', skd: 'СКД' };
+  const KIND_LABELS: Record<string, string> = { fixed: 'фиксированная', pct: 'процент', manual: 'ручной ввод' };
+
+  async function saveGroup() {
+    setErr('');
+    const cur = editGroup === 'new' ? { name: '', level: 'margin', sort: 0, id: '' } : editGroup!;
+    const body = { name: (cur as ExpenseGroup).name?.trim(), level: (cur as ExpenseGroup).level, sort: (cur as ExpenseGroup).sort };
+    if (!body.name) { setErr('Введите название группы'); return; }
+    const { ok, data } = await api(editGroup === 'new' ? 'POST' : 'PUT', editGroup === 'new' ? '/kviz/api/fin/expense-groups' : `/kviz/api/fin/expense-groups/${(cur as ExpenseGroup).id}`, body);
+    if (!ok) { setErr((data as Record<string,string>).error ?? 'Ошибка'); return; }
+    setEditGroup(null); load();
+  }
+
+  async function saveItem() {
+    if (!editItem) return;
+    setErr('');
+    const cur = editItem.item === 'new' ? { name: '', kind: 'fixed', amount_month: null, pct: null, pct_base: null, sort: 0, note: null, id: '', group_id: editItem.groupId } : editItem.item;
+    const body = {
+      group_id: editItem.groupId, name: (cur as ExpenseItem).name?.trim(), kind: (cur as ExpenseItem).kind,
+      amount_month: (cur as ExpenseItem).amount_month || null, pct: (cur as ExpenseItem).pct || null,
+      pct_base: (cur as ExpenseItem).pct_base || null, sort: (cur as ExpenseItem).sort,
+      note: (cur as ExpenseItem).note || null,
+    };
+    if (!body.name) { setErr('Введите название статьи'); return; }
+    const { ok, data } = await api(editItem.item === 'new' ? 'POST' : 'PUT', editItem.item === 'new' ? '/kviz/api/fin/expense-items' : `/kviz/api/fin/expense-items/${(cur as ExpenseItem).id}`, body);
+    if (!ok) { setErr((data as Record<string,string>).error ?? 'Ошибка'); return; }
+    setEditItem(null); load();
+  }
+
+  async function doDel() {
+    if (!confirmDel) return;
+    const url = confirmDel.type === 'group' ? `/kviz/api/fin/expense-groups/${confirmDel.id}` : `/kviz/api/fin/expense-items/${confirmDel.id}`;
+    const { ok, data } = await api('DELETE', url);
+    if (!ok) setErr((data as Record<string,string>).error ?? 'Ошибка');
+    setConfirmDel(null); load();
+  }
+
+  const [gDraft, setGDraft] = useState<Partial<ExpenseGroup>>({});
+  const [iDraft, setIDraft] = useState<Partial<ExpenseItem>>({});
+
+  function openGroup(g: ExpenseGroup | 'new') { setEditGroup(g); setGDraft(g === 'new' ? { name: '', level: 'margin', sort: 0 } : { ...g }); }
+  function openItem(item: ExpenseItem | 'new', groupId: string) {
+    setEditItem({ item, groupId });
+    setIDraft(item === 'new' ? { name: '', kind: 'fixed', sort: 0, group_id: groupId } : { ...item });
+  }
+
+  return (
+    <>
+      <div style={S.subheader}>
+        <span style={S.subTitle}>Группы и статьи расходов</span>
+        <button style={S.addBtn} onClick={() => openGroup('new')}>+ Группа</button>
+      </div>
+      {err && <div style={S.errBox}>{err}</div>}
+      {groups.map(g => (
+        <div key={g.id} style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontWeight: 700, fontSize: 13, color: '#374151' }}>{g.name}</span>
+            <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', borderRadius: 4, padding: '1px 6px' }}>{LEVEL_LABELS[g.level] ?? g.level}</span>
+            <button style={S.editBtn} onClick={() => openGroup(g)}>Изм.</button>
+            <button style={S.delBtn} onClick={() => setConfirmDel({ type: 'group', id: g.id, name: g.name })}>Удалить</button>
+            <button style={{ ...S.addBtn, fontSize: 12, padding: '3px 10px' }} onClick={() => openItem('new', g.id)}>+ Статья</button>
+          </div>
+          <div style={{ ...S.list, marginBottom: 0 }}>
+            {(g.items ?? []).length === 0 && <div style={S.empty}>Нет статей</div>}
+            {(g.items ?? []).map(it => (
+              <div key={it.id} style={S.row}>
+                <div>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{it.name}</span>
+                  <span style={S.meta}>
+                    {KIND_LABELS[it.kind]}
+                    {it.kind === 'fixed' && it.amount_month != null && ` · ${it.amount_month.toLocaleString('ru')} ₸/мес`}
+                    {it.kind === 'pct' && it.pct != null && ` · ${it.pct}% от ${it.pct_base ?? '?'}`}
+                    {it.note && ` · ${it.note}`}
+                  </span>
+                </div>
+                <div style={S.rowActions}>
+                  <button style={S.editBtn} onClick={() => openItem(it, g.id)}>Изм.</button>
+                  <button style={S.delBtn} onClick={() => setConfirmDel({ type: 'item', id: it.id, name: it.name })}>Удалить</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {groups.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Нет групп расходов</div>}
+
+      {/* Group modal */}
+      {editGroup !== null && (
+        <Modal title={editGroup === 'new' ? 'Новая группа' : 'Редактировать группу'} onClose={() => setEditGroup(null)}>
+          {err && <div style={S.errBox}>{err}</div>}
+          <Field label="Название"><input style={S.inp} value={gDraft.name ?? ''} onChange={e => setGDraft(d => ({ ...d, name: e.target.value }))} /></Field>
+          <Field label="Уровень">
+            <select style={{ ...S.inp, padding: '9px 12px' }} value={gDraft.level ?? 'margin'} onChange={e => setGDraft(d => ({ ...d, level: e.target.value }))}>
+              {Object.entries(LEVEL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </Field>
+          <Field label="Порядок (sort)"><input type="number" style={S.inp} value={gDraft.sort ?? 0} onChange={e => setGDraft(d => ({ ...d, sort: Number(e.target.value) }))} /></Field>
+          <div style={S.mBtns}>
+            <button style={S.cancelBtn} onClick={() => setEditGroup(null)}>Отмена</button>
+            <button style={S.saveBtn} onClick={() => {
+              api(editGroup === 'new' ? 'POST' : 'PUT', editGroup === 'new' ? '/kviz/api/fin/expense-groups' : `/kviz/api/fin/expense-groups/${(editGroup as ExpenseGroup).id}`, { name: gDraft.name, level: gDraft.level ?? 'margin', sort: gDraft.sort ?? 0 })
+                .then(({ ok, data }) => { if (!ok) { setErr((data as Record<string,string>).error ?? 'Ошибка'); return; } setEditGroup(null); load(); });
+            }}>Сохранить</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Item modal */}
+      {editItem !== null && (
+        <Modal title={editItem.item === 'new' ? 'Новая статья' : 'Редактировать статью'} onClose={() => setEditItem(null)}>
+          {err && <div style={S.errBox}>{err}</div>}
+          <Field label="Название"><input style={S.inp} value={iDraft.name ?? ''} onChange={e => setIDraft(d => ({ ...d, name: e.target.value }))} /></Field>
+          <Field label="Вид">
+            <select style={{ ...S.inp, padding: '9px 12px' }} value={iDraft.kind ?? 'fixed'} onChange={e => setIDraft(d => ({ ...d, kind: e.target.value }))}>
+              <option value="fixed">Фиксированная (₸/мес)</option>
+              <option value="pct">Процент от базы</option>
+              <option value="manual">Ручной ввод по неделям</option>
+            </select>
+          </Field>
+          {iDraft.kind === 'fixed' && (
+            <Field label="Сумма в месяц, ₸">
+              <input type="number" style={S.inp} value={iDraft.amount_month ?? ''} onChange={e => setIDraft(d => ({ ...d, amount_month: e.target.value ? Number(e.target.value) : null }))} />
+            </Field>
+          )}
+          {iDraft.kind === 'pct' && (
+            <>
+              <Field label="Процент (%)"><input type="number" style={S.inp} value={iDraft.pct ?? ''} onChange={e => setIDraft(d => ({ ...d, pct: e.target.value ? Number(e.target.value) : null }))} /></Field>
+              <Field label="База">
+                <select style={{ ...S.inp, padding: '9px 12px' }} value={iDraft.pct_base ?? 'revenue'} onChange={e => setIDraft(d => ({ ...d, pct_base: e.target.value }))}>
+                  <option value="revenue">Выручка</option>
+                  <option value="margin">Маржинальный доход</option>
+                  <option value="skd">СКД</option>
+                </select>
+              </Field>
+            </>
+          )}
+          <Field label="Порядок (sort)"><input type="number" style={S.inp} value={iDraft.sort ?? 0} onChange={e => setIDraft(d => ({ ...d, sort: Number(e.target.value) }))} /></Field>
+          <Field label="Заметка (необязательно)"><input style={S.inp} value={iDraft.note ?? ''} onChange={e => setIDraft(d => ({ ...d, note: e.target.value || null }))} /></Field>
+          <div style={S.mBtns}>
+            <button style={S.cancelBtn} onClick={() => setEditItem(null)}>Отмена</button>
+            <button style={S.saveBtn} onClick={() => {
+              const url = editItem.item === 'new' ? '/kviz/api/fin/expense-items' : `/kviz/api/fin/expense-items/${(editItem.item as ExpenseItem).id}`;
+              api(editItem.item === 'new' ? 'POST' : 'PUT', url, { group_id: editItem.groupId, name: iDraft.name, kind: iDraft.kind, amount_month: iDraft.amount_month ?? null, pct: iDraft.pct ?? null, pct_base: iDraft.pct_base ?? null, sort: iDraft.sort ?? 0, note: iDraft.note ?? null })
+                .then(({ ok, data }) => { if (!ok) { setErr((data as Record<string,string>).error ?? 'Ошибка'); return; } setEditItem(null); load(); });
+            }}>Сохранить</button>
+          </div>
+        </Modal>
+      )}
+
+      {confirmDel && (
+        <ConfirmModal message={`Удалить «${confirmDel.name}»? Это действие необратимо.`} onConfirm={doDel} onClose={() => setConfirmDel(null)} />
+      )}
+    </>
+  );
+}
+
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
 const NAV: { id: Section; label: string; icon: string }[] = [
@@ -1392,6 +1706,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: 'sources',    label: 'Рекламные источники',  icon: '📣' },
   { id: 'classes',    label: 'Занятия',              icon: '🏃' },
   { id: 'service',    label: 'Сервис',               icon: '🔧' },
+  { id: 'finance',   label: 'Финансы',              icon: '💰' },
 ];
 
 export default function SettingsPage() {
@@ -1433,6 +1748,7 @@ export default function SettingsPage() {
           </div>
         )}
         {section === 'service'    && <ServiceSection />}
+        {section === 'finance'    && <FinanceSection />}
       </div>
     </div>
   );
