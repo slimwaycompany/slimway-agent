@@ -93,6 +93,12 @@
 - Фильтры с `flexWrap:'wrap'` — переносятся на мобиле.
 
 ## Сделано
+### 04.11.2026 · 1c6654d · task 35 — аккордеон Отчётов на мобиле (ч.3)
+
+- `ReportsPage.tsx`: `openGroups` стейт (Set<string>, localStorage `reports-open-groups`); `toggleGroup(title)`; каждый `.reports-board-col` получает класс `rb-open` и `rb-col-header` toggle.
+- `index.css`: ≤640px `.rb-items` скрыты, `rb-open .rb-items` показаны; `.rb-chevron` ▸/▾; `.rb-col-header` cursor:pointer.
+- По умолчанию открыты «Менеджер» и «Клиенты».
+
 ### 04.11.2026 · (task 33) · Автозагрузка отчётов замеров/InBody + фильтр периода + server-side пагинация
 - `ReportsPage.tsx` `MeasuresSection` и `InBodySection`: кнопка «Загрузить» убрана, загрузка происходит автоматически при монтировании (`useEffect(() => { load(); }, [load])`); добавлен выпадающий фильтр периода (`PeriodFilter`): Всё время / Этот месяц / Прошлый месяц / Свой период (два date-input); `type ReportPeriod` + хелпер `periodDates(p, customFrom, customTo)` → `{from?, to?}`.
 - `src/http/measure.ts` GET `/kviz/api/measure/measurements`: заменён `.limit(500)` на `fetchAll()` с постраничным перебором по 1000 — снимает ограничение на 500 записей.

@@ -42,6 +42,13 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
+### 04.11.2026 · 148766d…62c0188 · task 35 — camera fix, barcode-detector, ClientPage mobile
+
+- **Part 7 (camera fix)**: `ClientPage.tsx` — video всегда в DOM (не под cameraActive), `loadedmetadata` event перед сканированием, 5fps throttle (200ms setTimeout), `scanTimerRef` cleanup в `stopCamera`. Статический `import jsQR`.
+- **Part 9 (admin diag)**: `handlePhotoFile` — при QR не найден: admin видит размер фото, BarcodeDetector result, первые 60 chars найденного QR. `isAdmin` стейт → fetch `/kviz/api/me`. `InBodyDialog` полноэкранный ≤640px через `.inbody-dialog-modal` CSS класс.
+- **Part 8 (barcode-detector)**: установлен `barcode-detector@3.2.3` (zxing-wasm); `zxing_reader.wasm` → `kviz/client/public/`; `qrFromImage.ts` перезаписан: `prepareZXingModule` (WASM с собственного хоста), native BarcodeDetector → polyfill → jsQR, квадранты кропятся из оригинального bitmap при ~1600px (не из 2000px скейла), таймаут 8с.
+- **Part 4 (ClientPage mobile)**: numbered points (`body-callout-num`), `ZoneList` компонент ниже фигуры, sticky `.client-mini-nav` (Итог/Фигура/График/Замеры/InBody), section IDs. CSS ≤640px: callout → маленький круг с цифрой, `zone-list-mobile`.
+
 ### 04.11.2026 · (текущий) · камера в iframe, фото InBody, PrintPage координаты
 
 - `public/shell-app.js`: `allow="camera; clipboard-write"` у всех iframe /kviz/* (lazyIframe + measure + reports inline).
@@ -73,6 +80,6 @@
 - (нет)
 
 ## Следующее
-- **Мобильная версия — отчёт клиента (замеры + InBody), записано 04.11, ТЗ не собирать до команды:** сейчас на телефоне фигура большая и обрезается. Порядок сверху вниз: шапка (имя, телефон, действия в «⋯»); «Потеряно» — 3 числа в строку (см, кг, жир); фигура целиком, вписана по высоте (~55% экрана), вместо плашек — пронумерованные точки на теле; под фигурой список зон («1 Шея 34 см −2»), нажатие на строку/точку → попап зоны листом снизу; график на всю ширину, переключатели зон строкой с прокруткой; замеры карточками (раскрытие по нажатию); InBody — оценка + 4–6 главных цифр плиткой 2×3, «Полный лист» на весь экран в одну колонку; сверху закреплённое мини-меню «Итог · Фигура · График · Замеры · InBody» (прокрутка к разделу). InBodyDialog — на весь экран.
+- **ClientPage mobile дополнения (записано 04.11):** zone-detail как bottom-sheet на мобиле (сейчас открывается как попап); попап зоны по нажатию на строку списка — проверить на реальном телефоне. InBodyDialog уже полноэкранный ≤640px.
 - Прогноз по зонам (примерный, проверить).
 - Решить, нужен ли InBody пятым «аппаратом» в расписании CRM.

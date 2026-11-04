@@ -26,8 +26,15 @@
 
 ## Мобильная версия
 Задача 34 (04.11.2026): не трогали (квалификация может быть скрыта). QuizPage — 3 колонки → вкладки на мобиле — отложено.
+Задача 35 (04.11.2026): QuizPage tabs реализованы (ч.5, см. ниже).
 
 ## Сделано
+### 04.11.2026 · 06a549b · task 35 — QuizPage tabs на мобиле (ч.5)
+
+- `QuizPage.tsx`: `mobileTab` стейт ('question'|'answer'|'summary', default 'answer'); `col-left/center/right` получают класс `mobile-tab-active` по активному табу; удалён `.mobile-accordion` (вопросы теперь в таб «Вопрос»); удалена `.mobile-temp-bar` (счёт в таб «Резюме»).
+- Добавлен `.mobile-quiz-tabs` sticky bottom bar с тремя кнопками; счёт показан в «Резюме».
+- `index.css`: ≤640px: `.mobile-quiz-tabs` фиксирован внизу, blur/background; `.col-left/.col-center/.col-right` скрыты, `.mobile-tab-active` показан.
+
 ### до 28.10.2026 · a8e2ba3 · перенос квалификации в slimway-agent
 - Квалификация под `/kviz` внутри рабочего окна; роутинг, iframe.
 
@@ -36,3 +43,4 @@
 
 ## Следующее
 - Возможно, скрыть вкладку.
+- QuizPage мобильная: проверить на реальном телефоне вёрстку вкладок.
