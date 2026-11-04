@@ -211,14 +211,71 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
 @media(max-width:1023px){
   .side-btn{display:none!important}
 }
-/* Choice screen on phone: column layout full-width */
+/* Hamburger button */
+#ham-btn{display:none;position:relative;width:40px;height:40px;border-radius:10px;
+  background:none;border:none;cursor:pointer;font-size:22px;line-height:1;
+  align-items:center;justify-content:center;flex-shrink:0;color:#374151}
+#ham-btn:active{background:rgba(2,189,182,0.1)}
+.ham-dot{position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%;
+  background:var(--red);display:none}
+/* Tab label centre (mobile) */
+#tab-label{display:none;flex:1;text-align:center;font-size:14px;font-weight:600;
+  color:#1a202c;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 4px}
+/* Drawer backdrop */
+#drawer-backdrop{position:fixed;inset:0;z-index:200;background:rgba(26,32,44,0.4);
+  backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
+  opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s}
+#drawer-backdrop.open{opacity:1;visibility:visible}
+/* Drawer panel */
+#drawer{position:fixed;top:0;left:0;bottom:0;z-index:201;width:min(80vw,320px);
+  display:flex;flex-direction:column;
+  background:rgba(255,255,255,0.92);backdrop-filter:blur(20px) saturate(140%);
+  -webkit-backdrop-filter:blur(20px) saturate(140%);
+  border-right:1px solid var(--border);box-shadow:4px 0 24px rgba(2,49,100,0.12);
+  transform:translateX(-105%);transition:transform .25s ease;overscroll-behavior:contain}
+#drawer.open{transform:translateX(0)}
+.drawer-head{padding:20px 18px 14px;display:flex;flex-direction:column;gap:8px;
+  border-bottom:1px solid rgba(2,189,182,0.15)}
+.drawer-logo{width:36px;height:36px;border-radius:10px;
+  background:linear-gradient(135deg,var(--brand),var(--accent));
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;font-size:14px}
+.drawer-user{font-size:13px;font-weight:600;color:#1a202c}
+.drawer-items{flex:1;overflow-y:auto;padding:6px 0}
+.drawer-item{width:100%;background:none;border:none;cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;gap:12px;padding:11px 18px;
+  font-size:14px;font-weight:600;color:#374151;text-align:left;
+  transition:background .12s;position:relative}
+.drawer-item:hover{background:rgba(2,189,182,0.08)}
+.drawer-item.active{background:rgba(2,189,182,0.13);color:var(--brand)}
+.drawer-ibadge{margin-left:auto;min-width:18px;height:18px;border-radius:9px;
+  background:var(--red);color:#fff;font-size:11px;font-weight:700;
+  display:none;align-items:center;justify-content:center;padding:0 4px;flex-shrink:0}
+.drawer-foot{padding:12px 18px;border-top:1px solid rgba(2,189,182,0.15)}
+.drawer-exit-btn{width:100%;padding:10px;background:#fef2f2;border:1px solid #fecaca;
+  border-radius:8px;font-size:14px;font-weight:600;color:#ef4444;
+  cursor:pointer;font-family:inherit}
+
+@media(max-width:1024px){
+  #ham-btn{display:flex}
+  .tabs{display:none!important}
+  .logout-btn{display:none}
+  .ua-wrap{display:block!important}
+  #tab-label{display:block}
+}
+
+/* Choice screen: 2-column tiles + greeting on mobile */
+.choice-greeting{display:none;font-size:17px;font-weight:700;margin-bottom:20px;color:#1a202c}
 @media(max-width:640px){
-  .choice-card{padding:28px 20px 24px;width:calc(100vw - 32px);max-height:90dvh;overflow-y:auto}
-  .choice-btns{flex-direction:column;gap:8px;align-items:stretch}
-  .choice-btn{width:100%;height:56px;flex-direction:row;gap:12px;justify-content:flex-start;
-    padding:0 18px;border-radius:12px}
-  .choice-icon{font-size:22px}
-  .choice-label{font-size:14px}
+  .choice-card{padding:28px 16px 24px;width:calc(100vw - 24px);max-height:92dvh;overflow-y:auto}
+  .choice-title{display:none}
+  .choice-sub{display:none}
+  .choice-greeting{display:block}
+  .choice-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .choice-btn{width:100%;height:88px;flex-direction:column;justify-content:center;
+    gap:6px;padding:0 8px;border-radius:14px}
+  .choice-icon{font-size:26px}
+  .choice-label{font-size:13px}
 }
 @media(min-width:641px) and (max-width:1023px){
   .choice-btns{gap:12px}
@@ -232,6 +289,8 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
 
 <div id="work-area">
   <div id="top-bar">
+    <button id="ham-btn" aria-label="Меню">☰<span class="ham-dot" id="ham-dot"></span></button>
+    <span id="tab-label"></span>
     <div class="tabs">
       <button class="tab-btn" id="tab-btn-manager">👔 Менеджер<span class="tbadge" id="badge-tab-manager">0</span></button>
       <button class="tab-btn active" id="tab-btn-agent">🐕 Агент<span class="tbadge" id="badge-tab-agent">0</span></button>
@@ -325,11 +384,24 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
   </div>
 </div>
 
+<div id="drawer-backdrop"></div>
+<div id="drawer">
+  <div class="drawer-head">
+    <div class="drawer-logo">SW</div>
+    <div class="drawer-user" id="drawer-user-name"></div>
+  </div>
+  <div class="drawer-items" id="drawer-items"></div>
+  <div class="drawer-foot">
+    <button class="drawer-exit-btn" id="drawer-exit">Выйти</button>
+  </div>
+</div>
+
 <div id="choice-screen">
   <div class="choice-card">
     <div class="choice-logo">SW</div>
     <h1 class="choice-title">SlimWay</h1>
     <p class="choice-sub">Выберите раздел</p>
+    <p class="choice-greeting" id="choice-greeting">Выберите раздел</p>
     <div class="choice-btns">
       <button class="choice-btn" id="choice-manager">
         <span class="cbadge" id="badge-choice-manager">0</span>

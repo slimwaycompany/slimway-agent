@@ -44,6 +44,7 @@
     setBadge('badge-side-manager',  managerNew);
     // Side badges — kviz badge on cashier-pane right
     setBadge('badge-side-kviz',     kvizDraftCount);
+    updateDrawerBadges();
   }
 
   function hidePanes() {
@@ -242,6 +243,8 @@
       history.replaceState(null, '', '#settings');
     }
 
+    updateDrawerBadges();
+    updateDrawerState(name);
     updateBadges();
   }
 
@@ -423,6 +426,107 @@
   setInterval(pollDrafts, 30000);
 
   updateBadges();
+
+  // ── Tab names map (for tab label) ──────────────────────────────────────────
+  var TAB_LABEL = {
+    manager: '👔 Менеджер', agent: '🐕 Агент', schedule: '📅 Расписание',
+    clients: '👥 Клиенты', funnel: '📈 Воронка', cashier: '💰 Касса',
+    kviz: '📝 Квалификация', measure: '📏 Замеры', reports: '📊 Отчёты', settings: '⚙️ Настройки',
+  };
+
+  // ── Drawer ──────────────────────────────────────────────────────────────────
+  var drawerBackdrop = $('drawer-backdrop');
+  var drawerEl = $('drawer');
+  var drawerItems = $('drawer-items');
+
+  function openDrawer() {
+    if (drawerEl) drawerEl.classList.add('open');
+    if (drawerBackdrop) drawerBackdrop.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeDrawer() {
+    if (drawerEl) drawerEl.classList.remove('open');
+    if (drawerBackdrop) drawerBackdrop.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  // Build drawer from existing tab buttons
+  function buildDrawer() {
+    if (!drawerItems) return;
+    var tabNames = ['manager','agent','schedule','clients','funnel','cashier','kviz','measure','reports','settings'];
+    for (var i = 0; i < tabNames.length; i++) {
+      var n = tabNames[i];
+      if (!$(n + '-pane')) continue;
+      var item = document.createElement('button');
+      item.className = 'drawer-item'; item.id = 'di-' + n; item.dataset.tab = n;
+      var badge = document.createElement('span');
+      badge.className = 'drawer-ibadge'; badge.id = 'dibadge-' + n;
+      item.innerHTML = '<span>' + (TAB_LABEL[n] || n) + '</span>';
+      item.appendChild(badge);
+      (function(tabName){ item.onclick = function(){ showTab(tabName); closeDrawer(); }; })(n);
+      drawerItems.appendChild(item);
+    }
+  }
+  buildDrawer();
+
+  // Set drawer user name from ua-menu
+  var uaMenuNameEl = document.querySelector('.ua-menu-name');
+  var drawerUserEl = $('drawer-user-name');
+  var choiceGreetingEl = $('choice-greeting');
+  if (uaMenuNameEl) {
+    var dname = uaMenuNameEl.textContent || '';
+    if (drawerUserEl) drawerUserEl.textContent = dname;
+    if (choiceGreetingEl) choiceGreetingEl.textContent = 'Привет, ' + dname + ' 👋';
+  }
+
+  // Ham button
+  var hamBtn = $('ham-btn');
+  if (hamBtn) hamBtn.onclick = function(e) { e.stopPropagation(); openDrawer(); };
+  if (drawerBackdrop) drawerBackdrop.onclick = closeDrawer;
+  var drawerExitBtn = $('drawer-exit');
+  if (drawerExitBtn) drawerExitBtn.onclick = function() {
+    try { sessionStorage.removeItem('sw-session'); } catch(e){}
+    fetch('/api/logout', { method: 'POST' }).finally(function(){ location.href = '/login'; });
+  };
+
+  // Swipe left on drawer to close
+  var touchStartX = 0;
+  if (drawerEl) {
+    drawerEl.addEventListener('touchstart', function(e){ touchStartX = e.touches[0].clientX; }, { passive: true });
+    drawerEl.addEventListener('touchend', function(e){
+      if (touchStartX - e.changedTouches[0].clientX > 60) closeDrawer();
+    }, { passive: true });
+  }
+
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeDrawer(); });
+
+  // Update drawer active item and tab label
+  function updateDrawerState(name) {
+    var tabLabel = $('tab-label');
+    if (tabLabel) tabLabel.textContent = TAB_LABEL[name] || name;
+    var items = document.querySelectorAll('.drawer-item');
+    for (var i = 0; i < items.length; i++) {
+      items[i].classList.toggle('active', items[i].dataset.tab === name);
+    }
+  }
+
+  // Update drawer badges
+  function updateDrawerBadges() {
+    var agentNew   = (currentTab === 'agent')   ? 0 : Math.max(0, agentAlertCount - agentSeenCount);
+    var managerNew = (currentTab === 'manager') ? 0 : managerOverdueCount;
+    function setDB(tab, n) {
+      var el = $('dibadge-' + tab);
+      if (!el) return;
+      if (n > 0) { el.textContent = String(n); el.style.display = 'inline-flex'; }
+      else el.style.display = 'none';
+    }
+    setDB('agent', agentNew);
+    setDB('manager', managerNew);
+    setDB('kviz', kvizDraftCount);
+    // Ham dot: show if any badge
+    var hamDot = $('ham-dot');
+    if (hamDot) hamDot.style.display = (agentNew + managerNew + kvizDraftCount > 0) ? 'block' : 'none';
+  }
 
   // ── Mobile user avatar button ───────────────────────────────────────────────
   var uaBtn = $('ua-btn');
