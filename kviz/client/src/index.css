@@ -475,6 +475,18 @@ img, video, svg, iframe { max-width: 100%; }
   .body-callout small { font-size: 10px; }
 }
 
+@media (max-width: 640px) {
+  .inbody-dialog-modal {
+    width: 100vw !important;
+    max-height: 100dvh !important;
+    height: 100dvh;
+    border-radius: 0 !important;
+    overflow-y: auto;
+    position: fixed !important;
+    inset: 0 !important;
+  }
+}
+
 /* Zone figure blur (active zone) */
 .body-silhouette { transition: filter .3s; }
 .figure-blurred .body-silhouette { filter: blur(2px); }

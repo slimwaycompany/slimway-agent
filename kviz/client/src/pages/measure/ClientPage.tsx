@@ -5,6 +5,7 @@ import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
 import { parseInBody } from '../../utils/inbody';
 import { extractIBData, qrFromImage } from '../../lib/qrFromImage';
+import jsQR from 'jsqr';
 
 const CIRC_KEYS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 type CircKey = typeof CIRC_KEYS[number];
@@ -598,8 +599,8 @@ function ShareLinkDialog({ clientId, onClose }: { clientId: string; onClose: () 
 
 // ── InBody scan dialog ─────────────────────────────────────────────────────────
 
-function InBodyDialog({ clientId, onDone, onClose }: {
-  clientId: string; onDone: () => void; onClose: () => void;
+function InBodyDialog({ clientId, onDone, onClose, isAdmin }: {
+  clientId: string; onDone: () => void; onClose: () => void; isAdmin?: boolean;
 }) {
   const [pasteVal, setPasteVal] = useState('');
   const [parsed, setParsed] = useState<InBodyData | null>(null);
@@ -608,10 +609,12 @@ function InBodyDialog({ clientId, onDone, onClose }: {
   const [saveErr, setSaveErr] = useState('');
   const [cameraActive, setCameraActive] = useState(false);
   const [photoStatus, setPhotoStatus] = useState<null | 'searching' | 'notfound'>(null);
+  const [diagInfo, setDiagInfo] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
+  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captureRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
@@ -624,13 +627,41 @@ function InBodyDialog({ clientId, onDone, onClose }: {
     setParsed(d);
   }
 
+  function scheduleScan() {
+    if (!streamRef.current) return;
+    scanTimerRef.current = setTimeout(scanFrame, 200);
+  }
+
+  function scanFrame() {
+    const video = videoRef.current, canvas = canvasRef.current;
+    if (!video || !canvas || !streamRef.current) return;
+    if (video.readyState < 2 || video.videoWidth === 0) { scheduleScan(); return; }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
+    if (code?.data) {
+      const hit = extractIBData(code.data);
+      if (hit) { stopCamera(); tryParse(hit); return; }
+    }
+    scheduleScan();
+  }
+
   async function startCamera() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
       streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
+      const video = videoRef.current;
+      if (!video) { stream.getTracks().forEach(t => t.stop()); return; }
+      video.srcObject = stream;
       setCameraActive(true);
-      scanFrame();
+      video.addEventListener('loadedmetadata', () => scheduleScan(), { once: true });
+      await video.play().catch(() => {});
     } catch (e: unknown) {
       const name = (e as Error)?.name;
       if (name === 'NotAllowedError') setParseErr('Разрешите доступ к камере в настройках браузера');
@@ -640,30 +671,11 @@ function InBodyDialog({ clientId, onDone, onClose }: {
   }
 
   function stopCamera() {
+    if (scanTimerRef.current) { clearTimeout(scanTimerRef.current); scanTimerRef.current = null; }
+    cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
-    cancelAnimationFrame(rafRef.current);
     setCameraActive(false);
-  }
-
-  function scanFrame() {
-    const video = videoRef.current, canvas = canvasRef.current;
-    if (!video || !canvas || !streamRef.current) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    canvas.width = video.videoWidth || 320;
-    canvas.height = video.videoHeight || 240;
-    ctx.drawImage(video, 0, 0);
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    import('jsqr').then(({ default: jsQR }) => {
-      const code = jsQR(imgData.data, imgData.width, imgData.height);
-      if (code?.data) {
-        stopCamera();
-        tryParse(code.data);
-      } else {
-        rafRef.current = requestAnimationFrame(scanFrame);
-      }
-    });
   }
 
   async function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -671,11 +683,37 @@ function InBodyDialog({ clientId, onDone, onClose }: {
     if (!file) return;
     setPhotoStatus('searching');
     setParseErr('');
+    setDiagInfo(null);
     try {
       const ibData = await qrFromImage(file);
       if (ibData) {
         tryParse(ibData);
       } else {
+        let diag = `${(file.size / 1024).toFixed(0)} KB`;
+        if (isAdmin) {
+          try {
+            const bmp = await createImageBitmap(file);
+            diag += ` · ${bmp.width}×${bmp.height}`;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const BDet = (window as any).BarcodeDetector;
+            if (BDet) {
+              const det = new BDet({ formats: ['qr_code'] });
+              const codes: { rawValue: string }[] = await det.detect(bmp);
+              bmp.close();
+              if (codes.length > 0) {
+                diag += ` · QR найден: «${codes[0].rawValue.slice(0, 60)}»`;
+              } else {
+                diag += ' · BarcodeDetector: нет QR';
+              }
+            } else {
+              bmp.close();
+              diag += ' · BarcodeDetector: нет';
+            }
+          } catch (de) {
+            diag += ` · диаг: ${String(de).slice(0, 40)}`;
+          }
+        }
+        setDiagInfo(diag);
         setPhotoStatus('notfound');
         return;
       }
@@ -707,7 +745,7 @@ function InBodyDialog({ clientId, onDone, onClose }: {
 
   return (
     <div style={overlayS} onClick={onClose}>
-      <div style={{ ...modalS, width: 'min(460px,96vw)' }} onClick={e => e.stopPropagation()}>
+      <div style={{ ...modalS, width: 'min(460px,96vw)' }} className="inbody-dialog-modal" onClick={e => e.stopPropagation()}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>InBody — сканирование</div>
 
         {!parsed && (
@@ -728,17 +766,24 @@ function InBodyDialog({ clientId, onDone, onClose }: {
             {photoStatus === 'notfound' && (
               <div style={{ marginBottom: 10 }}>
                 <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 6 }}>QR не найден. Сфотографируйте ближе: QR должен занимать примерно четверть кадра, без бликов</div>
+                {isAdmin && diagInfo && (
+                  <div style={{ color: '#9ca3af', fontSize: 11, marginBottom: 6, fontFamily: 'monospace', background: '#f8fafc', padding: '4px 8px', borderRadius: 6 }}>
+                    {diagInfo}
+                  </div>
+                )}
                 <button style={ibBtnSt} onClick={() => { setPhotoStatus(null); captureRef.current?.click(); }}>Ещё раз</button>
               </div>
             )}
 
-            {cameraActive && (
-              <div style={{ position: 'relative', marginBottom: 12, borderRadius: 8, overflow: 'hidden', background: '#000' }}>
-                <video ref={videoRef} style={{ width: '100%', display: 'block' }} muted playsInline />
-                <canvas ref={canvasRef} style={{ display: 'none' }} />
-                <div style={{ position: 'absolute', inset: 0, border: '2px solid #02BDB6', borderRadius: 8, pointerEvents: 'none' }} />
+            {/* Camera video — always in DOM so videoRef is never null */}
+            <div style={{ position: 'relative', marginBottom: cameraActive ? 12 : 0, borderRadius: 8, overflow: 'hidden', background: '#000', display: cameraActive ? 'block' : 'none' }}>
+              <video ref={videoRef} style={{ width: '100%', display: 'block' }} muted playsInline />
+              <div style={{ position: 'absolute', inset: 0, border: '2px solid #02BDB6', borderRadius: 8, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', bottom: 10, left: 0, right: 0, textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.75)', pointerEvents: 'none' }}>
+                Наведите на QR в углу листа
               </div>
-            )}
+            </div>
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Или вставьте ссылку / строку из QR:</div>
             <input style={inputS} placeholder="https://qrcode.inbody.com?IBData=..." value={pasteVal}
               onChange={e => { setPasteVal(e.target.value); if (e.target.value.length > 20) tryParse(e.target.value); }} />
@@ -1573,6 +1618,13 @@ export default function ClientPage() {
   const [linkInBodyDialog, setLinkInBodyDialog] = useState(false);
   const [zoneDetailKey, setZoneDetailKey] = useState<CircKey | null>(null);
   const [fbOverrides, setFbOverrides] = useState<Record<string, string>>({}); // mId → fitbase_comment_at
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    fetch('/kviz/api/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.role === 'admin') setIsAdmin(true); })
+      .catch(() => {});
+  }, []);
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -1654,7 +1706,7 @@ export default function ClientPage() {
           onLinked={fbId => { setLinkDialog(false); setClient(c => c ? { ...c, fitbase_client_id: fbId } : c); }} />
       )}
       {inbodyDialog && (
-        <InBodyDialog clientId={client.id} onClose={() => setInbodyDialog(false)}
+        <InBodyDialog clientId={client.id} isAdmin={isAdmin} onClose={() => setInbodyDialog(false)}
           onDone={() => { setInbodyDialog(false); reload(); }} />
       )}
       {shareLinkDialog && (
