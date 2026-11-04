@@ -178,7 +178,7 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
       </div>
       {err && <div style={SF.errBox}>{err}</div>}
 
-      <div style={SF.grid}>
+      <div className="client-form-grid" style={SF.grid}>
         <div style={{ gridColumn: '1/-1' }}>
           <label style={SF.label}>ФИО *</label>
           <input style={SF.inp} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} required placeholder="Иванова Анна Ивановна" />
@@ -618,9 +618,9 @@ export default function ClientsPage() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
+    <div className="clients-wrap" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
       {/* Left: list */}
-      <div style={{ width: selectedId ? 360 : '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: selectedId ? '1px solid #e2e8f0' : 'none', background: '#fff' }}>
+      <div className={selectedId ? 'clients-list--detail' : ''} style={{ width: selectedId ? 360 : '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: selectedId ? '1px solid #e2e8f0' : 'none', background: '#fff' }}>
         {/* Toolbar */}
         <div style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <input style={SL.search} value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по имени или телефону" />
@@ -674,8 +674,10 @@ export default function ClientsPage() {
 
       {/* Right: card */}
       {selectedId && (
-        <div style={{ flex: 1, overflow: 'auto', background: '#f8fafc' }}>
-          <div style={{ padding: '8px 12px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: 8, background: '#fff' }}>
+        <div className="clients-detail" style={{ flex: 1, overflow: 'auto', background: '#f8fafc' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: 8, background: '#fff', flexWrap: 'wrap' }}>
+            <button className="clients-back-btn" style={{ background: 'none', border: 'none', color: '#263CD9', cursor: 'pointer', fontSize: 14, fontWeight: 600, padding: '0 4px', fontFamily: 'inherit' }}
+              onClick={() => setSelectedId(null)}>← Список</button>
             <button style={SL.outlineBtn} onClick={() => openEdit(selectedId)}>✎ Редактировать</button>
             {role === 'admin' && <button style={{ ...SL.outlineBtn, color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => archiveClient(selectedId)}>Архивировать</button>}
           </div>

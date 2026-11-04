@@ -167,14 +167,14 @@ export default function ReportsPage() {
 
       {/* Board — column layout */}
       {!section && (
-        <div style={s.board}>
+        <div className="reports-board" style={s.board}>
           {REPORT_COLUMNS
             .filter(col => !col.adminOnly || isAdmin)
             .map(col => {
               const items = col.items.filter(it => !it.adminOnly || isAdmin);
               if (!items.length) return null;
               return (
-                <div key={col.title} style={s.column}>
+                <div key={col.title} className="reports-board-col" style={s.column}>
                   <div style={s.colTitle}>{col.title}</div>
                   {items.map(it => (
                     <button key={it.id} style={s.colItem} onClick={() => openSection(it.id)}>

@@ -1713,15 +1713,17 @@ export default function SettingsPage() {
   const [section, setSection] = useState<Section>(() => {
     try { return (sessionStorage.getItem('crm-settings-section') as Section) || 'devices'; } catch { return 'devices'; }
   });
+  const [mobileContent, setMobileContent] = useState(false);
 
   function nav(s: Section) {
     setSection(s);
+    setMobileContent(true);
     try { sessionStorage.setItem('crm-settings-section', s); } catch {}
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
-      <div style={S.sidebar}>
+    <div className="settings-wrap" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
+      <div className={`settings-sidebar${mobileContent ? ' settings-sidebar--hidden' : ''}`} style={S.sidebar}>
         <div style={S.sidebarTitle}>Настройки</div>
         {NAV.map(n => (
           <button key={n.id} style={{ ...S.navItem, ...(section === n.id ? S.navActive : {}) }} onClick={() => nav(n.id)}>
@@ -1729,8 +1731,12 @@ export default function SettingsPage() {
           </button>
         ))}
       </div>
-      <div style={S.content}>
-        <div style={S.contentHeader}>{NAV.find(n => n.id === section)?.label}</div>
+      <div className={`settings-content${!mobileContent ? ' settings-content--hidden' : ''}`} style={S.content}>
+        <div style={S.contentHeader}>
+          <button className="settings-back-btn" style={{ background: 'none', border: 'none', color: '#263CD9', cursor: 'pointer', fontSize: 14, fontWeight: 600, padding: '0 12px 0 0', fontFamily: 'inherit' }}
+            onClick={() => setMobileContent(false)}>← Назад</button>
+          {NAV.find(n => n.id === section)?.label}
+        </div>
         {section === 'devices'    && <DevicesSection />}
         {section === 'abonements' && <PlansSection kind="abonement" />}
         {section === 'services'   && <PlansSection kind="service" />}

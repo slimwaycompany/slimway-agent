@@ -439,9 +439,9 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
         </select>
       </div>
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div className="kassa-sale-body" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left: catalog */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <div className="kassa-sale-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid #e2e8f0', overflow: 'hidden' }}>
           <div style={{ display: 'flex', gap: 4, padding: '8px 12px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
             {TABS.map(t => (
               <button key={t.key} type="button" disabled={t.disabled}
@@ -506,7 +506,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
         </div>
 
         {/* Right: cart + payments */}
-        <div style={{ width: 380, display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
+        <div className="kassa-sale-right" style={{ width: 380, display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
           <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Корзина</div>
             {cart.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Добавьте товары или абонементы</div>}
@@ -614,7 +614,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
           </div>
 
           {err && <div style={{ padding: '4px 12px' }}><div style={S.err}>{err}</div></div>}
-          <div style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9' }}>
+          <div className="kassa-sale-submit" style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9' }}>
             <button type="button" style={{ ...S.saveBtn, width: '100%', padding: '12px', fontSize: 15 }}
               disabled={saving || cart.length === 0} onClick={submit}>
               {saving ? '…' : `Оформить${total > 0 ? ' · ' + fmtMoney(total) : ''}`}
@@ -653,9 +653,9 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
+    <div className="kassa-shift-open" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
       {/* Left: shift info */}
-      <div style={{ width: 280, background: '#fff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="kassa-shift-sidebar" style={{ width: 280, background: '#fff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Смена открыта</div>
           <div style={S.infoRow}><span style={S.infoKey}>Дата</span><span>{shift.shift_date}</span></div>
@@ -668,7 +668,7 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
           <button style={{ ...S.outlineBtn, width: '100%' }} onClick={() => setShowMovement(true)}>Внесение / Изъятие</button>
           <button style={{ ...S.outlineBtn, width: '100%', color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => setShowClose(true)}>Закрыть смену</button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+        <div className="kassa-shift-sidebar-movements" style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>ДВИЖЕНИЯ НАЛИЧНЫХ</div>
           {movements.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>Нет движений</div>}
           {movements.map(m => (
@@ -686,7 +686,7 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
       </div>
 
       {/* Right: sales list */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+      <div className="kassa-shift-sales" style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Продажи в смене</div>
         {sales.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Продажи не найдены</div>}
         {sales.map(sale => (

@@ -328,7 +328,7 @@ export default function CashClosing({ onClose }: Props) {
 
           {/* Bill counter */}
           <Section title={`Подсчёт купюр (итого: ${fmt(countedCash)} ₸)`}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+            <div className="cc-bill-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
               {NOTES.map(d => (
                 <Row key={d} label={`${fmt(d)} ₸`}>
                   <input style={{ ...S.input, width: 60, textAlign: 'right' }} type="number" min={0}
@@ -396,7 +396,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, fontSize: 14 }}>
-      <span style={{ color: '#64748b', minWidth: 180 }}>{label}</span>
+      <span className="cc-row-label" style={{ color: '#64748b', minWidth: 180 }}>{label}</span>
       {children}
     </div>
   );

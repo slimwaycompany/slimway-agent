@@ -766,3 +766,62 @@ img, video, svg, iframe { max-width: 100%; }
   .ui-page-header-actions { width: 100%; }
   .ui-page-header-title { font-size: 20px; }
 }
+
+/* ═══ Part 3: per-page mobile fixes ═══ */
+
+/* KassaPage — ShiftOpen sidebar stacks vertically */
+@media (max-width: 640px) {
+  .kassa-shift-open { flex-direction: column !important; height: auto !important; min-height: 100dvh !important; }
+  .kassa-shift-sidebar { width: 100% !important; border-right: none !important; border-bottom: 1px solid #e2e8f0 !important; overflow: visible !important; }
+  .kassa-shift-sidebar-movements { max-height: 200px !important; overflow-y: auto !important; }
+  .kassa-shift-sales { flex: none !important; padding: 12px !important; }
+}
+
+/* KassaPage — SaleScreen left+right stack vertically */
+@media (max-width: 640px) {
+  .kassa-sale-body { flex-direction: column !important; overflow: visible !important; height: auto !important; flex: none !important; }
+  .kassa-sale-left { border-right: none !important; border-bottom: 1px solid #e2e8f0 !important; overflow: visible !important; min-height: 220px !important; }
+  .kassa-sale-right { width: 100% !important; max-width: 100% !important; overflow: visible !important; }
+  .kassa-sale-submit { position: sticky !important; bottom: 0 !important; background: #fff !important; z-index: 10 !important; padding-bottom: calc(8px + var(--safe-b)) !important; }
+}
+
+/* ReportsPage — board columns stack vertically */
+@media (max-width: 640px) {
+  .reports-board { flex-direction: column !important; overflow-x: unset !important; }
+  .reports-board-col { border-right: none !important; border-bottom: 1px solid #e2e8f0 !important; }
+}
+
+/* CashClosing — row label min-width + bill counting grid */
+@media (max-width: 640px) {
+  .cc-row-label { min-width: 100px !important; font-size: 13px !important; }
+  .cc-bill-grid { grid-template-columns: 1fr !important; }
+}
+
+/* SettingsPage — sidebar hidden when content shown on mobile */
+@media (max-width: 640px) {
+  .settings-wrap { flex-direction: column !important; height: auto !important; min-height: 100dvh !important; }
+  .settings-sidebar { width: 100% !important; height: auto !important; border-right: none !important; border-bottom: 1px solid #e2e8f0 !important; overflow: visible !important; }
+  .settings-sidebar--hidden { display: none !important; }
+  .settings-content--hidden { display: none !important; }
+  .settings-back-btn { display: inline-flex !important; align-items: center; gap: 4px; }
+}
+@media (min-width: 641px) {
+  .settings-back-btn { display: none !important; }
+}
+
+/* ClientsPage — list hidden when detail open on mobile */
+@media (max-width: 640px) {
+  .clients-wrap { position: relative !important; height: 100vh !important; height: 100dvh !important; }
+  .clients-list--detail { display: none !important; }
+  .clients-detail { position: absolute !important; inset: 0 !important; z-index: 10 !important; overflow: auto !important; background: #f8fafc; }
+  .clients-back-btn { display: inline-flex !important; align-items: center; gap: 4px; }
+}
+@media (min-width: 641px) {
+  .clients-back-btn { display: none !important; }
+}
+
+/* ClientForm — 2-column grid → 1 column on mobile */
+@media (max-width: 640px) {
+  .client-form-grid { grid-template-columns: 1fr !important; }
+  .client-form-grid > * { grid-column: 1 !important; }
+}
