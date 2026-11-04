@@ -84,6 +84,13 @@
 `is_trial = true` если: `event.training.id === 16` ИЛИ `isTrialServiceName(training.name)` ИЛИ `isTrialServiceName(abonement)`.
 `TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
 
+## Мобильная версия
+Задача 34 (04.11.2026):
+- `ReportsPage` — доска отчётов: колонки стекаются вертикально на ≤640px (`reports-board`, `reports-board-col`).
+- Модалка редактирования смены: `width: 'min(440px,96vw)'` — уже адаптивна.
+- Таблицы внутри разделов обёрнуты в `overflowX:'auto'` — горизонтальный скрол есть.
+- Фильтры с `flexWrap:'wrap'` — переносятся на мобиле.
+
 ## Сделано
 ### 04.11.2026 · (task 33) · Автозагрузка отчётов замеров/InBody + фильтр периода + server-side пагинация
 - `ReportsPage.tsx` `MeasuresSection` и `InBodySection`: кнопка «Загрузить» убрана, загрузка происходит автоматически при монтировании (`useEffect(() => { load(); }, [load])`); добавлен выпадающий фильтр периода (`PeriodFilter`): Всё время / Этот месяц / Прошлый месяц / Свой период (два date-input); `type ReportPeriod` + хелпер `periodDates(p, customFrom, customTo)` → `{from?, to?}`.

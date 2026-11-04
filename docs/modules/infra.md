@@ -29,7 +29,22 @@
 - `/api/*` без входа → 401 JSON, никогда не редирект. Прямой заход на `/window`, `/kviz/*` → редирект на `/`.
 - Батник `slimway_start.bat` у Сергея открывает Chrome с рабочими вкладками.
 
+## Мобильная версия
+Задача 34 (04.11.2026):
+- **Оболочка (`shell.ts`, `shell-app.js`)**: логин-карточка `width:min(320px,100%)`, input `font-size:16px`, вкладки с `overflow-x:auto` + `scrollIntoView` при переключении, боковые кнопки скрыты на ≤1023px, аватар-меню пользователя на мобиле.
+- **Общие UI-компоненты** (`kviz/client/src/components/ui/`): `Modal` (bottom sheet ≤640px), `ResponsiveTable` (cards на телефоне / table на десктопе), `FilterBar` (кнопка + нижняя панель на телефоне), `PageHeader` (flex-column на телефоне).
+- **Брейкпоинты**: ≤640px — телефон, 641–1024px — планшет, >1024px — десктоп; объявлены в `index.css`.
+- CSS для safe-area insets, `100dvh`, `font-size:16px` на input.
+
 ## Сделано
+### 04.11.2026 · 8120059 · task 34 part 3 — мобильная вёрстка всех экранов
+- `index.css`: CSS-классы для KassaPage, ReportsPage, CashClosing, SettingsPage, ClientsPage, ClientForm.
+- `KassaPage.tsx`: ShiftOpen sidebar + SaleScreen right panel стекаются вертикально; submit sticky.
+- `ReportsPage.tsx`: board columns стекаются вертикально.
+- `CashClosing.tsx`: Row label min-width, bill-grid 1 колонка.
+- `SettingsPage.tsx`: sidebar скрывается на мобиле, ← Назад в заголовке.
+- `ClientsPage.tsx`: список скрывается при открытом клиенте, ← Список; `ClientForm` grid 1 колонка.
+
 ### 04.11.2026 · (task 33) · allow="camera" для iframe вкладок /kviz/*
 - `public/shell-app.js`: `allow` у всех трёх мест создания /kviz/-iframe обновлён с `"clipboard-write"` на `"camera; clipboard-write"` — `lazyIframe()`, inline Замеры, inline Отчёты. Iframe агента (`/window`) не трогали (у него другой allow).
 

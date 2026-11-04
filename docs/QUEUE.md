@@ -63,7 +63,7 @@
 | 31 | reports | Зарплата: план по кассирам в DailyMetrics (seller-plan API), LineChart×2 с чекбоксами, PayrollSection (расчёт, inline-редактирование, закрытие месяца, xlsx) | ТЗ в чате | ✅ готово (текущий) |
 | 32 | reports, fin | Финансы: fin_staff/fin_expense_groups/fin_expense_items/fin_week_input, SettingsPage «Финансы», TBU-сводка, PayrollSection display_name/hidden/plan_bonus_on, TbuSection (каскад, тренд, таблица с редактом) | ТЗ в чате | ✅ готово (текущий) |
 | 33 | zamery, reports, infra | allow=camera у iframe, 3-кнопочный InBodyDialog (📸 фото + 📷 камера + 📂 галерея), qrFromImage.ts (BarcodeDetector→jsQR, мультишкала, квадранты), PrintPage координаты, MeasuresSection/InBodySection автозагрузка+период, fetchAll для замеров и InBody | ТЗ в чате | ✅ готово (текущий) |
-| 34 | infra (все модули с интерфейсом) | Мобильная вёрстка всех экранов + правило «мобильная версия сразу» | `docs/tasks/34-infra-mobile.md` | 🔧 в работе (Claude, 04.11.2026) |
+| 34 | infra (все модули с интерфейсом) | Мобильная вёрстка всех экранов + правило «мобильная версия сразу» | `docs/tasks/34-infra-mobile.md` | 🟡 частично (8120059; ч.1-5 готовы; ч.6 проверка на проде — на стороне Сергея; QuizPage 3→вкладки, InBodyDialog full-screen, ClientPage bottom-sheet — отложены) |
 
 ## Сделано недавно (для контекста)
 
@@ -83,6 +83,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 04.11.2026 | Claude | 34: мобильная вёрстка; ч.1 общие UI-компоненты (Modal/ResponsiveTable/FilterBar/PageHeader); ч.2 оболочка (логин, вкладки, аватар-меню); ч.3 KassaPage/ReportsPage/CashClosing/SettingsPage/ClientsPage; ч.4 Playwright check:mobile; ч.5 документация CLAUDE.md/AGENTS.md/модули | 8120059 (ч.3), ч.1-2 — предыдущие коммиты | QuizPage 3-кол, InBodyDialog full-screen, ClientPage bottom-sheet — отложено. Проверка на проде — на стороне Сергея. |
 | 04.11.2026 | Claude | 33: allow=camera iframe; qrFromImage.ts (BarcodeDetector→jsQR, ресайз, EXIF, квадранты, таймаут 4с); 3-кнопочный InBodyDialog; PrintPage координаты+шрифт; MeasuresSection/InBodySection автозагрузка+фильтр периода; fetchAll для measure.ts и manager.ts | текущий | SQL не нужен. Проверка на реальном телефоне — на стороне Сергея. |
 | 03.11.2026 | Claude | 32: Финансы — fin.ts (router, staffMap, TBU, week-input), SettingsPage «Финансы» (3 таба), PayrollSection display_name/hidden/plan_bonus_on/overall_plan, TbuSection (tiles, waterfall, trend, table) | текущий | SQL таблицы уже созданы Сергеем. Проверка UI на проде — на стороне Сергея |
 | 03.11.2026 | Claude | 31: Зарплата — seller-plan API, LineChart×2, PayrollSection | текущий | Проверка интерфейса и реальных данных — на стороне Сергея |

@@ -42,6 +42,12 @@
 - `crm_cash_movements.type` (не `direction`); нет `branch_id` в INSERT.
 - `crm_balance_ops.amount` — знаковый (отрицательный для изъятий), нет колонки `direction`.
 
+## Мобильная версия
+Задача 34 (04.11.2026):
+- `KassaPage` — `ShiftOpen`: боковой блок (280px) стекается вертикально на ≤640px (`kassa-shift-open`, `kassa-shift-sidebar`), движения наличных ограничены 200px.
+- `KassaPage` — `SaleScreen`: правая панель (380px) стекается вниз (`kassa-sale-body`, `kassa-sale-right`); кнопка «Оформить» sticky (`kassa-sale-submit`).
+- Модальные окна (MovementModal, CloseShiftModal, RefundDialog) используют `width: '90%', maxWidth: 420` — уже адаптивны.
+
 ## Сделано
 ### 29.10.2026 · (текущий) · payload checkout/refund — явная сборка, правильные ключи
 - `crm_checkout` payload: больше нет `{ ...b }`. Сервер собирает payload явно: `items[].type` (не `item_type`), `unit_price` (из БД, не из браузера), `start_date` (null если start_mode != 'date'). `payments[].method_id` — Number(). Если план/товар не найден в БД — 400 без вызова RPC. Ответ `{sale_id, number, total}` (объект, не UUID).

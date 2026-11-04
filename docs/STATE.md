@@ -6,7 +6,7 @@
 
 | Модуль | Файл | Чат в claude.ai | Статус | Обновлено | Последнее изменение |
 |---|---|---|---|---|---|
-| Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 04.11.2026 | allow="camera; clipboard-write" у всех iframe /kviz/* в shell-app.js |
+| Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 04.11.2026 | task 34: мобильная вёрстка всех экранов; общие UI-компоненты (Modal, ResponsiveTable, FilterBar, PageHeader); брейкпоинты стандартизированы |
 | Агент воронки Fitbase | `modules/agent.md` | Агент и овчарка | 🟢 | 30.10.2026 | fetchAll в syncContracts; шаги syncLeads/syncVisits/syncContracts независимы |
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 28.10.2026 | Работает, кабинет агента |
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟡 | 30.10.2026 | Закрытие смены из Fitbase — тестовый режим; GET /cash/sync-time теперь admin-only |
