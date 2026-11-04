@@ -63,6 +63,7 @@
 | 31 | reports | Зарплата: план по кассирам в DailyMetrics (seller-plan API), LineChart×2 с чекбоксами, PayrollSection (расчёт, inline-редактирование, закрытие месяца, xlsx) | ТЗ в чате | ✅ готово (текущий) |
 | 32 | reports, fin | Финансы: fin_staff/fin_expense_groups/fin_expense_items/fin_week_input, SettingsPage «Финансы», TBU-сводка, PayrollSection display_name/hidden/plan_bonus_on, TbuSection (каскад, тренд, таблица с редактом) | ТЗ в чате | ✅ готово (текущий) |
 | 33 | zamery, reports, infra | allow=camera у iframe, 3-кнопочный InBodyDialog (📸 фото + 📷 камера + 📂 галерея), qrFromImage.ts (BarcodeDetector→jsQR, мультишкала, квадранты), PrintPage координаты, MeasuresSection/InBodySection автозагрузка+период, fetchAll для замеров и InBody | ТЗ в чате | ✅ готово (текущий) |
+| 34 | infra (все модули с интерфейсом) | Мобильная вёрстка всех экранов + правило «мобильная версия сразу» | `docs/tasks/34-infra-mobile.md` | 🔧 в работе (Claude, 04.11.2026) |
 
 ## Сделано недавно (для контекста)
 
