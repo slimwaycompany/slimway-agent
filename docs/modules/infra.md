@@ -30,6 +30,9 @@
 - Батник `slimway_start.bat` у Сергея открывает Chrome с рабочими вкладками.
 
 ## Сделано
+### 04.11.2026 · (task 33) · allow="camera" для iframe вкладок /kviz/*
+- `public/shell-app.js`: `allow` у всех трёх мест создания /kviz/-iframe обновлён с `"clipboard-write"` на `"camera; clipboard-write"` — `lazyIframe()`, inline Замеры, inline Отчёты. Iframe агента (`/window`) не трогали (у него другой allow).
+
 ### 28.10.2026 · 9574ebf · 10 вкладок + боковые кнопки
 - `shell-app.js` и `shell.ts` полностью переписаны под 10 вкладок с полным набором боковых кнопок.
 

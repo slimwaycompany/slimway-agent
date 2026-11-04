@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
+import { fetchAll } from './metrics';
 
 const YEK_MS = 5 * 3600_000;
 
@@ -358,16 +359,17 @@ export function buildManagerRouter(): Router {
   // InBody report: clients with tests, aggregated (groups by phone_digits)
   r.get('/kviz/api/reports/inbody', async (req, res) => {
     try {
-      let q = supabase.from('inbody_tests')
-        .select('id,inbody_id,tested_at,phone,phone_digits,weight,bfm,smm,pbf,inbody_score')
-        .order('tested_at', { ascending: true });
-      if (req.query.from) q = q.gte('tested_at', String(req.query.from));
-      if (req.query.to)   q = q.lte('tested_at', String(req.query.to) + 'T23:59:59');
-      const { data: tests, error } = await q;
-      if (error) { res.status(500).json({ error: error.message }); return; }
-
       type IbTest = { id: string; inbody_id: string; tested_at: string; phone: string | null; phone_digits: string | null; weight: number | null; bfm: number | null; smm: number | null; pbf: number | null; inbody_score: number | null };
-      const allTests = (tests ?? []) as IbTest[];
+      const allTests = (await fetchAll((off, lim) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let q: any = supabase.from('inbody_tests')
+          .select('id,inbody_id,tested_at,phone,phone_digits,weight,bfm,smm,pbf,inbody_score')
+          .order('tested_at', { ascending: true })
+          .range(off, off + lim - 1);
+        if (req.query.from) q = q.gte('tested_at', String(req.query.from));
+        if (req.query.to)   q = q.lte('tested_at', String(req.query.to) + 'T23:59:59');
+        return q;
+      })) as IbTest[];
 
       // Group by phone_digits
       const byDigits = new Map<string, IbTest[]>();

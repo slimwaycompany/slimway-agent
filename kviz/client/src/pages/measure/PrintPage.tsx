@@ -41,7 +41,7 @@ function Txt({ x, y, children, bold, size, anchor }: {
       position: 'absolute',
       left: `${x}%`, top: `${y}%`,
       transform: anchor === 'left' ? 'translateY(-50%)' : 'translate(-50%, -50%)',
-      fontFamily: "'Arial", fontWeight: bold ? 700 : 400,
+      fontFamily: 'Arial, sans-serif', fontWeight: bold ? 700 : 400,
       fontSize: size ?? 13,
       color: '#1a1a1a',
       whiteSpace: 'nowrap',
@@ -50,6 +50,12 @@ function Txt({ x, y, children, bold, size, anchor }: {
       {children}
     </div>
   );
+}
+
+function nameSize(name: string): number {
+  if (name.length <= 20) return 15;
+  if (name.length <= 28) return 13;
+  return 11;
 }
 
 export default function PrintPage() {
@@ -111,13 +117,13 @@ export default function PrintPage() {
         <img src="/kviz/img/bodyr.png" alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
 
         {/* Client name */}
-        {client && <Txt x={36} y={12.3} bold size={15}>{client.name}</Txt>}
+        {client && <Txt x={36} y={12.3} bold size={nameSize(client.name)} anchor="left">{client.name}</Txt>}
 
         {/* ДО */}
-        {fromM && <Txt x={19.5} y={25.3} size={12} anchor="left">{fmtDateRu(fromM.measured_at)}</Txt>}
+        {fromM && <Txt x={20.8} y={25.4} size={12} anchor="left">{fmtDateRu(fromM.measured_at)}</Txt>}
 
         {/* ПОСЛЕ */}
-        {toM && <Txt x={78.5} y={25.3} size={12} anchor="left">{fmtDateRu(toM.measured_at)}</Txt>}
+        {toM && <Txt x={79.5} y={25.4} size={12} anchor="left">{fmtDateRu(toM.measured_at)}</Txt>}
 
         {/* Measurement rows */}
         {PRINT_ROWS.map(row => {

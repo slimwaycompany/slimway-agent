@@ -85,6 +85,12 @@
 `TRIAL_SERVICE_NAMES = ['Бесплатное пробное занятие', 'Абонемент: Пробное занятие']` (сравнение без учёта регистра).
 
 ## Сделано
+### 04.11.2026 · (task 33) · Автозагрузка отчётов замеров/InBody + фильтр периода + server-side пагинация
+- `ReportsPage.tsx` `MeasuresSection` и `InBodySection`: кнопка «Загрузить» убрана, загрузка происходит автоматически при монтировании (`useEffect(() => { load(); }, [load])`); добавлен выпадающий фильтр периода (`PeriodFilter`): Всё время / Этот месяц / Прошлый месяц / Свой период (два date-input); `type ReportPeriod` + хелпер `periodDates(p, customFrom, customTo)` → `{from?, to?}`.
+- `src/http/measure.ts` GET `/kviz/api/measure/measurements`: заменён `.limit(500)` на `fetchAll()` с постраничным перебором по 1000 — снимает ограничение на 500 записей.
+- `src/http/manager.ts` GET `/kviz/api/reports/inbody`: аналогичная замена на `fetchAll()` с `.range(off, off+lim-1)`.
+- `kviz/client/src/lib/qrFromImage.ts`: `fetchAll` импортируется из `src/http/metrics.ts` (там уже был экспорт).
+
 ### 03.11.2026 · (task 32) · Финансы: fin.ts, SettingsPage, PayrollSection plan_bonus_on, TbuSection
 - `src/http/fin.ts` (новый): `getStaffMap()` (кэш 60 с), `buildFinRouter()` — все эндпоинты `/kviz/api/fin/*`: CRUD сотрудников (`fin_staff`), fitbase-names, CRUD групп (`fin_expense_groups` с nested items), CRUD статей (`fin_expense_items`), week-input (upsert/delete), tbu-summary, tbu (вычисление каскада по неделям/месяцам).
 - `src/http/kviz.ts`: подключён `buildFinRouter()`.

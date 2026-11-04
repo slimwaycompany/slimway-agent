@@ -98,7 +98,7 @@
   function lazyIframe(paneId, iframeId, src, beforeId) {
     var f = document.createElement('iframe');
     f.id = iframeId; f.className = 'frame';
-    f.src = src; f.setAttribute('allow', 'clipboard-write');
+    f.src = src; f.setAttribute('allow', 'camera; clipboard-write');
     var pane = $(paneId);
     if (!pane) return;
     var anchor = beforeId ? $(beforeId) : null;
@@ -195,11 +195,11 @@
         // Insert before right button "Отчёты" (injected server-side)
         var sideToReports = $('side-to-reports');
         if (sideToReports) $('measure-pane').insertBefore(
-          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure/new'; f.setAttribute('allow','clipboard-write'); return f; })(),
+          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure/new'; f.setAttribute('allow','camera; clipboard-write'); return f; })(),
           sideToReports
         );
         else $('measure-pane').appendChild(
-          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure/new'; f.setAttribute('allow','clipboard-write'); return f; })()
+          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure/new'; f.setAttribute('allow','camera; clipboard-write'); return f; })()
         );
         measureCreated = true;
       }
@@ -216,7 +216,7 @@
         var sideToSettings = $('side-to-settings');
         var frep = document.createElement('iframe');
         frep.id = 'reports-iframe'; frep.className = 'frame';
-        frep.src = '/kviz/reports'; frep.setAttribute('allow', 'clipboard-write');
+        frep.src = '/kviz/reports'; frep.setAttribute('allow', 'camera; clipboard-write');
         if (sideToSettings) rp.insertBefore(frep, sideToSettings);
         else rp.appendChild(frep);
         reportsCreated = true;

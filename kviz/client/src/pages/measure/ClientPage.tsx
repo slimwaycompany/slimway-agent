@@ -4,6 +4,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
 import { parseInBody } from '../../utils/inbody';
+import { extractIBData, qrFromImage } from '../../lib/qrFromImage';
 
 const CIRC_KEYS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 type CircKey = typeof CIRC_KEYS[number];
@@ -597,19 +598,6 @@ function ShareLinkDialog({ clientId, onClose }: { clientId: string; onClose: () 
 
 // ── InBody scan dialog ─────────────────────────────────────────────────────────
 
-function extractIBData(input: string): string | null {
-  const trimmed = input.trim();
-  // Full URL: https://qrcode.inbody.com?IBData=...
-  try {
-    const u = new URL(trimmed);
-    const v = u.searchParams.get('IBData');
-    if (v) return v;
-  } catch { /* not a URL, try raw string */ }
-  // Raw QR string (starts with device prefix)
-  if (/^270-/.test(trimmed)) return trimmed;
-  return null;
-}
-
 function InBodyDialog({ clientId, onDone, onClose }: {
   clientId: string; onDone: () => void; onClose: () => void;
 }) {
@@ -619,11 +607,13 @@ function InBodyDialog({ clientId, onDone, onClose }: {
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
   const [cameraActive, setCameraActive] = useState(false);
+  const [photoStatus, setPhotoStatus] = useState<null | 'searching' | 'notfound'>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const captureRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
 
   function tryParse(raw: string) {
     const s = extractIBData(raw);
@@ -641,7 +631,12 @@ function InBodyDialog({ clientId, onDone, onClose }: {
       if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
       setCameraActive(true);
       scanFrame();
-    } catch { setParseErr('Камера недоступна. Вставьте ссылку или загрузите фото.'); }
+    } catch (e: unknown) {
+      const name = (e as Error)?.name;
+      if (name === 'NotAllowedError') setParseErr('Разрешите доступ к камере в настройках браузера');
+      else if (name === 'NotFoundError') setParseErr('Камера не найдена');
+      else setParseErr('Камера недоступна, сфотографируйте лист кнопкой ниже');
+    }
   }
 
   function stopCamera() {
@@ -671,23 +666,25 @@ function InBodyDialog({ clientId, onDone, onClose }: {
     });
   }
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width; canvas.height = img.height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      import('jsqr').then(({ default: jsQR }) => {
-        const code = jsQR(imgData.data, imgData.width, imgData.height);
-        if (code?.data) tryParse(code.data);
-        else setParseErr('QR-код не найден на фото. Попробуйте вставить ссылку вручную.');
-      });
-    };
-    img.src = URL.createObjectURL(file);
+    setPhotoStatus('searching');
+    setParseErr('');
+    try {
+      const ibData = await qrFromImage(file);
+      if (ibData) {
+        tryParse(ibData);
+      } else {
+        setPhotoStatus('notfound');
+        return;
+      }
+    } catch {
+      setParseErr('Ошибка при обработке фото');
+    } finally {
+      if (e.target) e.target.value = '';
+      setPhotoStatus(s => s === 'searching' ? null : s);
+    }
   }
 
   useEffect(() => () => { stopCamera(); }, []);
@@ -716,12 +713,25 @@ function InBodyDialog({ clientId, onDone, onClose }: {
         {!parsed && (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <button style={ibBtnSt} onClick={() => captureRef.current?.click()}>📸 Сфотографировать лист</button>
+              <input ref={captureRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoFile} />
               <button style={ibBtnSt} onClick={cameraActive ? stopCamera : startCamera}>
-                {cameraActive ? '⏹ Стоп' : '📷 Камера'}
+                {cameraActive ? '⏹ Стоп' : '📷 Сканировать камерой'}
               </button>
-              <button style={ibBtnSt} onClick={() => fileRef.current?.click()}>📂 Фото</button>
-              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+              <button style={ibBtnSt} onClick={() => galleryRef.current?.click()}>📂 Из галереи</button>
+              <input ref={galleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoFile} />
             </div>
+
+            {photoStatus === 'searching' && (
+              <div style={{ padding: '10px 0', color: '#6b7280', fontSize: 13 }}>⏳ Ищу QR на листе…</div>
+            )}
+            {photoStatus === 'notfound' && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 6 }}>QR не найден. Сфотографируйте ближе: QR должен занимать примерно четверть кадра, без бликов</div>
+                <button style={ibBtnSt} onClick={() => { setPhotoStatus(null); captureRef.current?.click(); }}>Ещё раз</button>
+              </div>
+            )}
+
             {cameraActive && (
               <div style={{ position: 'relative', marginBottom: 12, borderRadius: 8, overflow: 'hidden', background: '#000' }}>
                 <video ref={videoRef} style={{ width: '100%', display: 'block' }} muted playsInline />
@@ -1668,7 +1678,7 @@ export default function ClientPage() {
               onClick={() => setPrintDialog(true)}>🖨 Бланк</button>
           )}
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
-            onClick={() => setInbodyDialog(true)}>📷 Скан InBody</button>
+            onClick={() => setInbodyDialog(true)}>📷 InBody по QR</button>
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
             onClick={() => setLinkInBodyDialog(true)}>🔗 Привязать InBody</button>
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}

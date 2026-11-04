@@ -3,6 +3,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
 import { addClientNote, paginateGet, rawGet, FITBASE_PAGE_SIZE } from './fitbase';
+import { fetchAll } from './metrics';
 
 const CIRC_FIELDS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 
@@ -417,19 +418,22 @@ export function buildMeasureRouter(): Router {
 
   r.get('/kviz/api/measure/measurements', async (req, res) => {
     try {
-      let q = supabase.from('body_measurements')
-        .select('*, body_clients!inner(name, phone, fitbase_client_id)')
-        .order('measured_at', { ascending: false }).limit(500);
-      if (req.query.from)       q = q.gte('measured_at', req.query.from as string);
-      if (req.query.to)         q = q.lte('measured_at', req.query.to as string);
-      if (req.query.client_id)  q = q.eq('client_id', req.query.client_id as string);
-      if (req.query.consultant) q = (q as any).ilike('consultant', `%${req.query.consultant}%`);
-      const { data, error } = await q;
-      if (error) { res.status(500).json({ error: error.message }); return; }
-      const ids = [...new Set((data || []).map((m: any) => m.client_id))];
+      const data = await fetchAll((off, lim) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let q: any = supabase.from('body_measurements')
+          .select('*, body_clients!inner(name, phone, fitbase_client_id)')
+          .order('measured_at', { ascending: false })
+          .range(off, off + lim - 1);
+        if (req.query.from)       q = q.gte('measured_at', req.query.from as string);
+        if (req.query.to)         q = q.lte('measured_at', req.query.to as string);
+        if (req.query.client_id)  q = q.eq('client_id', req.query.client_id as string);
+        if (req.query.consultant) q = q.ilike('consultant', `%${req.query.consultant}%`);
+        return q;
+      });
+      const ids = [...new Set(data.map((m: any) => m.client_id))];
       const { data: results } = ids.length ? await supabase.from('studio_results').select('client_id,cm_lost,kg_lost,sent_by,sent_at').in('client_id', ids) : { data: [] };
       const byClient = new Map((results || []).map((x: any) => [x.client_id, x]));
-      res.json((data || []).map((m: any) => ({ ...m, studio_result: byClient.get(m.client_id) || null })));
+      res.json(data.map((m: any) => ({ ...m, studio_result: byClient.get(m.client_id) || null })));
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

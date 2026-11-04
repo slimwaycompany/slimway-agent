@@ -30,8 +30,17 @@
 - После нового замера/скана экран результата остаётся (отправить в Fitbase, копировать) + «Перейти в отчёт».
 - Внешняя ссылка на результаты клиента по внутреннему ID, без входа.
 - `inbody_tests` не имеет `client_id` — связь только через `phone_digits`.
+- Фото листа InBody распознаётся целиком в браузере (`qrFromImage.ts`): EXIF-поворот, ресайз 2000px, BarcodeDetector → jsQR; фото никуда не отправляется и не сохраняется, на сервер уходят только распознанные цифры (как при ручном вводе).
+- Координаты печати бланка (% от A4): имя — x=36, y=12.3 (anchor=left), шрифт 15/13/11 по длине; дата ДО x=20.8 y=25.4; дата ПОСЛЕ x=79.5 y=25.4; замеры x_до=29.7, x_после=88.5.
 
 ## Сделано
+### 04.11.2026 · (текущий) · камера в iframe, фото InBody, PrintPage координаты
+
+- `public/shell-app.js`: `allow="camera; clipboard-write"` у всех iframe /kviz/* (lazyIframe + measure + reports inline).
+- `kviz/client/src/lib/qrFromImage.ts` (новый): `extractIBData`, `qrFromImage(file)` — распознаёт InBody QR из фото; ресайз до 2000px + EXIF-поворот; BarcodeDetector (Android Chrome) → jsQR по всему кадру, четвертям с перекрытием 15%, верхней половине; шкалы 1/0.75/0.5; grayscale+contrast; таймаут 4 с; bitmap/canvas освобождается внутри; на сервер уходят только цифры.
+- `ClientPage.tsx`: 3 кнопки в InBodyDialog (📸 Сфотографировать, 📷 Сканировать камерой, 📂 Из галереи); ошибки getUserMedia по-русски (NotAllowedError / NotFoundError / иначе); спиннер «Ищу QR» + «QR не найден / Ещё раз»; `extractIBData` перенесена в lib/qrFromImage.ts; кнопка `📷 Скан InBody` → `📷 InBody по QR` (фикс «двух кнопок InBody»).
+- `PrintPage.tsx`: fontFamily `"'Arial"` → `"Arial, sans-serif"`; имя — `anchor="left"`, x=36, y=12.3, размер шрифта 15→13→11 по длине; дата ДО x=20.8 y=25.4; дата ПОСЛЕ x=79.5 y=25.4.
+
 ### 29.10.2026 · (текущий) · фикс from/to_measure_no в studio_results
 - `calcAllResults` (`src/http/measure.ts`): добавлены `from_measure_no` / `to_measure_no` в каждую строку upsert — первый и последний `measure_no` замеров клиента, `null` если замеров нет.
 - `POST /kviz/api/measure/clients/:id/results`: заменены хардкод `from_measure_no: 1, to_measure_no: 0` на реальные номера (или `null`).
@@ -53,8 +62,7 @@
 - Импорт InBody CSV, расчёт параметров, полный лист замера, попап зоны с зумом.
 
 ## Открытые баги
-- В шапке клиента две кнопки «InBody» — проверить дубль.
-- Печать бланка замера: цифры съезжали (было в списке 21.10 — проверить).
+- (нет)
 
 ## Следующее
 - Прогноз по зонам (примерный, проверить).

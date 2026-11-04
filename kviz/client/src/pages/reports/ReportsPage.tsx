@@ -957,21 +957,70 @@ interface MeasureRow {
   [key: string]: unknown;
 }
 
+type ReportPeriod = 'all' | 'this-month' | 'last-month' | 'custom';
+
+function periodDates(p: ReportPeriod, customFrom: string, customTo: string): { from?: string; to?: string } {
+  if (p === 'all') return {};
+  if (p === 'this-month') return { from: monthStart, to: today };
+  if (p === 'last-month') {
+    const now = new Date();
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lme = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { from: lm.toISOString().slice(0, 10), to: lme.toISOString().slice(0, 10) };
+  }
+  return { from: customFrom, to: customTo };
+}
+
+function PeriodFilter({ period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo }: {
+  period: ReportPeriod; setPeriod: (p: ReportPeriod) => void;
+  customFrom: string; setCustomFrom: (v: string) => void;
+  customTo: string; setCustomTo: (v: string) => void;
+}) {
+  const opts: { value: ReportPeriod; label: string }[] = [
+    { value: 'all', label: 'Всё время' },
+    { value: 'this-month', label: 'Этот месяц' },
+    { value: 'last-month', label: 'Прошлый месяц' },
+    { value: 'custom', label: 'Свой период' },
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      <select value={period} onChange={e => setPeriod(e.target.value as ReportPeriod)}
+        style={{ ...s.dateInp, width: 'auto' }}>
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      {period === 'custom' && (
+        <>
+          <input type="date" style={s.dateInp} value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+          <span style={{ color: '#64748b' }}>—</span>
+          <input type="date" style={s.dateInp} value={customTo} onChange={e => setCustomTo(e.target.value)} />
+        </>
+      )}
+    </div>
+  );
+}
+
 function MeasuresSection() {
   const navigate = useNavigate();
   const [rows, setRows]         = useState<MeasureRow[]>([]);
-  const [loading, setLoading]   = useState(false);
-  const [from, setFrom]         = useState(monthStart);
-  const [to, setTo]             = useState(today);
+  const [loading, setLoading]   = useState(true);
+  const [period, setPeriod]     = useState<ReportPeriod>('all');
+  const [customFrom, setCustomFrom] = useState(monthStart);
+  const [customTo, setCustomTo]     = useState(today);
   const [clientQ, setClientQ]   = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/kviz/api/measure/measurements?from=${from}&to=${to}`, { credentials: 'include' });
+      const { from, to } = periodDates(period, customFrom, customTo);
+      const params = new URLSearchParams();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const r = await fetch(`/kviz/api/measure/measurements?${params}`, { credentials: 'include' });
       setRows(r.ok ? await r.json() : []);
     } catch {} finally { setLoading(false); }
-  }, [from, to]);
+  }, [period, customFrom, customTo]);
+
+  useEffect(() => { load(); }, [load]);
 
   // Group by client
   const clients = useMemo(() => {
@@ -1009,17 +1058,13 @@ function MeasuresSection() {
 
   return (
     <div style={s.section}>
-      <div style={s.filterRow}>
-        <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
-        <span style={{ color: '#64748b' }}>—</span>
-        <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
-        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
-        {rows.length > 0 && (
-          <input style={{ ...s.dateInp, width: 160 }} placeholder="Поиск клиента…" value={clientQ} onChange={e => setClientQ(e.target.value)} />
-        )}
+      <div style={{ ...s.filterRow, flexWrap: 'wrap', gap: 8 }}>
+        <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
+        <input style={{ ...s.dateInp, width: 160 }} placeholder="Поиск клиента…" value={clientQ} onChange={e => setClientQ(e.target.value)} />
       </div>
-      {rows.length === 0 && !loading && <div style={s.empty}>Нет данных за период</div>}
-      {filtered.map(c => (
+      {loading && <div style={s.empty}>Загрузка…</div>}
+      {!loading && clients.length === 0 && <div style={s.empty}>Пока нет замеров</div>}
+      {!loading && filtered.map(c => (
         <button key={c.clientId} style={{ ...s.colItem, width: '100%', borderRadius: 10, marginBottom: 6, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           onClick={() => navigate(`/reports/client/${c.clientId}`, { state: { fromReports: true } })}>
           <div style={{ textAlign: 'left' }}>
@@ -1150,18 +1195,25 @@ function InBodySection() {
   const navigate = useNavigate();
   const [rows, setRows]     = useState<IbRow[]>([]);
   const [totals, setTotals] = useState<{ tests: number; clients: number; bfm_lost: number; smm_gained: number } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [from, setFrom]     = useState(monthStart);
-  const [to, setTo]         = useState(today);
+  const [loading, setLoading] = useState(true);
+  const [period, setPeriod]  = useState<ReportPeriod>('all');
+  const [customFrom, setCustomFrom] = useState(monthStart);
+  const [customTo, setCustomTo]     = useState(today);
   const [q, setQ]           = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/kviz/api/reports/inbody?from=${from}&to=${to}`, { credentials: 'include' });
+      const { from, to } = periodDates(period, customFrom, customTo);
+      const params = new URLSearchParams();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const r = await fetch(`/kviz/api/reports/inbody?${params}`, { credentials: 'include' });
       if (r.ok) { const d = await r.json(); setRows(d.rows ?? []); setTotals(d.totals ?? null); }
     } catch {} finally { setLoading(false); }
-  }, [from, to]);
+  }, [period, customFrom, customTo]);
+
+  useEffect(() => { load(); }, [load]);
 
   const filtered = rows.filter(r => {
     if (!q) return true;
@@ -1177,15 +1229,13 @@ function InBodySection() {
 
   return (
     <div style={s.section}>
-      <div style={s.filterRow}>
-        <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
-        <span style={{ color: '#64748b' }}>—</span>
-        <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
-        <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
-        {rows.length > 0 && (
-          <input style={{ ...s.dateInp, width: 160 }} placeholder="Поиск…" value={q} onChange={e => setQ(e.target.value)} />
-        )}
+      <div style={{ ...s.filterRow, flexWrap: 'wrap', gap: 8 }}>
+        <PeriodFilter period={period} setPeriod={setPeriod} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo} />
+        <input style={{ ...s.dateInp, width: 160 }} placeholder="Поиск…" value={q} onChange={e => setQ(e.target.value)} />
       </div>
+
+      {loading && <div style={s.empty}>Загрузка…</div>}
+      {!loading && rows.length === 0 && <div style={s.empty}>Пока нет тестов InBody</div>}
 
       {totals && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -1203,9 +1253,7 @@ function InBodySection() {
         </div>
       )}
 
-      {rows.length === 0 && !loading && <div style={s.empty}>Нет данных за период</div>}
-
-      {filtered.length > 0 && (
+      {filtered.length > 0 && !loading && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead><tr style={{ background: '#f1f5f9' }}>

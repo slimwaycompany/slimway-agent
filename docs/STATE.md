@@ -6,13 +6,13 @@
 
 | Модуль | Файл | Чат в claude.ai | Статус | Обновлено | Последнее изменение |
 |---|---|---|---|---|---|
-| Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 28.10.2026 | Все файлы модулей сверены с кодом: пути, хэши, таблицы актуальны |
+| Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 04.11.2026 | allow="camera; clipboard-write" у всех iframe /kviz/* в shell-app.js |
 | Агент воронки Fitbase | `modules/agent.md` | Агент и овчарка | 🟢 | 30.10.2026 | fetchAll в syncContracts; шаги syncLeads/syncVisits/syncContracts независимы |
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 28.10.2026 | Работает, кабинет агента |
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟡 | 30.10.2026 | Закрытие смены из Fitbase — тестовый режим; GET /cash/sync-time теперь admin-only |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 28.10.2026 | Не трогаем, может быть скрыта |
-| Замеры и InBody | `modules/zamery.md` | Замеры и отчёты | 🟢 | 29.10.2026 | Фикс from/to_measure_no в studio_results; выгрузка в общий работает для клиентов только с InBody |
-| Отчёты | `modules/reports.md` | Замеры и отчёты | 🟢 | 03.11.2026 | Финансы task 32: fin.ts router, SettingsPage «Финансы», PayrollSection plan_bonus_on/display_name, TbuSection (waterfall, trend, table) |
+| Замеры и InBody | `modules/zamery.md` | Замеры и отчёты | 🟢 | 04.11.2026 | task 33: камера в iframe, 3-кнопочный InBodyDialog с распознаванием фото (qrFromImage.ts), PrintPage координаты |
+| Отчёты | `modules/reports.md` | Замеры и отчёты | 🟢 | 04.11.2026 | task 33: MeasuresSection/InBodySection автозагрузка при монтировании, фильтр периода (4 варианта), fetchAll для замеров и InBody |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 29.10.2026 | Задача 22: лояльное дерево (66 узлов), KZ-тексты, RU/KZ, ↩К развилке, чтение переписки |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |
