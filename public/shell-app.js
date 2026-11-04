@@ -106,6 +106,11 @@
     else pane.appendChild(f);
   }
 
+  function scrollTabIntoView(name) {
+    var btn = $('tab-btn-' + name);
+    if (btn) btn.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+  }
+
   function showTab(name) {
     if (currentTab === name) {
       var fr = $(TAB_FRAME[name]);
@@ -117,6 +122,7 @@
     $('top-bar').style.display = 'flex';
     hidePanes();
     saveTab(name);
+    setTimeout(function() { scrollTabIntoView(name); }, 50);
 
     if (name === 'manager') {
       $('manager-pane').classList.remove('hidden');
@@ -417,6 +423,30 @@
   setInterval(pollDrafts, 30000);
 
   updateBadges();
+
+  // ── Mobile user avatar button ───────────────────────────────────────────────
+  var uaBtn = $('ua-btn');
+  var uaMenu = $('ua-menu');
+  var uaExit = $('ua-menu-exit');
+  if (uaBtn && uaMenu) {
+    // Set initial from logout button text (contains display_name)
+    var logoutBtnEl = $('logout-btn');
+    if (logoutBtnEl) {
+      var fullText = (logoutBtnEl.textContent || '').trim().split(' ')[0] || '?';
+      uaBtn.textContent = fullText.charAt(0).toUpperCase();
+    }
+    uaBtn.onclick = function (e) {
+      e.stopPropagation();
+      uaMenu.classList.toggle('open');
+    };
+    document.addEventListener('click', function () { uaMenu.classList.remove('open'); });
+  }
+  if (uaExit) {
+    uaExit.onclick = function () {
+      try { sessionStorage.removeItem('sw-session'); } catch (e) {}
+      fetch('/api/logout', { method: 'POST' }).finally(function () { location.href = '/login'; });
+    };
+  }
 
   // ── Restore last tab on reload ──────────────────────────────────────────────
   try {

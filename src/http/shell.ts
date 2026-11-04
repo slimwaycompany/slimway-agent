@@ -26,11 +26,11 @@ const LOGIN_HTML = `<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--brand:#02BDB6;--accent:#263CD9;--red:#ef4444}
 html,body{height:100%;font-family:'Manrope',system-ui,sans-serif;background:#eef2f7}
-body{display:flex;align-items:center;justify-content:center}
+body{display:flex;align-items:center;justify-content:center;padding:16px}
 .blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:.22;pointer-events:none;z-index:0}
 .b1{width:600px;height:600px;background:var(--brand);top:-200px;right:-150px}
 .b2{width:500px;height:500px;background:var(--accent);bottom:-150px;left:-100px}
-.card{position:relative;z-index:1;width:320px;padding:40px 36px;
+.card{position:relative;z-index:1;width:min(320px,100%);padding:40px 36px;
   background:rgba(255,255,255,0.55);backdrop-filter:blur(18px) saturate(140%);
   -webkit-backdrop-filter:blur(18px) saturate(140%);
   border:1px solid rgba(255,255,255,0.65);border-radius:22px;
@@ -43,7 +43,7 @@ h1{font-size:22px;font-weight:700;margin-bottom:5px;color:#1a202c}
 .sub{font-size:13px;color:#64748b;margin-bottom:28px}
 input[type=text],input[type=password]{width:100%;padding:12px 14px;margin-bottom:14px;
   border:1.5px solid rgba(255,255,255,0.65);border-radius:10px;
-  background:rgba(255,255,255,0.82);font-size:14px;font-family:inherit;
+  background:rgba(255,255,255,0.82);font-size:16px;font-family:inherit;
   outline:none;color:#1a202c;transition:border-color .15s}
 input:focus{border-color:var(--brand)}
 .btn{width:100%;padding:12px;border:none;border-radius:10px;
@@ -112,24 +112,45 @@ html,body{height:100%;overflow:hidden;font-family:'Manrope',system-ui,sans-serif
 .b2{width:500px;height:500px;background:var(--accent);bottom:-150px;left:-100px}
 
 /* Work area */
-#work-area{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
-#top-bar{height:44px;flex-shrink:0;display:none;align-items:center;justify-content:space-between;
-  padding:0 10px;background:var(--glass);backdrop-filter:blur(18px) saturate(140%);
+#work-area{display:flex;flex-direction:column;height:100vh;height:100dvh;position:relative;z-index:1}
+#top-bar{height:48px;flex-shrink:0;display:none;align-items:center;justify-content:space-between;
+  padding:0 8px;background:var(--glass);backdrop-filter:blur(18px) saturate(140%);
   -webkit-backdrop-filter:blur(18px) saturate(140%);border-bottom:1px solid var(--border);
-  box-shadow:0 1px 8px rgba(2,49,100,0.06)}
-.tabs{display:flex;gap:2px}
-.tab-btn{background:none;border:none;cursor:pointer;padding:7px 14px;border-radius:8px;
+  box-shadow:0 1px 8px rgba(2,49,100,0.06);gap:6px}
+.tabs{display:flex;gap:2px;flex:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;-ms-overflow-style:none;padding-bottom:1px}
+.tabs::-webkit-scrollbar{display:none}
+.tab-btn{background:none;border:none;cursor:pointer;padding:7px 12px;border-radius:8px;
   font-size:13px;font-weight:600;font-family:inherit;color:#64748b;
-  display:inline-flex;align-items:center;gap:5px;transition:background .15s,color .15s}
+  display:inline-flex;align-items:center;gap:5px;transition:background .15s,color .15s;
+  flex-shrink:0;min-height:36px;white-space:nowrap}
 .tab-btn:hover{background:rgba(2,189,182,0.1);color:#1a202c}
 .tab-btn.active{background:rgba(2,189,182,0.13);color:var(--brand)}
 .tbadge{min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;
   font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;
   padding:0 4px;font-family:inherit}
+/* Desktop logout */
 .logout-btn{background:rgba(255,255,255,0.6);border:1px solid var(--border);border-radius:8px;
   padding:5px 12px;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;
-  color:#64748b;transition:opacity .15s}
+  color:#64748b;transition:opacity .15s;flex-shrink:0;white-space:nowrap}
 .logout-btn:hover{opacity:.75}
+/* Mobile user avatar button */
+.ua-wrap{position:relative;flex-shrink:0;display:none}
+.ua-btn{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--accent));
+  color:#fff;border:none;cursor:pointer;font-size:14px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;font-family:inherit}
+.ua-menu{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--border);
+  border-radius:14px;box-shadow:0 6px 24px rgba(2,49,100,.14);padding:14px 16px;min-width:180px;z-index:300;
+  display:none}
+.ua-menu.open{display:block}
+.ua-menu-name{font-size:13px;font-weight:600;color:#1a202c;padding-bottom:10px;
+  border-bottom:1px solid #e2e6ea;margin-bottom:8px}
+.ua-menu-exit{width:100%;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;
+  padding:9px 12px;font-size:14px;cursor:pointer;color:#ef4444;font-weight:600;font-family:inherit}
+@media(max-width:1023px){
+  .logout-btn{display:none}
+  .ua-wrap{display:block}
+}
 
 /* Panes */
 #panes{flex:1;overflow:hidden;position:relative}
@@ -186,10 +207,22 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
   box-shadow:var(--shadow);white-space:nowrap}
 #shell-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-@media(max-width:767px){
+/* Side buttons hidden on mobile+tablet, visible on desktop */
+@media(max-width:1023px){
   .side-btn{display:none!important}
+}
+/* Choice screen on phone: column layout full-width */
+@media(max-width:640px){
+  .choice-card{padding:28px 20px 24px;width:calc(100vw - 32px);max-height:90dvh;overflow-y:auto}
+  .choice-btns{flex-direction:column;gap:8px;align-items:stretch}
+  .choice-btn{width:100%;height:56px;flex-direction:row;gap:12px;justify-content:flex-start;
+    padding:0 18px;border-radius:12px}
+  .choice-icon{font-size:22px}
+  .choice-label{font-size:14px}
+}
+@media(min-width:641px) and (max-width:1023px){
   .choice-btns{gap:12px}
-  .choice-btn{width:136px;height:90px}
+  .choice-btn{width:140px;height:90px}
 }
 </style>
 </head>
@@ -213,6 +246,13 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       <!--SETTINGS_TAB_BTN-->
     </div>
     <button class="logout-btn" id="logout-btn"><!--DNAME--> · Выйти</button>
+    <div class="ua-wrap" id="ua-wrap">
+      <button class="ua-btn" id="ua-btn" aria-label="Меню пользователя">?</button>
+      <div class="ua-menu" id="ua-menu">
+        <div class="ua-menu-name"><!--DNAME--></div>
+        <button class="ua-menu-exit" id="ua-menu-exit">Выйти</button>
+      </div>
+    </div>
   </div>
   <div id="panes">
     <div class="pane hidden" id="manager-pane">
