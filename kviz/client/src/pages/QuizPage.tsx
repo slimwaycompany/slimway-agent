@@ -777,6 +777,7 @@ export default function QuizPage() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [showExit, setShowExit] = useState(false);
   const [leftOpen, setLeftOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'question'|'answer'|'summary'>('answer');
   const [copiedFitbase, setCopiedFitbase] = useState(false);
   const [dupWarn, setDupWarn] = useState('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1011,8 +1012,8 @@ export default function QuizPage() {
 
   return (
     <div className="quiz-layout">
-      {/* Left column — desktop */}
-      <div className="col-left">
+      {/* Left column — desktop + mobile tab */}
+      <div className={`col-left${mobileTab === 'question' ? ' mobile-tab-active' : ''}`}>
         {leftPanel}
       </div>
 
@@ -1027,7 +1028,7 @@ export default function QuizPage() {
       )}
 
       {/* Center column */}
-      <div className="col-center">
+      <div className={`col-center${mobileTab === 'answer' ? ' mobile-tab-active' : ''}`}>
         <div style={{ padding: '0 0 12px' }}>
           <button className="questions-toggle-btn" onClick={() => setLeftOpen(true)}>
             ❓ Вопросы
@@ -1046,11 +1047,6 @@ export default function QuizPage() {
           <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{STEP_TITLES[stepNum - 1]}</h2>
           <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 8 }}>Шаг {stepNum} из 13</p>
 
-          <details className="mobile-accordion">
-            <summary>❓ Вопросы и подсказки <span>▾</span></summary>
-            <div className="accordion-body">{leftPanel}</div>
-          </details>
-
           {stepContent}
         </div>
 
@@ -1058,7 +1054,7 @@ export default function QuizPage() {
       </div>
 
       {/* Right column */}
-      <div className="col-right">
+      <div className={`col-right${mobileTab === 'summary' ? ' mobile-tab-active' : ''}`}>
         <LiveResult
           sessionId={id!}
           answers={answers}
@@ -1068,12 +1064,17 @@ export default function QuizPage() {
         {copiedFitbase && <div className="save-indicator">✓ Скопировано</div>}
       </div>
 
-      {/* Mobile sticky temp bar */}
-      <div className="mobile-temp-bar">
-        <div className="live-badge" style={{ background: TEMP_COLORS[result.temperature] ?? '#6b7280', margin: 0 }}>
-          {TEMP_BADGES[result.temperature]}
-        </div>
-        <span style={{ fontSize: 13, color: '#6b7280' }}>{result.score} / {MAX_SCORE} пт</span>
+      {/* Mobile sticky tab bar */}
+      <div className="mobile-quiz-tabs">
+        <button className={`mq-tab${mobileTab === 'question' ? ' active' : ''}`}
+          onClick={() => setMobileTab('question')}>❓ Вопрос</button>
+        <button className={`mq-tab${mobileTab === 'answer' ? ' active' : ''}`}
+          onClick={() => setMobileTab('answer')}>📝 Ответы</button>
+        <button className={`mq-tab${mobileTab === 'summary' ? ' active' : ''}`}
+          onClick={() => setMobileTab('summary')}>
+          📊 Резюме
+          <span className="mq-score">{result.score}/{MAX_SCORE}</span>
+        </button>
       </div>
 
       {!readOnly && <QuickReplies answers={answers} usedScripts={usedScripts} onMark={markScript} />}
