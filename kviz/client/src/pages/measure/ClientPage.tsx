@@ -117,7 +117,7 @@ function BodyFigure({ m, prev, activeZones, activeZone, onZoneClick }: {
       <svg className="figure-leaders" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {BODY_POINTS.map(pt => <line key={pt.key} x1={15 + pt.x * .7} y1={pt.y} x2={sideByKey.get(pt.key) === 'left' ? 27 : 73} y2={rowY.get(pt.key)} stroke="#91a0b7" strokeWidth=".35" />)}
       </svg>
-      {BODY_POINTS.map(pt => {
+      {BODY_POINTS.map((pt, idx) => {
         const val = m?.[pt.key] != null ? Number(m![pt.key]) : null;
         const diff = val != null && prev && prev[pt.key] != null ? val - Number(prev[pt.key]) : null;
         const active = activeZones.includes(pt.key);
@@ -129,10 +129,31 @@ function BodyFigure({ m, prev, activeZones, activeZone, onZoneClick }: {
             className={`body-callout body-callout-${side} ${active ? 'active' : ''}`}
             style={{ top: `${rowY.get(pt.key)}%`, '--zone-color': zoneColor } as React.CSSProperties}
           >
+            <span className="body-callout-num">{idx + 1}</span>
             <span className="body-callout-label">{pt.label}</span>
             <strong>{val != null ? `${val.toFixed(1)} см` : '—'}</strong>
             {diff !== null && <small style={{ color: diffColor(diff) }}>{fmtDiff(diff)}</small>}
           </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Zone list (mobile) ────────────────────────────────────────────────────────
+function ZoneList({ m, prev, onZoneClick }: { m: Measurement | null; prev: Measurement | null; onZoneClick: (k: CircKey) => void }) {
+  return (
+    <div className="zone-list-mobile">
+      {BODY_POINTS.map((pt, idx) => {
+        const val = m?.[pt.key] != null ? Number(m![pt.key]) : null;
+        const diff = val != null && prev && prev[pt.key] != null ? val - Number(prev[pt.key]) : null;
+        return (
+          <button key={pt.key} className="zone-list-row" onClick={() => onZoneClick(pt.key)}>
+            <span className="zone-list-num">{idx + 1}</span>
+            <span className="zone-list-name">{pt.label}</span>
+            <span className="zone-list-val">{val != null ? `${val.toFixed(1)} см` : '—'}</span>
+            {diff !== null && <span style={{ color: diffColor(diff), fontSize: 12, minWidth: 36, textAlign: 'right' }}>{fmtDiff(diff)}</span>}
+          </button>
         );
       })}
     </div>
@@ -1719,6 +1740,15 @@ export default function ClientPage() {
         <LinkInBodyDialog clientId={client.id} clientPhone={client.phone} onLinked={() => { setLinkInBodyDialog(false); reload(); }} onClose={() => setLinkInBodyDialog(false)} />
       )}
 
+      {/* Mobile sticky mini-nav */}
+      <div className="client-mini-nav">
+        <a className="cmn-link" href="#s-itog">Итог</a>
+        <a className="cmn-link" href="#s-figure">Фигура</a>
+        <a className="cmn-link" href="#s-chart">График</a>
+        <a className="cmn-link" href="#s-measures">Замеры</a>
+        <a className="cmn-link" href="#s-inbody">InBody</a>
+      </div>
+
       <div className="measure-client-content">
         {/* Header */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1776,11 +1806,12 @@ export default function ClientPage() {
         )}
 
         <div className="measure-client-grid">
-          <aside className="measure-figure-column">
+          <aside className="measure-figure-column" id="s-figure">
             <ErrorBlock label="Фигура"><BodyFigure m={mergedM} prev={prevM} activeZones={zones} activeZone={zoneDetailKey} onZoneClick={openZoneDetail} /></ErrorBlock>
+            <ZoneList m={mergedM} prev={prevM} onZoneClick={openZoneDetail} />
           </aside>
           <section>
-            <div className="measure-lost-card">
+            <div className="measure-lost-card" id="s-itog">
               <div style={{ fontWeight: 700, color: '#263CD9', fontSize: 16 }}>Потеряно со старта</div>
               <div style={{ fontSize: 12, color: '#64748b' }}>{first && last ? `С замера №${first.measure_no} по №${last.measure_no}` : 'Появится после первого замера'}</div>
               <div className="measure-lost-values">
@@ -1797,8 +1828,8 @@ export default function ClientPage() {
                 В результатах студии: {Number(studioResult.cm_lost).toFixed(0)} см, {Number(studioResult.kg_lost).toFixed(1)} кг ({new Date(studioResult.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}, {studioResult.sent_by})
               </div>}
             </div>
-            <ErrorBlock label="InBody"><InBodyBlock tests={inbodyTests} onScan={() => setInbodyDialog(true)} onUnlink={() => reload()} /></ErrorBlock>
-            {mergedM && <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
+            <div id="s-inbody"><ErrorBlock label="InBody"><InBodyBlock tests={inbodyTests} onScan={() => setInbodyDialog(true)} onUnlink={() => reload()} /></ErrorBlock></div>
+            {mergedM && <div id="s-measures" style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>Замер №{mergedM.measure_no} · {fmtDate(mergedM.measured_at)}</div>
               <div style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 10px' }}>{mergedM.consultant}{mergedM.note && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>{mergedM.note}</span>}</div>
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 8, fontSize: 13 }}>
@@ -1810,7 +1841,7 @@ export default function ClientPage() {
 
         {/* Zone checkboxes + chart */}
         {ms.length >= 2 && (
-          <div style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', marginBottom: 20, border: '1px solid #e2e6ea' }}>
+          <div id="s-chart" style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', marginBottom: 20, border: '1px solid #e2e6ea' }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 8 }}>График динамики</div>
             <ZoneCheckboxes zones={zones} onChange={saveZones} />
             <MultiLineChart ms={ms} zones={zones} selectedId={selectedMId} onSelect={id => setSelectedMId(id)} />
