@@ -128,11 +128,28 @@ const ALL_SECTIONS = REPORT_COLUMNS.flatMap(c => c.items);
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+const LS_OPEN_GROUPS = 'reports-open-groups';
+
 export default function ReportsPage() {
   const [section, setSection] = useState<Section | null>(() => {
     try { return (sessionStorage.getItem('reports-section') as Section | null) ?? null; } catch { return null; }
   });
   const [role, setRole] = useState<string>('manager');
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(LS_OPEN_GROUPS);
+      return saved ? new Set(JSON.parse(saved) as string[]) : new Set(['Менеджер', 'Клиенты']);
+    } catch { return new Set(['Менеджер', 'Клиенты']); }
+  });
+
+  function toggleGroup(title: string) {
+    setOpenGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title); else next.add(title);
+      try { localStorage.setItem(LS_OPEN_GROUPS, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }
 
   useEffect(() => {
     fetch('/kviz/api/me', { credentials: 'include' })
@@ -165,7 +182,7 @@ export default function ReportsPage() {
         )}
       </div>
 
-      {/* Board — column layout */}
+      {/* Board — column layout (desktop) / accordion (mobile ≤640px) */}
       {!section && (
         <div className="reports-board" style={s.board}>
           {REPORT_COLUMNS
@@ -173,15 +190,21 @@ export default function ReportsPage() {
             .map(col => {
               const items = col.items.filter(it => !it.adminOnly || isAdmin);
               if (!items.length) return null;
+              const isOpen = openGroups.has(col.title);
               return (
-                <div key={col.title} className="reports-board-col" style={s.column}>
-                  <div style={s.colTitle}>{col.title}</div>
-                  {items.map(it => (
-                    <button key={it.id} style={s.colItem} onClick={() => openSection(it.id)}>
-                      <span style={s.colItemLabel}>{it.label}</span>
-                      {it.desc && <span style={s.colItemDesc}>{it.desc}</span>}
-                    </button>
-                  ))}
+                <div key={col.title} className={`reports-board-col${isOpen ? ' rb-open' : ''}`} style={s.column}>
+                  <div style={s.colTitle} className="rb-col-header" onClick={() => toggleGroup(col.title)}>
+                    {col.title}
+                    <span className="rb-chevron">{isOpen ? '▾' : '▸'}</span>
+                  </div>
+                  <div className="rb-items">
+                    {items.map(it => (
+                      <button key={it.id} style={s.colItem} onClick={() => openSection(it.id)}>
+                        <span style={s.colItemLabel}>{it.label}</span>
+                        {it.desc && <span style={s.colItemDesc}>{it.desc}</span>}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               );
             })}
