@@ -1,0 +1,13 @@
+{
+  "name": "SlimWay",
+  "short_name": "SlimWay",
+  "description": "Помощник студии SlimWay",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef2f7",
+  "theme_color": "#02BDB6",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

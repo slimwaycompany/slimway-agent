@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'path';
 import express from 'express';
 import { env, isDry }    from './config';
 import { isInWorkWindow, isInWatchWindow } from './core/window';
@@ -368,6 +369,8 @@ async function insertRun(
 app.use('/kviz/api/inbody/csv-preview', express.json({ limit: '2mb' }));
 app.use('/kviz/api/inbody/csv-import',  express.json({ limit: '2mb' }));
 app.use(express.json());
+// Serve PWA manifest, icons and other public root assets
+app.use(express.static(path.join(__dirname, '../public'), { index: false, maxAge: '1d' }));
 mountShellRoutes(app);
 mountScriptologRoutes(app);
 mountKvizRoutes(app);
