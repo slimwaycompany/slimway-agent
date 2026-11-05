@@ -65,7 +65,7 @@
 | 33 | zamery, reports, infra | allow=camera у iframe, 3-кнопочный InBodyDialog (📸 фото + 📷 камера + 📂 галерея), qrFromImage.ts (BarcodeDetector→jsQR, мультишкала, квадранты), PrintPage координаты, MeasuresSection/InBodySection автозагрузка+период, fetchAll для замеров и InBody | ТЗ в чате | ✅ готово (текущий) |
 | 34 | infra (все модули с интерфейсом) | Мобильная вёрстка всех экранов + правило «мобильная версия сразу» | `docs/tasks/34-infra-mobile.md` | ✅ готово (8120059, 9083f77; ч.6 проверка на проде — на стороне Сергея; QuizPage 3→вкладки, InBodyDialog full-screen, ClientPage bottom-sheet — отложены в Следующее) |
 | 35 | infra, reports, zamery, kviz | Мобильный UX (гамбургер-drawer, 2-кол меню, аккордеон отчётов, клиент mobile, quiz tabs, PWA) + исправление камеры InBody + QR-декодер barcode-detector/zxing-wasm | `docs/tasks/35-mobile-ux-inbody.md` | ✅ готово (148766d…62c0188) |
-| 36 | crm-leads | CRM Воронка шаг 1: зонд Fitbase leads API (только чтение), отчёт | `docs/tasks/36-crm-leads-fitbase-probe.md` | 🔧 в работе (Claude, 05.11.2026) |
+| 36 | crm-leads | CRM Воронка шаг 1: зонд Fitbase leads API (только чтение), отчёт | `docs/tasks/36-crm-leads-fitbase-probe.md` | ✅ готово (2076c1f + финальный) |
 
 ## Сделано недавно (для контекста)
 
@@ -85,6 +85,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 05.11.2026 | Claude | 36 crm-leads: зонд Fitbase leads API | 2076c1f + финальный | 936 лидов, 7 воронок, 62 этапа, 1252 задачи. Фильтры по воронке/архиву/дате не работают → только полный sync. Теги=строки. analytics.is_overdue=розовый фон. /note требует client_id. Отчёт: docs/reports/fitbase-leads-api.md |
 | 04.11.2026 | Claude | 35: гамбургер-drawer (ч.1-2), аккордеон Отчётов (ч.3), ClientPage mobile (ч.4), quiz tabs (ч.5), PWA (ч.6), camera fix + admin diag (ч.7,9), barcode-detector/zxing-wasm + original-bitmap crops (ч.8) | 148766d…62c0188 | Проверка на реальном iOS/Android — на стороне Сергея. |
 | 04.11.2026 | Claude | 34: мобильная вёрстка; ч.1 общие UI-компоненты (Modal/ResponsiveTable/FilterBar/PageHeader); ч.2 оболочка (логин, вкладки, аватар-меню); ч.3 KassaPage/ReportsPage/CashClosing/SettingsPage/ClientsPage; ч.4 Playwright check:mobile; ч.5 документация CLAUDE.md/AGENTS.md/модули | 8120059 (ч.3), ч.1-2 — предыдущие коммиты | QuizPage 3-кол, InBodyDialog full-screen, ClientPage bottom-sheet — отложено. Проверка на проде — на стороне Сергея. |
 | 04.11.2026 | Claude | 33: allow=camera iframe; qrFromImage.ts (BarcodeDetector→jsQR, ресайз, EXIF, квадранты, таймаут 4с); 3-кнопочный InBodyDialog; PrintPage координаты+шрифт; MeasuresSection/InBodySection автозагрузка+фильтр периода; fetchAll для measure.ts и manager.ts | текущий | SQL не нужен. Проверка на реальном телефоне — на стороне Сергея. |
