@@ -14,7 +14,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users';
+type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -2035,6 +2035,316 @@ function FbUsersSection() {
   );
 }
 
+// ── Scriptolog Settings ────────────────────────────────────────────────────────
+
+interface ScriptPromo { id: string; name: string; valid_from: string | null; valid_to: string | null; is_active: boolean; rule_text: string | null; credit_text: string | null }
+interface ScriptPackage { id: string; name: string; short_text: string | null; client_name: string | null; kind: string; price: number; visits: number; sessions_per_visit: number; tempo: number; validity_days: number | null; freeze_days: number; main_phase: string; mechanism: string[]; includes: string[]; excludes: string[]; payment_methods: string[]; goals: string[]; show_in_chat: boolean; sort: number; is_archived: boolean }
+interface ScriptMaterial { key: string; kind: string; url: string | null; label: string | null }
+
+const MATERIAL_LABELS: Record<string, string> = {
+  video_trial: 'Видео пробного занятия', video_inbody: 'Видео InBody', memo: 'Памятка клиентки',
+  gis2: 'Ссылка 2ГИС', guide_newbie: 'Гайд новичка', menu_pdf: 'Меню / питание', nutrition_chat: 'Чат по питанию',
+};
+const PAYMENT_OPTS = [{ v: 'cash', l: 'Нал' }, { v: 'card', l: 'Карта' }, { v: 'installment', l: 'Рассрочка' }, { v: 'bonus', l: 'Бонусы' }];
+const GOAL_OPTS = [{ v: 'lose_weight', l: 'Похудеть' }, { v: 'zones', l: 'Зоны' }, { v: 'tone', l: 'Тонус' }, { v: 'cellulite', l: 'Целлюлит' }];
+
+function ScriptMaterialsSub() {
+  const [items, setItems] = useState<ScriptMaterial[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Partial<ScriptMaterial>>({});
+  const [err, setErr] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const load = useCallback(async () => {
+    const r = await fetch('/api/scriptolog/settings/materials', { credentials: 'include' });
+    if (r.ok) setItems(await r.json());
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    if (!editing) return;
+    setErr('');
+    const { ok, data } = await api('PATCH', `/api/scriptolog/settings/materials/${editing}`, draft);
+    if (!ok) { setErr(data.error || 'Ошибка'); return; }
+    setEditing(null); setDraft({}); load();
+  }
+
+  async function handleUpload(key: string, file: File) {
+    setUploading(true); setErr('');
+    try {
+      const ab = await file.arrayBuffer();
+      const bytes = new Uint8Array(ab);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const { ok, data } = await api('POST', `/api/scriptolog/settings/materials/${key}/upload`, {
+        content_base64: btoa(binary), content_type: file.type, filename: file.name,
+      });
+      if (!ok) { setErr(data.error || 'Ошибка загрузки'); return; }
+      load();
+    } catch (e) { setErr(String(e)); } finally { setUploading(false); }
+  }
+
+  return (
+    <div>
+      {err && <div style={S.errBox}>{err}</div>}
+      <div style={S.list}>
+        {items.map(item => (
+          <div key={item.key}>
+            <div style={S.row}>
+              <div>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{MATERIAL_LABELS[item.key] ?? item.key}</span>
+                <span style={S.meta}>{item.kind}{item.url ? ' · ' + item.url.slice(0, 50) + (item.url.length > 50 ? '…' : '') : ' · не задан'}</span>
+              </div>
+              <div style={S.rowActions}>
+                <button style={S.editBtn} onClick={() => { setEditing(item.key); setDraft({ kind: item.kind, url: item.url ?? '', label: item.label ?? MATERIAL_LABELS[item.key] }); }}>✎</button>
+                <button style={{ ...S.editBtn, fontSize: 11 }} onClick={() => fileRefs.current[item.key]?.click()} disabled={uploading}>↑ Файл</button>
+                <input ref={el => { fileRefs.current[item.key] = el; }} type="file" style={{ display: 'none' }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(item.key, f); e.target.value = ''; }} />
+              </div>
+            </div>
+            {editing === item.key && (
+              <div style={{ padding: '10px 14px', background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                  <Field label="Тип">
+                    <select style={{ ...S.inp, padding: '7px 8px' }} value={draft.kind ?? 'link'} onChange={e => setDraft(d => ({ ...d, kind: e.target.value }))}>
+                      <option value="link">Ссылка</option>
+                      <option value="file">Файл</option>
+                      <option value="video">Видео</option>
+                    </select>
+                  </Field>
+                  <Field label="Подпись">
+                    <input style={S.inp} value={draft.label ?? ''} onChange={e => setDraft(d => ({ ...d, label: e.target.value }))} />
+                  </Field>
+                </div>
+                <Field label="URL / ссылка">
+                  <input style={S.inp} value={draft.url ?? ''} onChange={e => setDraft(d => ({ ...d, url: e.target.value }))} placeholder="https://…" />
+                </Field>
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button style={S.saveBtn} onClick={save}>Сохранить</button>
+                  <button style={S.cancelBtn} onClick={() => { setEditing(null); setDraft({}); }}>Отмена</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+        {!items.length && <div style={S.empty}>Загрузка…</div>}
+      </div>
+    </div>
+  );
+}
+
+function ScriptPromoSub() {
+  const [promo, setPromo] = useState<ScriptPromo | null>(null);
+  const [pkgs, setPkgs]   = useState<ScriptPackage[]>([]);
+  const [editPromo, setEditPromo] = useState(false);
+  const [editPkg, setEditPkg]     = useState<ScriptPackage | 'new' | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [err, setErr]     = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    const { ok, data } = await api('GET', '/api/scriptolog/settings/promo');
+    if (ok) { setPromo(data.promo); setPkgs(Array.isArray(data.packages) ? data.packages : []); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function savePromo(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setErr(''); setLoading(true);
+    const fd = new FormData(e.currentTarget);
+    const body = {
+      id: promo?.id,
+      name: fd.get('name'), valid_from: fd.get('valid_from') || null, valid_to: fd.get('valid_to') || null,
+      is_active: fd.get('is_active') === 'on', rule_text: fd.get('rule_text') || null, credit_text: fd.get('credit_text') || null,
+    };
+    const { ok, data } = await api('PUT', '/api/scriptolog/settings/promo', body);
+    setLoading(false);
+    if (!ok) { setErr(data.error || 'Ошибка'); return; }
+    setEditPromo(false); load();
+  }
+
+  async function savePkg(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setErr(''); setLoading(true);
+    const fd = new FormData(e.currentTarget);
+    const payments = PAYMENT_OPTS.map(o => o.v).filter(v => fd.get('pm_' + v) === 'on');
+    const goals    = GOAL_OPTS.map(o => o.v).filter(v => fd.get('goal_' + v) === 'on');
+    const toArr    = (s: FormDataEntryValue | null) => s ? String(s).split('\n').map(l => l.trim()).filter(Boolean) : [];
+    const body = {
+      name: fd.get('name'), short_text: fd.get('short_text') || null, client_name: fd.get('client_name') || null,
+      kind: fd.get('kind'), price: fd.get('price'), visits: fd.get('visits'), sessions_per_visit: fd.get('sessions_per_visit'),
+      tempo: fd.get('tempo'), validity_days: fd.get('validity_days') || null, freeze_days: fd.get('freeze_days') || 0,
+      main_phase: fd.get('main_phase'),
+      mechanism: toArr(fd.get('mechanism')), includes: toArr(fd.get('includes')), excludes: toArr(fd.get('excludes')),
+      payment_methods: payments, goals, show_in_chat: fd.get('show_in_chat') === 'on', sort: fd.get('sort') || 0,
+    };
+    const isNew = editPkg === 'new';
+    const url = isNew ? '/api/scriptolog/settings/packages' : `/api/scriptolog/settings/packages/${(editPkg as ScriptPackage).id}`;
+    const { ok, data } = await api(isNew ? 'POST' : 'PATCH', url, body);
+    setLoading(false);
+    if (!ok) { setErr(data.error || 'Ошибка'); return; }
+    setEditPkg(null); load();
+  }
+
+  const visiblePkgs = showArchived ? pkgs : pkgs.filter(p => !p.is_archived);
+
+  return (
+    <div>
+      <div style={{ ...S.subheader, marginBottom: 10 }}>
+        <span style={S.subTitle}>Текущая акция</span>
+        <button style={S.editBtn} onClick={() => { setEditPromo(true); setErr(''); }}>✎ Изменить</button>
+      </div>
+      {promo ? (
+        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{promo.name}</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+            {promo.valid_from ? promo.valid_from.slice(0, 10) : '—'} → {promo.valid_to ? promo.valid_to.slice(0, 10) : '∞'}
+            {' · '}{promo.is_active ? <span style={{ color: '#16a34a', fontWeight: 600 }}>Активна</span> : <span style={{ color: '#94a3b8' }}>Неактивна</span>}
+          </div>
+          {promo.rule_text && <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>{promo.rule_text}</div>}
+        </div>
+      ) : (
+        <div style={{ ...S.empty, marginBottom: 16, background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0' }}>Акция не настроена</div>
+      )}
+
+      <div style={{ ...S.subheader, marginTop: 16 }}>
+        <span style={S.subTitle}>Пакеты</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ArchiveToggle show={showArchived} onToggle={() => setShowArchived(p => !p)} />
+          <button style={S.addBtn} onClick={() => { setEditPkg('new'); setErr(''); }}>+ Добавить</button>
+        </div>
+      </div>
+      <div style={S.list}>
+        {visiblePkgs.map(p => (
+          <div key={p.id} style={{ ...S.row, opacity: p.is_archived ? 0.6 : 1 }}>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</span>
+              {p.is_archived && <span style={S.badge}>архив</span>}
+              <span style={S.meta}>{p.kind.toUpperCase()} · {p.price.toLocaleString('ru')} ₸ · {p.visits} виз.</span>
+            </div>
+            <div style={S.rowActions}>
+              <button style={S.editBtn} onClick={() => { setEditPkg(p); setErr(''); }}>✎</button>
+              {!p.is_archived && <button style={S.editBtn} onClick={() => api('PATCH', `/api/scriptolog/settings/packages/${p.id}/archive`, {}).then(load)}>В архив</button>}
+            </div>
+          </div>
+        ))}
+        {!visiblePkgs.length && <div style={S.empty}>Нет пакетов</div>}
+      </div>
+
+      {editPromo && (
+        <Modal title="Редактировать акцию" onClose={() => { setEditPromo(false); setErr(''); }}>
+          <form onSubmit={savePromo}>
+            {err && <div style={S.errBox}>{err}</div>}
+            <Field label="Название акции *"><input style={S.inp} name="name" required defaultValue={promo?.name ?? ''} /></Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field label="Начало"><input style={S.inp} name="valid_from" type="date" defaultValue={promo?.valid_from?.slice(0, 10) ?? ''} /></Field>
+              <Field label="Конец"><input style={S.inp} name="valid_to" type="date" defaultValue={promo?.valid_to?.slice(0, 10) ?? ''} /></Field>
+            </div>
+            <Field label="Текст правил"><textarea style={{ ...S.inp, height: 60, resize: 'vertical' }} name="rule_text" defaultValue={promo?.rule_text ?? ''} /></Field>
+            <Field label="Текст рассрочки"><textarea style={{ ...S.inp, height: 60, resize: 'vertical' }} name="credit_text" defaultValue={promo?.credit_text ?? ''} /></Field>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginBottom: 16 }}>
+              <input type="checkbox" name="is_active" defaultChecked={promo?.is_active ?? true} /> Активна
+            </label>
+            <div style={S.mBtns}>
+              <button type="button" style={S.cancelBtn} onClick={() => { setEditPromo(false); setErr(''); }}>Отмена</button>
+              <button type="submit" style={S.saveBtn} disabled={loading}>{loading ? '…' : 'Сохранить'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {editPkg && (
+        <Modal title={editPkg === 'new' ? 'Новый пакет' : 'Редактировать пакет'} onClose={() => { setEditPkg(null); setErr(''); }}>
+          <form onSubmit={savePkg} style={{ maxHeight: '78vh', overflowY: 'auto', paddingRight: 4 }}>
+            {err && <div style={S.errBox}>{err}</div>}
+            <Field label="Название *"><input style={S.inp} name="name" required defaultValue={editPkg === 'new' ? '' : (editPkg as ScriptPackage).name} /></Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field label="Короткая строка"><input style={S.inp} name="short_text" defaultValue={editPkg === 'new' ? '' : ((editPkg as ScriptPackage).short_text ?? '')} /></Field>
+              <Field label="Название для клиента"><input style={S.inp} name="client_name" defaultValue={editPkg === 'new' ? '' : ((editPkg as ScriptPackage).client_name ?? '')} /></Field>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field label="Тип">
+                <select style={{ ...S.inp, padding: '9px 8px' }} name="kind" defaultValue={editPkg === 'new' ? 'vacu' : (editPkg as ScriptPackage).kind}>
+                  <option value="vacu">VACU</option>
+                  <option value="cross">CROSS</option>
+                </select>
+              </Field>
+              <Field label="Основная фаза">
+                <select style={{ ...S.inp, padding: '9px 8px' }} name="main_phase" defaultValue={editPkg === 'new' ? 'vacu_fixed' : (editPkg as ScriptPackage).main_phase}>
+                  <option value="vacu_fixed">Фиксированная VACU</option>
+                  <option value="choice">Выбор клиентки</option>
+                </select>
+              </Field>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <Field label="Цена ₸ *"><input style={S.inp} name="price" type="number" min="0" required defaultValue={editPkg === 'new' ? '' : (editPkg as ScriptPackage).price} /></Field>
+              <Field label="Визитов"><input style={S.inp} name="visits" type="number" min="0" defaultValue={editPkg === 'new' ? '' : (editPkg as ScriptPackage).visits} /></Field>
+              <Field label="Сеансов/визит"><input style={S.inp} name="sessions_per_visit" type="number" min="0" defaultValue={editPkg === 'new' ? '' : (editPkg as ScriptPackage).sessions_per_visit} /></Field>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <Field label="Темп (нед)">
+                <select style={{ ...S.inp, padding: '9px 8px' }} name="tempo" defaultValue={editPkg === 'new' ? '2' : String((editPkg as ScriptPackage).tempo)}>
+                  <option value="2">2/нед</option>
+                  <option value="3">3/нед</option>
+                </select>
+              </Field>
+              <Field label="Срок (дн)"><input style={S.inp} name="validity_days" type="number" min="1" defaultValue={editPkg === 'new' ? '' : ((editPkg as ScriptPackage).validity_days ?? '')} /></Field>
+              <Field label="Заморозка (дн)"><input style={S.inp} name="freeze_days" type="number" min="0" defaultValue={editPkg === 'new' ? '0' : (editPkg as ScriptPackage).freeze_days} /></Field>
+            </div>
+            <Field label="Механизм (каждое по новой строке)"><textarea style={{ ...S.inp, height: 56, resize: 'vertical' }} name="mechanism" defaultValue={editPkg === 'new' ? '' : (editPkg as ScriptPackage).mechanism.join('\n')} /></Field>
+            <Field label="Что включено"><textarea style={{ ...S.inp, height: 56, resize: 'vertical' }} name="includes" defaultValue={editPkg === 'new' ? '' : (editPkg as ScriptPackage).includes.join('\n')} /></Field>
+            <Field label="Что нельзя"><textarea style={{ ...S.inp, height: 56, resize: 'vertical' }} name="excludes" defaultValue={editPkg === 'new' ? '' : (editPkg as ScriptPackage).excludes.join('\n')} /></Field>
+            <Field label="Оплата">
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
+                {PAYMENT_OPTS.map(o => (
+                  <label key={o.v} style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" name={'pm_' + o.v} defaultChecked={editPkg !== 'new' && (editPkg as ScriptPackage).payment_methods.includes(o.v)} /> {o.l}
+                  </label>
+                ))}
+              </div>
+            </Field>
+            <Field label="Цели">
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
+                {GOAL_OPTS.map(o => (
+                  <label key={o.v} style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" name={'goal_' + o.v} defaultChecked={editPkg !== 'new' && (editPkg as ScriptPackage).goals.includes(o.v)} /> {o.l}
+                  </label>
+                ))}
+              </div>
+            </Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field label="Порядок"><input style={S.inp} name="sort" type="number" defaultValue={editPkg === 'new' ? '0' : (editPkg as ScriptPackage).sort} /></Field>
+              <div style={{ paddingTop: 20 }}>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" name="show_in_chat" defaultChecked={editPkg === 'new' ? true : (editPkg as ScriptPackage).show_in_chat} /> Показывать в чате
+                </label>
+              </div>
+            </div>
+            <div style={S.mBtns}>
+              <button type="button" style={S.cancelBtn} onClick={() => { setEditPkg(null); setErr(''); }}>Отмена</button>
+              <button type="submit" style={S.saveBtn} disabled={loading}>{loading ? '…' : 'Сохранить'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ScriptologSection() {
+  type Sub = 'promo' | 'materials';
+  const [sub, setSub] = useState<Sub>('promo');
+  return (
+    <div style={S.section}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <button style={{ ...S.subNavBtn, ...(sub === 'promo' ? S.subNavActive : {}) }} onClick={() => setSub('promo')}>Акция и пакеты</button>
+        <button style={{ ...S.subNavBtn, ...(sub === 'materials' ? S.subNavActive : {}) }} onClick={() => setSub('materials')}>Материалы</button>
+      </div>
+      {sub === 'promo'     && <ScriptPromoSub />}
+      {sub === 'materials' && <ScriptMaterialsSub />}
+    </div>
+  );
+}
+
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
 const NAV: { id: Section; label: string; icon: string }[] = [
@@ -2054,6 +2364,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: 'task-types',   label: 'Типы задач',           icon: '✅' },
   { id: 'lost-reasons', label: 'Причины отказа',       icon: '❌' },
   { id: 'fb-users',     label: 'Сопоставление FB',     icon: '👤' },
+  { id: 'scriptolog',   label: 'Скриптолог',           icon: '📝' },
 ];
 
 export default function SettingsPage() {
@@ -2107,6 +2418,7 @@ export default function SettingsPage() {
         {section === 'task-types' && <TaskTypesSection />}
         {section === 'lost-reasons' && <LostReasonsSection />}
         {section === 'fb-users'   && <FbUsersSection />}
+        {section === 'scriptolog' && <ScriptologSection />}
       </div>
     </div>
   );

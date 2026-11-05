@@ -1,162 +1,159 @@
 #!/usr/bin/env node
-// Проверяет scripts/sales-tree.json: ID, тексты, переходы, KZ, хабы.
+// Проверяет scripts/sales-tree-v2.json.
+// Запуск: npm run check-tree
 const fs   = require('fs');
 const path = require('path');
 
-const treeFile = path.join(__dirname, 'sales-tree.json');
-const mdFile   = path.join(__dirname, '..', 'docs', 'sales-tree.md');
+const v2File = path.join(__dirname, 'sales-tree-v2.json');
+const tree   = JSON.parse(fs.readFileSync(v2File, 'utf8'));
 
-const tree = JSON.parse(fs.readFileSync(treeFile, 'utf8'));
-const md   = fs.readFileSync(mdFile, 'utf8');
-
-const nodes   = tree.nodes;
-const nodeIds = Object.keys(nodes);
-let errors    = 0;
-
+let errors = 0;
 function fail(msg) { console.error('  ✗', msg); errors++; }
 function ok(msg)   { console.log ('  ✓', msg); }
 
-// Бренды, которые допустимы в KZ-тексте латиницей
-const BRAND_RE = /\b(InBody|VacuActiv|InfraShape|InfraStep|RollShape|SlimWay|WhatsApp|Fitbase|EasyChat|Kaspi|Qazyna)\b/gi;
+const BRAND_RE = /\b(InBody|VacuActiv|InfraShape|InfraStep|RollShape|SlimWay|WhatsApp|Fitbase|EasyChat|Kaspi|Qazyna|LRT|PDF)\b/gi;
 
 function extractVars(text) {
   const m = text.match(/\{[^}]+\}/g);
   return m ? new Set(m) : new Set();
 }
 
-// ── 1. Все ID из markdown присутствуют в JSON ──────────────────────────────
-console.log('\n[1] ID из markdown → JSON');
-const mdIds = [...md.matchAll(/\*\*(\d+\.\d+(?:\.\d+)?)\s/g)].map(m => m[1]);
-const mdIdSet = new Set(mdIds);
-for (const id of mdIdSet) {
-  if (!nodes[id]) fail(`${id} есть в markdown, нет в JSON`);
+// ── 1. Все 7 этапов присутствуют ──────────────────────────────────────────
+console.log('\n[1] Все 7 этапов присутствуют');
+const stages = tree.stages;
+if (!Array.isArray(stages)) { fail('stages не массив'); }
+else {
+  const ids = stages.map(s => s.id);
+  for (let i = 1; i <= 7; i++) {
+    if (!ids.includes(i)) fail(`Этап ${i} отсутствует`);
+  }
+  if (ids.length !== 7) fail(`Ожидается 7 этапов, найдено ${ids.length}`);
+  else ok(`7 этапов: ${ids.join(', ')}`);
 }
-ok(`markdown содержит ${mdIdSet.size} уникальных ID`);
 
-// ── 2. Все ID из JSON упомянуты в markdown ─────────────────────────────────
-console.log('\n[2] ID из JSON → markdown');
-for (const id of nodeIds) {
-  if (!mdIdSet.has(id)) fail(`${id} есть в JSON, не упомянут в markdown`);
-}
-ok(`JSON содержит ${nodeIds.length} узлов`);
-
-// ── 3. Нет текстов с «TODO» ────────────────────────────────────────────────
-console.log('\n[3] Отсутствие TODO');
-for (const id of nodeIds) {
-  const n = nodes[id];
-  const texts = [n.text];
-  if (Array.isArray(n.variants)) n.variants.forEach(v => texts.push(v.text));
-  for (const t of texts) {
-    if (t && t.includes('TODO')) fail(`${id}: текст содержит TODO`);
+// ── 2. Нет пустых text у непендинговых шагов ──────────────────────────────
+console.log('\n[2] Непустые тексты у непендинговых шагов');
+let stepCount = 0;
+for (const stage of (stages || [])) {
+  for (const step of (stage.steps || [])) {
+    if (step.pending) continue;
+    if (step.reminders) continue; // дожим — массив напоминаний
+    stepCount++;
+    if (!step.text || !step.text.trim()) fail(`${step.id}: пустой text`);
   }
 }
-ok('TODO не найдено');
+ok(`Проверено ${stepCount} шагов`);
 
-// ── 4. chat-узлы имеют непустой текст или варианты ────────────────────────
-console.log('\n[4] Непустые тексты у chat-узлов');
-for (const id of nodeIds) {
-  const n = nodes[id];
-  if (n.kind !== 'chat') continue;
-  const hasText     = n.text && n.text.trim();
-  const hasVariants = Array.isArray(n.variants) && n.variants.length > 0 &&
-                      n.variants.every(v => v.text && v.text.trim());
-  if (!hasText && !hasVariants) fail(`${id}: chat-узел без текста и вариантов`);
+// ── 3. text_kk присутствует у всех непендинговых шагов ────────────────────
+console.log('\n[3] Наличие text_kk у этапных шагов');
+for (const stage of (stages || [])) {
+  for (const step of (stage.steps || [])) {
+    if (step.pending) continue;
+    if (step.reminders) {
+      for (const r of step.reminders) {
+        if (!r.text_kk || !r.text_kk.trim()) fail(`${step.id} напоминание ${r.kind}: нет text_kk`);
+      }
+      continue;
+    }
+    if (!step.text_kk || !step.text_kk.trim()) fail(`${step.id}: нет text_kk`);
+  }
 }
-ok('все chat-узлы имеют текст или варианты');
+ok('text_kk проверены у этапных шагов');
 
-// ── 5. Все переходы ведут на существующие ID или null ─────────────────────
-console.log('\n[5] Корректность переходов');
-for (const id of nodeIds) {
-  const n = nodes[id];
-  for (const ans of (n.answers || [])) {
-    if (ans.next !== null && !nodes[ans.next]) {
-      fail(`${id}: ответ «${ans.label}» ведёт в несуществующий ${ans.next}`);
+// ── 4. text_kk в справочниках ──────────────────────────────────────────────
+console.log('\n[4] Наличие text_kk в справочниках');
+const refs = tree.refs || {};
+for (const [refName, items] of Object.entries(refs)) {
+  for (const item of (items || [])) {
+    if (!item.text_kk || !item.text_kk.trim()) fail(`${refName}/${item.id}: нет text_kk`);
+  }
+}
+ok('text_kk проверены в справочниках');
+
+// ── 5. Переменные {…} в RU и KZ совпадают ─────────────────────────────────
+console.log('\n[5] Совпадение переменных {…} в RU и KZ');
+
+function checkVarParity(id, text, text_kk) {
+  if (!text || !text_kk) return;
+  const ruVars = extractVars(text);
+  const kkVars = extractVars(text_kk);
+  for (const v of ruVars) if (!kkVars.has(v)) fail(`${id}: переменная ${v} есть в RU, нет в KZ`);
+  for (const v of kkVars) if (!ruVars.has(v)) fail(`${id}: переменная ${v} есть в KZ, нет в RU`);
+}
+
+for (const stage of (stages || [])) {
+  for (const step of (stage.steps || [])) {
+    if (step.pending || step.reminders) continue;
+    checkVarParity(step.id, step.text, step.text_kk);
+    if (step.clarify_fields) {
+      const rw = step.refuse_height_weight;
+      if (rw) checkVarParity(step.id + '.refuse', rw.text, rw.text_kk);
     }
   }
-  if (n.next !== undefined && n.next !== null && !nodes[n.next]) {
-    fail(`${id}: next ведёт в несуществующий ${n.next}`);
+}
+for (const [refName, items] of Object.entries(refs)) {
+  for (const item of (items || [])) {
+    checkVarParity(`${refName}/${item.id}`, item.text, item.text_kk);
+    if (item.reminders) for (const r of item.reminders) checkVarParity(`${item.id}/${r.kind}`, r.text, r.text_kk);
   }
 }
-ok('все переходы корректны');
+ok('переменные в RU/KZ проверены');
 
-// ── 6. Подсчёт по блокам ──────────────────────────────────────────────────
-console.log('\n[6] Узлов по блокам');
-const byBlock = {};
-for (const id of nodeIds) {
-  const b = nodes[id].block;
-  byBlock[b] = (byBlock[b] || 0) + 1;
-}
-let total = 0;
-for (const b of Object.keys(byBlock).sort((a,b) => +a - +b)) {
-  const cnt = byBlock[b];
-  total += cnt;
-  console.log(`  Блок ${b}: ${cnt} узл${cnt===1?'':cnt<5?'а':'ов'}`);
-}
-console.log(`  Итого: ${total}`);
+// ── 6. Нет латиницы вне брендов в KZ-текстах ──────────────────────────────
+console.log('\n[6] Латиница вне брендов в KZ-текстах');
 
-// ── 7. KZ-текст у каждого неpending chat/bot-узла ────────────────────────
-console.log('\n[7] Наличие KZ-текста');
-for (const id of nodeIds) {
-  const n = nodes[id];
-  if (n.pending) continue;
-  if (n.kind !== 'chat' && n.kind !== 'bot') continue;
-  if (Array.isArray(n.variants) && n.variants.length > 0) {
-    for (const v of n.variants) {
-      if (!v.text_kk || !v.text_kk.trim()) fail(`${id} вариант «${v.label}»: нет text_kk`);
-    }
-  } else {
-    if (!n.text_kk || !n.text_kk.trim()) fail(`${id}: нет text_kk`);
+function checkKZLatin(id, text_kk) {
+  if (!text_kk) return;
+  const stripped = text_kk
+    .replace(BRAND_RE, '')
+    .replace(/\{[^}]+\}/g, '')
+    .replace(/https?:\/\/\S+/g, '');
+  if (/[a-zA-Z]/.test(stripped)) {
+    const m = stripped.match(/[a-zA-Z]+/)?.[0] || '?';
+    fail(`${id}: латиница в KZ — «${m}»`);
   }
 }
-ok('KZ-тексты проверены');
 
-// ── 8. Совпадение переменных в RU и KZ ───────────────────────────────────
-console.log('\n[8] Совпадение переменных {…} в RU и KZ');
-for (const id of nodeIds) {
-  const n = nodes[id];
-  if (n.pending) continue;
-  if (n.kind !== 'chat' && n.kind !== 'bot') continue;
-  const pairs = [];
-  if (Array.isArray(n.variants) && n.variants.length > 0) {
-    for (const v of n.variants) {
-      if (v.text && v.text_kk) pairs.push([v.text, v.text_kk, `вариант «${v.label}»`]);
-    }
-  } else if (n.text && n.text_kk) {
-    pairs.push([n.text, n.text_kk, 'text']);
-  }
-  for (const [ru, kk, label] of pairs) {
-    const ruVars = extractVars(ru);
-    const kkVars = extractVars(kk);
-    for (const v of ruVars) if (!kkVars.has(v)) fail(`${id} ${label}: переменная ${v} есть в RU, нет в KZ`);
-    for (const v of kkVars) if (!ruVars.has(v)) fail(`${id} ${label}: переменная ${v} есть в KZ, нет в RU`);
+for (const stage of (stages || [])) {
+  for (const step of (stage.steps || [])) {
+    checkKZLatin(step.id, step.text_kk);
+    if (step.reminders) for (const r of step.reminders) checkKZLatin(`${step.id}/${r.kind}`, r.text_kk);
   }
 }
-ok('переменные в RU/KZ совпадают');
-
-// ── 9. Нет Latin/Russian замен Казахских букв в KZ-текстах ───────────────
-console.log('\n[9] Отсутствие латиницы вне брендов в KZ-текстах');
-for (const id of nodeIds) {
-  const n = nodes[id];
-  if (n.pending) continue;
-  const kkTexts = [];
-  if (Array.isArray(n.variants)) n.variants.forEach(v => v.text_kk && kkTexts.push([v.text_kk, `вариант «${v.label}»`]));
-  if (n.text_kk) kkTexts.push([n.text_kk, 'text']);
-  for (const [kk, label] of kkTexts) {
-    const stripped = kk
-      .replace(BRAND_RE, '')
-      .replace(/\{[^}]+\}/g, '');  // убираем {Переменные}
-    if (/[a-zA-Z]/.test(stripped)) {
-      fail(`${id} ${label}: латиница вне брендов — «${stripped.match(/[a-zA-Z]+/)[0]}»`);
-    }
+for (const [refName, items] of Object.entries(refs)) {
+  for (const item of (items || [])) {
+    checkKZLatin(`${refName}/${item.id}`, item.text_kk);
   }
+}
+// bridge_map
+for (const b of (tree.bridge_map || [])) {
+  checkKZLatin(`bridge/${b.reason}`, b.text_kk);
 }
 ok('латиница в KZ-текстах только в именах брендов');
 
-// ── 10. Ровно 3 узла с hub: true ─────────────────────────────────────────
-console.log('\n[10] Хаб-узлы (hub: true)');
-const hubs = nodeIds.filter(id => nodes[id].hub === true);
-if (hubs.length !== 3) fail(`ожидается 3 хаб-узла, найдено ${hubs.length}: ${hubs.join(', ')}`);
-else ok(`хаб-узлы: ${hubs.join(', ')}`);
+// ── 7. Все 3 справочника непустые ──────────────────────────────────────────
+console.log('\n[7] Справочники непустые');
+const REQ_REFS = ['objections', 'questions', 'silent'];
+for (const r of REQ_REFS) {
+  const items = refs[r];
+  if (!Array.isArray(items) || items.length === 0) fail(`Справочник «${r}» пустой или отсутствует`);
+  else ok(`${r}: ${items.length} элементов`);
+}
+
+// ── 8. bridge_map покрывает все причины ───────────────────────────────────
+console.log('\n[8] bridge_map');
+const REASONS = ['нет времени','тяжело, суставы','нет результата','скучно одной','дорого','не занималась'];
+const bridgeReasons = new Set((tree.bridge_map || []).map(b => b.reason));
+for (const r of REASONS) {
+  if (!bridgeReasons.has(r)) fail(`bridge_map: нет причины «${r}»`);
+}
+ok(`bridge_map покрывает ${bridgeReasons.size} причин`);
+
+// ── 9. imt_hints: 3 записи с max ──────────────────────────────────────────
+console.log('\n[9] imt_hints');
+const hints = tree.imt_hints || [];
+if (hints.length !== 3) fail(`Ожидается 3 подсказки ИМТ, найдено ${hints.length}`);
+else ok('3 подсказки ИМТ');
 
 // ── Итог ───────────────────────────────────────────────────────────────────
 console.log('');

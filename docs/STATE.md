@@ -13,7 +13,7 @@
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 04.11.2026 | task 35: QuizPage tabs на мобиле (Вопрос/Ответы/Резюме) |
 | Замеры и InBody | `modules/zamery.md` | Замеры и отчёты | 🟢 | 04.11.2026 | task 35: camera fix, barcode-detector, ClientPage mobile (numbered points, zone list, mini-nav) |
 | Отчёты | `modules/reports.md` | Замеры и отчёты | 🟢 | 04.11.2026 | task 35: аккордеон групп на мобиле (openGroups, localStorage) |
-| Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 29.10.2026 | Задача 22: лояльное дерево (66 узлов), KZ-тексты, RU/KZ, ↩К развилке, чтение переписки |
+| Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 05.11.2026 | Задача 39: аккордеон 7 этапов, дерево v2, фикс селекторов EasyChat, Акция/Материалы, напоминания |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | ⚪ | 28.10.2026 | Требования собраны, следующий этап после кассы |

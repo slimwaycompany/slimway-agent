@@ -73,7 +73,8 @@
         const textEl = el.querySelector(SEL.msgText);
         const text = textEl ? textEl.textContent.trim() : '';
         if (!text) return;
-        const isOwn = !!el.querySelector(SEL.msgOwn) || el.matches(SEL.msgOwn);
+        // _mine_ is a wrapper ancestor; use closest() to find it
+        const isOwn = !!el.closest(SEL.msgOwn);
         chrome.runtime.sendMessage({
           type: 'chat-message',
           direction: isOwn ? 'out' : 'in',

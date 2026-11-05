@@ -24,17 +24,23 @@ const SEL = {
   // Иконка/название канала в заголовке диалога
   channelLabel: '[class*="_channel_"], [class*="_source_"], [class*="_integration_"]',
 
-  // Список сообщений (контейнер, за которым следит MutationObserver)
-  msgList: '[class*="_message-list_"], [class*="_messages_"]',
+  // Контейнер сообщений (проверено 05.11.2026 на живом EasyChat)
+  msgList: '[class*="_chat_"]',
 
-  // Один элемент сообщения
-  msgItem: '[class*="_message-item_"]',
+  // Один элемент сообщения (class вида _message_xxxxx_NN)
+  msgItem: '[class*="_message_"]',
 
-  // Текст внутри элемента сообщения
-  msgText: '[class*="_message-text_"], [class*="_text_"]',
+  // Текст внутри сообщения
+  msgText: '[class*="_message-text_"]',
 
-  // Класс исходящего (нашего) сообщения
-  msgOwn: '[class*="_own_"], [class*="_right_"]',
+  // Обёртка исходящего (нашего) сообщения
+  msgOwn: '[class*="_wrapper_"][class*="_mine_"]',
+
+  // Метка времени
+  msgTime: '[class*="_time_"]',
+
+  // Блок-контейнер одного сообщения
+  msgBlock: '[class*="_block_"]',
 };
 
 // Каналы: искать слова в тексте; порядок важен — 'max' после остальных

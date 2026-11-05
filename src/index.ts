@@ -28,6 +28,7 @@ import { runFitbaseCrmSync } from './jobs/fitbaseCrmSync';
 import { mountScriptologRoutes } from './http/scriptolog';
 import { runCrmLifecycle } from './http/crm';
 import { runCrmLeadsSync } from './jobs/crmLeadsSync';
+import { runScriptologReminders, JOB_NAME as REMINDERS_JOB } from './jobs/scriptologReminders';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -277,6 +278,17 @@ async function handleCrmLifecycle(req: express.Request, res: express.Response): 
 app.get('/run/crm-lifecycle',  handleCrmLifecycle);
 app.post('/run/crm-lifecycle', handleCrmLifecycle);
 
+// scriptolog-reminders: every 15 min 09:00-22:00 Almaty (window checked inside job)
+async function handleScriptologReminders(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const locked = await acquireLock(REMINDERS_JOB, 5 * 60);
+  if (!locked) { res.json({ status: 'already_running' }); return; }
+  res.status(202).json({ status: 'accepted', job: REMINDERS_JOB });
+  executeJob(REMINDERS_JOB, runScriptologReminders);
+}
+app.get('/run/scriptolog-reminders',  handleScriptologReminders);
+app.post('/run/scriptolog-reminders', handleScriptologReminders);
+
 // shifts-autoclose — must be before generic /run/:job
 app.use(buildShiftsAutocloseRoute());
 
@@ -397,6 +409,8 @@ async function insertRun(
 // Raise body limit only for InBody CSV endpoints — must come BEFORE global express.json()
 app.use('/kviz/api/inbody/csv-preview', express.json({ limit: '2mb' }));
 app.use('/kviz/api/inbody/csv-import',  express.json({ limit: '2mb' }));
+// Raise limit for materials upload (base64 file content)
+app.use('/api/scriptolog/settings/materials', express.json({ limit: '20mb' }));
 app.use(express.json());
 // Serve PWA manifest, icons and other public root assets
 app.use(express.static(path.join(__dirname, '../public'), { index: false, maxAge: '1d' }));

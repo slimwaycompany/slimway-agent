@@ -12,8 +12,12 @@ Chrome-расширение: боковая панель рядом с чато�
 - `docs/reports/sales-tree-kk-review.md` — отчёт по KZ-переводам
 
 ## Таблицы
-- `script_clients` — клиентка (client_key: `phone:7XXXXXXXXXX` или `chat:<канал>:<имя>`), current_node, status, facts jsonb, vars jsonb (`lang: 'ru'|'kk'`), менеджеры, merged_into
-- `script_events` — события (start / insert / copy / sent / answer / fact / jump / back / link_phone / merge); поле `via: 'hub'` у прыжков к развилке
+- `script_clients` — клиентка (client_key: `phone:7XXXXXXXXXX` или `chat:<канал>:<имя>`), current_node, status (`active|confirmed_trial`), facts jsonb, vars jsonb, менеджеры, merged_into
+- `script_events` — события (start / insert / copy / sent / answer / fact / jump / confirm / merge и др.)
+- `script_promo` — текущая акция (name, valid_from/to, is_active, rule_text, credit_text)
+- `script_promo_packages` — пакеты (kind: `vacu|cross`; main_phase: `vacu_fixed|choice`; payment_methods jsonb; goals jsonb; is_archived)
+- `script_materials` — ресурсы (key: 7 фиксированных значений; kind: `video|file|link`; url; label); bucket `scriptolog-materials`
+- `script_reminders` — напоминания (kind: 9 значений; status: `pending|sent|skipped|cancelled`; scheduled_at; sent_at)
 
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -37,6 +41,14 @@ Chrome-расширение: боковая панель рядом с чато�
 
 ## Сделано
 
+### 05.11.2026 · задача 39 · аккордеон 7 этапов, дерево v2, фикс EasyChat, Акция/Материалы, напоминания
+- **Дерево v2**: `scripts/sales-tree-v2.json` — 7 этапов × шаги, refs (8 возражений, 5 вопросов, 3 молчит), bridge_map (6 причин), imt_hints, constants. `scripts/check-tree.js` переписан под v2 (9 проверок). `docs/sales-tree-v2-draft.md` — утверждённый источник текстов.
+- **Панель**: `public/scriptolog.html` переписана с нуля — аккордеон-секции 7 этапов; Ж/М авто/ручной (авто по имени); ИМТ-подсказка; `setVar` без потери фокуса (обновляет только preview-span, не инпуты); переменные дебаунс 1 с → `fact` событие; drawer-справочники (Возражения/Вопросы/Молчит); блок дожима (step 7.4 — напоминания); история/диагностика внутри аккордеона; кнопка «✅ Подтвердил(а)» в этапе 6 при получении «+»/«да».
+- **EasyChat**: `selectors.js` — реальные селекторы из живого UI (msgList `[class*="_chat_"]`, msgItem/msgText/msgOwn/msgTime/msgBlock). `easychat.js` — `el.closest(SEL.msgOwn)` вместо `el.querySelector` (обёртка _mine_ — предок, не дочерний).
+- **Сервер** `src/http/scriptolog.ts`: дерево теперь `sales-tree-v2.json`; добавлены `POST /api/scriptolog/confirm` (Part 7, флаг `SCRIPTOLOG_CONFIRM_DRY_RUN`); `GET/PUT /api/scriptolog/settings/promo`; `GET/POST/PATCH /api/scriptolog/settings/packages`; `GET/PATCH/POST /api/scriptolog/settings/materials/:key` (upsert by key, Supabase Storage upload).
+- **SettingsPage** `kviz/client/src/pages/crm/SettingsPage.tsx`: секция «Скриптолог» (admin) — подсекция «Акция и пакеты» (форма акции + CRUD пакетов со всеми полями из check-constraints) + «Материалы» (7 позиций, inline-edit, загрузка файла base64→Storage).
+- **Напоминания** `src/jobs/scriptologReminders.ts` + `/run/scriptolog-reminders` в `src/index.ts`: выборка `script_reminders` где `status=pending AND scheduled_at<=now()`, подстановка vars клиента, лог/обновление статуса. `SCRIPTOLOG_REMINDERS_DRY_RUN=true` по умолчанию.
+
 ### 29.10.2026 · (задача 22) · лояльное дерево, блок 8, KZ-тексты, RU/KZ, ↩К развилке, чтение переписки
 - **Дерево**: новые узлы 2.8 «Что Вас ждёт», 3.11 «Мягкий выход», блок 8 (8.1–8.8 «Частые вопросы»). Изменены 1.1, 3.1, 3.2, 3.3–3.9 (2-е возражение → 3.11), 3.10, 4.7, 6.10, 7.1. Новые правила: схема ответа, {Цель}, убрать давление, правило 2-го возражения, эмодзи. Итого 66 узлов.
 - **KZ-тексты**: `text_kk`, `variants[].text_kk`, `answers[].reply_kk` на всех 55 неpending chat/bot-узлах. Константа `Адрес_kk`. Отчёт `docs/reports/sales-tree-kk-review.md`.
@@ -51,13 +63,16 @@ Chrome-расширение: боковая панель рядом с чато�
 - Расширение MV3 (manifest, sidepanel, easychat.js, fitbase.js, selectors.js), страница `/scriptolog`, Bearer-вход, история клиенток, привязка телефона, определение канала.
 
 ## Открытые баги
-- **Чтение переписки НЕ работает (проверено вживую 05.11)**: селекторы из задачи 22 (`_message-list_`, `_message-item_`, `_own_`) находят 0 элементов. Реальные: сообщение `[class*="_message_"]` (класс `_message_xxxxx_NN`, не `_message-text_`), текст `[class*="_message-text_"]`, время `[class*="_time_"]`, исходящее = обёртка `[class*="_wrapper_"][class*="_mine_"]`, контейнер сообщения `[class*="_block_"]`. Сообщения приходят по WebSocket (HTTP-запроса истории нет).
-- Баг ввода переменных ({Имя}, {Менеджер}): `setVar` на каждую букву перерисовывает поля через innerHTML → теряется фокус; плюс каждая буква пишется событием `insert` в базу.
-- Селекторы сообщений EasyChat (msgList, msgItem, msgOwn) — добавлены по шаблону, нужно проверить на живом интерфейсе и скорректировать классы если EasyChat обновит UI.
-- Проверить: канал определяется (был «unknown» у WhatsApp), кнопка «Вставить» заблокирована на узлах без текста.
+- Аккордеон-панель (`public/scriptolog.html`) не проверена на живом расширении — нужна проверка на проде.
+- Схема `script_reminders` предполагает колонку `text` с шаблоном — уточнить при первом использовании; возможно, нужен SQL для добавления колонки если её нет.
+- Fitbase booking confirm API не верифицирован — `SCRIPTOLOG_CONFIRM_DRY_RUN=true` пока не менять.
 
 ## Следующее
-- УТВЕРЖДЕНО (05.11): новое дерево v2 — `docs/sales-tree-v2-draft.md` (7 этапов, аккордеон, справочники, Ж/М, Настройки → Акция и Материалы). Дальше: KZ-перевод → ТЗ по «собирай».
+- Добавить `/run/scriptolog-reminders` в cron-job.org (каждые 15 мин).
+- Переключить `SCRIPTOLOG_REMINDERS_DRY_RUN=false` в Render после проверки на проде.
+- Переключить `SCRIPTOLOG_CONFIRM_DRY_RUN=false` когда Fitbase API для подтверждения записи подтверждён.
+- Механизм уведомлений в «Овчарку» при напоминаниях (сейчас только лог).
+- Создание напоминаний: нужна логика в панели или сервере для `INSERT INTO script_reminders` при переходе на этап 7.
 - В обсуждении (05.11): упрощаем дерево до ОДНОГО стандарта консультации из 7 этапов (знакомство → запрос → почему SlimWay → приглашение → запись → подтверждение «+» за 3 ч → после пробного), этапы аккордеоном, этап закрывается сам по ответу клиентки. Возражения, частые вопросы, «молчит» — кнопки-справочники внутри этапа. Образец — BodyRoom (линейка, отдают материалы, подтверждение «+»).
 - РЕШЕНО (05.11): крючок — пришла на пробное в день записи → бесплатный InBody (стоит 5000 ₸).
 - РЕШЕНО (05.11): на этапе «Запрос» спрашиваем рост и вес → считаем ИМТ.

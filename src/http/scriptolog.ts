@@ -5,7 +5,7 @@ import { supabase } from '../db/supabase';
 import { getSession, makeToken, checkRate, recordFail, clearFails } from './auth';
 
 const PAGE_PATH = path.join(__dirname, '../../public/scriptolog.html');
-const TREE_PATH = path.join(__dirname, '../../scripts/sales-tree.json');
+const TREE_PATH = path.join(__dirname, '../../scripts/sales-tree-v2.json');
 
 let treeCache: unknown = null;
 function getTree(): unknown {
@@ -232,7 +232,184 @@ export function buildScriptologRouter(): Router {
     }
   });
 
+  // ── Part 7: Confirm trial ───────────────────────────────────────────────────
+
+  r.post('/api/scriptolog/confirm', async (req, res) => {
+    if (!auth(req, res)) return;
+    const b = req.body as Record<string, unknown>;
+    const { client_id, booking_date, booking_time, confirmed_at } = b;
+    if (!client_id) { res.status(400).json({ error: 'client_id required' }); return; }
+    const DRY = (process.env.SCRIPTOLOG_CONFIRM_DRY_RUN ?? 'true') === 'true';
+    try {
+      const { data: client } = await supabase.from('script_clients').select('name, last_manager').eq('id', client_id).single();
+      const clientName = client?.name ?? '?';
+      const timeStr = String(booking_time ?? '');
+      const dateStr = String(booking_date ?? '');
+      const confirmedAt = confirmed_at ? new Date(confirmed_at as string) : new Date();
+      const hhmm = confirmedAt.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' });
+      await supabase.from('script_events').insert({
+        client_id, event_type: 'confirm', node_id: 'stage:6',
+        text: `Подтвердила пробное ${dateStr} ${timeStr} — ответ в чате ${hhmm}`,
+        manager: client?.last_manager ?? null,
+      });
+      await supabase.from('script_clients').update({ status: 'confirmed_trial' }).eq('id', client_id);
+      const notif = `✅ ${clientName} подтвердила пробное на ${timeStr}`;
+      console.log(`[scriptolog/confirm] ${notif}`);
+      // shortcut: Fitbase booking status update skipped — API not verified; set SCRIPTOLOG_CONFIRM_DRY_RUN=false when implemented
+      if (DRY) console.log('[scriptolog/confirm] SCRIPTOLOG_CONFIRM_DRY_RUN=true — Fitbase update skipped');
+      res.json({ ok: true, dry: DRY, notif });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Part 5a: Promo settings ─────────────────────────────────────────────────
+
+  r.get('/api/scriptolog/settings/promo', async (req, res) => {
+    if (!auth(req, res)) return;
+    try {
+      const { data: promo } = await supabase.from('script_promo').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle();
+      const { data: packages } = await supabase.from('script_promo_packages').select('*').order('sort');
+      res.json({ promo: promo ?? null, packages: packages ?? [] });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.put('/api/scriptolog/settings/promo', async (req, res) => {
+    if (!auth(req, res)) return;
+    const b = req.body as Record<string, unknown>;
+    const fields: Record<string, unknown> = {
+      name: String(b.name ?? '').trim(),
+      valid_from: b.valid_from ?? null,
+      valid_to: b.valid_to ?? null,
+      is_active: !!b.is_active,
+      rule_text: b.rule_text ?? null,
+      credit_text: b.credit_text ?? null,
+    };
+    if (!fields.name) { res.status(400).json({ error: 'name required' }); return; }
+    try {
+      if (b.id) {
+        const { error } = await supabase.from('script_promo').update(fields).eq('id', b.id);
+        if (error) { res.status(500).json({ error: error.message }); return; }
+      } else {
+        const { error } = await supabase.from('script_promo').insert(fields);
+        if (error) { res.status(500).json({ error: error.message }); return; }
+      }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.get('/api/scriptolog/settings/packages', async (req, res) => {
+    if (!auth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('script_promo_packages').select('*').order('sort');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data ?? []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/api/scriptolog/settings/packages', async (req, res) => {
+    if (!auth(req, res)) return;
+    const b = req.body as Record<string, unknown>;
+    if (!b.name) { res.status(400).json({ error: 'name required' }); return; }
+    try {
+      const { data, error } = await supabase.from('script_promo_packages').insert(pkgFields(b)).select('*').single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/api/scriptolog/settings/packages/:id', async (req, res) => {
+    if (!auth(req, res)) return;
+    const b = req.body as Record<string, unknown>;
+    try {
+      const { error } = await supabase.from('script_promo_packages').update(pkgFields(b)).eq('id', req.params.id);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/api/scriptolog/settings/packages/:id/archive', async (req, res) => {
+    if (!auth(req, res)) return;
+    try {
+      const { error } = await supabase.from('script_promo_packages').update({ is_archived: true }).eq('id', req.params.id);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Part 5a: Materials settings ─────────────────────────────────────────────
+
+  const MAT_KEYS = ['video_trial','video_inbody','memo','gis2','guide_newbie','menu_pdf','nutrition_chat'] as const;
+  type MatKey = typeof MAT_KEYS[number];
+
+  r.get('/api/scriptolog/settings/materials', async (req, res) => {
+    if (!auth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('script_materials').select('*');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      const rows = MAT_KEYS.map(key =>
+        (data ?? []).find((m: Record<string, unknown>) => m.key === key) ?? { key, kind: 'link', url: null, label: key },
+      );
+      res.json(rows);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/api/scriptolog/settings/materials/:key', async (req, res) => {
+    if (!auth(req, res)) return;
+    const { key } = req.params;
+    if (!MAT_KEYS.includes(key as MatKey)) { res.status(400).json({ error: 'Invalid key' }); return; }
+    const b = req.body as Record<string, unknown>;
+    try {
+      const { error } = await supabase.from('script_materials').upsert(
+        { key, kind: b.kind ?? 'link', url: b.url ?? null, label: b.label ?? null },
+        { onConflict: 'key' },
+      );
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/api/scriptolog/settings/materials/:key/upload', async (req, res) => {
+    if (!auth(req, res)) return;
+    const { key } = req.params;
+    if (!MAT_KEYS.includes(key as MatKey)) { res.status(400).json({ error: 'Invalid key' }); return; }
+    const b = req.body as { content_base64?: string; content_type?: string; filename?: string };
+    if (!b.content_base64 || !b.filename) { res.status(400).json({ error: 'content_base64 and filename required' }); return; }
+    try {
+      const buf = Buffer.from(b.content_base64, 'base64');
+      const storagePath = `${key}/${b.filename}`;
+      const { error: upErr } = await supabase.storage.from('scriptolog-materials').upload(
+        storagePath, buf, { contentType: b.content_type ?? 'application/octet-stream', upsert: true },
+      );
+      if (upErr) { res.status(500).json({ error: upErr.message }); return; }
+      const { data: { publicUrl } } = supabase.storage.from('scriptolog-materials').getPublicUrl(storagePath);
+      await supabase.from('script_materials').upsert({ key, url: publicUrl }, { onConflict: 'key' });
+      res.json({ url: publicUrl });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   return r;
+}
+
+function pkgFields(b: Record<string, unknown>): Record<string, unknown> {
+  return {
+    name: String(b.name ?? '').trim(),
+    short_text: b.short_text ?? null,
+    client_name: b.client_name ?? null,
+    kind: b.kind ?? 'vacu',
+    price: Number(b.price ?? 0),
+    visits: Number(b.visits ?? 0),
+    sessions_per_visit: Number(b.sessions_per_visit ?? 0),
+    tempo: Number(b.tempo ?? 2),
+    validity_days: b.validity_days != null && b.validity_days !== '' ? Number(b.validity_days) : null,
+    freeze_days: Number(b.freeze_days ?? 0),
+    main_phase: b.main_phase ?? 'vacu_fixed',
+    mechanism: Array.isArray(b.mechanism) ? b.mechanism : [],
+    includes: Array.isArray(b.includes) ? b.includes : [],
+    excludes: Array.isArray(b.excludes) ? b.excludes : [],
+    payment_methods: Array.isArray(b.payment_methods) ? b.payment_methods : [],
+    goals: Array.isArray(b.goals) ? b.goals : [],
+    show_in_chat: !!b.show_in_chat,
+    sort: Number(b.sort ?? 0),
+  };
 }
 
 export function mountScriptologRoutes(app: Application): void {
