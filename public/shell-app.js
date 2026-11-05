@@ -396,6 +396,12 @@
         if (fc) fc.src = d.path;
       }
     }
+    if (d.type === 'open-cashier') {
+      showTab('kassa');
+    }
+    if (d.type === 'open-schedule') {
+      showTab('schedule');
+    }
     if (d.type === 'auth-required') {
       location.href = '/login';
     }

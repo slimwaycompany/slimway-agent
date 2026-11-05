@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { postToParent } from '../../utils/iframe';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,7 @@ interface Lead {
 }
 
 interface Activity {
-  id: string; kind: string; body: string | null; created_at: string; created_by: string | null;
+  id: string; kind: string; text: string | null; created_at: string; author: string | null;
   meta: Record<string, unknown> | null;
 }
 
@@ -111,6 +112,8 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
   const [taskDue, setTaskDue]     = useState('');
   const [taskTypeId, setTaskTypeId] = useState('');
   const [isAdmin, setIsAdmin]     = useState(false);
+  const [origin, setOrigin]       = useState('');
+  const [toast, setToast]         = useState('');
   const drawerRef = useRef<HTMLDivElement>(null);
 
   // form fields (controlled)
@@ -157,15 +160,31 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
         setManagerUserId(l.manager_user_id ?? '');
       }
       if (act.ok) setActivity(Array.isArray(act.data) ? act.data : []);
+      setOrigin((ld.data as Record<string, unknown>)?.origin as string ?? '');
       if (tk.ok) setTasks(Array.isArray(tk.data) ? tk.data : []);
       if (users.ok) setAppUsers(Array.isArray(users.data) ? users.data : []);
       if (types.ok) setTaskTypes(Array.isArray(types.data) ? types.data : []);
     });
 
-    // Ad sources via settings endpoint
+    // Ad sources
     api('GET', '/kviz/api/crm/ad-sources').then(({ ok, data }) => {
       if (ok && Array.isArray(data)) setAdSources(data);
     });
+
+    // Fitbase notes (shown as activity items)
+    api('GET', `/kviz/api/crm/leads/${leadId}/notes`).then(({ ok, data }) => {
+      if (ok && Array.isArray(data) && data.length > 0) {
+        const notes = data.map((n: Record<string, unknown>) => ({
+          id: `fb-note-${n.id ?? Math.random()}`,
+          kind: 'comment',
+          text: (n.text ?? n.content ?? n.body ?? '') as string,
+          created_at: (n.created_at ?? n.date ?? new Date().toISOString()) as string,
+          author: `Fitbase: ${n.author ?? n.user ?? ''}`,
+          meta: {},
+        }));
+        setActivity(prev => [...prev, ...notes.filter(n => n.text)]);
+      }
+    }).catch(() => {});
   }, [leadId]);
 
   // Close on outside click
@@ -204,7 +223,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
 
   async function handleComment() {
     if (!comment.trim() || !lead) return;
-    const { ok, data } = await api('POST', `/kviz/api/crm/leads/${lead.id}/activity`, { body: comment });
+    const { ok, data } = await api('POST', `/kviz/api/crm/leads/${lead.id}/activity`, { text: comment });
     if (ok) { setActivity(prev => [data, ...prev]); setComment(''); }
   }
 
@@ -388,8 +407,8 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
                         <span style={{ fontWeight: 600, color: '#374151' }}>{KIND_LABELS[a.kind] ?? a.kind}</span>
                         <span style={{ color: '#94a3b8', fontSize: 11 }}>{fmtDateTime(a.created_at)}</span>
                       </div>
-                      {a.created_by && <div style={{ color: '#64748b', fontSize: 11 }}>{a.created_by}</div>}
-                      {a.body && <div style={{ color: '#374151', marginTop: 2, wordBreak: 'break-word' }}>{a.body}</div>}
+                      {a.author && <div style={{ color: '#64748b', fontSize: 11 }}>{a.author}</div>}
+                      {a.text && <div style={{ color: '#374151', marginTop: 2, wordBreak: 'break-word' }}>{a.text}</div>}
                     </div>
                   ))}
                   {activity.length === 0 && <div style={{ color: '#94a3b8', fontSize: 12 }}>История пуста</div>}
@@ -401,21 +420,44 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
 
         {/* Footer buttons */}
         {lead && (
-          <div style={{ display: 'flex', gap: 8, padding: '10px 16px', borderTop: '1px solid #e2e8f0', flexShrink: 0, flexWrap: 'wrap' }}>
-            <button onClick={handleSave} disabled={saving} style={{ ...S.saveBtn, flex: 1 }}>
-              {saving ? 'Сохранение...' : 'Сохранить'}
-            </button>
-            <button onClick={handleArchive} disabled={saving}
-              style={{ padding: '8px 14px', background: 'none', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#64748b', fontWeight: 500 }}>
-              {lead.is_archived ? 'Восстановить' : 'В архив'}
-            </button>
-            {isAdmin && (
-              <button onClick={handleDelete}
-                style={{ padding: '8px 14px', background: 'none', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#ef4444', fontWeight: 500 }}>
-                Удалить
+          <>
+            <div style={{ display: 'flex', gap: 8, padding: '10px 16px', borderTop: '1px solid #e2e8f0', flexShrink: 0, flexWrap: 'wrap' }}>
+              <button onClick={handleSave} disabled={saving} style={{ ...S.saveBtn, flex: 1 }}>
+                {saving ? 'Сохранение...' : 'Сохранить'}
               </button>
-            )}
-          </div>
+              <button onClick={handleArchive} disabled={saving}
+                style={{ padding: '8px 14px', background: 'none', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#64748b', fontWeight: 500 }}>
+                {lead.is_archived ? 'Восстановить' : 'В архив'}
+              </button>
+              {isAdmin && (
+                <button onClick={handleDelete}
+                  style={{ padding: '8px 14px', background: 'none', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#ef4444', fontWeight: 500 }}>
+                  Удалить
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, padding: '0 16px 10px', flexShrink: 0, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  if (origin === 'fitbase') { setToast('Продажа доступна только для заявок в нашей CRM'); setTimeout(() => setToast(''), 3000); return; }
+                  postToParent({ type: 'open-cashier' });
+                }}
+                style={{ padding: '7px 14px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Продать
+              </button>
+              <button
+                onClick={() => {
+                  if (origin === 'fitbase') { setToast('Запись доступна только для заявок в нашей CRM'); setTimeout(() => setToast(''), 3000); return; }
+                  postToParent({ type: 'open-schedule' });
+                }}
+                style={{ padding: '7px 14px', background: 'none', border: '1.5px solid #02BDB6', color: '#02BDB6', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Записать на пробное
+              </button>
+              {toast && <div style={{ width: '100%', background: '#fef3c7', color: '#92400e', borderRadius: 7, padding: '6px 10px', fontSize: 12, fontWeight: 500 }}>{toast}</div>}
+            </div>
+          </>
         )}
       </div>
     </>

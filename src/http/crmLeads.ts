@@ -3,6 +3,7 @@ import { supabase } from '../db/supabase';
 import { getSession } from './auth';
 import { runCrmLeadsSync } from '../jobs/crmLeadsSync';
 import { acquireLock, releaseLock } from '../core/lock';
+import { rawGet, paginateGet } from './fitbase';
 import type { Request, Response } from 'express';
 
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
@@ -31,7 +32,7 @@ async function writeActivity(leadId: string, kind: string, text: string, author:
 let syncStatus: { status: string; result?: Record<string, unknown>; error?: string; started_at?: string; finished_at?: string } = { status: 'idle' };
 
 async function runSyncBg(): Promise<void> {
-  const locked = await acquireLock(JOB, 5 * 60);
+  const locked = await acquireLock(JOB, 10 * 60);
   if (!locked) { syncStatus = { ...syncStatus, status: 'already_running' }; return; }
   syncStatus = { status: 'running', started_at: new Date().toISOString() };
   try {
@@ -59,6 +60,19 @@ export function buildCrmLeadsRouter(): Router {
     if (!requireAuth(req, res)) return;
     runSyncBg().catch(console.error);
     res.json({ ok: true, status: syncStatus.status });
+  });
+
+  // Canonical aliases (must be before /:id routes)
+  r.get('/kviz/api/crm/leads/sync/status', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    res.json(syncStatus);
+  });
+
+  r.post('/kviz/api/crm/leads/sync', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    if (syncStatus.status === 'running') { res.status(409).json({ error: 'Синхронизация уже идёт' }); return; }
+    runSyncBg().catch(console.error);
+    res.json({ ok: true, status: 'running' });
   });
 
   // ── Funnels ───────────────────────────────────────────────────────────────────
@@ -309,6 +323,55 @@ export function buildCrmLeadsRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // ── Lead move (stage change with optional lost reason) ────────────────────────
+
+  r.post('/kviz/api/crm/leads/:id/move', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const b = req.body as Record<string, unknown>;
+      if (!b.stage_id) { res.status(400).json({ error: 'Укажите этап' }); return; }
+
+      const { data: stage } = await supabase.from('crm_funnel_stages')
+        .select('id,name,kind,funnel_id').eq('id', b.stage_id as string).single();
+      if (!stage) { res.status(400).json({ error: 'Этап не найден' }); return; }
+
+      if ((stage as Record<string, unknown>).kind === 'fail' && !b.lost_reason_id) {
+        res.status(400).json({ error: 'Укажите причину отказа' }); return;
+      }
+
+      const upd: Record<string, unknown> = {
+        stage_id: b.stage_id,
+        funnel_id: (stage as Record<string, unknown>).funnel_id ?? null,
+        stage_changed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (b.lost_reason_id !== undefined) upd.lost_reason_id = b.lost_reason_id ?? null;
+      if (b.lost_comment   !== undefined) upd.lost_comment   = b.lost_comment   ?? null;
+
+      const { data, error } = await supabase.from('crm_leads')
+        .update(upd).eq('id', req.params.id).eq('branch_id', BRANCH_ID).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+
+      await writeActivity(req.params.id, 'stage_change', `Этап → ${(stage as Record<string, unknown>).name}`, session.display_name);
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Lead Fitbase notes ────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/leads/:id/notes', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data: lead } = await supabase.from('crm_leads')
+        .select('fitbase_client_id').eq('id', req.params.id).eq('branch_id', BRANCH_ID).single();
+      if (!lead || !(lead as Record<string, unknown>).fitbase_client_id) { res.json([]); return; }
+      const clientId = Number((lead as Record<string, unknown>).fitbase_client_id);
+      const notes = await paginateGet(`/note`, { client_id: clientId, page_size: 100 }, 'crm-lead-notes');
+      res.json(notes);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // ── Lead tasks ────────────────────────────────────────────────────────────────
 
   r.get('/kviz/api/crm/lead-tasks', async (req, res) => {
@@ -323,8 +386,9 @@ export function buildCrmLeadsRouter(): Router {
         crm_task_types(id, name)
       `).eq('branch_id', BRANCH_ID);
 
-      if (req.query.lead_id) q = q.eq('lead_id', req.query.lead_id as string);
-      if (req.query.status)  q = q.eq('status', req.query.status as string);
+      if (req.query.lead_id)              q = q.eq('lead_id', req.query.lead_id as string);
+      if (req.query.status)               q = q.eq('status', req.query.status as string);
+      if (req.query.responsible_user_id)  q = q.eq('responsible_user_id', req.query.responsible_user_id as string);
       if (req.query.today === '1' || req.query.today === 'true') {
         const today = todayUtc5();
         q = q.lte('due_at', today + 'T23:59:59Z').eq('status', 'open');
@@ -571,10 +635,7 @@ export function buildCrmLeadsRouter(): Router {
   r.get('/kviz/api/crm/fitbase-user-map', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
-      const { data, error } = await supabase.from('crm_fitbase_user_map').select(`
-        *,
-        app_users(id, display_name)
-      `);
+      const { data, error } = await supabase.from('crm_fitbase_user_map').select('*');
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data || []);
     } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -584,11 +645,11 @@ export function buildCrmLeadsRouter(): Router {
     if (!requireAdmin(req, res)) return;
     try {
       const b = req.body as Record<string, unknown>;
-      if (!b.fitbase_full_name || !b.app_user_id) { res.status(400).json({ error: 'Укажите имя Fitbase и пользователя' }); return; }
+      if (!b.fitbase_full_name || !b.user_id) { res.status(400).json({ error: 'Укажите имя Fitbase и пользователя' }); return; }
       const { data, error } = await supabase.from('crm_fitbase_user_map').insert({
         fitbase_full_name: String(b.fitbase_full_name).trim(),
         fitbase_user_id:   b.fitbase_user_id != null ? Number(b.fitbase_user_id) : null,
-        app_user_id:       b.app_user_id,
+        user_id:           b.user_id,
       }).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data);
@@ -600,7 +661,7 @@ export function buildCrmLeadsRouter(): Router {
     try {
       const b = req.body as Record<string, unknown>;
       const upd: Record<string, unknown> = {};
-      if (b.app_user_id !== undefined) upd.app_user_id = b.app_user_id ?? null;
+      if (b.user_id !== undefined) upd.user_id = b.user_id ?? null;
       if (b.fitbase_full_name !== undefined) upd.fitbase_full_name = b.fitbase_full_name ?? null;
       const { data, error } = await supabase.from('crm_fitbase_user_map')
         .update(upd).eq('id', req.params.id).select().single();
@@ -615,6 +676,47 @@ export function buildCrmLeadsRouter(): Router {
       const { error } = await supabase.from('crm_fitbase_user_map').delete().eq('id', req.params.id);
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // Recalculate manager_user_id in leads and responsible_user_id in tasks after map changes
+  r.post('/kviz/api/crm/fitbase-user-map/recalculate', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const { data: map } = await supabase.from('crm_fitbase_user_map').select('fitbase_user_id,fitbase_full_name,user_id');
+      const userByFbId  = new Map<number, string>();
+      const userByName  = new Map<string, string>();
+      for (const u of map || []) {
+        const uid = (u as Record<string, unknown>).user_id as string | null;
+        if (uid && u.fitbase_user_id != null) userByFbId.set(Number(u.fitbase_user_id), uid);
+        if (uid && u.fitbase_full_name) userByName.set(String(u.fitbase_full_name).trim(), uid);
+      }
+
+      const { data: leads } = await supabase.from('crm_leads')
+        .select('id,fitbase_manager_id,fitbase_manager_name').eq('branch_id', BRANCH_ID).eq('origin', 'fitbase');
+      let leadsUpdated = 0;
+      for (const l of leads || []) {
+        const lb = l as Record<string, unknown>;
+        const uid = (lb.fitbase_manager_id != null ? userByFbId.get(Number(lb.fitbase_manager_id)) : null)
+          ?? (lb.fitbase_manager_name ? userByName.get(String(lb.fitbase_manager_name).trim()) : null) ?? null;
+        await supabase.from('crm_leads').update({ manager_user_id: uid }).eq('id', lb.id as string);
+        leadsUpdated++;
+      }
+
+      const { data: tasks } = await supabase.from('crm_lead_tasks')
+        .select('id,fitbase_responsible').eq('branch_id', BRANCH_ID);
+      let tasksUpdated = 0;
+      for (const t of tasks || []) {
+        const tb = t as Record<string, unknown>;
+        const responsible = Array.isArray(tb.fitbase_responsible) ? tb.fitbase_responsible : [];
+        const firstResp = responsible[0] as Record<string, unknown> | undefined;
+        const respFbId = firstResp?.id != null ? Number(firstResp.id) : null;
+        const uid = respFbId != null ? userByFbId.get(respFbId) ?? null : null;
+        await supabase.from('crm_lead_tasks').update({ responsible_user_id: uid }).eq('id', tb.id as string);
+        tasksUpdated++;
+      }
+
+      res.json({ ok: true, leadsUpdated, tasksUpdated });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

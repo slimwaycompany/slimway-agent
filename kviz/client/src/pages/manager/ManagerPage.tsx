@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import CashClosing from './CashClosing';
+import LeadDrawer from '../crm/LeadDrawer';
 
 interface DoneInfo {
   done_id: string;
@@ -382,20 +383,80 @@ export default function ManagerPage() {
 interface LeadTask {
   id: string; description: string; status: string; due_at: string | null;
   is_overdue: boolean; lead_id: string | null;
-  lead?: { title: string | null; name: string | null; surname: string | null } | null;
+  crm_leads?: { id: string; title: string | null; name: string | null; surname: string | null } | null;
+}
+interface Funnel { id: string; name: string; stages: { id: string; name: string; kind: string; sort: number; is_archived: boolean }[] }
+
+function leadDisplayName(t: LeadTask) {
+  const l = t.crm_leads;
+  if (!l) return '';
+  const composed = [l.name, l.surname].filter(Boolean).join(' ');
+  return l.title || composed || '';
+}
+
+function todayStr() {
+  return new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
 }
 
 function LeadTasksSection() {
-  const [tasks, setTasks] = useState<LeadTask[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [tasks, setTasks]       = useState<LeadTask[]>([]);
+  const [funnels, setFunnels]   = useState<Funnel[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [busy, setBusy]         = useState<Record<string, boolean>>({});
+  const [openLeadId, setOpenLeadId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin]   = useState(false);
+  const [meId, setMeId]         = useState<string>('');
+  const [filterUser, setFilterUser] = useState<string>('me');
+  const [appUsers, setAppUsers] = useState<{ id: string; display_name: string }[]>([]);
 
-  useEffect(() => {
-    fetch('/kviz/api/crm/lead-tasks?today=1&status=open', { credentials: 'include' })
+  function load(uid?: string) {
+    const uidToUse = uid ?? filterUser;
+    const params = new URLSearchParams({ status: 'open' });
+    if (uidToUse && uidToUse !== 'all') params.set('responsible_user_id', uidToUse === 'me' ? meId : uidToUse);
+    fetch(`/kviz/api/crm/lead-tasks?${params}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
       .then(d => { setTasks(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    fetch('/kviz/api/me', { credentials: 'include' }).then(r => r.json()).then(d => {
+      const admin = d?.role === 'admin';
+      setIsAdmin(admin);
+      setMeId(d?.id ?? '');
+      if (!admin) {
+        // non-admin: fetch their tasks immediately
+        const params = new URLSearchParams({ status: 'open' });
+        if (d?.id) params.set('responsible_user_id', d.id);
+        fetch(`/kviz/api/crm/lead-tasks?${params}`, { credentials: 'include' })
+          .then(r => r.ok ? r.json() : [])
+          .then(dd => { setTasks(Array.isArray(dd) ? dd : []); setLoading(false); })
+          .catch(() => setLoading(false));
+      } else {
+        // admin: load all, also fetch app users for filter
+        fetch('/kviz/api/crm/lead-tasks?status=open', { credentials: 'include' })
+          .then(r => r.ok ? r.json() : [])
+          .then(dd => { setTasks(Array.isArray(dd) ? dd : []); setLoading(false); })
+          .catch(() => setLoading(false));
+        fetch('/kviz/api/crm/app-users', { credentials: 'include' })
+          .then(r => r.ok ? r.json() : []).then(dd => setAppUsers(Array.isArray(dd) ? dd : [])).catch(() => {});
+      }
+    }).catch(() => setLoading(false));
+
+    fetch('/kviz/api/crm/funnels', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : []).then(d => setFunnels(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
+
+  function handleFilterChange(uid: string) {
+    setFilterUser(uid);
+    setLoading(true);
+    const params = new URLSearchParams({ status: 'open' });
+    if (uid && uid !== 'all') params.set('responsible_user_id', uid === 'me' ? meId : uid);
+    fetch(`/kviz/api/crm/lead-tasks?${params}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { setTasks(Array.isArray(d) ? d : []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }
 
   async function markDone(task: LeadTask) {
     setBusy(b => ({ ...b, [task.id]: true }));
@@ -409,36 +470,76 @@ function LeadTasksSection() {
     } finally { setBusy(b => ({ ...b, [task.id]: false })); }
   }
 
-  if (loading || tasks.length === 0) return null;
+  const today = todayStr();
+  const overdue = tasks.filter(t => t.due_at && t.due_at.slice(0, 10) < today);
+  const dueToday = tasks.filter(t => t.due_at && t.due_at.slice(0, 10) === today);
+  const later = tasks.filter(t => !t.due_at || t.due_at.slice(0, 10) > today);
+
+  if (loading) return null;
+  if (tasks.length === 0) return null;
+
+  function renderGroup(label: string, color: string, group: LeadTask[]) {
+    if (!group.length) return null;
+    return (
+      <div key={label}>
+        <div style={{ fontSize: 11, fontWeight: 700, color, textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 5, marginTop: 10 }}>{label} ({group.length})</div>
+        {group.map(t => {
+          const name = leadDisplayName(t);
+          return (
+            <div key={t.id} style={{ background: t.is_overdue ? '#fff0f4' : '#fff', borderRadius: 10, border: `1px solid ${t.is_overdue ? '#fca5a5' : '#e2e8f0'}`, padding: '9px 12px', marginBottom: 5, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: '#1a202c', marginBottom: 2, wordBreak: 'break-word' }}>{t.description}</div>
+                {name && (
+                  <div
+                    style={{ fontSize: 11, color: '#263CD9', cursor: 'pointer', textDecoration: 'underline', marginBottom: 2 }}
+                    onClick={() => t.lead_id && setOpenLeadId(t.lead_id)}
+                  >
+                    Заявка: {name}
+                  </div>
+                )}
+                {t.due_at && <div style={{ fontSize: 11, color: t.is_overdue ? '#ef4444' : '#94a3b8' }}>{t.due_at.slice(0, 10).split('-').reverse().join('.')}{t.is_overdue ? ' — просрочено' : ''}</div>}
+              </div>
+              <button
+                disabled={busy[t.id]}
+                onClick={() => markDone(t)}
+                style={{ padding: '4px 10px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+                {busy[t.id] ? '...' : 'Готово'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div style={{ margin: '0 0 16px', padding: '12px 16px 0' }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase' as const, letterSpacing: '0.04em', marginBottom: 8 }}>
-        Задачи по заявкам
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase' as const, letterSpacing: '0.04em', flex: 1 }}>Задачи по заявкам</span>
+        {isAdmin && appUsers.length > 0 && (
+          <select
+            value={filterUser}
+            onChange={e => handleFilterChange(e.target.value)}
+            style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: '#fff' }}
+          >
+            <option value="all">Все</option>
+            {appUsers.map(u => <option key={u.id} value={u.id}>{u.display_name}</option>)}
+          </select>
+        )}
       </div>
-      {tasks.map(t => {
-        const leadName = t.lead ? (t.lead.title ?? [t.lead.name, t.lead.surname].filter(Boolean).join(' ') ?? '') : '';
-        const overdue = t.is_overdue;
-        return (
-          <div key={t.id} style={{ background: overdue ? '#fff0f4' : '#fff', borderRadius: 10, border: `1px solid ${overdue ? '#fca5a5' : '#e2e8f0'}`, padding: '10px 12px', marginBottom: 6, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, color: '#1a202c', marginBottom: 2, wordBreak: 'break-word' }}>{t.description}</div>
-              {leadName && <div style={{ fontSize: 11, color: '#64748b' }}>Заявка: {leadName}</div>}
-              {t.due_at && (
-                <div style={{ fontSize: 11, color: overdue ? '#ef4444' : '#94a3b8', marginTop: 2 }}>
-                  {t.due_at.slice(0, 10).split('-').reverse().join('.')}{overdue ? ' — просрочено' : ''}
-                </div>
-              )}
-            </div>
-            <button
-              disabled={busy[t.id]}
-              onClick={() => markDone(t)}
-              style={{ padding: '5px 12px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
-              {busy[t.id] ? '...' : 'Готово'}
-            </button>
-          </div>
-        );
-      })}
+      {renderGroup('Просрочено', '#ef4444', overdue)}
+      {renderGroup('Сегодня', '#f59e0b', dueToday)}
+      {renderGroup('Дальше', '#64748b', later)}
+
+      {openLeadId && (
+        <LeadDrawer
+          leadId={openLeadId}
+          funnels={funnels}
+          onClose={() => setOpenLeadId(null)}
+          onSaved={() => setOpenLeadId(null)}
+          onDeleted={() => { setOpenLeadId(null); setTasks(prev => prev.filter(t => t.lead_id !== openLeadId)); }}
+        />
+      )}
     </div>
   );
 }

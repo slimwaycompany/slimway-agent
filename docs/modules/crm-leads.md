@@ -7,6 +7,16 @@
 
 ## Сделано
 
+### 05.11.2026 · task 38 — fix sync (budget/title not-null, user_id map, stage kind), resilient batches, missing sync steps, board/drawer/settings/manager gaps
+
+- **crmLeadsSync.ts полностью переписан:** `toNum()` → budget NOT NULL (null→0); title NOT NULL (null→''); stage_id NOT NULL (нет этапа/не найден → skip + счётчик skipped); `user_id` вместо `app_user_id` в `crm_fitbase_user_map`; этапы — UPDATE existing (только имя/воронку/цвет/сорт, не трогает kind и is_personal) + INSERT новых; skip funnel 5/6/7; пачки по 100, try/catch, retry per-row, лог до 20 примеров ошибок; каждый шаг независим; итог: `{ leads: { total, upserted, skipped, failed }, tasks: { total, upserted, failed } }`.
+- **Новые шаги синхронизации:** `syncDicts()` раз в сутки (`sync_state.crm_leads_dicts_at`) — /user → upsert crm_fitbase_user_map (только fitbase_full_name, user_id не трогает), /advertising-source → crm_ad_sources.fitbase_id по имени; `stage_changed_at` = now() при смене этапа + activity stage_change, при первом импорте → fb_updated_at; deleted leads → is_archived=true + activity system «Заявка удалена в Fitbase»; `syncClientStatuses()` раз в сутки → crm_clients.fitbase_status.
+- **crmLeads.ts:** лок 5→10 мин; `user_id` во всех fitbase-user-map эндпоинтах (GET/POST/PATCH); `GET /crm/leads/sync/status` + `POST /crm/leads/sync` (409 если уже идёт) как каноничные пути; `POST /crm/leads/:id/move` (без lost_reason_id при fail → 400); `GET /crm/leads/:id/notes` → Fitbase `/note?client_id=X`; `POST /crm/fitbase-user-map/recalculate` → пересчитать manager_user_id в leads и responsible_user_id в tasks; фильтр `responsible_user_id` в GET /lead-tasks.
+- **LeadDrawer.tsx:** `body→text` fix (Activity.text, отправка {text:...}, чтение a.text/a.author); подгрузка Fitbase-комментариев при открытии (`GET .../notes`); кнопки «Продать» (→ open-cashier) и «Записать на пробное» (→ open-schedule) через postToParent; тост «только в нашей CRM» для Fitbase-заявок (вместо alert).
+- **SettingsPage.tsx:** FbUsersSection: `app_user_id→user_id` в интерфейсе, в POST/PATCH, в value select.
+- **ManagerPage.tsx:** LeadTasksSection — группы Просрочено/Сегодня/Дальше; admin-фильтр пользователей; клик по заявке → LeadDrawer; импорт Funnel/LeadDrawer.
+- **shell-app.js:** обработчики `open-cashier` → showTab('kassa'), `open-schedule` → showTab('schedule').
+
 ### 05.11.2026 · текущий · task 37 — синхронизация, kanban-доска, карточка заявки, Настройки, задачи в Менеджере
 
 - **Джоб синхронизации** `src/jobs/crmLeadsSync.ts`: `runCrmLeadsSync()` → syncFunnels → syncLeads → syncTasks; upsert по `fitbase_id`; системные этапы (0,−1,−2) сохраняют `funnel_id` из предыдущей синхронизации; поля `is_archived/lost_reason_id/lost_comment` синхронизацией не затрагиваются.
@@ -158,6 +168,7 @@ SQL **выполнен** 05.11.2026 (проверка: 4 воронки, 44 эт
 - Эскалация неактивных (купили, не ходят): день 7 — «Звонок» кассиру-продавцу, день 10 — всем троим, день 14 — в сводку Сергея.
 
 ## Открытые баги / ограничения
+- **05.11.2026: синк падает на проде** — `null value in column "budget" ... violates not-null` (Fitbase отдаёт лиды без бюджета), ни один из 939 лидов не сохраняется, задачи не доходят. Исправление — в ТЗ доделки задачи 37 (ЧАСТЬ 1: null → 0, title null → '', неизвестный этап — пропуск, `user_id` вместо `app_user_id`).
 - Комментарии из Fitbase `/note` (по client_id) не синхронизируются в ленту активности — отдельный шаг.
 - Вкладка «Произвольные поля» в LeadDrawer — заглушка (будет по запросу Сергея).
 - LeadDrawer на мобиле: панель 100vw, overflow-y: auto — нужна проверка на iOS что fixed позиция не прыгает.

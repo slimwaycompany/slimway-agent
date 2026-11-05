@@ -1973,7 +1973,7 @@ function LostReasonsSection() {
 
 // ── CRM: Fitbase User Mapping ──────────────────────────────────────────────────
 
-interface FbUser { id?: string; fitbase_user_id: number | null; fitbase_full_name: string | null; app_user_id: string | null; app_user?: { display_name: string } | null }
+interface FbUser { id?: string; fitbase_user_id: number | null; fitbase_full_name: string | null; user_id: string | null }
 interface AppUser { id: string; display_name: string }
 
 function FbUsersSection() {
@@ -1997,10 +1997,10 @@ function FbUsersSection() {
   async function setMap(fbName: string, appUserId: string) {
     const existing = mapping.find(m => m.fitbase_full_name === fbName);
     if (existing?.id) {
-      const { ok, data } = await api('PATCH', `/kviz/api/crm/fitbase-user-map/${existing.id}`, { app_user_id: appUserId || null });
+      const { ok, data } = await api('PATCH', `/kviz/api/crm/fitbase-user-map/${existing.id}`, { user_id: appUserId || null });
       if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
     } else {
-      const { ok, data } = await api('POST', '/kviz/api/crm/fitbase-user-map', { fitbase_full_name: fbName, app_user_id: appUserId || null });
+      const { ok, data } = await api('POST', '/kviz/api/crm/fitbase-user-map', { fitbase_full_name: fbName, user_id: appUserId || null });
       if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
     }
     load();
@@ -2020,7 +2020,7 @@ function FbUsersSection() {
               <span style={{ fontSize: 13, color: '#374151', flex: 1 }}>{name}</span>
               <select
                 style={{ padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer' }}
-                value={mapped?.app_user_id ?? ''}
+                value={mapped?.user_id ?? ''}
                 onChange={e => setMap(name, e.target.value)}
               >
                 <option value="">— не назначен —</option>

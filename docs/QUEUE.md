@@ -66,7 +66,8 @@
 | 34 | infra (все модули с интерфейсом) | Мобильная вёрстка всех экранов + правило «мобильная версия сразу» | `docs/tasks/34-infra-mobile.md` | ✅ готово (8120059, 9083f77; ч.6 проверка на проде — на стороне Сергея; QuizPage 3→вкладки, InBodyDialog full-screen, ClientPage bottom-sheet — отложены в Следующее) |
 | 35 | infra, reports, zamery, kviz | Мобильный UX (гамбургер-drawer, 2-кол меню, аккордеон отчётов, клиент mobile, quiz tabs, PWA) + исправление камеры InBody + QR-декодер barcode-detector/zxing-wasm | `docs/tasks/35-mobile-ux-inbody.md` | ✅ готово (148766d…62c0188) |
 | 36 | crm-leads | CRM Воронка шаг 1: зонд Fitbase leads API (только чтение), отчёт | `docs/tasks/36-crm-leads-fitbase-probe.md` | ✅ готово (2076c1f + финальный) |
-| 37 | crm-leads | CRM Воронка шаг 2: синхронизация с Fitbase, доска drag & drop, карточка заявки, Настройки воронки, задачи в Менеджере | `docs/tasks/37-crm-leads-board.md` | ✅ готово (f4d2377) |
+| 37 | crm-leads | CRM Воронка шаг 2: синхронизация с Fitbase, доска drag & drop, карточка заявки, Настройки воронки, задачи в Менеджере | `docs/tasks/37-crm-leads-board.md` | 🟡 частично (f4d2377; ошибки: budget NOT NULL, app_user_id, body→text) |
+| 38 | crm-leads | CRM Воронка: починка синка, недостающие шаги, доска/drawer/настройки/менеджер | `docs/tasks/38-crm-leads-board-fix.md` | 🔧 в работе (Claude, 05.11.2026) |
 
 ## Сделано недавно (для контекста)
 
@@ -86,6 +87,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 05.11.2026 | Claude | 38 crm-leads: fix sync (budget NOT NULL, user_id, stage kind), dict sync, deleted leads detection, LeadDrawer body→text+postMessage, ManagerPage groups, shell-app open-cashier/schedule | текущий | crmLeadsSync.ts полный переписан; crmLeads.ts: lock 10 мин, user_id, /move, /notes, /recalculate; LeadDrawer: body→text, FB-notes, Продать/Записать; SettingsPage: user_id; ManagerPage: группы+LeadDrawer; shell: open-cashier/schedule. Не сделано: мобильный одноколоночный board, фильтры с localStorage, доска режим «Список», reject-модал на drop. Проверка на проде — ждать деплоя |
 | 05.11.2026 | Claude | 37 crm-leads: синхронизация, доска, карточка, Настройки, Менеджер | f4d2377 | jobs/crmLeadsSync.ts (syncFunnels+syncLeads+syncTasks), http/crmLeads.ts (30+ эндпоинтов), FunnelPage.tsx (kanban+dnd-kit), LeadDrawer.tsx (480px drawer), SettingsPage.tsx (5 новых секций), ManagerPage.tsx (LeadTasksSection) |
 | 05.11.2026 | Claude | 36 crm-leads: зонд Fitbase leads API | 2076c1f + финальный | 936 лидов, 7 воронок, 62 этапа, 1252 задачи. Фильтры по воронке/архиву/дате не работают → только полный sync. Теги=строки. analytics.is_overdue=розовый фон. /note требует client_id. Отчёт: docs/reports/fitbase-leads-api.md |
 | 04.11.2026 | Claude | 35: гамбургер-drawer (ч.1-2), аккордеон Отчётов (ч.3), ClientPage mobile (ч.4), quiz tabs (ч.5), PWA (ч.6), camera fix + admin diag (ч.7,9), barcode-detector/zxing-wasm + original-bitmap crops (ч.8) | 148766d…62c0188 | Проверка на реальном iOS/Android — на стороне Сергея. |
