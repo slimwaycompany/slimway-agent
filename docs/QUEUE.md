@@ -67,7 +67,8 @@
 | 35 | infra, reports, zamery, kviz | Мобильный UX (гамбургер-drawer, 2-кол меню, аккордеон отчётов, клиент mobile, quiz tabs, PWA) + исправление камеры InBody + QR-декодер barcode-detector/zxing-wasm | `docs/tasks/35-mobile-ux-inbody.md` | ✅ готово (148766d…62c0188) |
 | 36 | crm-leads | CRM Воронка шаг 1: зонд Fitbase leads API (только чтение), отчёт | `docs/tasks/36-crm-leads-fitbase-probe.md` | ✅ готово (2076c1f + финальный) |
 | 37 | crm-leads | CRM Воронка шаг 2: синхронизация с Fitbase, доска drag & drop, карточка заявки, Настройки воронки, задачи в Менеджере | `docs/tasks/37-crm-leads-board.md` | 🟡 частично (f4d2377; ошибки: budget NOT NULL, app_user_id, body→text) |
-| 38 | crm-leads | CRM Воронка: починка синка, недостающие шаги, доска/drawer/настройки/менеджер | `docs/tasks/38-crm-leads-board-fix.md` | 🔧 в работе (Claude, 05.11.2026) |
+| 38 | crm-leads | CRM Воронка: починка синка, недостающие шаги, доска/drawer/настройки/менеджер | `docs/tasks/38-crm-leads-board-fix.md` | 🟡 частично (e9d227d; не сделано: мобильный board, фильтры, режим «Список», reject-модал) |
+| 39 | scriptolog | Скриптолог v2: аккордеон 7 этапов, Акция/Материалы, напоминания, подтверждение «+» | `docs/tasks/39-scriptolog-v2-accordion.md` | 🔧 в работе (Claude, 05.11.2026) |
 
 ## Сделано недавно (для контекста)
 
