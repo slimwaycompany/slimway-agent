@@ -16,6 +16,7 @@ import { runWatch,      JOB_NAME as WATCH_JOB }      from './jobs/watch';
 import { runNewLeads,  JOB_NAME as NEW_LEADS_JOB }   from './jobs/newLeads';
 import { runWatchBrief, JOB_NAME as BRIEF_JOB }      from './jobs/watchBrief';
 import { runProbeTasks }                              from './jobs/probeTasks';
+import { runProbeLeadsApi }                           from './jobs/probeLeadsApi';
 import { runInactive,  JOB_NAME as INACTIVE_JOB }    from './jobs/inactive';
 import { mountWindowRoutes }                          from './http/window';
 import { mountKvizRoutes }                            from './http/kviz';
@@ -171,6 +172,22 @@ async function handleProbeTasks(req: express.Request, res: express.Response): Pr
 
 app.get('/run/probe-tasks',  handleProbeTasks);
 app.post('/run/probe-tasks', handleProbeTasks);
+
+// probe-leads-api: synchronous, read-only Fitbase exploration
+async function handleProbeLeadsApi(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) {
+    res.status(401).json({ error: 'Unauthorized' }); return;
+  }
+  try {
+    const result = await runProbeLeadsApi();
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+
+app.get('/run/probe-leads-api',  handleProbeLeadsApi);
+app.post('/run/probe-leads-api', handleProbeLeadsApi);
 
 // inactive: once per day at 09:00, fire-and-forget with lock
 async function handleInactive(req: express.Request, res: express.Response): Promise<void> {

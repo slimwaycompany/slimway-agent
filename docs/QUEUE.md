@@ -65,6 +65,7 @@
 | 33 | zamery, reports, infra | allow=camera у iframe, 3-кнопочный InBodyDialog (📸 фото + 📷 камера + 📂 галерея), qrFromImage.ts (BarcodeDetector→jsQR, мультишкала, квадранты), PrintPage координаты, MeasuresSection/InBodySection автозагрузка+период, fetchAll для замеров и InBody | ТЗ в чате | ✅ готово (текущий) |
 | 34 | infra (все модули с интерфейсом) | Мобильная вёрстка всех экранов + правило «мобильная версия сразу» | `docs/tasks/34-infra-mobile.md` | ✅ готово (8120059, 9083f77; ч.6 проверка на проде — на стороне Сергея; QuizPage 3→вкладки, InBodyDialog full-screen, ClientPage bottom-sheet — отложены в Следующее) |
 | 35 | infra, reports, zamery, kviz | Мобильный UX (гамбургер-drawer, 2-кол меню, аккордеон отчётов, клиент mobile, quiz tabs, PWA) + исправление камеры InBody + QR-декодер barcode-detector/zxing-wasm | `docs/tasks/35-mobile-ux-inbody.md` | ✅ готово (148766d…62c0188) |
+| 36 | crm-leads | CRM Воронка шаг 1: зонд Fitbase leads API (только чтение), отчёт | `docs/tasks/36-crm-leads-fitbase-probe.md` | 🔧 в работе (Claude, 05.11.2026) |
 
 ## Сделано недавно (для контекста)
 
