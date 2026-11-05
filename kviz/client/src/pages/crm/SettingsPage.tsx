@@ -14,7 +14,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance';
+type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -1693,6 +1693,348 @@ function FinExpensesTab() {
   );
 }
 
+// ── CRM: Funnels & Stages ─────────────────────────────────────────────────────
+
+interface CrmStage  { id: string; name: string; kind: string; sort: number; is_archived: boolean; color: string | null; funnel_id: string | null }
+interface CrmFunnel { id: string; name: string; sort: number; is_active: boolean; stages: CrmStage[] }
+
+function FunnelsSection() {
+  const [funnels, setFunnels] = useState<CrmFunnel[]>([]);
+  const [err, setErr] = useState('');
+  const [newFunnelName, setNewFunnelName] = useState('');
+  const [newStageName, setNewStageName] = useState<Record<string, string>>({});
+
+  async function load() {
+    const { ok, data } = await api('GET', '/kviz/api/crm/funnels');
+    if (ok && Array.isArray(data)) setFunnels(data);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function createFunnel() {
+    if (!newFunnelName.trim()) return;
+    const { ok, data } = await api('POST', '/kviz/api/crm/funnels', { name: newFunnelName.trim() });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    setNewFunnelName(''); load();
+  }
+
+  async function toggleFunnelActive(f: CrmFunnel) {
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/funnels/${f.id}`, { is_active: !f.is_active });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    load();
+  }
+
+  async function createStage(funnelId: string) {
+    const name = (newStageName[funnelId] ?? '').trim();
+    if (!name) return;
+    const { ok, data } = await api('POST', '/kviz/api/crm/funnel-stages', { name, funnel_id: funnelId });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    setNewStageName(prev => ({ ...prev, [funnelId]: '' })); load();
+  }
+
+  async function toggleStageArchived(stage: CrmStage) {
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/funnel-stages/${stage.id}`, { is_archived: !stage.is_archived });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    load();
+  }
+
+  return (
+    <div style={S.section}>
+      {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <input style={{ ...S.inp, flex: 1 }} placeholder="Название новой воронки" value={newFunnelName} onChange={e => setNewFunnelName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFunnel()} />
+        <button style={S.addBtn} onClick={createFunnel}>+ Воронка</button>
+      </div>
+      {funnels.map(f => (
+        <div key={f.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 12, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 8, background: '#f8fafc' }}>
+            <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: '#1a202c' }}>{f.name}</span>
+            <button style={{ ...S.editBtn, fontSize: 11 }} onClick={() => toggleFunnelActive(f)}>{f.is_active ? 'Активна' : 'Неактивна'}</button>
+          </div>
+          <div style={{ padding: '8px 14px' }}>
+            {f.stages.sort((a, b) => a.sort - b.sort).map(s => (
+              <div key={s.id} style={{ ...S.row, opacity: s.is_archived ? 0.5 : 1 }}>
+                <span style={{ fontSize: 13, color: '#374151' }}>{s.name}</span>
+                <div style={S.rowActions}>
+                  <span style={{ fontSize: 11, color: '#94a3b8', padding: '2px 6px' }}>{s.kind}</span>
+                  {s.kind === 'normal' && (
+                    <button style={S.editBtn} onClick={() => toggleStageArchived(s)}>{s.is_archived ? 'Восстановить' : 'В архив'}</button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <input style={{ ...S.inp, flex: 1, fontSize: 12 }} placeholder="Новый этап"
+                value={newStageName[f.id] ?? ''} onChange={e => setNewStageName(prev => ({ ...prev, [f.id]: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && createStage(f.id)} />
+              <button style={{ ...S.addBtn, fontSize: 12 }} onClick={() => createStage(f.id)}>+</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── CRM: Lead Tags ─────────────────────────────────────────────────────────────
+
+interface LeadTag { id: string; name: string; color: string | null; is_system: boolean; is_active: boolean }
+
+function LeadTagsSection() {
+  const [tags, setTags] = useState<LeadTag[]>([]);
+  const [err, setErr] = useState('');
+  const [newName, setNewName] = useState('');
+
+  async function load() {
+    const { ok, data } = await api('GET', '/kviz/api/crm/lead-tags');
+    if (ok && Array.isArray(data)) setTags(data);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function create() {
+    if (!newName.trim()) return;
+    const { ok, data } = await api('POST', '/kviz/api/crm/lead-tags', { name: newName.trim() });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    setNewName(''); load();
+  }
+
+  async function del(tag: LeadTag) {
+    if (tag.is_system) { setErr('Системные теги нельзя удалить'); return; }
+    if (!confirm(`Удалить тег «${tag.name}»?`)) return;
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/lead-tags/${tag.id}`);
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    load();
+  }
+
+  return (
+    <div style={S.section}>
+      {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <input style={{ ...S.inp, flex: 1 }} placeholder="Название тега" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && create()} />
+        <button style={S.addBtn} onClick={create}>+ Тег</button>
+      </div>
+      <div style={S.list}>
+        {tags.map(t => (
+          <div key={t.id} style={S.row}>
+            <span style={{ fontSize: 13, color: '#374151' }}>{t.name}{t.is_system && <span style={S.badge}>системный</span>}</span>
+            {!t.is_system && <button style={S.delBtn} onClick={() => del(t)}>Удалить</button>}
+          </div>
+        ))}
+        {tags.length === 0 && <div style={S.empty}>Теги не созданы</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── CRM: Task Types ────────────────────────────────────────────────────────────
+
+interface TaskTypeRow { id: string; name: string; is_active: boolean }
+
+function TaskTypesSection() {
+  const [types, setTypes] = useState<TaskTypeRow[]>([]);
+  const [err, setErr] = useState('');
+  const [newName, setNewName] = useState('');
+  const [editing, setEditing] = useState<TaskTypeRow | null>(null);
+  const [editName, setEditName] = useState('');
+
+  async function load() {
+    const { ok, data } = await api('GET', '/kviz/api/crm/task-types');
+    if (ok && Array.isArray(data)) setTypes(data);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function create() {
+    if (!newName.trim()) return;
+    const { ok, data } = await api('POST', '/kviz/api/crm/task-types', { name: newName.trim() });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    setNewName(''); load();
+  }
+
+  async function save() {
+    if (!editing) return;
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/task-types/${editing.id}`, { name: editName });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    setEditing(null); load();
+  }
+
+  async function del(id: string, name: string) {
+    if (!confirm(`Удалить тип «${name}»?`)) return;
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/task-types/${id}`);
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    load();
+  }
+
+  return (
+    <div style={S.section}>
+      {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <input style={{ ...S.inp, flex: 1 }} placeholder="Название типа задачи" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && create()} />
+        <button style={S.addBtn} onClick={create}>+ Тип</button>
+      </div>
+      <div style={S.list}>
+        {types.map(t => (
+          <div key={t.id} style={S.row}>
+            {editing?.id === t.id ? (
+              <>
+                <input style={{ ...S.inp, flex: 1 }} value={editName} onChange={e => setEditName(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && save()} />
+                <div style={S.rowActions}>
+                  <button style={S.editBtn} onClick={save}>Сохранить</button>
+                  <button style={S.editBtn} onClick={() => setEditing(null)}>Отмена</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: 13, color: '#374151' }}>{t.name}</span>
+                <div style={S.rowActions}>
+                  <button style={S.editBtn} onClick={() => { setEditing(t); setEditName(t.name); }}>Изменить</button>
+                  <button style={S.delBtn}  onClick={() => del(t.id, t.name)}>Удалить</button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+        {types.length === 0 && <div style={S.empty}>Типы задач не созданы</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── CRM: Lost Reasons ──────────────────────────────────────────────────────────
+
+interface LostReason { id: string; name: string; is_active: boolean }
+
+function LostReasonsSection() {
+  const [reasons, setReasons] = useState<LostReason[]>([]);
+  const [err, setErr] = useState('');
+  const [newName, setNewName] = useState('');
+  const [editing, setEditing] = useState<LostReason | null>(null);
+  const [editName, setEditName] = useState('');
+
+  async function load() {
+    const { ok, data } = await api('GET', '/kviz/api/crm/lost-reasons');
+    if (ok && Array.isArray(data)) setReasons(data);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function create() {
+    if (!newName.trim()) return;
+    const { ok, data } = await api('POST', '/kviz/api/crm/lost-reasons', { name: newName.trim() });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    setNewName(''); load();
+  }
+
+  async function save() {
+    if (!editing) return;
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/lost-reasons/${editing.id}`, { name: editName });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    setEditing(null); load();
+  }
+
+  async function del(id: string, name: string) {
+    if (!confirm(`Удалить причину «${name}»?`)) return;
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/lost-reasons/${id}`);
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    load();
+  }
+
+  return (
+    <div style={S.section}>
+      {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <input style={{ ...S.inp, flex: 1 }} placeholder="Причина отказа" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && create()} />
+        <button style={S.addBtn} onClick={create}>+ Причина</button>
+      </div>
+      <div style={S.list}>
+        {reasons.map(r => (
+          <div key={r.id} style={S.row}>
+            {editing?.id === r.id ? (
+              <>
+                <input style={{ ...S.inp, flex: 1 }} value={editName} onChange={e => setEditName(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && save()} />
+                <div style={S.rowActions}>
+                  <button style={S.editBtn} onClick={save}>Сохранить</button>
+                  <button style={S.editBtn} onClick={() => setEditing(null)}>Отмена</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: 13, color: '#374151' }}>{r.name}</span>
+                <div style={S.rowActions}>
+                  <button style={S.editBtn} onClick={() => { setEditing(r); setEditName(r.name); }}>Изменить</button>
+                  <button style={S.delBtn}  onClick={() => del(r.id, r.name)}>Удалить</button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+        {reasons.length === 0 && <div style={S.empty}>Причины не созданы</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── CRM: Fitbase User Mapping ──────────────────────────────────────────────────
+
+interface FbUser { id?: string; fitbase_user_id: number | null; fitbase_full_name: string | null; app_user_id: string | null; app_user?: { display_name: string } | null }
+interface AppUser { id: string; display_name: string }
+
+function FbUsersSection() {
+  const [fbNames, setFbNames]   = useState<string[]>([]);
+  const [mapping, setMapping]   = useState<FbUser[]>([]);
+  const [appUsers, setAppUsers] = useState<AppUser[]>([]);
+  const [err, setErr]           = useState('');
+
+  async function load() {
+    const [n, m, u] = await Promise.all([
+      api('GET', '/kviz/api/crm/fitbase-users'),
+      api('GET', '/kviz/api/crm/fitbase-user-map'),
+      api('GET', '/kviz/api/crm/app-users'),
+    ]);
+    if (n.ok) setFbNames(Array.isArray(n.data) ? n.data.map((x: { name: string }) => x.name) : []);
+    if (m.ok) setMapping(Array.isArray(m.data) ? m.data : []);
+    if (u.ok) setAppUsers(Array.isArray(u.data) ? u.data : []);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function setMap(fbName: string, appUserId: string) {
+    const existing = mapping.find(m => m.fitbase_full_name === fbName);
+    if (existing?.id) {
+      const { ok, data } = await api('PATCH', `/kviz/api/crm/fitbase-user-map/${existing.id}`, { app_user_id: appUserId || null });
+      if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    } else {
+      const { ok, data } = await api('POST', '/kviz/api/crm/fitbase-user-map', { fitbase_full_name: fbName, app_user_id: appUserId || null });
+      if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    }
+    load();
+  }
+
+  return (
+    <div style={S.section}>
+      {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
+      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
+        Сопоставьте менеджеров Fitbase с сотрудниками приложения.
+      </div>
+      <div style={S.list}>
+        {fbNames.map(name => {
+          const mapped = mapping.find(m => m.fitbase_full_name === name);
+          return (
+            <div key={name} style={S.row}>
+              <span style={{ fontSize: 13, color: '#374151', flex: 1 }}>{name}</span>
+              <select
+                style={{ padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer' }}
+                value={mapped?.app_user_id ?? ''}
+                onChange={e => setMap(name, e.target.value)}
+              >
+                <option value="">— не назначен —</option>
+                {appUsers.map(u => <option key={u.id} value={u.id}>{u.display_name}</option>)}
+              </select>
+            </div>
+          );
+        })}
+        {fbNames.length === 0 && <div style={S.empty}>Нет менеджеров из Fitbase (выполните синхронизацию)</div>}
+      </div>
+    </div>
+  );
+}
+
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
 const NAV: { id: Section; label: string; icon: string }[] = [
@@ -1706,7 +2048,12 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: 'sources',    label: 'Рекламные источники',  icon: '📣' },
   { id: 'classes',    label: 'Занятия',              icon: '🏃' },
   { id: 'service',    label: 'Сервис',               icon: '🔧' },
-  { id: 'finance',   label: 'Финансы',              icon: '💰' },
+  { id: 'finance',      label: 'Финансы',              icon: '💰' },
+  { id: 'funnels',      label: 'Воронки CRM',          icon: '🔀' },
+  { id: 'lead-tags',    label: 'Теги заявок',          icon: '🏷️' },
+  { id: 'task-types',   label: 'Типы задач',           icon: '✅' },
+  { id: 'lost-reasons', label: 'Причины отказа',       icon: '❌' },
+  { id: 'fb-users',     label: 'Сопоставление FB',     icon: '👤' },
 ];
 
 export default function SettingsPage() {
@@ -1755,6 +2102,11 @@ export default function SettingsPage() {
         )}
         {section === 'service'    && <ServiceSection />}
         {section === 'finance'    && <FinanceSection />}
+        {section === 'funnels'    && <FunnelsSection />}
+        {section === 'lead-tags'  && <LeadTagsSection />}
+        {section === 'task-types' && <TaskTypesSection />}
+        {section === 'lost-reasons' && <LostReasonsSection />}
+        {section === 'fb-users'   && <FbUsersSection />}
       </div>
     </div>
   );

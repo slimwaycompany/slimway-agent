@@ -371,6 +371,74 @@ export default function ManagerPage() {
           </div>
         ))}
       </div>
+
+      <LeadTasksSection />
+    </div>
+  );
+}
+
+// ── Lead Tasks Section ─────────────────────────────────────────────────────────
+
+interface LeadTask {
+  id: string; description: string; status: string; due_at: string | null;
+  is_overdue: boolean; lead_id: string | null;
+  lead?: { title: string | null; name: string | null; surname: string | null } | null;
+}
+
+function LeadTasksSection() {
+  const [tasks, setTasks] = useState<LeadTask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    fetch('/kviz/api/crm/lead-tasks?today=1&status=open', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { setTasks(Array.isArray(d) ? d : []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  async function markDone(task: LeadTask) {
+    setBusy(b => ({ ...b, [task.id]: true }));
+    try {
+      await fetch(`/kviz/api/crm/lead-tasks/${task.id}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'done' }),
+      });
+      setTasks(prev => prev.filter(t => t.id !== task.id));
+    } finally { setBusy(b => ({ ...b, [task.id]: false })); }
+  }
+
+  if (loading || tasks.length === 0) return null;
+
+  return (
+    <div style={{ margin: '0 0 16px', padding: '12px 16px 0' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase' as const, letterSpacing: '0.04em', marginBottom: 8 }}>
+        Задачи по заявкам
+      </div>
+      {tasks.map(t => {
+        const leadName = t.lead ? (t.lead.title ?? [t.lead.name, t.lead.surname].filter(Boolean).join(' ') ?? '') : '';
+        const overdue = t.is_overdue;
+        return (
+          <div key={t.id} style={{ background: overdue ? '#fff0f4' : '#fff', borderRadius: 10, border: `1px solid ${overdue ? '#fca5a5' : '#e2e8f0'}`, padding: '10px 12px', marginBottom: 6, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: '#1a202c', marginBottom: 2, wordBreak: 'break-word' }}>{t.description}</div>
+              {leadName && <div style={{ fontSize: 11, color: '#64748b' }}>Заявка: {leadName}</div>}
+              {t.due_at && (
+                <div style={{ fontSize: 11, color: overdue ? '#ef4444' : '#94a3b8', marginTop: 2 }}>
+                  {t.due_at.slice(0, 10).split('-').reverse().join('.')}{overdue ? ' — просрочено' : ''}
+                </div>
+              )}
+            </div>
+            <button
+              disabled={busy[t.id]}
+              onClick={() => markDone(t)}
+              style={{ padding: '5px 12px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+              {busy[t.id] ? '...' : 'Готово'}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

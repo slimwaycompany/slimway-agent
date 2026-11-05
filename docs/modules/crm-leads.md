@@ -5,14 +5,47 @@
 ## Назначение
 Своя воронка лидов в CRM (таблицы `crm_*`), вкладка «Воронка» в оболочке. Путь лида: заявка → квалификация → запись на пробное (Расписание) → пришла → покупка (Касса) → клиент. Пока каркас: вся работа идёт в Fitbase, наша воронка с Fitbase не синхронизируется и ничего в Fitbase не пишет.
 
+## Сделано
+
+### 05.11.2026 · текущий · task 37 — синхронизация, kanban-доска, карточка заявки, Настройки, задачи в Менеджере
+
+- **Джоб синхронизации** `src/jobs/crmLeadsSync.ts`: `runCrmLeadsSync()` → syncFunnels → syncLeads → syncTasks; upsert по `fitbase_id`; системные этапы (0,−1,−2) сохраняют `funnel_id` из предыдущей синхронизации; поля `is_archived/lost_reason_id/lost_comment` синхронизацией не затрагиваются.
+- **API** `src/http/crmLeads.ts` (`buildCrmLeadsRouter()`): 30+ эндпоинтов — sync (GET/POST leads-sync), funnels (GET+POST+PATCH), funnel-stages (POST+PATCH+DELETE), leads (GET+POST+GET/:id+PATCH+DELETE), activity (GET+POST), lead-tasks (GET+POST+PATCH+DELETE), lead-tags (CRUD), task-types (CRUD), lost-reasons (CRUD), fitbase-users, fitbase-user-map (GET+POST+PATCH+DELETE), app-users. Смонтирован в `src/http/kviz.ts`.
+- **Cron-эндпоинт** `/run/crm-leads-sync` (GET+POST, CRON_SECRET, лок 5 мин, 202 Accepted) — `src/index.ts`.
+- **Kanban-доска** `kviz/client/src/pages/crm/FunnelPage.tsx`: выбор воронки, поиск, Показать архивные, кнопка «Синхр. FB»; @dnd-kit/core drag & drop (PointerSensor+TouchSensor); карточки с бюджетом/датой/менеджером/тегами/is_overdue (розовый фон); PATCH stage_id на drop; горизонтальный скролл колонок на мобиле. Маршрут `/crm/funnel`.
+- **Карточка заявки** `kviz/client/src/pages/crm/LeadDrawer.tsx`: фиксированная панель справа 480px (100vw на мобиле); вкладки Основное / Произвольные поля (заглушка); все поля лида (title/name/surname/phone/email/instagram/telegram/description/budget/funnel/stage/source/manager/UTM); список задач + форма создания + отметка выполнена/удалить; лента активности + форма комментария; кнопки Сохранить / В архив / (admin) Удалить.
+- **Настройки** `SettingsPage.tsx`: 5 новых секций — Воронки CRM (создать воронку + управление этапами), Теги заявок, Типы задач, Причины отказа, Сопоставление FB (fitbase_manager_name → app_user_id).
+- **ManagerPage** `kviz/client/src/pages/manager/ManagerPage.tsx`: секция «Задачи по заявкам» — показывает открытые today+overdue задачи из `crm_lead_tasks`, кнопка «Готово» — PATCH status=done.
+- **@dnd-kit/core** установлен в `kviz/client/node_modules` через hoisting.
+
+### 05.11.2026 · 2076c1f · task 36 — зонд Fitbase leads API
+- Зонд `src/jobs/probeLeadsApi.ts`, эндпоинт `GET /run/probe-leads-api`. Отчёт: `docs/reports/fitbase-leads-api.md`.
+- Результат: 936 лидов, 7 воронок, 62 этапа, 1252 задачи. Фильтры по воронке/архиву/дате не работают — только полный sync.
+
 ## Где код
-- Вкладка «Воронка» — заглушка `PlaceholderPage` (CRM этап 1, `03df169`).
+- **Джоб синхронизации:** `src/jobs/crmLeadsSync.ts` → `runCrmLeadsSync()`
+- **API воронок и лидов:** `src/http/crmLeads.ts` → `buildCrmLeadsRouter()`, смонтирован в `kviz.ts` после `buildCrmRouter()`
+- **Cron-эндпоинт:** `src/index.ts` → `handleCrmLeadsSync`, `/run/crm-leads-sync`
+- **Kanban-доска:** `kviz/client/src/pages/crm/FunnelPage.tsx`, маршрут `/crm/funnel`
+- **Карточка заявки:** `kviz/client/src/pages/crm/LeadDrawer.tsx`
+- **Настройки CRM-разделов:** `kviz/client/src/pages/crm/SettingsPage.tsx` (секции funnels/lead-tags/task-types/lost-reasons/fb-users)
+- **Задачи в Менеджере:** `kviz/client/src/pages/manager/ManagerPage.tsx` → `LeadTasksSection`
 - Зонд API Fitbase — `src/jobs/probeLeadsApi.ts`, эндпоинт `GET /run/probe-leads-api` (`2076c1f`). Только rawGet. Отчёт: `docs/reports/fitbase-leads-api.md`.
 - Не путать: `kviz/client/src/pages/MetricsPage.tsx` + `src/http/metrics.ts` — отчёты по воронке Fitbase (Отчёты → Маркетинг: Факт дня, Дневной такт), модуль `reports.md`.
 
 ## Таблицы
-- Своих пока нет. Опора: `crm_clients`, `crm_ad_sources` (`requires_referrer`), `crm_plans` (системная услуга «Пробное занятие»), `crm_client_plans`, `crm_sales`, `app_users` (менеджеры), `crm_audit_log`.
-- Данные Fitbase сегодня (только чтение, для импорта/сверки): `fitbase_leads` (manager, client_fitbase_id, client_name, client_phone, source, funnel, stage, created_at), `fitbase_visits`, `fitbase_operations`, `fitbase_contracts`.
+SQL **выполнен** 05.11.2026 (проверка: 4 воронки, 44 этапа, 3 тега, 15 правил; по отчёту `docs/reports/fitbase-leads-api.md`). Все с `branch_id`, RLS без политик.
+- `crm_funnels` — воронки: name, sort, is_active, fitbase_id (1 Новые заявки, 2 Новички, 3 Постоянные клиенты, 4 Реактивация; тестовые 5–7 не переносим).
+- `crm_funnel_stages` — этапы: funnel_id (null = системный общий этап), name, kind `normal / inbox / success / fail`, is_personal (Ангелина, Вера, Назерке), is_archived (старые «Архив: …»), color / background_color / text_color, sort, fitbase_id. Системные: 0 Неразобранные (inbox), −1 Успешно реализована (success), −2 Отказ (fail).
+- `crm_leads` — заявки: title, name/surname/patronymic, phone (цифры 7XXXXXXXXXX), email, instagram, telegram, description, budget, funnel_id, stage_id, stage_changed_at, ad_source_id, manager_user_id, fitbase_manager_id/name, client_id, fitbase_client_id, utm_campaign/source/medium/term/content, tags jsonb (массив строк), custom_fields jsonb, is_duplicate, is_archived/archived_at, lost_reason_id/lost_comment, origin `fitbase / manual`, fitbase_id, fitbase_stage_id, fb_created_at/fb_updated_at, synced_at, raw.
+- `crm_lead_tags` — справочник тегов (name, color, is_system, is_active, sort); системные `tiktok`, `manual_import`, `no_phone` — удалять нельзя.
+- `crm_task_types` — типы задач (Звонок fitbase 2, Задание fitbase 5).
+- `crm_lead_tasks` — задачи: lead_id, client_id, type_id, description, result, due_at, is_allday, status `open / done`, is_overdue (из Fitbase), closed_at, closed_by, created_by, responsible_user_id, fitbase_responsible jsonb, fitbase_id, raw.
+- `crm_lead_activity` — лента карточки: kind `created / comment / stage_change / field_change / task / system`, text, meta jsonb, author, fitbase_note_id.
+- `crm_lead_lost_reasons` — причины отказа (справочник в Настройках).
+- `crm_fitbase_user_map` — сопоставление пользователей Fitbase (/user) с `app_users`.
+- `crm_lead_rules` — правила логики воронок с галочкой is_enabled (все выключены до переезда), params jsonb.
+- Доп. колонки: `crm_ad_sources.fitbase_id`, `crm_clients.fitbase_status` (код статуса клиента Fitbase).
 
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -56,6 +89,14 @@
 - В карточке заявки — кнопки **«Записать на пробное»** (→ Расписание) и **«Продать»** (→ Касса с выбранным клиентом), **пока тестово**: в Fitbase ничего не пишут.
 - В шапке доски **нет** «Выгрузить в Excel» и «Аналитики»: все выгрузки и аналитика — в «Отчётах», не дублируем.
 - Порядок работ: сначала проверка API Fitbase (воронки, этапы, теги, задачи, комментарии, статусы клиента — только чтение, отчёт со структурой), по отчёту — SQL таблиц, потом основное ТЗ.
+
+### По итогам зонда API (05.11.2026)
+- Синхронизация — **полная** раз в 5 минут (инкрементальной в API нет): все заявки и задачи, upsert по fitbase_id. Воронки/этапы — раз в час, пользователи и источники — раз в сутки.
+- Системные этапы Fitbase (0, −1, −2) без воронки: воронку заявки на таком этапе берём из прошлой синхронизации; если неизвестна — показываем в «Новых заявках».
+- Старые этапы «Архив: …» переносим скрытыми (is_archived), заявки в них видны по «Показать архивные».
+- Архив заявки — своя галочка `is_archived` (в Fitbase признака архива у заявки нет).
+- Комментарии Fitbase (`/note`) только по клиенту — подтягивать в ленту по client_id отдельным шагом; мессенджеры — не здесь.
+- Статус клиента — код `status` из `/client/:id`, соответствие кодов и цветов уточнить по данным.
 
 ### Карточка заявки — окно справа (05.11.2026, образец «Изменить заявку» в Fitbase)
 - Клик по карточке открывает панель **справа**. Переносим **все поля**; ненужные потом отключим (значит, нужна настройка видимости полей).
@@ -115,6 +156,22 @@
 - Распределение новых лидов между менеджерами — не решено (идея Сергея: чётные/нечётные номера карточек).
 - Отмена записи — через статус «Отказался» в расписании.
 - Эскалация неактивных (купили, не ходят): день 7 — «Звонок» кассиру-продавцу, день 10 — всем троим, день 14 — в сводку Сергея.
+
+## Открытые баги / ограничения
+- Комментарии из Fitbase `/note` (по client_id) не синхронизируются в ленту активности — отдельный шаг.
+- Вкладка «Произвольные поля» в LeadDrawer — заглушка (будет по запросу Сергея).
+- LeadDrawer на мобиле: панель 100vw, overflow-y: auto — нужна проверка на iOS что fixed позиция не прыгает.
+- Поиск по лидам работает через like на name/surname/phone на сервере (не debounced полностью на клиенте — query каждый keystroke).
+- Шапка колонки: нет суммы бюджета (только количество) — не критично.
+
+## Следующее
+- Добавить cron-job.org: POST https://slimway-agent.onrender.com/run/crm-leads-sync каждые 5 минут с заголовком x-cron-secret.
+- Правила воронки (`crm_lead_rules`) — включить после переезда с Fitbase.
+- Комментарии из Fitbase `/note` → лента активности (по client_id).
+- Создание лида вручную (кнопка «+ Заявка» в шапке доски).
+- Фильтры на доске: по менеджеру, по тегу, по источнику, по дате создания.
+- Автоматическое предупреждение о дублях при создании заявки.
+- Список-режим (переключатель Колонки / Список) для мобиле.
 
 **Скриптолог** (`scriptolog.md`)
 - Факты по клиентке из переписки: цель, опыт, причина неудачи, ограничения, удобное время, дата окончания у конкурента, кто порекомендовал, причина отказа — кандидаты в поля карточки лида.

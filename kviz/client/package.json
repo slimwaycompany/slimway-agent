@@ -7,6 +7,7 @@
     "dev": "vite"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
     "barcode-detector": "^3.2.3",
     "jsqr": "^1.4.0",
     "react": "^19.1.0",

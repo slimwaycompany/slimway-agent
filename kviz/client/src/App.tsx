@@ -18,6 +18,7 @@ import PlaceholderPage from './pages/crm/PlaceholderPage';
 import SettingsPage from './pages/crm/SettingsPage';
 import ClientsPage from './pages/crm/ClientsPage';
 import KassaPage from './pages/crm/KassaPage';
+import FunnelPage from './pages/crm/FunnelPage';
 import { isEmbedded } from './utils/iframe';
 import './index.css';
 
@@ -69,7 +70,7 @@ export default function App() {
       <Route path="/crm/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
       <Route path="/crm/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/crm/schedule" element={<RequireAuth><PlaceholderPage title="Расписание" /></RequireAuth>} />
-      <Route path="/crm/funnel" element={<RequireAuth><PlaceholderPage title="Воронка" /></RequireAuth>} />
+      <Route path="/crm/funnel" element={<RequireAuth><FunnelPage /></RequireAuth>} />
       <Route path="/crm/cashier" element={<RequireAuth><KassaPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

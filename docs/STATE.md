@@ -17,7 +17,7 @@
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | ⚪ | 28.10.2026 | Требования собраны, следующий этап после кассы |
-| CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | ⚪ | 05.11.2026 | Зонд Fitbase API запущен; отчёт docs/reports/fitbase-leads-api.md; дальше SQL → ТЗ |
+| CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 05.11.2026 | task 37: синхронизация, kanban-доска, LeadDrawer, Настройки (5 секций), задачи в Менеджере; ждёт cron-job.org |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 
 Вкладка «Воронка» — модуль `modules/crm-leads.md` (пока заглушка, собираем требования).

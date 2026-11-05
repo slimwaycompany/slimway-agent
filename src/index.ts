@@ -27,6 +27,7 @@ import { runFitbaseOps, JOB_NAME as FITBASE_OPS_JOB } from './jobs/fitbaseOps';
 import { runFitbaseCrmSync } from './jobs/fitbaseCrmSync';
 import { mountScriptologRoutes } from './http/scriptolog';
 import { runCrmLifecycle } from './http/crm';
+import { runCrmLeadsSync } from './jobs/crmLeadsSync';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -251,6 +252,17 @@ async function handleFitbaseCrmSync(req: express.Request, res: express.Response)
 }
 app.get('/run/fitbase-crm-sync',  handleFitbaseCrmSync);
 app.post('/run/fitbase-crm-sync', handleFitbaseCrmSync);
+
+// crm-leads-sync: sync funnels + leads + tasks from Fitbase, every 5 min
+async function handleCrmLeadsSync(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const locked = await acquireLock('crm-leads-sync', 5 * 60);
+  if (!locked) { res.json({ status: 'already_running' }); return; }
+  res.status(202).json({ status: 'accepted', job: 'crm-leads-sync' });
+  executeJob('crm-leads-sync', runCrmLeadsSync);
+}
+app.get('/run/crm-leads-sync',  handleCrmLeadsSync);
+app.post('/run/crm-leads-sync', handleCrmLeadsSync);
 
 // crm-lifecycle: plan activation/expiry, daily at 00:05 UTC+5
 async function handleCrmLifecycle(req: express.Request, res: express.Response): Promise<void> {
