@@ -71,7 +71,7 @@
 | 39 | scriptolog | Скриптолог v2: аккордеон 7 этапов, Акция/Материалы, напоминания, подтверждение «+» | `docs/tasks/39-scriptolog-v2-accordion.md` | ✅ готово (см. журнал) |
 | 40 | control | Контроль менеджеров «5п»: зонд API, настройки, движок 5 стандартов, отчёт, шаблон комментария | `docs/tasks/40-control-5p.md` | 🟡 частично (3555ee7; ошибки схемы — задача 40-1) |
 | 40-1 | control | Контроль 5п: фикс колонок, getOnShift, recheckViolations, история, UI | `docs/tasks/40-1-control-fix.md` | 🟡 частично (нужен SQL: добавить no_data в CHECK; нужна проверка на проде после деплоя) |
-| 40-2 | control | Контроль: Google Таблица (расписание+отметки), новые правила S3 (bad_name/no_booking/no_next_step/client_fields), фикс S4 (контакт-чек), S5 (прошедшие даты), клики нарушений | `docs/tasks/40-2-control-rules.md` | 🔧 в работе (Claude, 06.11.2026) |
+| 40-2 | control | Контроль: Google Таблица (расписание+отметки), новые правила S3 (bad_name/no_booking/no_next_step/client_fields), фикс S4 (контакт-чек), S5 (прошедшие даты), клики нарушений | `docs/tasks/40-2-control-rules.md` | 🟡 частично (части 1–5 готовы; часть 6 — приёмка на живых примерах — ждёт деплоя) |
 
 ## Сделано недавно (для контекста)
 
@@ -91,6 +91,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 06.11.2026 | Claude | 40-2 control: Google-таблица sync (controlSheetSync.ts + /run/control-sheet-sync), getOnShift+getManagersAtTime с часами смены, checkS3 переписан (s3_no_client_card/bad_name/no_booking/no_next_step/client_fields), checkS3TrialVisitors, checkViolationFixed расширен, hasContactToday (S4), syncVisits date_from 7д, checkS5 isPast, violations .or() fix + from/to, openCell from/to, SettingsPage новые поля S3 | Деплой → приёмка на живых примерах (04.11, 05.11); нужен SQL для control_shift_schedule (если не создана) |
 | 06.11.2026 | Claude | 40-1 control: фикс колонок движка (funnel_id UUID, contracts.status, operations.op_date, visits.client_fitbase_id, staff_shifts.started_at, script_clients→script_events), getOnShift с источниками, recheckOpenViolations полный, runControl(overrideDate)+runControlRange, строка «(без смены)», UI заголовки/навигация/легенда | нужен SQL no_data в CHECK; деплой → GET /run/control?from=2026-10-01&to=2026-11-06 для истории |
 | 06.11.2026 | Claude | 40 control 5п: движок (checkS1–S5, upsertViolation, computeShiftScores, finalize), API (settings/violations/quality-reviews/summary/waive/recompute), SettingsPage «Контроль менеджеров», ControlSection в ReportsPage (таблица + карточки + модалы), кнопка «📝 Комментарий» в scriptolog.html. Тест-режим: Fitbase не пишем, тревоги не шлём, менеджерам не показываем. | Деплой → добавить 2 cron-задачи (см. docs/tasks/40-control-5p.md) |
 | 05.11.2026 | Claude | 39 scriptolog v2: аккордеон 7 этапов, дерево v2 JSON (RU+KZ), фикс setVar+EasyChat, подтверждение «+», Акция/Материалы API+SettingsPage, напоминания job | см. коммит | ч.1-7 выполнены; `/run/scriptolog-reminders` нужно добавить в cron-job.org (каждые 15 мин); `SCRIPTOLOG_REMINDERS_DRY_RUN=false` в Render когда готово; `SCRIPTOLOG_CONFIRM_DRY_RUN=false` когда Fitbase API подтверждён |

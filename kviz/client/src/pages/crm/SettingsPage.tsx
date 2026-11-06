@@ -2354,15 +2354,19 @@ interface ControlCfg {
   s1_enabled: boolean; s1_contact_minutes: number; s1_grace_count: number; s1_grace_max_minutes: number;
   s2_enabled: boolean; s2_random_per_shift: number; s2_unreviewed_counts: boolean;
   s3_enabled: boolean; s3_task_max_days: number; s3_booked_stage_ids: string[]; s3_checks: string[];
+  staff_name_map: Record<string, string>; name_stop_words: string[];
+  session_minutes: number; s3_after_minutes: number;
   s4_enabled: boolean; s4_sessions_left: number; s4_ended_contact_days: number; s4_no_visit_days: number; s4_retry_days: number; s4_checks: string[];
   s5_enabled: boolean; s5_mark_minutes: number; s5_checks: string[];
 }
 
-const S3_CHECKS = ['s3_no_source','s3_no_manager','s3_wrong_stage','s3_no_task','s3_no_lost_reason','s3_bad_comment','s3_client_card'];
+const S3_CHECKS = ['s3_no_source','s3_no_manager','s3_no_task','s3_no_lost_reason','s3_bad_comment','s3_no_client_card','s3_no_booking','s3_no_next_step','s3_client_fields','s3_bad_name'];
 const S3_LABELS: Record<string,string> = {
-  s3_no_source: 'Нет источника', s3_no_manager: 'Нет менеджера', s3_wrong_stage: 'Неверный этап (записан)',
+  s3_no_source: 'Нет источника', s3_no_manager: 'Нет менеджера',
   s3_no_task: 'Нет задачи', s3_no_lost_reason: 'Нет причины отказа', s3_bad_comment: 'Комментарий не по шаблону',
-  s3_client_card: 'Не заполнена карточка клиента',
+  s3_no_client_card: 'Нет карточки клиента в Fitbase', s3_no_booking: 'Нет записи и нет задачи',
+  s3_no_next_step: 'Нет шага после пробного', s3_client_fields: 'Неполная карточка после покупки',
+  s3_bad_name: 'Служебное/неполное имя',
 };
 const S4_CHECKS = ['s4_ending','s4_ended','s4_no_visits','s4_task_overdue'];
 const S4_LABELS: Record<string,string> = {
@@ -2518,6 +2522,16 @@ function ControlSettingsSection() {
             ))}
             {!stages.length && <span style={{ fontSize: 12, color: '#94a3b8' }}>Этапы не загружены</span>}
           </div>
+        </div>
+        <div style={twoCol}>
+          <NumField label="Минут сеанса (session_minutes)" value={cfg.session_minutes ?? 30} onChange={v => patch({ session_minutes: v })} min={5} max={240} />
+          <NumField label="Минут после пробного (s3_after)" value={cfg.s3_after_minutes ?? 30} onChange={v => patch({ s3_after_minutes: v })} min={1} max={120} />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Стоп-слова в именах (через запятую)</label>
+          <input style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 13, boxSizing: 'border-box' }}
+            value={(cfg.name_stop_words ?? []).join(', ')}
+            onChange={e => patch({ name_stop_words: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} />
         </div>
         <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Проверки</div>
         <CheckList checks={S3_CHECKS} labels={S3_LABELS} value={cfg.s3_checks} onChange={v => patch({ s3_checks: v })} />

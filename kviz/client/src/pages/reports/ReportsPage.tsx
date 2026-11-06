@@ -3784,10 +3784,13 @@ function ControlSection() {
 
   useEffect(() => { load(); }, [from, to]);
 
-  async function openCell(date: string, person: string, stdNum: number) {
-    if (stdNum === 2) { setQrModal({ date, person }); loadQR(date, person); return; }
-    setCellModal({ date, person, stdNum }); setVioLoading(true); setVioList([]);
-    const r = await fetch(`/kviz/api/control/violations?date=${date}&owner=${encodeURIComponent(person)}&standard=${stdNum}`, { credentials: 'include' });
+  async function openCell(dateFrom: string, dateTo: string, person: string, stdNum: number) {
+    if (stdNum === 2) { setQrModal({ date: dateFrom, person }); loadQR(dateFrom, person); return; }
+    setCellModal({ date: dateFrom, person, stdNum }); setVioLoading(true); setVioList([]);
+    const dateParam = dateFrom === dateTo
+      ? `date=${dateFrom}`
+      : `from=${dateFrom}&to=${dateTo}`;
+    const r = await fetch(`/kviz/api/control/violations?${dateParam}&owner=${encodeURIComponent(person)}&standard=${stdNum}`, { credentials: 'include' });
     const d = await r.json();
     setVioList(Array.isArray(d) ? d : []);
     setVioLoading(false);
@@ -3802,8 +3805,9 @@ function ControlSection() {
     setWaiveId(null); setWaiveReason('');
     // Reload violations
     if (cellModal) {
-      const r = await fetch(`/kviz/api/control/violations?date=${cellModal.date}&owner=${encodeURIComponent(cellModal.person)}&standard=${cellModal.stdNum}`, { credentials: 'include' });
-      setVioList(await r.json());
+      const r2 = await fetch(`/kviz/api/control/violations?date=${cellModal.date}&owner=${encodeURIComponent(cellModal.person)}&standard=${cellModal.stdNum}`, { credentials: 'include' });
+      const d2 = await r2.json();
+      setVioList(Array.isArray(d2) ? d2 : []);
     }
     load();
   }
@@ -3849,7 +3853,7 @@ function ControlSection() {
     return (
       <td style={{ ...cs.cell, background: bgColor, cursor: 'pointer' }}
         title={STD_TIPS[stdNum]}
-        onClick={() => openCell(scores[0].date, ps.person, stdNum)}>
+        onClick={() => openCell(scores[0].date, scores[scores.length - 1].date, ps.person, stdNum)}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
           <span style={{ fontSize: 16 }}>{icon}</span>
           <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>{fmtAmt(totalAmt)}</span>
@@ -3933,7 +3937,7 @@ function ControlSection() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
               {scores.map(({ n, result }) => (
                 <button key={n} style={{ ...cs.stdChip, background: result === 'fail' ? '#fef2f2' : result === 'pending' ? '#fffbeb' : result === 'ok' || result === 'fixed' ? '#f0fdf4' : '#f8fafc' }}
-                  onClick={() => openCell(from, ps.person, n)}>
+                  onClick={() => openCell(from, to, ps.person, n)}>
                   <span style={{ fontSize: 13 }}>{RESULT_ICON[result] ?? '—'}</span>
                   <span style={{ fontSize: 11 }}>{STD_NAMES[n]}</span>
                 </button>

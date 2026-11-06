@@ -90,7 +90,8 @@ async function syncLeads(): Promise<number> {
 }
 
 async function syncVisits(): Promise<number> {
-  const items = await paginateGet('/schedule-registration', { page_size: 100 }, 'crm-sync-visits');
+  const dateFrom = yekDate(Date.now() - 7 * 86400_000); // refresh last 7 days for status updates
+  const items = await paginateGet('/schedule-registration', { page_size: 100, date_from: dateFrom }, 'crm-sync-visits');
   if (!items.length) return 0;
 
   // Batch-fetch client names/phones from fitbase_clients_cache by client_id

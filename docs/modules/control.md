@@ -123,9 +123,10 @@
 - Скрытые продавцы — по общей кнопке «👁 Скрытые».
 
 ## Где код
-- **Движок стандартов:** `src/jobs/control.ts` — `loadSettings`, `saveSettings`, `loadFunnelUuids`, `getOnShift` (→ `{names, source}`), `loadUserMap`, `checkS1`–`checkS5`, `recheckOpenViolations` (→ fixed/failed), `computeShiftScores` (строка `(без смены)` при пустой смене), `runControl(finalize, overrideDate?)`, `runControlRange(from, to)`
-- **API:** `src/http/control.ts` — `buildControlRouter()`, эндпоинты settings / violations / quality-reviews / summary (+ `shift_info`) / recompute (delete+rerun)
-- **Эндпоинт крона:** `src/index.ts` — `/run/control` (GET+POST, CRON_SECRET, `?finalize=1`, `?date=`, `?from=&to=`)
+- **Движок стандартов:** `src/jobs/control.ts` — `loadSettings`, `saveSettings`, `loadFunnelUuids`, `getOnShift` (→ `{names, source, schedule}`), `getManagersAtTime`, `loadUserMap`, `isBadName`, `hasContactToday`, `checkS1`–`checkS5`, `checkS3TrialVisitors`, `checkViolationFixed`, `recheckOpenViolations`, `computeShiftScores`, `runControl(finalize, overrideDate?)`, `runControlRange(from, to)`
+- **Синхронизация Google-таблицы:** `src/jobs/controlSheetSync.ts` — `syncControlSheet()`, `shouldSyncSheet(intervalMinutes)`
+- **API:** `src/http/control.ts` — `buildControlRouter()`, settings (GET/PUT с `staff_name_map`, `name_stop_words`, `session_minutes`, `s3_after_minutes`) / violations (GET, `from`/`to` range, `.or()` fix) / quality-reviews / summary / recompute
+- **Эндпоинт крона:** `src/index.ts` — `/run/control`, `/run/control-sheet-sync` (GET+POST, CRON_SECRET, автозапуск sheet sync при `/run/control` если >30 мин)
 - **Зонд API:** `src/jobs/probeControl.ts` — `/run/probe-control`
 - **Настройки UI:** `kviz/client/src/pages/crm/SettingsPage.tsx` — `ControlSettingsSection` (секция «Контроль менеджеров»)
 - **Отчёт:** `kviz/client/src/pages/reports/ReportsPage.tsx` — `ControlSection` (столбец Менеджер)
@@ -137,7 +138,8 @@
 - `control_shift_scores` (id, branch_id, shift_date, owner_name, standard_num, result ok/fixed/pending/fail/not_reviewed/off/**no_data**, violations_count, amount, is_final, created_at, updated_at)
 - `control_quality_reviews` (id, branch_id, shift_date, manager_name, client_key, pick_reason random/flagged, flag_no_facts, flag_no_outcome, flag_abandoned, c1_needs, c2_presented, c3_objections, c4_outcome, comment, reviewed_by, reviewed_at, created_at, updated_at)
 - `control_shift_marks` (id, branch_id, shift_date date, user_name text, marked_at, replacing, source) — кто был на смене (из Google-формы); управляемый источник для движка
-- SQL нужен: `ALTER TABLE control_shift_scores ADD COLUMN IF NOT EXISTS result TEXT CHECK (result IN ('ok','fixed','pending','fail','not_reviewed','off','no_data'));` (добавить `no_data` в CHECK или снять CHECK)
+- `control_shift_schedule` (branch_id, shift_date, user_name [PK: branch_id+shift_date+user_name], plan_start, plan_end, fact_start, fact_end time, is_fact bool, source, synced_at) — часы смены из листа «График работы»
+- SQL нужен: `ALTER TABLE control_shift_scores DROP CONSTRAINT IF EXISTS control_shift_scores_result_check; ALTER TABLE control_shift_scores ADD CONSTRAINT control_shift_scores_result_check CHECK (result IN ('ok','fixed','pending','fail','not_reviewed','off','no_data'));`
 
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -154,6 +156,19 @@
 
 ## Сделано
 <!-- новые записи сверху -->
+### 06.11.2026 · (task 40-2) · Google-таблица, новые правила S3, фикс S4/S5, клики нарушений
+- **Синхронизация Google-таблицы** (`src/jobs/controlSheetSync.ts`): `/run/control-sheet-sync` (GET+POST, CRON_SECRET), вызывается автоматически в начале `/run/control` если >30 мин с последней синхронизации. Листы: «Отметки» → `control_shift_marks`, «График работы» → `control_shift_schedule` (plan/fact HH:MM). Сопоставление ФИО: `staff_name_map` из настроек → `fin_staff.fitbase_name` → `app_users.display_name`. Env: `CONTROL_SHEET_URL`, `CONTROL_SHEET_SECRET`.
+- **`getOnShift` с часами смены**: приоритет `control_shift_schedule` (факт>план) → `control_shift_marks` → `staff_shifts` → `metrics_day_input`. `OnShiftResult.schedule` содержит часы по именам. Новый helper `getManagersAtTime(timeHHMM, result)` — возвращает менеджеров, чья смена перекрывает момент события; общие нарушения раздаются только им.
+- **Новые проверки S3** (`checkS3` полностью переписан): `s3_no_client_card` (нет `fitbase_client_id`), `s3_bad_name` (стоп-слова / цифры / одно слово), `s3_no_booking` (активный лид без пробного и без задачи), `s3_no_next_step` (пробное завершено, нет следующего шага — функция `checkS3TrialVisitors`), `s3_client_fields` (после покупки — плохое имя). Новые настройки: `staff_name_map`, `name_stop_words`, `session_minutes` (30), `s3_after_minutes` (30). Персистентные нарушения (без даты в dedup_key): `s3_no_client_card`, `s3_bad_name`, `s3_client_fields`, `s3_no_next_step`.
+- **`checkViolationFixed` расширен** новыми кодами: `s3_no_client_card`, `s3_bad_name`, `s3_no_booking`, `s3_no_next_step`, `s3_client_fields`.
+- **Фикс S4**: `hasContactToday()` — проверка `crm_lead_activity` / `crm_lead_tasks` / `script_events` перед каждым нарушением s4; нарушение не создаётся при наличии контакта сегодня.
+- **Фикс S5**: `checkS5` принимает `isPast` — для прошлых дат `s5_unmarked` срабатывает безусловно (без проверки `minPassed`).
+- **`syncVisits`**: добавлен `date_from = 7 дней назад` для обновления статусов записей.
+- **Violations API фикс**: `.or()` теперь оборачивает имя в кавычки (`owner_name.eq."${owner}"`), работает со спецсимволами вроде `(без смены)`. Добавлены `from`/`to` params для диапазона дат.
+- **`openCell` в ReportsPage**: передаёт `from`/`to` вместо одной даты → нарушения за период.
+- **Настройки S3** (`SettingsPage.tsx`): новые поля `session_minutes`, `s3_after_minutes`, `name_stop_words`, обновлены `S3_CHECKS`/`S3_LABELS`. `ControlCfg` расширен.
+- Режим ТЕСТОВЫЙ: в Fitbase ничего не пишем, в watch_alerts ничего, менеджерам не видно.
+
 ### 06.11.2026 · (task 40-1) · Исправление движка: колонки, getOnShift, recheckViolations, UI
 - **Колонки исправлены** по реальной схеме: `crm_leads.funnel_id` = UUID (через `loadFunnelUuids`), `fitbase_contracts.status` text 'closed', `fitbase_operations.op_date` + кассир из `raw.client.id` (in-memory map), `fitbase_visits.client_fitbase_id` + `visit_at` timestamp, `staff_shifts` фильтр по `started_at`, `script_events.client_id` UUID (сначала `script_clients` по phone).
 - **`getOnShift`** теперь возвращает `{names, source}`, приоритет: `control_shift_marks` → `staff_shifts` (только `role=manager`) → `metrics_day_input.on_shift`; нарушения пишутся даже без смены (строка `(без смены)`).
@@ -183,6 +198,9 @@
   - нарушения должны записываться даже когда никто не на смене (общие / по владельцу), а не пропускаться.
 
 ## Следующее
+- **Приёмка 40-2 (06.11.2026): проверка на живых примерах** — запустить `/run/control?date=2026-11-04`, `/run/control?date=2026-11-05`, убедиться, что движок ловит все 5 живых случаев из ТЗ 40-2 Часть 6.
+- **SQL для `control_shift_schedule`** (если не выполнен): создать таблицу с PK (branch_id, shift_date, user_name).
+- **Часть 7 ТЗ 40-2**: после приёмки добавить `staff_name_map` в Настройки (key-value редактор), проверить на проде.
 - **Проверка Сергеем после 40-1 (06.11.2026, пересчёт с 01.10):**
   - №1 Скорость — нарушения есть, Сергей согласен (05.11: Ангелина, 12 нарушений).
   - №2 Качество — пока «не проверено»: девочки ещё не работают через скриптолог. Норм для теста.

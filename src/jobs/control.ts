@@ -57,9 +57,13 @@ export interface ControlSettings {
   s2_random_per_shift:    number;
   s2_unreviewed_counts:   boolean;
   s3_enabled:             boolean;
-  s3_booked_stage_ids:    number[];
+  s3_booked_stage_ids:    string[];
   s3_task_max_days:       number;
   s3_checks:              string[];
+  staff_name_map:         Record<string, string>;
+  name_stop_words:        string[];
+  session_minutes:        number;
+  s3_after_minutes:       number;
   s4_enabled:             boolean;
   s4_sessions_left:       number;
   s4_ended_contact_days:  number;
@@ -91,7 +95,11 @@ export const DEFAULT_SETTINGS: ControlSettings = {
   s3_enabled:             true,
   s3_booked_stage_ids:    [],
   s3_task_max_days:       7,
-  s3_checks:              ['s3_no_source','s3_no_manager','s3_wrong_stage','s3_no_task','s3_no_lost_reason','s3_bad_comment','s3_client_card'],
+  s3_checks:              ['s3_no_source','s3_no_manager','s3_no_task','s3_no_lost_reason','s3_bad_comment','s3_no_client_card','s3_no_booking','s3_no_next_step','s3_client_fields','s3_bad_name'],
+  staff_name_map:         {},
+  name_stop_words:        ['тт','заявка','клиент','дочка','подруга','брат','сестра','друг','сын','дочь','мама','папа'],
+  session_minutes:        30,
+  s3_after_minutes:       30,
   s4_enabled:             true,
   s4_sessions_left:       2,
   s4_ended_contact_days:  3,
@@ -149,10 +157,36 @@ async function loadFunnelUuids(): Promise<FunnelUuids> {
 
 // ── Who is on shift ───────────────────────────────────────────────────────────
 
-interface OnShiftResult { names: string[]; source: string; }
+interface ShiftHours { start: string; end: string; is_fact: boolean; }
+interface OnShiftResult {
+  names:    string[];
+  source:   string;
+  schedule: Record<string, ShiftHours>; // display_name → hours (empty when no schedule)
+}
 
 async function getOnShift(dateStr: string): Promise<OnShiftResult> {
-  // 1. control_shift_marks (primary source, from Google Form import)
+  // 1. control_shift_schedule (fact first, then plan)
+  const { data: sched } = await supabase
+    .from('control_shift_schedule')
+    .select('user_name,plan_start,plan_end,fact_start,fact_end,is_fact')
+    .eq('branch_id', BRANCH_ID)
+    .eq('shift_date', dateStr);
+  if (sched?.length) {
+    const schedule: Record<string, ShiftHours> = {};
+    const names: string[] = [];
+    for (const row of sched) {
+      const name    = String(row.user_name);
+      const is_fact = !!row.is_fact;
+      const start   = is_fact ? String(row.fact_start ?? row.plan_start ?? '') : String(row.plan_start ?? '');
+      const end     = is_fact ? String(row.fact_end   ?? row.plan_end   ?? '') : String(row.plan_end   ?? '');
+      if (!start || !end) continue;
+      schedule[name] = { start, end, is_fact };
+      names.push(name);
+    }
+    if (names.length) return { names, source: 'control_shift_schedule', schedule };
+  }
+
+  // 2. control_shift_marks (whole day, no hours)
   const { data: marks, error: e1 } = await supabase
     .from('control_shift_marks')
     .select('user_name')
@@ -160,7 +194,7 @@ async function getOnShift(dateStr: string): Promise<OnShiftResult> {
     .eq('shift_date', dateStr);
   if (!e1 && marks?.length) {
     const names = [...new Set(marks.map(m => String(m.user_name)).filter(Boolean))];
-    return { names, source: 'control_shift_marks' };
+    return { names, source: 'control_shift_marks', schedule: {} };
   }
 
   // Load managers for role filter
@@ -173,9 +207,9 @@ async function getOnShift(dateStr: string): Promise<OnShiftResult> {
   const nameById     = new Map((managers ?? []).map(u => [String(u.id), String(u.display_name)]));
   const managerNames = new Set((managers ?? []).map(u => String(u.display_name)));
 
-  // 2. staff_shifts — filter by started_at date (no shift_date column)
-  const dayStartUtc  = new Date(`${dateStr}T00:00:00+05:00`).toISOString();
-  const nextDayUtc   = new Date(`${dateStr}T23:59:59+05:00`).toISOString();
+  // 3. staff_shifts — filter by started_at date
+  const dayStartUtc = new Date(`${dateStr}T00:00:00+05:00`).toISOString();
+  const nextDayUtc  = new Date(`${dateStr}T23:59:59+05:00`).toISOString();
   const { data: shifts, error: e2 } = await supabase
     .from('staff_shifts')
     .select('user_id,user_name')
@@ -186,12 +220,12 @@ async function getOnShift(dateStr: string): Promise<OnShiftResult> {
       shifts
         .filter(s => managerIds.has(String(s.user_id)))
         .map(s => nameById.get(String(s.user_id)) ?? String(s.user_name))
-        .filter(Boolean)
+        .filter(Boolean),
     )];
-    if (names.length) return { names, source: 'staff_shifts' };
+    if (names.length) return { names, source: 'staff_shifts', schedule: {} };
   }
 
-  // 3. metrics_day_input.on_shift — filter to manager names only
+  // 4. metrics_day_input.on_shift
   const { data: day } = await supabase
     .from('metrics_day_input')
     .select('on_shift')
@@ -200,7 +234,21 @@ async function getOnShift(dateStr: string): Promise<OnShiftResult> {
     .maybeSingle();
   const arr   = (day?.on_shift as string[] | undefined) ?? [];
   const names = arr.filter(n => n && managerNames.has(n));
-  return { names, source: 'metrics_day_input' };
+  return { names, source: 'metrics_day_input', schedule: {} };
+}
+
+// Returns managers whose shift hours include the given HH:MM time (all if no schedule)
+function getManagersAtTime(timeHHMM: string, result: OnShiftResult): string[] {
+  if (!Object.keys(result.schedule).length) return result.names;
+  const [th, tm] = timeHHMM.split(':').map(Number);
+  const timeMins = (th || 0) * 60 + (tm || 0);
+  return result.names.filter(name => {
+    const h = result.schedule[name];
+    if (!h) return true; // no hours recorded → include
+    const [sh, sm] = h.start.split(':').map(Number);
+    const [eh, em] = h.end.split(':').map(Number);
+    return timeMins >= (sh * 60 + sm) && timeMins <= (eh * 60 + em);
+  });
 }
 
 // ── Name mapping: Fitbase name → app_users.display_name ──────────────────────
@@ -243,6 +291,45 @@ async function loadFinStaffMap(): Promise<Map<string, string>> {
 function resolveName(fbName: string | null | undefined, userMap: UserMap): string | null {
   if (!fbName) return null;
   return userMap.get(fbName) ?? null;
+}
+
+function isBadName(name: string, stopWords: string[]): boolean {
+  if (!name.trim()) return true;
+  const lower = name.toLowerCase();
+  if (stopWords.some(w => w && lower.includes(w.toLowerCase()))) return true;
+  if (/\d/.test(name)) return true;                                      // digits in name
+  if (!name.trim().includes(' ')) return true;                           // no surname
+  return false;
+}
+
+// Check if any contact was made with a Fitbase client on a given day
+async function hasContactToday(fitbaseClientId: number, dayStart: string, dayEnd: string): Promise<boolean> {
+  const { data: lead } = await supabase.from('crm_leads')
+    .select('id').eq('fitbase_client_id', fitbaseClientId).limit(1).maybeSingle();
+  if (lead?.id) {
+    const { data: act } = await supabase.from('crm_lead_activity')
+      .select('id').eq('lead_id', lead.id)
+      .gte('created_at', dayStart).lte('created_at', dayEnd).limit(1);
+    if (act?.length) return true;
+    const { data: task } = await supabase.from('crm_lead_tasks')
+      .select('id').eq('lead_id', lead.id)
+      .gte('created_at', dayStart).lte('created_at', dayEnd).limit(1);
+    if (task?.length) return true;
+  }
+  // Check script_events by phone
+  const { data: cc } = await supabase.from('fitbase_clients_cache')
+    .select('phone').eq('fitbase_client_id', fitbaseClientId).maybeSingle();
+  if (cc?.phone) {
+    const phone = digitsOnly(String(cc.phone));
+    const { data: sc } = await supabase.from('script_clients').select('id').eq('phone', phone).maybeSingle();
+    if (sc?.id) {
+      const { data: se } = await supabase.from('script_events')
+        .select('id').eq('client_id', sc.id)
+        .gte('created_at', dayStart).lte('created_at', dayEnd).limit(1);
+      if (se?.length) return true;
+    }
+  }
+  return false;
 }
 
 // ── Violation upsert ──────────────────────────────────────────────────────────
@@ -372,6 +459,59 @@ async function checkViolationFixed(checkCode: string, entityId: string, cfg: Con
         const { data: active } = await supabase.from('fitbase_contracts').select('id').eq('client_fitbase_id', visit.client_fitbase_id).neq('status', 'closed').limit(1);
         return !!active?.length;
       }
+      case 's3_no_client_card': {
+        const { data } = await supabase.from('crm_leads').select('fitbase_client_id').eq('id', entityId).maybeSingle();
+        return data?.fitbase_client_id != null;
+      }
+      case 's3_bad_name': {
+        const isUuid = entityId.includes('-');
+        let name = '';
+        if (isUuid) {
+          const { data: lead } = await supabase.from('crm_leads').select('fitbase_client_id,title').eq('id', entityId).maybeSingle();
+          if (lead?.fitbase_client_id) {
+            const { data: cc } = await supabase.from('fitbase_clients_cache').select('name').eq('fitbase_client_id', lead.fitbase_client_id).maybeSingle();
+            name = String(cc?.name ?? '');
+          }
+          if (!name) name = String(lead?.title ?? '');
+        } else {
+          const { data: vt } = await supabase.from('fitbase_visits').select('client_fitbase_id,client_name').eq('id', entityId).maybeSingle();
+          if (vt?.client_fitbase_id) {
+            const { data: cc } = await supabase.from('fitbase_clients_cache').select('name').eq('fitbase_client_id', vt.client_fitbase_id).maybeSingle();
+            name = String(cc?.name ?? '');
+          }
+          if (!name) name = String(vt?.client_name ?? '');
+        }
+        return !!name && !isBadName(name, cfg.name_stop_words);
+      }
+      case 's3_no_booking': {
+        const { data: lead } = await supabase.from('crm_leads').select('fitbase_client_id').eq('id', entityId).maybeSingle();
+        if (!lead?.fitbase_client_id) return false;
+        const { data: trial } = await supabase.from('fitbase_visits').select('id').eq('client_fitbase_id', lead.fitbase_client_id).eq('is_trial', true).limit(1);
+        if (trial?.length) return true;
+        const { data: task } = await supabase.from('crm_lead_tasks').select('id').eq('lead_id', entityId).eq('status', 'open').limit(1);
+        return !!task?.length;
+      }
+      case 's3_no_next_step': {
+        const isUuid = entityId.includes('-');
+        if (isUuid) {
+          const { data: act } = await supabase.from('crm_lead_activity').select('id').eq('lead_id', entityId).limit(1);
+          if (act?.length) return true;
+          const { data: task } = await supabase.from('crm_lead_tasks').select('id').eq('lead_id', entityId).limit(1);
+          return !!task?.length;
+        } else {
+          const { data: vt } = await supabase.from('fitbase_visits').select('client_fitbase_id').eq('id', entityId).maybeSingle();
+          if (!vt?.client_fitbase_id) return false;
+          const { data: lead } = await supabase.from('crm_leads').select('id').eq('fitbase_client_id', vt.client_fitbase_id).limit(1);
+          return !!lead?.length;
+        }
+      }
+      case 's3_client_fields': {
+        const { data: lead } = await supabase.from('crm_leads').select('fitbase_client_id').eq('id', entityId).maybeSingle();
+        if (!lead?.fitbase_client_id) return false;
+        const { data: cc } = await supabase.from('fitbase_clients_cache').select('name').eq('fitbase_client_id', lead.fitbase_client_id).maybeSingle();
+        const name = String(cc?.name ?? '');
+        return !!name && !isBadName(name, cfg.name_stop_words);
+      }
       default:
         return false;
     }
@@ -417,7 +557,7 @@ async function computeShiftScores(
       if (isNoShift) {
         q = q.eq('is_shared', true);
       } else {
-        q = q.or(`owner_name.eq.${person},is_shared.eq.true`);
+        q = q.or(`owner_name.eq."${person.replace(/"/g, '\\"')}",is_shared.eq.true`);
       }
       const { data: vios, error: vError } = await q;
       if (vError) {
@@ -741,62 +881,55 @@ async function checkS3(
   const dayEnd      = `${dateStr}T23:59:59+05:00`;
   const fixDeadline = computeFixDeadline(dateStr, cfg.fix_deadline_time);
   const enabled     = new Set(cfg.s3_checks);
+  const stopWords   = cfg.name_stop_words ?? [];
+  const delaySec    = ((cfg.session_minutes ?? 30) + (cfg.s3_after_minutes ?? 30)) * 60;
+  const nowMs       = Date.now();
 
-  // Get leads in "Новые заявки" worked on this shift (by activity today)
+  // Leads worked on this shift (by activity today)
   const { data: activeLeadIds, error: actErr } = await supabase
     .from('crm_lead_activity')
     .select('lead_id')
     .gte('created_at', dayStart)
     .lte('created_at', dayEnd)
     .neq('kind', 'system');
-  if (actErr) {
-    errors.push(`s3: lead_activity: ${actErr.message}`);
-    return 0;
-  }
+  if (actErr) { errors.push(`s3: lead_activity: ${actErr.message}`); return 0; }
 
   const leadIds = [...new Set((activeLeadIds ?? []).map((r: Record<string,unknown>) => String(r.lead_id)))];
-  if (!leadIds.length) return 0;
+  if (!leadIds.length) {
+    // Still need to check trial visitors even if no lead activity today
+    return checkS3TrialVisitors(dateStr, cfg, enabled, delaySec, nowMs, fixDeadline, stopWords, errors);
+  }
 
   const { data: leads, error: leadsErr } = await supabase
     .from('crm_leads')
-    .select('id,fitbase_id,fitbase_manager_name,manager_user_id,ad_source_id,funnel_id,stage_id,phone,lost_reason_id')
+    .select('id,fitbase_id,fitbase_manager_name,manager_user_id,ad_source_id,funnel_id,stage_id,phone,lost_reason_id,fitbase_client_id,title')
     .eq('branch_id', BRANCH_ID)
     .eq('funnel_id', funnelUuids.newLeads)
     .in('id', leadIds.slice(0, 200));
-  if (leadsErr) {
-    errors.push(`s3: leads: ${leadsErr.message}`);
-    return 0;
-  }
-  if (!leads?.length) return 0;
+  if (leadsErr) { errors.push(`s3: leads: ${leadsErr.message}`); return 0; }
+  if (!leads?.length) return checkS3TrialVisitors(dateStr, cfg, enabled, delaySec, nowMs, fixDeadline, stopWords, errors);
 
-  // Load funnel stages (using UUID, not integer)
+  // Load funnel stages
   const { data: stages, error: stagesErr } = await supabase
-    .from('crm_funnel_stages')
-    .select('id,kind,fitbase_id')
-    .eq('funnel_id', funnelUuids.newLeads);
+    .from('crm_funnel_stages').select('id,kind').eq('funnel_id', funnelUuids.newLeads);
   if (stagesErr) console.error('[control] s3 stages:', stagesErr.message);
   const stageById = new Map((stages ?? []).map((s: Record<string,unknown>) => [String(s.id), s]));
 
-  // Load tasks for these leads
-  const { data: tasks, error: tasksErr } = await supabase
-    .from('crm_lead_tasks')
-    .select('lead_id,status,due_at')
-    .in('lead_id', leadIds.slice(0, 200))
-    .eq('status', 'open');
-  if (tasksErr) console.error('[control] s3 tasks:', tasksErr.message);
+  // Load open tasks
+  const { data: tasks } = await supabase
+    .from('crm_lead_tasks').select('lead_id,due_at')
+    .in('lead_id', leadIds.slice(0, 200)).eq('status', 'open');
   const tasksByLead = new Map<string, { due_at: string }[]>();
   for (const t of tasks ?? []) {
     const lid = String(t.lead_id);
     if (!tasksByLead.has(lid)) tasksByLead.set(lid, []);
-    tasksByLead.get(lid)!.push({ due_at: t.due_at });
+    tasksByLead.get(lid)!.push({ due_at: String(t.due_at) });
   }
 
   // Load last comment per lead
   const { data: comments } = await supabase
-    .from('crm_lead_activity')
-    .select('lead_id,text,author,created_at')
-    .in('lead_id', leadIds.slice(0, 200))
-    .eq('kind', 'comment')
+    .from('crm_lead_activity').select('lead_id,text,author,created_at')
+    .in('lead_id', leadIds.slice(0, 200)).eq('kind', 'comment')
     .order('created_at', { ascending: false });
   const lastCommentByLead = new Map<string, { text: string; author: string; created_at: string }>();
   for (const c of comments ?? []) {
@@ -804,32 +937,110 @@ async function checkS3(
     if (!lastCommentByLead.has(lid)) lastCommentByLead.set(lid, c as { text: string; author: string; created_at: string });
   }
 
+  // Load fitbase_clients_cache for name checks
+  const clientFbIds = leads.map(l => Number(l.fitbase_client_id)).filter(Boolean);
+  const clientNameMap = new Map<number, string>(); // fitbase_client_id → name
+  if (clientFbIds.length) {
+    const { data: cc } = await supabase.from('fitbase_clients_cache')
+      .select('fitbase_client_id,name').in('fitbase_client_id', clientFbIds);
+    for (const r of cc ?? []) clientNameMap.set(Number(r.fitbase_client_id), String(r.name ?? ''));
+  }
+
+  // Load trial visits for clients (for s3_no_booking)
+  const trialsForClient = new Set<number>();
+  if (clientFbIds.length) {
+    const { data: trials } = await supabase.from('fitbase_visits')
+      .select('client_fitbase_id').in('client_fitbase_id', clientFbIds).eq('is_trial', true).limit(1000);
+    for (const t of trials ?? []) trialsForClient.add(Number(t.client_fitbase_id));
+  }
+
+  // Load contracts for s3_client_fields
+  const clientsWithContract = new Set<number>();
+  if (clientFbIds.length) {
+    const { data: conts } = await supabase.from('fitbase_contracts')
+      .select('client_fitbase_id').in('client_fitbase_id', clientFbIds).limit(1000);
+    for (const c of conts ?? []) clientsWithContract.add(Number(c.client_fitbase_id));
+  }
+
   let violations = 0;
 
   for (const lead of leads) {
-    const leadId   = String(lead.id);
-    const owner    = resolveName(lead.fitbase_manager_name as string | null, userMap) ?? null;
-    const stage    = stageById.get(String(lead.stage_id));
-    const stageKind = String((stage as Record<string,unknown> | undefined)?.kind ?? 'normal');
+    const leadId     = String(lead.id);
+    const owner      = resolveName(lead.fitbase_manager_name as string | null, userMap) ?? null;
+    const stage      = stageById.get(String(lead.stage_id));
+    const stageKind  = String((stage as Record<string,unknown> | undefined)?.kind ?? 'normal');
+    const clientFbId = lead.fitbase_client_id ? Number(lead.fitbase_client_id) : null;
+    const clientName = clientFbId ? (clientNameMap.get(clientFbId) ?? '') : '';
+    const leadTitle  = String(lead.title ?? lead.fitbase_manager_name ?? '');
+    const labelName  = clientName || leadTitle || `Заявка ${lead.fitbase_id ?? ''}`;
 
+    // ── s3_no_client_card ────────────────────────────────────────────────────
+    if (enabled.has('s3_no_client_card') && !clientFbId) {
+      await upsertViolation({
+        dedup_key: `s3_no_client_card:${leadId}`, shift_date: dateStr, standard_num: 3,
+        check_code: 's3_no_client_card', owner_name: owner, is_shared: !owner,
+        entity_id: leadId, entity_label: leadTitle || 'Заявка',
+        details: 'Не заведена карточка клиента в Fitbase',
+        how_to_fix: 'Создайте карточку клиента в Fitbase и привяжите к заявке',
+        fix_deadline: fixDeadline,
+      }); violations++;
+    }
+
+    // ── s3_bad_name ──────────────────────────────────────────────────────────
+    if (enabled.has('s3_bad_name')) {
+      const checkName = clientName || leadTitle;
+      if (checkName && isBadName(checkName, stopWords)) {
+        const eid = clientFbId ? String(clientFbId) : leadId;
+        await upsertViolation({
+          dedup_key: `s3_bad_name:${eid}`, shift_date: dateStr, standard_num: 3,
+          check_code: 's3_bad_name', owner_name: owner, is_shared: !owner,
+          entity_id: leadId, entity_label: labelName,
+          details: `Имя клиента служебное или неполное: «${checkName}»`,
+          how_to_fix: 'Введите настоящие фамилию и имя в карточке клиента Fitbase',
+          fix_deadline: fixDeadline,
+        }); violations++;
+      }
+    }
+
+    // ── s3_no_source ─────────────────────────────────────────────────────────
     if (enabled.has('s3_no_source') && !lead.ad_source_id) {
       await upsertViolation({
         dedup_key: `s3_no_source:${leadId}:${dateStr}`, shift_date: dateStr, standard_num: 3,
         check_code: 's3_no_source', owner_name: owner, is_shared: !owner,
-        entity_id: leadId, entity_label: String(lead.fitbase_manager_name ?? 'Заявка'),
-        details: 'Не указан источник заявки', how_to_fix: 'Укажите источник в карточке заявки', fix_deadline: fixDeadline,
+        entity_id: leadId, entity_label: labelName,
+        details: 'Не указан источник заявки', how_to_fix: 'Укажите источник в карточке заявки',
+        fix_deadline: fixDeadline,
       }); violations++;
     }
 
+    // ── s3_no_manager ────────────────────────────────────────────────────────
     if (enabled.has('s3_no_manager') && !lead.fitbase_manager_name && !lead.manager_user_id) {
       await upsertViolation({
         dedup_key: `s3_no_manager:${leadId}:${dateStr}`, shift_date: dateStr, standard_num: 3,
         check_code: 's3_no_manager', owner_name: null, is_shared: true,
-        entity_id: leadId, entity_label: 'Заявка без менеджера',
-        details: 'Заявка без назначенного менеджера', how_to_fix: 'Назначьте менеджера в карточке заявки', fix_deadline: fixDeadline,
+        entity_id: leadId, entity_label: labelName,
+        details: 'Заявка без назначенного менеджера', how_to_fix: 'Назначьте менеджера в карточке заявки',
+        fix_deadline: fixDeadline,
       }); violations++;
     }
 
+    // ── s3_no_booking: active lead + no trial visit + no open task ───────────
+    if (enabled.has('s3_no_booking') && stageKind !== 'success' && stageKind !== 'fail' && clientFbId) {
+      const hasTrial = trialsForClient.has(clientFbId);
+      const hasTasks = (tasksByLead.get(leadId) ?? []).length > 0;
+      if (!hasTrial && !hasTasks) {
+        await upsertViolation({
+          dedup_key: `s3_no_booking:${leadId}:${dateStr}`, shift_date: dateStr, standard_num: 3,
+          check_code: 's3_no_booking', owner_name: owner, is_shared: !owner,
+          entity_id: leadId, entity_label: labelName,
+          details: 'Активная заявка: нет записи на пробное и нет открытой задачи',
+          how_to_fix: 'Запишите клиентку на пробное занятие или создайте задачу «перезвонить»',
+          fix_deadline: fixDeadline,
+        }); violations++;
+      }
+    }
+
+    // ── s3_no_task (non-success/fail leads) ──────────────────────────────────
     if (enabled.has('s3_no_task') && stageKind !== 'success' && stageKind !== 'fail') {
       const leadTasks = tasksByLead.get(leadId) ?? [];
       const maxDue    = new Date(Date.now() + TZ_MS + cfg.s3_task_max_days * 86400_000).toISOString().slice(0, 10);
@@ -838,22 +1049,25 @@ async function checkS3(
         await upsertViolation({
           dedup_key: `s3_no_task:${leadId}:${dateStr}`, shift_date: dateStr, standard_num: 3,
           check_code: 's3_no_task', owner_name: owner, is_shared: !owner,
-          entity_id: leadId, entity_label: String(lead.fitbase_manager_name ?? 'Заявка'),
+          entity_id: leadId, entity_label: labelName,
           details: `Нет открытой задачи со сроком ≤${cfg.s3_task_max_days} дней`,
           how_to_fix: 'Создайте задачу в карточке заявки', fix_deadline: fixDeadline,
         }); violations++;
       }
     }
 
+    // ── s3_no_lost_reason ────────────────────────────────────────────────────
     if (enabled.has('s3_no_lost_reason') && stageKind === 'fail' && !lead.lost_reason_id) {
       await upsertViolation({
         dedup_key: `s3_no_lost_reason:${leadId}:${dateStr}`, shift_date: dateStr, standard_num: 3,
         check_code: 's3_no_lost_reason', owner_name: owner, is_shared: !owner,
-        entity_id: leadId, entity_label: String(lead.fitbase_manager_name ?? 'Заявка'),
-        details: 'Этап «Отказ» без причины отказа', how_to_fix: 'Укажите причину отказа', fix_deadline: fixDeadline,
+        entity_id: leadId, entity_label: labelName,
+        details: 'Этап «Отказ» без причины отказа', how_to_fix: 'Укажите причину отказа',
+        fix_deadline: fixDeadline,
       }); violations++;
     }
 
+    // ── s3_bad_comment ───────────────────────────────────────────────────────
     if (enabled.has('s3_bad_comment')) {
       const lastComment = lastCommentByLead.get(leadId);
       if (lastComment && lastComment.created_at >= dayStart && lastComment.created_at <= dayEnd) {
@@ -861,13 +1075,123 @@ async function checkS3(
           await upsertViolation({
             dedup_key: `s3_bad_comment:${leadId}:${dateStr}`, shift_date: dateStr, standard_num: 3,
             check_code: 's3_bad_comment', owner_name: lastComment.author ?? owner, is_shared: false,
-            entity_id: leadId, entity_label: String(lead.fitbase_manager_name ?? 'Заявка'),
+            entity_id: leadId, entity_label: labelName,
             details: 'Комментарий не по шаблону (нужно: Сделано / Результат / Дальше / Когда)',
             how_to_fix: 'Используйте шаблон комментария в Скриптологе', fix_deadline: fixDeadline,
           }); violations++;
         }
       }
     }
+
+    // ── s3_client_fields: client bought but name/phone incomplete ────────────
+    if (enabled.has('s3_client_fields') && clientFbId && clientsWithContract.has(clientFbId)) {
+      const name = clientNameMap.get(clientFbId) ?? '';
+      const badName = !name || isBadName(name, stopWords);
+      if (badName) {
+        await upsertViolation({
+          dedup_key: `s3_client_fields:${clientFbId}`, shift_date: dateStr, standard_num: 3,
+          check_code: 's3_client_fields', owner_name: owner, is_shared: !owner,
+          entity_id: leadId, entity_label: labelName,
+          details: `После покупки карточка клиента неполная: имя «${name || 'пусто'}»`,
+          how_to_fix: 'Заполните ФИО, дату рождения и город в карточке клиента',
+          fix_deadline: fixDeadline,
+        }); violations++;
+      }
+    }
+  }
+
+  // ── s3_no_next_step: trial visitors without next action ──────────────────
+  violations += await checkS3TrialVisitors(dateStr, cfg, enabled, delaySec, nowMs, fixDeadline, stopWords, errors);
+
+  return violations;
+}
+
+async function checkS3TrialVisitors(
+  dateStr: string, cfg: ControlSettings, enabled: Set<string>,
+  delaySec: number, nowMs: number, fixDeadline: string,
+  stopWords: string[], errors: string[],
+): Promise<number> {
+  if (!enabled.has('s3_no_next_step') && !enabled.has('s3_bad_name')) return 0;
+
+  // Load trial visits that happened on this date (status=3 = пришла)
+  const { data: trials, error } = await supabase
+    .from('fitbase_visits')
+    .select('id,client_fitbase_id,visit_at,client_name')
+    .eq('visit_date', dateStr)
+    .eq('is_trial', true)
+    .eq('status', 3);
+  if (error) { errors.push(`s3_trial: ${error.message}`); return 0; }
+  if (!trials?.length) return 0;
+
+  let violations = 0;
+
+  for (const visit of trials) {
+    const visitId     = String(visit.id);
+    const clientFbId  = visit.client_fitbase_id ? Number(visit.client_fitbase_id) : null;
+    if (!clientFbId) continue;
+
+    const visitAtMs = visit.visit_at ? new Date(visit.visit_at as string).getTime() : 0;
+    if (!visitAtMs) continue;
+
+    const cutoffMs = visitAtMs + delaySec * 1000;
+    if (cutoffMs > nowMs) continue; // too early to fire
+
+    const clientLabel = String(visit.client_name ?? `Клиент ${clientFbId}`);
+
+    // Find crm_lead for this client
+    const { data: lead } = await supabase.from('crm_leads')
+      .select('id,fitbase_manager_name,title')
+      .eq('fitbase_client_id', clientFbId).limit(1).maybeSingle();
+
+    // s3_bad_name for trial visitors
+    if (enabled.has('s3_bad_name')) {
+      const name = clientLabel;
+      if (isBadName(name, stopWords)) {
+        await upsertViolation({
+          dedup_key: `s3_bad_name:${clientFbId}`, shift_date: dateStr, standard_num: 3,
+          check_code: 's3_bad_name', owner_name: null, is_shared: true,
+          entity_id: visitId, entity_label: clientLabel,
+          details: `Имя клиента служебное или неполное: «${name}»`,
+          how_to_fix: 'Введите настоящие фамилию и имя в карточке клиента Fitbase',
+          fix_deadline: fixDeadline,
+        }); violations++;
+      }
+    }
+
+    if (!enabled.has('s3_no_next_step')) continue;
+
+    if (!lead?.id) {
+      // No lead at all after trial — always a violation
+      await upsertViolation({
+        dedup_key: `s3_no_next_step:${visitId}`, shift_date: dateStr, standard_num: 3,
+        check_code: 's3_no_next_step', owner_name: null, is_shared: true,
+        entity_id: visitId, entity_label: clientLabel,
+        details: `Пришла на пробное, нет заявки в CRM и нет дальнейшего шага`,
+        how_to_fix: 'Создайте заявку, добавьте задачу или переведите в «Отказ» с причиной',
+        fix_deadline: fixDeadline,
+      }); violations++;
+      continue;
+    }
+
+    // Has lead — check for activity after trial
+    const visitAt = visit.visit_at as string;
+    const { data: acts } = await supabase.from('crm_lead_activity')
+      .select('id').eq('lead_id', lead.id).gte('created_at', visitAt).limit(1);
+    if (acts?.length) continue; // contact was made
+
+    const { data: taskActs } = await supabase.from('crm_lead_tasks')
+      .select('id').eq('lead_id', lead.id).gte('created_at', visitAt).limit(1);
+    if (taskActs?.length) continue;
+
+    const managerName = lead.fitbase_manager_name ? null : null; // resolved elsewhere
+    await upsertViolation({
+      dedup_key: `s3_no_next_step:${visitId}`, shift_date: dateStr, standard_num: 3,
+      check_code: 's3_no_next_step', owner_name: null, is_shared: true,
+      entity_id: String(lead.id), entity_label: clientLabel,
+      details: `После пробного занятия нет следующего шага (покупка / задача / отказ)`,
+      how_to_fix: 'Оформите покупку, создайте задачу или переведите в «Отказ» с причиной',
+      fix_deadline: fixDeadline,
+    }); violations++;
   }
 
   return violations;
@@ -942,6 +1266,8 @@ async function checkS4(
         const cashier = cashierFbName ? (finStaffMap.get(cashierFbName) ?? resolveName(cashierFbName, userMap)) : null;
         const clientLabel = String((raw?.client as Record<string,unknown>|null)?.name ?? `Клиент ${c.client_fitbase_id}`);
 
+        if (await hasContactToday(Number(c.client_fitbase_id), dayStart, dayEnd)) continue;
+
         await upsertViolation({
           dedup_key: `s4_ending:${c.client_fitbase_id}:${dateStr}`, shift_date: dateStr, standard_num: 4,
           check_code: 's4_ending', owner_name: cashier, is_shared: !cashier,
@@ -989,6 +1315,8 @@ async function checkS4(
           .limit(1);
         if (activity?.length) continue;
 
+        if (await hasContactToday(Number(c.client_fitbase_id), dayStart, dayEnd)) continue;
+
         await upsertViolation({
           dedup_key: `s4_ended:${clientId}:${dateStr}`, shift_date: dateStr, standard_num: 4,
           check_code: 's4_ended', owner_name: null, is_shared: true,
@@ -1030,6 +1358,9 @@ async function checkS4(
         if (lastDate && lastDate >= noVisitSince) continue;
 
         const clientLabel = String((raw?.client as Record<string,unknown>|null)?.name ?? `Клиент ${c.client_fitbase_id}`);
+
+        if (await hasContactToday(Number(c.client_fitbase_id), dayStart, dayEnd)) continue;
+
         await upsertViolation({
           dedup_key: `s4_no_visits:${c.client_fitbase_id}:${dateStr}`, shift_date: dateStr, standard_num: 4,
           check_code: 's4_no_visits', owner_name: null, is_shared: true,
@@ -1079,7 +1410,7 @@ async function checkS4(
 // ── Standard 5: Visits ────────────────────────────────────────────────────────
 
 async function checkS5(
-  dateStr: string, cfg: ControlSettings, errors: string[],
+  dateStr: string, cfg: ControlSettings, isPast: boolean, errors: string[],
 ): Promise<number> {
   if (!cfg.s5_enabled) return 0;
 
@@ -1108,7 +1439,9 @@ async function checkS5(
       const visitStartMs = v.visit_at ? new Date(v.visit_at as string).getTime() : 0;
       if (visitStartMs > 0) {
         const minPassed = (nowMs - visitStartMs) / 60_000;
-        if (minPassed > cfg.s5_mark_minutes) {
+        // For past dates fire unconditionally; for today check threshold
+        const shouldFire = isPast || minPassed > cfg.s5_mark_minutes;
+        if (shouldFire) {
           await upsertViolation({
             dedup_key: `s5_unmarked:${visitId}:${dateStr}`, shift_date: dateStr, standard_num: 5,
             check_code: 's5_unmarked', owner_name: null, is_shared: true,
@@ -1208,7 +1541,7 @@ export async function runControl(finalize = false, overrideDate?: string): Promi
     [2, () => checkS2(dateStr, cfg, userMap, onShift, errors)],
     [3, () => checkS3(dateStr, cfg, userMap, funnelUuids, errors)],
     [4, () => checkS4(dateStr, cfg, userMap, finStaffMap, funnelUuids, isPast, errors)],
-    [5, () => checkS5(dateStr, cfg, errors)],
+    [5, () => checkS5(dateStr, cfg, isPast, errors)],
   ] as [number, () => Promise<number>][]) {
     try {
       const count = await fn();

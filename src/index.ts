@@ -30,6 +30,7 @@ import { runCrmLifecycle } from './http/crm';
 import { runCrmLeadsSync } from './jobs/crmLeadsSync';
 import { runScriptologReminders, JOB_NAME as REMINDERS_JOB } from './jobs/scriptologReminders';
 import { runControl, runControlRange } from './jobs/control';
+import { syncControlSheet, shouldSyncSheet } from './jobs/controlSheetSync';
 import { runProbeControl } from './jobs/probeControl';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
@@ -308,11 +309,24 @@ async function handleControl(req: express.Request, res: express.Response): Promi
     const locked = await acquireLock('control', 8 * 60);
     if (!locked) { res.json({ status: 'already_running' }); return; }
     res.status(202).json({ status: 'accepted', job: 'control', finalize, date });
-    executeJob('control', () => runControl(finalize, date));
+    executeJob('control', async () => {
+      if (await shouldSyncSheet()) await syncControlSheet();
+      return runControl(finalize, date);
+    });
   }
 }
 app.get('/run/control',  handleControl);
 app.post('/run/control', handleControl);
+
+async function handleControlSheetSync(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  try {
+    const result = await syncControlSheet();
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+}
+app.get('/run/control-sheet-sync',  handleControlSheetSync);
+app.post('/run/control-sheet-sync', handleControlSheetSync);
 
 // probe-control: synchronous, read-only, Fitbase + Supabase exploration
 async function handleProbeControl(req: express.Request, res: express.Response): Promise<void> {

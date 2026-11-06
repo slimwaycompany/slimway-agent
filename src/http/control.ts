@@ -88,9 +88,26 @@ export function buildControlRouter(): Router {
       if (f in body) patch[f] = b(body[f]);
     }
 
-    const arrayFields = ['s3_booked_stage_ids', 's3_checks', 's4_checks', 's5_checks'];
+    const arrayFields = ['s3_booked_stage_ids', 's3_checks', 's4_checks', 's5_checks', 'name_stop_words'];
     for (const f of arrayFields) {
       if (f in body) patch[f] = arr(body[f]);
+    }
+
+    const newNumFields: Array<[string, number, number]> = [
+      ['session_minutes', 5, 240], ['s3_after_minutes', 1, 120],
+    ];
+    for (const [field, min, max] of newNumFields) {
+      if (field in body) {
+        const v = n(body[field]);
+        if (v < min || v > max) errors.push(`${field}: значение от ${min} до ${max}`);
+        else patch[field] = v;
+      }
+    }
+
+    if ('staff_name_map' in body) {
+      const v = body.staff_name_map;
+      if (typeof v !== 'object' || v === null || Array.isArray(v)) errors.push('staff_name_map: ожидается объект');
+      else patch.staff_name_map = v;
     }
 
     if (errors.length) { res.status(400).json({ error: errors.join('; ') }); return; }
@@ -207,6 +224,8 @@ export function buildControlRouter(): Router {
   r.get('/kviz/api/control/violations', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const date     = str(req.query.date);
+    const from     = str(req.query.from);
+    const to       = str(req.query.to);
     const owner    = str(req.query.owner);
     const stdNum   = req.query.standard ? n(req.query.standard) : undefined;
     try {
@@ -215,10 +234,12 @@ export function buildControlRouter(): Router {
         .select('*')
         .eq('branch_id', BRANCH_ID)
         .order('created_at', { ascending: false });
-      if (date)   q = q.eq('shift_date', date);
-      if (owner)  q = q.or(`owner_name.eq.${owner},is_shared.eq.true`);
-      if (stdNum) q = q.eq('standard_num', stdNum);
-      const { data, error } = await q.limit(200);
+      if (date)        q = q.eq('shift_date', date);
+      else if (from)   q = q.gte('shift_date', from);
+      if (to && !date) q = q.lte('shift_date', to);
+      if (owner)       q = q.or(`owner_name.eq."${owner.replace(/"/g, '\\"')}",is_shared.eq.true`);
+      if (stdNum)      q = q.eq('standard_num', stdNum);
+      const { data, error } = await q.limit(500);
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data ?? []);
     } catch (e) { res.status(500).json({ error: String(e) }); }
