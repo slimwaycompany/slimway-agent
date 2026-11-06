@@ -51,18 +51,34 @@ chrome.storage.onChanged.addListener((changes) => {
     const newMsgs = (changes.chatMessages.newValue || []).slice(oldLen);
     newMsgs.forEach(m => postToPage({ type: 'chat-message', direction: m.dir, text: m.text }));
   }
+  if (changes.easychatToken) {
+    const token = changes.easychatToken.newValue;
+    if (token) sendEasyTokenToServer(token);
+  }
 });
+
+function sendEasyTokenToServer(ecToken) {
+  chrome.storage.local.get(['authToken'], ({ authToken }) => {
+    if (!authToken) return;
+    fetch(PANEL_ORIGIN + '/api/scriptolog/easychat-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      body: JSON.stringify({ token: ecToken }),
+    }).catch(() => {}); // best-effort
+  });
+}
 
 function postToPage(msg) {
   iframe.contentWindow?.postMessage(msg, PANEL_ORIGIN);
 }
 
 function sendStateToPage() {
-  chrome.runtime.sendMessage({ type: 'get-state' }, (data) => {
+  chrome.storage.local.get(['authToken', 'managerName', 'currentClient', 'chatReady', 'easychatToken'], (data) => {
     if (!data) return;
-    if (data.authToken)    postToPage({ type: 'auth',        token:  data.authToken });
-    if (data.managerName)  postToPage({ type: 'manager',     name:   data.managerName });
+    if (data.authToken)     postToPage({ type: 'auth',        token: data.authToken });
+    if (data.managerName)   postToPage({ type: 'manager',     name:  data.managerName });
     if (data.currentClient) postToPage(data.currentClient);
     if (data.chatReady !== undefined) postToPage({ type: 'chat-status', ready: data.chatReady });
+    if (data.easychatToken) sendEasyTokenToServer(data.easychatToken);
   });
 }

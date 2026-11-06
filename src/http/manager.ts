@@ -426,5 +426,50 @@ export function buildManagerRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // ── Trials today ───────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/manager/trials-today', async (req, res) => {
+    const sess = getSession(req);
+    if (!sess) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    try {
+      const today = yekToday();
+      const { data: visits, error: vErr } = await supabase
+        .from('fitbase_visits')
+        .select('fitbase_id, client_name, visit_at, status')
+        .eq('is_trial', true)
+        .eq('visit_date', today)
+        .not('status', 'in', '(2,4)')
+        .order('visit_at', { ascending: true });
+      if (vErr) { res.status(500).json({ error: vErr.message }); return; }
+
+      const visitIds = (visits ?? []).map(v => String(v.fitbase_id));
+      let reminderMap = new Map<string, string>(); // fitbase_visit_id → status
+      if (visitIds.length) {
+        const { data: rems } = await supabase
+          .from('script_reminders')
+          .select('fitbase_visit_id, status')
+          .in('fitbase_visit_id', visitIds)
+          .like('kind', 'trial_%')
+          .order('due_at', { ascending: false });
+        for (const rm of (rems ?? [])) {
+          if (!reminderMap.has(String(rm.fitbase_visit_id))) {
+            reminderMap.set(String(rm.fitbase_visit_id), String(rm.status));
+          }
+        }
+      }
+
+      const result = (visits ?? []).map(v => ({
+        fitbase_visit_id: String(v.fitbase_id),
+        client_name: v.client_name as string | null,
+        visit_time: v.visit_at ? new Date(v.visit_at).toISOString().slice(11, 16) : '',
+        status: Number(v.status ?? 0),
+        reminder_status: (reminderMap.get(String(v.fitbase_id)) ?? 'none') as 'none' | 'pending' | 'sent' | 'cancelled',
+        confirmed: Number(v.status) === 1,
+      }));
+
+      res.json(result);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   return r;
 }

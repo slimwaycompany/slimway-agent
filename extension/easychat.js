@@ -129,7 +129,19 @@
 
   // ── Init ───────────────────────────────────────────────────────────────────
 
+  function extractAndSendToken() {
+    // EasyChat token is a 18-24 char alphanumeric value embedded in the iframe URL query string
+    const params = new URLSearchParams(window.location.search);
+    for (const val of params.values()) {
+      if (/^[a-zA-Z0-9_-]{18,24}$/.test(val)) {
+        chrome.runtime.sendMessage({ type: 'easychat-token', token: val });
+        break;
+      }
+    }
+  }
+
   function init() {
+    extractAndSendToken();
     checkClientChange();
     checkChatReady();
     watchMessages();

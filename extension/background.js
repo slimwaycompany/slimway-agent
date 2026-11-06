@@ -66,6 +66,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
 
+  // EasyChat token extracted from iframe URL by easychat.js
+  if (msg.type === 'easychat-token') {
+    chrome.storage.local.get(['easychatToken'], (data) => {
+      if (data.easychatToken !== msg.token) {
+        chrome.storage.local.set({ easychatToken: msg.token });
+      }
+    });
+    return;
+  }
+
   // Синхронный запрос состояния от sidepanel.js
   if (msg.type === 'get-state') {
     chrome.storage.local.get(['authToken', 'managerName', 'currentClient', 'chatReady'], (data) => {

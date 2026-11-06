@@ -2330,15 +2330,52 @@ function ScriptPromoSub() {
   );
 }
 
+function TokenStatusBlock() {
+  const [status, setStatus] = useState<{ has_token: boolean; updated_at: string | null; updated_by: string | null } | null>(null);
+  const [showHint, setShowHint] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/scriptolog/settings/token-status', { credentials: 'include' })
+      .then(r => r.json()).then(setStatus).catch(() => {});
+  }, []);
+
+  const fmtDate = (iso: string | null) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString('ru', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' });
+  };
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontWeight: 600, marginBottom: 8 }}>EasyChat-токен</div>
+      {status == null
+        ? <span style={{ color: '#94a3b8' }}>загрузка…</span>
+        : status.has_token
+          ? <span style={{ color: '#16a34a' }}>✅ есть, обновлён {fmtDate(status.updated_at)}{status.updated_by ? ` (${status.updated_by})` : ''}</span>
+          : <span style={{ color: '#ef4444' }}>❌ не задан</span>
+      }
+      <button style={{ ...S.csvBtn, marginLeft: 12, fontSize: 12 }} onClick={() => setShowHint(!showHint)}>Обновить</button>
+      {showHint && (
+        <div style={{ marginTop: 8, padding: '8px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, color: '#475569' }}>
+          Откройте расширение «Скриптолог SlimWay» в Chrome, пока открыт чат EasyChat.<br/>
+          Если токен не обновился — перезагрузите расширение: <b>chrome://extensions → ↺</b> рядом со «Скриптолог SlimWay».
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ScriptologSection() {
-  type Sub = 'promo' | 'materials';
-  const [sub, setSub] = useState<Sub>('promo');
+  type Sub = 'token' | 'promo' | 'materials';
+  const [sub, setSub] = useState<Sub>('token');
   return (
     <div style={S.section}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        <button style={{ ...S.subNavBtn, ...(sub === 'promo' ? S.subNavActive : {}) }} onClick={() => setSub('promo')}>Акция и пакеты</button>
+        <button style={{ ...S.subNavBtn, ...(sub === 'token'     ? S.subNavActive : {}) }} onClick={() => setSub('token')}>EasyChat-токен</button>
+        <button style={{ ...S.subNavBtn, ...(sub === 'promo'     ? S.subNavActive : {}) }} onClick={() => setSub('promo')}>Акция и пакеты</button>
         <button style={{ ...S.subNavBtn, ...(sub === 'materials' ? S.subNavActive : {}) }} onClick={() => setSub('materials')}>Материалы</button>
       </div>
+      {sub === 'token'     && <TokenStatusBlock />}
       {sub === 'promo'     && <ScriptPromoSub />}
       {sub === 'materials' && <ScriptMaterialsSub />}
     </div>

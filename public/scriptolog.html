@@ -242,8 +242,10 @@ input:focus{border-color:var(--brand)}
       <span id="cc-mgr-val" style="font-weight:600;color:#475569">—</span>
       <button class="icon-btn" id="mgr-edit-btn" title="Изменить менеджера">✏️</button>
     </div>
-    <div style="margin-top:5px">
-      <button class="small-btn" onclick="copyCommentTemplate()" style="font-size:11px;width:100%;justify-content:center">📝 Комментарий для карточки</button>
+    <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap">
+      <button class="small-btn" onclick="copyCommentTemplate()" style="font-size:11px;flex:1;justify-content:center">📝 Комментарий</button>
+      <button class="small-btn brand" onclick="autoProfile()" style="font-size:11px;flex:1;justify-content:center">🔄 Автопрофиль</button>
+      <button class="small-btn" onclick="sendQuestionnaire()" style="font-size:11px;flex:1;justify-content:center">📋 Анкета → EasyChat</button>
     </div>
     <div id="cc-toast" style="display:none;font-size:11px;color:#16a34a;margin-top:3px;text-align:center;font-weight:600">Скопировано</div>
   </div>
@@ -795,16 +797,23 @@ function renderStageHTML(stage) {
   const isDone   = S.completedStages.has(stage.id);
   const steps    = (stage.steps || []).map(step => renderStepHTML(step, stage.id)).join('');
   const summary  = buildStageSummary(stage.id);
+  const confirmedBadge = (stage.id === 6 && S.client?.status === 'confirmed_trial')
+    ? '<span style="font-size:11px;background:#dcfce7;color:#15803d;border-radius:6px;padding:1px 6px;margin-left:4px">✅ Подтвердила</span>' : '';
+
+  const remindersBlock = stage.id === 6
+    ? `<div id="stage6-reminders" style="margin-bottom:8px"><button class="ref-btn" onclick="loadReminders()" style="font-size:11px">📅 Напоминания</button><div id="stage6-rem-list" style="margin-top:6px"></div></div>`
+    : '';
 
   return `<div class="stage-item${isOpen?' open':''}${isDone?' done':''}" id="stage-item-${stage.id}">
     <button class="stage-header" onclick="toggleStage(${stage.id})">
       <span class="stage-num">${stage.id}</span>
-      <span class="stage-title">${esc(stage.title)}</span>
+      <span class="stage-title">${esc(stage.title)}${confirmedBadge}</span>
       ${isDone ? `<span class="stage-check">✅</span><span class="stage-summary" id="stage-summary-${stage.id}">${esc(summary)}</span>` :
                  `<span class="stage-summary" id="stage-summary-${stage.id}">${esc(summary)}</span>`}
       <span class="stage-chevron">▼</span>
     </button>
     <div class="stage-body">
+      ${remindersBlock}
       ${steps}
       <div class="stage-refs">
         <button class="ref-btn" onclick="openDraw('objections')">💬 Возражения</button>
@@ -842,8 +851,9 @@ function renderStepHTML(step, stageId) {
   if (vars.length > 0) {
     html += `<div class="step-vars">`;
     for (const v of vars) {
+      const isAuto = S.vars[v + '_src'] === 'auto';
       html += `<div class="var-row">
-        <span class="var-label">{${esc(v)}}</span>
+        <span class="var-label">{${esc(v)}}${isAuto ? '<span style="font-size:9px;color:#94a3b8;margin-left:3px">авто</span>' : ''}</span>
         <input type="text" value="${esc(S.vars[v]||'')}" class="var-input${S.vars[v]?'':' missing'}"
           data-var="${esc(v)}" placeholder="введи…" oninput="setVar('${v.replace(/'/g,"\\'")}', this.value)">
       </div>`;
@@ -1124,6 +1134,72 @@ function confirmTrialReceived() {
     confirmed_at: new Date().toISOString(),
   }).catch(() => {});
   completeStage(6);
+}
+
+// ── Auto-profile ───────────────────────────────
+function autoProfile() {
+  if (!S.client) return;
+  const btn = document.querySelector('[onclick="autoProfile()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  api('POST', '/api/scriptolog/profile', {
+    client_id: S.client.id,
+    fitbase_client_id: S.client.fitbase_client_id ?? null,
+  }).then(r => {
+    if (r.ok) {
+      // Re-fetch client to get updated vars from server
+      api('POST', '/api/scriptolog/client', { name: S.client.name, phone: S.client.phone, channel: S.client.channel }).then(cr => {
+        if (cr.ok) { S.vars = {...(cr.data.client?.vars || {})}; buildAccordion(); renderClientCard(); }
+      });
+    }
+  }).catch(() => {}).finally(() => { if (btn) { btn.disabled = false; btn.textContent = '🔄 Автопрофиль'; } });
+}
+
+// ── Questionnaire to EasyChat ───────────────────
+function sendQuestionnaire() {
+  if (!S.client) return;
+  const btn = document.querySelector('[onclick="sendQuestionnaire()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  api('POST', '/api/scriptolog/questionnaire', { client_id: S.client.id }).then(r => {
+    const toast = document.getElementById('cc-toast');
+    if (toast) {
+      toast.textContent = r.ok ? (r.data.dry ? 'DRY — EasyChat не отправлено' : '✅ Анкета отправлена') : '❌ ' + (r.data?.error || 'ошибка');
+      toast.style.display = '';
+      setTimeout(() => { toast.style.display = 'none'; toast.textContent = 'Скопировано'; }, 3000);
+    }
+  }).catch(() => {}).finally(() => { if (btn) { btn.disabled = false; btn.textContent = '📋 Анкета → EasyChat'; } });
+}
+
+// ── Reminders list (stage 6) ────────────────────
+function loadReminders() {
+  if (!S.client?.fitbase_client_id) {
+    const list = document.getElementById('stage6-rem-list');
+    if (list) list.innerHTML = '<span style="font-size:11px;color:#94a3b8">Нет данных Fitbase</span>';
+    return;
+  }
+  api('GET', '/api/scriptolog/reminders?fitbase_client_id=' + S.client.fitbase_client_id).then(r => {
+    const list = document.getElementById('stage6-rem-list');
+    if (!list) return;
+    if (!r.ok) { list.innerHTML = '<span style="font-size:11px;color:#ef4444">Ошибка загрузки</span>'; return; }
+    const rems = r.data || [];
+    if (!rems.length) { list.innerHTML = '<span style="font-size:11px;color:#94a3b8">Нет напоминаний</span>'; return; }
+    const kindLabel = { trial_24h: '24ч до', trial_3h: '3ч до', trial_1h: '1ч до' };
+    const statusColor = { pending: '#f59e0b', sent: '#16a34a', cancelled: '#94a3b8', skipped: '#94a3b8' };
+    list.innerHTML = rems.map(rem => {
+      const dt = rem.due_at ? new Date(rem.due_at).toLocaleString('ru', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Yekaterinburg'}) : '';
+      const canCancel = rem.status === 'pending';
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#1a202c;margin-bottom:4px;padding:4px 6px;background:rgba(255,255,255,0.5);border-radius:7px">
+        <span style="color:${statusColor[rem.status]||'#64748b'};font-size:10px">●</span>
+        <span style="flex:1">${kindLabel[rem.kind]||rem.kind} · ${dt}</span>
+        ${canCancel ? `<button onclick="cancelReminder('${rem.id}')" style="background:none;border:none;cursor:pointer;font-size:11px;color:#ef4444;padding:0 2px">✕</button>` : ''}
+      </div>`;
+    }).join('');
+  });
+}
+
+function cancelReminder(id) {
+  api('DELETE', '/api/scriptolog/reminders/' + id).then(r => {
+    if (r.ok) loadReminders();
+  });
 }
 
 // ── Send to extension ──────────────────────────

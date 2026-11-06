@@ -373,7 +373,52 @@ export default function ManagerPage() {
         ))}
       </div>
 
+      <TrialsTodaySection />
       <LeadTasksSection />
+    </div>
+  );
+}
+
+// ── Trials Today Section ───────────────────────────────────────────────────────
+
+interface TrialToday {
+  fitbase_visit_id: string;
+  client_name: string | null;
+  visit_time: string;
+  status: number;
+  reminder_status: 'none' | 'pending' | 'sent' | 'cancelled';
+  confirmed: boolean;
+}
+
+function TrialsTodaySection() {
+  const [trials, setTrials] = useState<TrialToday[]>([]);
+
+  useEffect(() => {
+    fetch('/kviz/api/manager/trials-today', { credentials: 'include' })
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setTrials(d); }).catch(() => {});
+  }, []);
+
+  if (!trials.length) return null;
+
+  const remLabel = (t: TrialToday) => {
+    if (t.confirmed) return '✅ Подтвердила';
+    if (t.reminder_status === 'sent') return '🔔 Напоминание отправлено';
+    if (t.reminder_status === 'pending') return '⏳ Напоминание запланировано';
+    return '';
+  };
+
+  return (
+    <div style={{ margin: '0 0 12px', padding: '10px 16px', background: '#f0fdf4', borderRadius: 10, borderLeft: '3px solid #16a34a' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>
+        🧪 Пробные сегодня
+      </div>
+      {trials.map(t => (
+        <div key={t.fitbase_visit_id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#1a202c', marginBottom: 4 }}>
+          <span style={{ fontWeight: 600, minWidth: 42 }}>{t.visit_time}</span>
+          <span style={{ flex: 1 }}>{t.client_name ?? '—'}</span>
+          <span style={{ color: t.confirmed ? '#16a34a' : '#64748b', fontSize: 12 }}>{remLabel(t)}</span>
+        </div>
+      ))}
     </div>
   );
 }

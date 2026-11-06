@@ -3,6 +3,9 @@ import fs   from 'fs';
 import { Router, Application } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession, makeToken, checkRate, recordFail, clearFails } from './auth';
+import { getEasyChatToken, listDelayed, deleteDelayed, addComment, listComments, deleteComment, findDialogueByFitbaseClient, scheduleMessage, uploadFile, DRY as ecDry } from '../core/easychat';
+import { parseClientReply } from '../core/scriptologParse';
+import { getClient } from './fitbase';
 
 const PAGE_PATH = path.join(__dirname, '../../public/scriptolog.html');
 const TREE_PATH = path.join(__dirname, '../../scripts/sales-tree-v2.json');
@@ -383,6 +386,292 @@ export function buildScriptologRouter(): Router {
       const { data: { publicUrl } } = supabase.storage.from('scriptolog-materials').getPublicUrl(storagePath);
       await supabase.from('script_materials').upsert({ key, url: publicUrl }, { onConflict: 'key' });
       res.json({ url: publicUrl });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Part 2: EasyChat token from extension ──────────────────────────────────
+
+  r.post('/api/scriptolog/easychat-token', async (req, res) => {
+    if (!auth(req, res)) return;
+    const sess = getSession(req)!;
+    const { token } = req.body as { token?: string };
+    if (!token || typeof token !== 'string' || token.length < 10) {
+      res.status(400).json({ error: 'token required' }); return;
+    }
+    try {
+      const { error } = await supabase.from('script_settings').upsert(
+        { key: 'easychat_token', value: token, updated_at: new Date().toISOString(), updated_by: sess.display_name },
+        { onConflict: 'key' },
+      );
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      const updatedAt = new Date().toISOString();
+      console.log(`[scriptolog] easychat_token updated by ${sess.display_name} at ${updatedAt}`);
+      res.json({ ok: true, updated_at: updatedAt });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.get('/api/scriptolog/settings/token-status', async (req, res) => {
+    if (!auth(req, res)) return;
+    try {
+      const { data } = await supabase.from('script_settings').select('updated_at, updated_by').eq('key', 'easychat_token').maybeSingle();
+      res.json({ has_token: !!data, updated_at: data?.updated_at ?? null, updated_by: data?.updated_by ?? null });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Part 3: Auto-profile from Fitbase ──────────────────────────────────────
+
+  r.post('/api/scriptolog/profile', async (req, res) => {
+    if (!auth(req, res)) return;
+    const sess = getSession(req)!;
+    const { client_id, fitbase_client_id: rawFbId } = req.body as { client_id?: string; fitbase_client_id?: number | null };
+    if (!client_id) { res.status(400).json({ error: 'client_id required' }); return; }
+
+    try {
+      const { data: sc } = await supabase.from('script_clients').select('*').eq('id', client_id).maybeSingle();
+      if (!sc) { res.status(404).json({ error: 'client not found' }); return; }
+      const existingVars = (sc.vars as Record<string, string>) ?? {};
+      const fbId = rawFbId ?? (sc.fitbase_client_id as number | null) ?? null;
+      const updated: string[] = [];
+      const newVars: Record<string, string> = {};
+
+      // Don't overwrite manually entered fields (no _src suffix)
+      function maybeSet(key: string, value: string | null | undefined) {
+        if (!value) return;
+        if (existingVars[key] && !existingVars[key + '_src']) return; // manually entered
+        newVars[key] = value;
+        newVars[key + '_src'] = 'auto';
+        updated.push(key);
+      }
+
+      // Manager from session
+      maybeSet('Менеджер', sess.display_name);
+
+      if (fbId) {
+        // Fetch Fitbase client profile
+        let fbClient: Record<string, unknown> | null = null;
+        try { fbClient = await getClient(fbId); } catch { /* skip */ }
+
+        if (fbClient) {
+          const firstName = String(fbClient.name ?? '').trim();
+          const lastName  = String(fbClient.surname ?? '').trim();
+          const fullName  = [firstName, lastName].filter(Boolean).join(' ');
+          maybeSet('Имя', fullName || null);
+
+          // Age from birthday
+          const bday = fbClient.birthday as string | null;
+          if (bday) {
+            const birthYear = new Date(bday).getFullYear();
+            const age = new Date().getFullYear() - birthYear;
+            if (age > 10 && age < 100) maybeSet('Возраст', String(age));
+          }
+
+          // Height/Weight if available in profile
+          const height = fbClient.height as number | null;
+          const weight = fbClient.weight as number | null;
+          if (height) maybeSet('Рост', String(height));
+          if (weight) maybeSet('Вес', String(weight));
+
+          // IMT
+          const h = Number(newVars['Рост'] ?? existingVars['Рост'] ?? 0);
+          const w = Number(newVars['Вес'] ?? existingVars['Вес'] ?? 0);
+          if (h > 0 && w > 0) {
+            const imt = (w / ((h / 100) ** 2)).toFixed(1);
+            maybeSet('ИМТ', imt);
+          }
+        }
+
+        // Active contracts → end date
+        const { data: contracts } = await supabase
+          .from('fitbase_contracts')
+          .select('end_date, name')
+          .eq('client_fitbase_id', fbId)
+          .eq('status', 'active')
+          .order('end_date', { ascending: false })
+          .limit(1);
+        if (contracts?.length) {
+          maybeSet('Окончание абонемента', String(contracts[0].end_date ?? ''));
+        }
+
+        // Visit slots → Время1, Время2
+        const { data: visits } = await supabase
+          .from('fitbase_visits')
+          .select('visit_at')
+          .eq('client_fitbase_id', fbId)
+          .eq('is_trial', false)
+          .eq('status', 3)
+          .order('visit_at', { ascending: false })
+          .limit(20);
+        if (visits?.length) {
+          const slotCounts = new Map<string, number>();
+          for (const vr of visits) {
+            const slotH = vr.visit_at ? new Date(vr.visit_at).toISOString().slice(11, 16) : null;
+            if (slotH) slotCounts.set(slotH, (slotCounts.get(slotH) ?? 0) + 1);
+          }
+          const sorted = [...slotCounts.entries()].sort((a, b) => b[1] - a[1]);
+          if (sorted[0]) maybeSet('Время1', sorted[0][0]);
+          if (sorted[1]) maybeSet('Время2', sorted[1][0]);
+        }
+      }
+
+      if (Object.keys(newVars).length > 0) {
+        await supabase.from('script_clients').update({ vars: { ...existingVars, ...newVars } }).eq('id', client_id);
+      }
+      res.json({ updated });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Part 4: Parse client reply ──────────────────────────────────────────────
+
+  r.post('/api/scriptolog/parse', (req, res) => {
+    if (!auth(req, res)) return;
+    const { text } = req.body as { text?: string };
+    if (typeof text !== 'string') { res.status(400).json({ error: 'text required' }); return; }
+    res.json(parseClientReply(text));
+  });
+
+  // ── Part 7: Send material to client via EasyChat ───────────────────────────
+
+  r.post('/api/scriptolog/materials/:key/send', async (req, res) => {
+    if (!auth(req, res)) return;
+    const { key } = req.params;
+    const { client_id } = req.body as { client_id?: string };
+    if (!client_id) { res.status(400).json({ error: 'client_id required' }); return; }
+
+    try {
+      const token = await getEasyChatToken();
+      if (!token) { res.status(503).json({ error: 'EasyChat token not set' }); return; }
+
+      const { data: mat } = await supabase.from('script_materials').select('*').eq('key', key).maybeSingle();
+      if (!mat) { res.status(404).json({ error: 'material not found' }); return; }
+
+      const { data: sc } = await supabase.from('script_clients').select('fitbase_client_id').eq('id', client_id).maybeSingle();
+      const fbId = sc?.fitbase_client_id as number | null;
+      if (!fbId) { res.status(400).json({ error: 'client has no fitbase_client_id' }); return; }
+
+      const dialogue = await findDialogueByFitbaseClient(token, fbId);
+      if (!dialogue) { res.status(404).json({ error: 'EasyChat dialogue not found' }); return; }
+
+      let fileUrl = (mat.easychat_file_url as string | null) ?? null;
+
+      if (!fileUrl) {
+        // Download and upload to EasyChat
+        let rawUrl = String(mat.url ?? '');
+        // Convert Google Drive share URL to direct download
+        const gdMatch = /drive\.google\.com\/file\/d\/([^/]+)/.exec(rawUrl);
+        if (gdMatch) rawUrl = `https://drive.google.com/uc?export=download&id=${gdMatch[1]}`;
+
+        const downloaded = await fetch(rawUrl);
+        if (!downloaded.ok) { res.status(502).json({ error: `Download failed: ${downloaded.status}` }); return; }
+        const buf = Buffer.from(await downloaded.arrayBuffer());
+        const contentType = downloaded.headers.get('content-type') ?? 'application/octet-stream';
+        const filename = rawUrl.split('/').pop()?.split('?')[0] ?? 'file';
+        const uploaded = await uploadFile(token, dialogue.dialogue_id, buf, filename, contentType);
+        fileUrl = uploaded.file_url;
+
+        if (fileUrl) {
+          await supabase.from('script_materials').upsert(
+            { key, easychat_file_url: fileUrl, easychat_file_at: new Date().toISOString() },
+            { onConflict: 'key' },
+          );
+        }
+      }
+
+      const sendAt = Math.floor(Date.now() / 1000) + 60; // send in 1 minute
+      await scheduleMessage(token, dialogue.dialogue_id, `Материал: ${mat.label ?? key}`, sendAt, fileUrl ?? undefined);
+      res.json({ ok: true, dry: ecDry(), file_url: fileUrl });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Part 8: Questionnaire to EasyChat ─────────────────────────────────────
+
+  r.post('/api/scriptolog/questionnaire', async (req, res) => {
+    if (!auth(req, res)) return;
+    const { client_id } = req.body as { client_id?: string };
+    if (!client_id) { res.status(400).json({ error: 'client_id required' }); return; }
+
+    try {
+      const token = await getEasyChatToken();
+      if (!token) { res.status(503).json({ error: 'EasyChat token not set' }); return; }
+
+      const { data: sc } = await supabase.from('script_clients').select('*').eq('id', client_id).maybeSingle();
+      if (!sc) { res.status(404).json({ error: 'client not found' }); return; }
+
+      const vars = (sc.vars as Record<string, string>) ?? {};
+      const fbId = sc.fitbase_client_id as number | null;
+      if (!fbId) { res.status(400).json({ error: 'client has no fitbase_client_id' }); return; }
+
+      const dialogue = await findDialogueByFitbaseClient(token, fbId);
+      if (!dialogue) { res.status(404).json({ error: 'EasyChat dialogue not found' }); return; }
+
+      // Build questionnaire text
+      const lines = ['[СКРИПТОЛОГ] Анкета:'];
+      if (vars['Имя'])  lines.push(`Имя: ${vars['Имя']}`);
+      if (vars['Цель']) lines.push(`Цель: ${vars['Цель']}`);
+      const h = vars['Рост'], w = vars['Вес'], imt = vars['ИМТ'];
+      if (h || w) lines.push(`Рост/Вес: ${h ?? '?'} см / ${w ?? '?'} кг${imt ? ` → ИМТ ${imt}` : ''}`);
+      if (vars['Опыт'])  lines.push(`Опыт: ${vars['Опыт']}`);
+      const t1 = vars['Время1'], t2 = vars['Время2'];
+      if (t1 || t2) lines.push(`Время: ${[t1, t2].filter(Boolean).join(', ')}`);
+      if (vars['Окончание абонемента']) lines.push(`Окончание абонемента: ${vars['Окончание абонемента']}`);
+      if (vars['Менеджер']) lines.push(`Менеджер: ${vars['Менеджер']}`);
+
+      const text = lines.join('\n');
+
+      // Delete existing [СКРИПТОЛОГ] Анкета comment
+      const existing = await listComments(token, dialogue.dialogue_id).catch(() => []);
+      for (const c of existing) {
+        if (typeof c.text === 'string' && c.text.startsWith('[СКРИПТОЛОГ] Анкета:')) {
+          await deleteComment(token, Number(c.dialogue_comment_id ?? 0)).catch(() => {});
+        }
+      }
+
+      await addComment(token, dialogue.dialogue_id, text, true);
+      res.json({ ok: true, dry: ecDry() });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Part 9: Reminders list / cancel ────────────────────────────────────────
+
+  r.get('/api/scriptolog/reminders', async (req, res) => {
+    if (!auth(req, res)) return;
+    const { fitbase_client_id } = req.query as { fitbase_client_id?: string };
+    if (!fitbase_client_id) { res.status(400).json({ error: 'fitbase_client_id required' }); return; }
+    try {
+      const { data: visits } = await supabase
+        .from('fitbase_visits')
+        .select('fitbase_id')
+        .eq('client_fitbase_id', Number(fitbase_client_id))
+        .eq('is_trial', true);
+      const visitIds = (visits ?? []).map(v => String(v.fitbase_id));
+      if (!visitIds.length) { res.json([]); return; }
+      const { data, error } = await supabase
+        .from('script_reminders')
+        .select('id, kind, status, lang, due_at, send_at, fitbase_visit_id, easychat_delayed_id')
+        .in('fitbase_visit_id', visitIds)
+        .order('due_at', { ascending: true });
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data ?? []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.delete('/api/scriptolog/reminders/:id', async (req, res) => {
+    if (!auth(req, res)) return;
+    const { id } = req.params;
+    try {
+      const { data: rem } = await supabase.from('script_reminders').select('easychat_delayed_id, easychat_dialogue_id, status').eq('id', id).maybeSingle();
+      if (!rem) { res.status(404).json({ error: 'not found' }); return; }
+      if (rem.status !== 'pending') { res.status(400).json({ error: 'only pending reminders can be cancelled' }); return; }
+
+      // Delete EasyChat delayed message
+      if (rem.easychat_delayed_id) {
+        const token = await getEasyChatToken();
+        if (token) {
+          await deleteDelayed(token, Number(rem.easychat_delayed_id)).catch(e => console.error(`[scriptolog] deleteDelayed: ${e}`));
+        }
+      }
+
+      await supabase.from('script_reminders').update({ status: 'cancelled' }).eq('id', id);
+      res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

@@ -41,6 +41,18 @@ Chrome-расширение: боковая панель рядом с чато�
 
 ## Сделано
 
+### 06.11.2026 · задача 41 · EasyChat-интеграция, автопрофиль, умные напоминания
+
+- **`src/core/easychat.ts`** — новый клиент EasyChat API: `listDialogues`, `findDialogueByFitbaseClient`, `scheduleMessage`, `listDelayed`, `deleteDelayed`, `addComment`, `deleteComment`, `listComments`, `uploadFile`. Auth `Authorization: <token>` БЕЗ Bearer. `EASYCHAT_DRY_RUN=true` по умолчанию — DRY только логирует запись/удаление, чтение работает.
+- **`src/core/scriptologParse.ts`** — парсер ответа клиентки: извлекает Имя / Возраст / Рост / Вес / Цель / Опыт / «Почему не подошло» из свободного текста с уровнем `sure|guess`.
+- **`src/jobs/scriptologReminders.ts`** — полная перезапись: получает будущие пробные визиты из Fitbase API (`/visit?date_from...`), по каждому ищет диалог EasyChat по `crm_client_id`, создаёт 3 отложенных сообщения (24ч/3ч/1ч), dedup по `dedupe_key = kind:fitbase_visit_id`, ночное окно (22:00–07:00 YEK сдвигается на 09:00 след.дня), отмена напоминаний при статусе 2/4 или подтверждении (1). Автоподтверждение: last_message клиента содержит согласие → `SCRIPTOLOG_CONFIRM_DRY_RUN=true` защищает от записи в Fitbase; при отключённом DRY создаёт `watch_alert` и EasyChat-комментарий.
+- **Расширение**: `easychat.js` — извлекает 20-символьный токен из URL фрейма и шлёт `chrome.runtime.sendMessage({type:'easychat-token',...})`; `background.js` — сохраняет в `chrome.storage`; `sidepanel.js` — при изменении или восстановлении состояния отправляет `POST /api/scriptolog/easychat-token` на сервер.
+- **Сервер** `src/http/scriptolog.ts`: `POST /api/scriptolog/easychat-token` (сохраняет токен в `script_settings`); `GET /api/scriptolog/settings/token-status` (статус без самого токена); `POST /api/scriptolog/profile` (автозаполнение vars из Fitbase: имя/возраст/рост/вес/ИМТ/время/абонемент); `POST /api/scriptolog/parse` (парсер ответа); `POST /api/scriptolog/materials/:key/send` (отправка материала клиентке через EasyChat с кешированием `easychat_file_url`); `POST /api/scriptolog/questionnaire` (формирует и пишет комментарий `[СКРИПТОЛОГ] Анкета:` в EasyChat); `GET /api/scriptolog/reminders?fitbase_client_id=`, `DELETE /api/scriptolog/reminders/:id`.
+- **Менеджер**: `GET /kviz/api/manager/trials-today` → `TrialsTodaySection` в `ManagerPage.tsx` — список пробных сегодня с временем, именем, статусом напоминания.
+- **SettingsPage**: вкладка «EasyChat-токен» в секции «Скриптолог» — показывает «есть / обновлён в HH:MM DD.MM (Автор)» без самого токена, с подсказкой как обновить.
+- **Панель** `public/scriptolog.html`: кнопки «🔄 Автопрофиль» и «📋 Анкета → EasyChat» в client-card; «авто» лейбл у переменных с `_src=auto`; блок «📅 Напоминания» в этапе 6 с кнопкой «✕» для отмены; зелёный бейдж «✅ Подтвердила» если `status=confirmed_trial`.
+- **`docs/reports/fitbase-registration-confirm-probe.md`**: задокументировано что Fitbase `PATCH /visit/{id}` не верифицировано; `SCRIPTOLOG_CONFIRM_DRY_RUN=true` пока.
+
 ### 06.11.2026 · задача 40 · кнопка «📝 Комментарий для карточки»
 - В блоке `#client-card` (`public/scriptolog.html`) добавлена кнопка «📝 Комментарий для карточки».
 - Функция `copyCommentTemplate()`: берёт `S.vars` (Имя, Цель, Дата, Время) и название текущего этапа `S.tree.stages.find(s.id===S.activeStage).title`, собирает 4 строки «Сделано / Результат / Дальше / Когда», копирует в буфер через `navigator.clipboard.writeText`, показывает тост «Скопировано» 2 сек.
@@ -68,15 +80,18 @@ Chrome-расширение: боковая панель рядом с чато�
 - Расширение MV3 (manifest, sidepanel, easychat.js, fitbase.js, selectors.js), страница `/scriptolog`, Bearer-вход, история клиенток, привязка телефона, определение канала.
 
 ## Открытые баги
-- Имя и другие данные клиента приходится вводить заново на каждом этапе — должны запоминаться в профиле клиента и подставляться везде (05.11).
-- Панель не разбирает ответ клиента сама: что рост, что вес, возраст, имя, запрос — нужно автоматически (05.11).
-- **Задача 39, ч.6–7 фактически НЕ сделаны (ревью 05.11):** `src/jobs/scriptologReminders.ts` не создаёт напоминания из `fitbase_visits` (только «обрабатывает» готовые) и читает несуществующие колонки `text`, `text_kk`, `scheduled_at`, `client_id`, `sent_at` (в таблице: `due_at`, `client_key`, `done_at`, без текста); вкладки «Очередь» в панели нет. `/api/scriptolog/confirm` пишет event_type `confirm` (нет в списке типов), не отменяет `trial_*`, не создаёт `watch_alerts`, нет пробы Fitbase API.
-- Аккордеон-панель (`public/scriptolog.html`) не проверена на живом расширении — нужна проверка на проде.
-- Схема `script_reminders` предполагает колонку `text` с шаблоном — уточнить при первом использовании; возможно, нужен SQL для добавления колонки если её нет.
-- Fitbase booking confirm API не верифицирован — `SCRIPTOLOG_CONFIRM_DRY_RUN=true` пока не менять.
+- EasyChat-токен: расширение извлекает первый 18–24 симв. параметр из URL фрейма; если токен в другом формате — нужна корректировка регулярки в `easychat.js`.
+- Fitbase booking confirm API не верифицирован — `SCRIPTOLOG_CONFIRM_DRY_RUN=true` пока не менять (см. `docs/reports/fitbase-registration-confirm-probe.md`).
+- Парсер `/api/scriptolog/parse` реализован, но не вызывается автоматически — нужна интеграция в панель (кнопка «Разобрать ответ» или автовызов при получении входящего сообщения).
+- `autoProfile` в панели: кнопка работает, но поля `height`/`weight`/`birthday` могут отсутствовать в Fitbase client API — проверить на реальных данных.
 
 ## Следующее
-- РЕШЕНО (05.11): напоминания пробных — ПОЛНОСТЬЮ автоматически, без менеджера. Агент каждые 5 мин: записи на пробное со статусом НЕ «подтверждено» → ставит отложенные сообщения EasyChat (24ч / 3ч / 1ч). Подтверждено (девочки поставили сами ИЛИ клиент ответил согласием: +, да, приду, буду, хорошо, ок, помню, иә, ия, келемін…) → агент ставит статус «подтверждено» в Fitbase и удаляет оставшиеся отложенные (за 1 ч не уходит). Правило «расширение никогда не отправляет само» для этого случая снято Сергеем.
+- Добавить `/run/scriptolog-reminders` в cron-job.org (каждые **5 мин**, 07:00–22:00 Yekaterinburg); изменить если уже стоит 15 мин.
+- Добавить в Render env: `EASYCHAT_DRY_RUN=true`, `SCRIPTOLOG_CONFIRM_DRY_RUN=true`.
+- Проверить на живом расширении: EasyChat-токен извлекается и попадает в настройки, `EASYCHAT_DRY_RUN=true` → ожидать лог в `job_runs`.
+- Верифицировать Fitbase `PATCH /visit/{id}` → переключить `SCRIPTOLOG_CONFIRM_DRY_RUN=false`.
+- Интеграция парсера в панель: кнопка «Разобрать» или автовызов при входящем сообщении.
+- РЕШЕНО (05.11, реализовано в 41): напоминания пробных — ПОЛНОСТЬЮ автоматически, без менеджера. Агент каждые 5 мин: записи на пробное со статусом НЕ «подтверждено» → ставит отложенные сообщения EasyChat (24ч / 3ч / 1ч). Подтверждено (девочки поставили сами ИЛИ клиент ответил согласием: +, да, приду, буду, хорошо, ок, помню, иә, ия, келемін…) → агент ставит статус «подтверждено» в Fitbase и удаляет оставшиеся отложенные (за 1 ч не уходит). Правило «расширение никогда не отправляет само» для этого случая снято Сергеем.
 - РЕШЕНО (05.11): анкета клиента — и в комментарий EasyChat/Fitbase, и консультанту в нашем окне. Отчёт «Работа с клиентами» — следующим шагом.
 - Найдено 05.11 (EasyChat внутренний API `chat_api.easychat.ru/v1`): заголовок `Authorization: <token>` — тот же 20-символьный token из URL фрейма `#easychatIframe`, БЕЗ «Bearer». `GET /v1/dialogue?page&pageSize` → `data[]` с `dialogue_id`, `name`, `crm_client_id` (id клиента Fitbase), `crm_client_status`, `unread_count`, `last_message{message, message_type, operator_id (null = клиент), created_at, author}`, `last_message_at`. `GET /v1/delayed_message?dialogue_id=` → `{success, data[]}`. API неофициальный. Снято вживую 05.11 (тест на диалоге Сергея, всё удалено):
   - создать отложенное: `POST /v1/delayed_message` JSON `{"message_text": "...", "send_at": <unix сек>, "dialogue_id": <id>}`;
