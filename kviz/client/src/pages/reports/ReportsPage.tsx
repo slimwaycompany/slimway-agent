@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import Modal from '../../components/ui/Modal';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea, Cell } from 'recharts';
 import OccupancySection from './OccupancySection';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
@@ -4044,45 +4045,43 @@ function ControlSection() {
       <div className="control-desktop">{tableView}</div>
       <div className="control-mobile">{mobileView}</div>
 
-      {/* Violations modal */}
+      {/* Violations modal — bottom sheet on mobile */}
       {cellModal && (
-        <div style={cs.overlay} onClick={() => setCellModal(null)}>
-          <div style={cs.modal} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 15 }}>Нарушения №{cellModal.stdNum} — {cellModal.person} — {isoToLocalDate(cellModal.date)}</h3>
-              <button style={cs.closeBtn} onClick={() => setCellModal(null)}>✕</button>
-            </div>
-            {vioLoading && <div style={{ color: '#94a3b8' }}>Загрузка…</div>}
-            {!vioLoading && !vioList.length && <div style={{ color: '#94a3b8', padding: 10 }}>Нарушений нет</div>}
-            {vioList.map(v => (
-              <div key={v.id} style={{ background: v.status === 'waived' ? '#f8fafc' : '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>{v.entity_label}</span>
-                  <span style={{ fontSize: 12, color: { open: '#f59e0b', fixed: '#16a34a', waived: '#94a3b8', failed: '#ef4444' }[v.status] ?? '#64748b' }}>
-                    {{ open: '🟡 Открыто', fixed: '✅ Исправлено', waived: '⚪ Снято', failed: '❌ Просрочено' }[v.status] ?? v.status}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>{v.details}</div>
-                <div style={{ fontSize: 12, color: '#02BDB6', marginBottom: 6 }}>Как исправить: {v.how_to_fix}</div>
-                {v.fix_deadline && <div style={{ fontSize: 11, color: '#94a3b8' }}>Срок: {isoToLocalDate(v.fix_deadline)}</div>}
-                {v.status === 'open' && waiveId !== v.id && (
-                  <button style={{ marginTop: 8, fontSize: 12, padding: '4px 10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer' }}
-                    onClick={() => { setWaiveId(v.id); setWaiveReason(''); }}>
-                    Не по вине менеджера
-                  </button>
-                )}
-                {waiveId === v.id && (
-                  <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-                    <input value={waiveReason} onChange={e => setWaiveReason(e.target.value)}
-                      placeholder="Причина снятия…" style={{ ...cs.dateInp, flex: 1 }} />
-                    <button style={cs.saveBtn} onClick={() => doWaive(v.id)}>Снять</button>
-                    <button style={{ padding: '4px 8px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setWaiveId(null)}>✕</button>
-                  </div>
-                )}
+        <Modal
+          title={`Нарушения №${cellModal.stdNum} — ${cellModal.person} — ${isoToLocalDate(cellModal.date)}`}
+          onClose={() => setCellModal(null)}
+          wide
+        >
+          {vioLoading && <div style={{ color: '#94a3b8' }}>Загрузка…</div>}
+          {!vioLoading && !vioList.length && <div style={{ color: '#94a3b8', padding: 10 }}>Нарушений нет</div>}
+          {vioList.map(v => (
+            <div key={v.id} style={{ background: v.status === 'waived' ? '#f8fafc' : '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{v.entity_label}</span>
+                <span style={{ fontSize: 12, color: { open: '#f59e0b', fixed: '#16a34a', waived: '#94a3b8', failed: '#ef4444' }[v.status] ?? '#64748b' }}>
+                  {{ open: '🟡 Открыто', fixed: '✅ Исправлено', waived: '⚪ Снято', failed: '❌ Просрочено' }[v.status] ?? v.status}
+                </span>
               </div>
-            ))}
-          </div>
-        </div>
+              <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>{v.details}</div>
+              <div style={{ fontSize: 12, color: '#02BDB6', marginBottom: 6 }}>Как исправить: {v.how_to_fix}</div>
+              {v.fix_deadline && <div style={{ fontSize: 11, color: '#94a3b8' }}>Срок: {isoToLocalDate(v.fix_deadline)}</div>}
+              {v.status === 'open' && waiveId !== v.id && (
+                <button style={{ marginTop: 8, fontSize: 12, padding: '4px 10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer' }}
+                  onClick={() => { setWaiveId(v.id); setWaiveReason(''); }}>
+                  Не по вине менеджера
+                </button>
+              )}
+              {waiveId === v.id && (
+                <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                  <input value={waiveReason} onChange={e => setWaiveReason(e.target.value)}
+                    placeholder="Причина снятия…" style={{ ...cs.dateInp, flex: 1 }} />
+                  <button style={cs.saveBtn} onClick={() => doWaive(v.id)}>Снять</button>
+                  <button style={{ padding: '4px 8px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setWaiveId(null)}>✕</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </Modal>
       )}
 
       {/* Quality review modal (Standard #2) */}

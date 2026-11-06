@@ -71,7 +71,7 @@
 | 39 | scriptolog | Скриптолог v2: аккордеон 7 этапов, Акция/Материалы, напоминания, подтверждение «+» | `docs/tasks/39-scriptolog-v2-accordion.md` | ✅ готово (см. журнал) |
 | 40 | control | Контроль менеджеров «5п»: зонд API, настройки, движок 5 стандартов, отчёт, шаблон комментария | `docs/tasks/40-control-5p.md` | 🟡 частично (3555ee7; ошибки схемы — задача 40-1) |
 | 40-1 | control | Контроль 5п: фикс колонок, getOnShift, recheckViolations, история, UI | `docs/tasks/40-1-control-fix.md` | 🟡 частично (нужен SQL: добавить no_data в CHECK; нужна проверка на проде после деплоя) |
-| 40-2 | control | Контроль: Google Таблица (расписание+отметки), новые правила S3 (bad_name/no_booking/no_next_step/client_fields), фикс S4 (контакт-чек), S5 (прошедшие даты), клики нарушений | `docs/tasks/40-2-control-rules.md` | 🟡 частично (части 1–5 готовы; часть 6 — приёмка на живых примерах — ждёт деплоя) |
+| 40-2 | control | Контроль: Google Таблица (расписание+отметки), новые правила S3 (bad_name/no_booking/no_next_step/client_fields), фикс S4 (контакт-чек), S5 (прошедшие даты), клики нарушений | `docs/tasks/40-2-control-rules.md` | 🟡 частично (ч.1–5 + доп ч.6: fitbase_visits.id фикс, 53 error checks, schema, staff_name_map, bottom sheet — готовы; ждём деплоя для прогона range и проверки 5 примеров) |
 
 ## Сделано недавно (для контекста)
 

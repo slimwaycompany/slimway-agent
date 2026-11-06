@@ -156,6 +156,14 @@
 
 ## Сделано
 <!-- новые записи сверху -->
+### 06.11.2026 · (task 40-2 ч.6) · fitbase_visits.id→fitbase_id, 53 error checks, schema, staff_name_map, bottom sheet
+- **Баг fitbase_visits PK**: PK таблицы — `fitbase_id` (string), колонки `id` нет. `checkS5` и `checkS3TrialVisitors` запрашивали `.select('id,...')` → ошибка 42703 → `return 0`. S3/S5 нарушения не создавались. Исправлено в 9 местах в `control.ts`: select `fitbase_id`, `.eq('fitbase_id', entityId)`, `String(v.fitbase_id)`.
+- **Error checks (53 места)**: все Supabase-запросы в `control.ts` получили `const { data, error }` + `if (error) console.error(...)`. В `checkViolationFixed` критично: ошибка → `return false` (нарушение не помечается исправлено ложно).
+- **docs/reports/control-schema.md**: обновлён по реальным данным — `fitbase_visits` (PK=`fitbase_id`, нет `id`, статусы 0-4), `control_shift_schedule` и `fitbase_clients_cache` добавлены, `control_violations`/`control_shift_scores` колонки исправлены.
+- **staff_name_map editor** (`SettingsPage.tsx`): компонент `NameMapEditor`, key-value пары Fitbase-имя → display_name, кнопки добавить/удалить строку.
+- **Bottom sheet нарушений** (`ReportsPage.tsx`): кастомный overlay заменён на `Modal` из `components/ui/Modal` → bottom sheet на телефоне (≤640px).
+- После деплоя: запустить `/run/control?from=2026-10-01&to=2026-11-06` для проверки 5 живых примеров (S5/S3 теперь должны работать).
+
 ### 06.11.2026 · (task 40-2) · Google-таблица, новые правила S3, фикс S4/S5, клики нарушений
 - **Синхронизация Google-таблицы** (`src/jobs/controlSheetSync.ts`): `/run/control-sheet-sync` (GET+POST, CRON_SECRET), вызывается автоматически в начале `/run/control` если >30 мин с последней синхронизации. Листы: «Отметки» → `control_shift_marks`, «График работы» → `control_shift_schedule` (plan/fact HH:MM). Сопоставление ФИО: `staff_name_map` из настроек → `fin_staff.fitbase_name` → `app_users.display_name`. Env: `CONTROL_SHEET_URL`, `CONTROL_SHEET_SECRET`.
 - **`getOnShift` с часами смены**: приоритет `control_shift_schedule` (факт>план) → `control_shift_marks` → `staff_shifts` → `metrics_day_input`. `OnShiftResult.schedule` содержит часы по именам. Новый helper `getManagersAtTime(timeHHMM, result)` — возвращает менеджеров, чья смена перекрывает момент события; общие нарушения раздаются только им.
@@ -198,7 +206,7 @@
   - нарушения должны записываться даже когда никто не на смене (общие / по владельцу), а не пропускаться.
 
 ## Следующее
-- **Приёмка 40-2 (06.11.2026): проверка на живых примерах** — запустить `/run/control?date=2026-11-04`, `/run/control?date=2026-11-05`, убедиться, что движок ловит все 5 живых случаев из ТЗ 40-2 Часть 6.
+- **Приёмка 40-2 (после деплоя)**: запустить `/run/control-sheet-sync`, затем `/run/control?from=2026-10-01&to=2026-11-06`; проверить таблицу — движок должен поймать все 5 живых примеров (S5 и S3).
 - **SQL для `control_shift_schedule`** (если не выполнен): создать таблицу с PK (branch_id, shift_date, user_name).
 - **Часть 7 ТЗ 40-2**: после приёмки добавить `staff_name_map` в Настройки (key-value редактор), проверить на проде.
 - **Проверка Сергеем после 40-1 (06.11.2026, пересчёт с 01.10):**

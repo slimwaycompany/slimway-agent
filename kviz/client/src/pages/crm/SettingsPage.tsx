@@ -2347,6 +2347,39 @@ function ScriptologSection() {
 
 // ── Control Settings ───────────────────────────────────────────────────────────
 
+function NameMapEditor({ value, onChange }: { value: Record<string, string>; onChange: (v: Record<string, string>) => void }) {
+  const entries = Object.entries(value);
+  function set(idx: number, k: string, v: string) {
+    const next = [...entries];
+    next[idx] = [k, v];
+    onChange(Object.fromEntries(next.filter(([key]) => key.trim())));
+  }
+  function remove(idx: number) {
+    const next = entries.filter((_, i) => i !== idx);
+    onChange(Object.fromEntries(next));
+  }
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+        Карта имён (Fitbase → отображаемое)
+      </label>
+      {entries.map(([k, v], i) => (
+        <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+          <input style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+            placeholder="Имя в Fitbase" value={k} onChange={e => set(i, e.target.value, v)} />
+          <span style={{ alignSelf: 'center', color: '#94a3b8', fontSize: 14 }}>→</span>
+          <input style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+            placeholder="Отображаемое" value={v} onChange={e => set(i, k, e.target.value)} />
+          <button style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: 13 }}
+            onClick={() => remove(i)}>✕</button>
+        </div>
+      ))}
+      <button style={{ marginTop: 4, padding: '4px 10px', border: '1px dashed #cbd5e1', borderRadius: 6, background: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12 }}
+        onClick={() => onChange({ ...value, '': '' })}>+ Добавить</button>
+    </div>
+  );
+}
+
 interface ControlCfg {
   enabled: boolean; alerts_to_agent: boolean; show_to_managers: boolean;
   fix_rate: number; standard_price: number;
@@ -2533,6 +2566,7 @@ function ControlSettingsSection() {
             value={(cfg.name_stop_words ?? []).join(', ')}
             onChange={e => patch({ name_stop_words: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} />
         </div>
+        <NameMapEditor value={cfg.staff_name_map ?? {}} onChange={v => patch({ staff_name_map: v })} />
         <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Проверки</div>
         <CheckList checks={S3_CHECKS} labels={S3_LABELS} value={cfg.s3_checks} onChange={v => patch({ s3_checks: v })} />
       </div>

@@ -166,11 +166,12 @@ interface OnShiftResult {
 
 async function getOnShift(dateStr: string): Promise<OnShiftResult> {
   // 1. control_shift_schedule (fact first, then plan)
-  const { data: sched } = await supabase
+  const { data: sched, error: schedErr } = await supabase
     .from('control_shift_schedule')
     .select('user_name,plan_start,plan_end,fact_start,fact_end,is_fact')
     .eq('branch_id', BRANCH_ID)
     .eq('shift_date', dateStr);
+  if (schedErr) console.error('[control] getOnShift sched:', schedErr.message);
   if (sched?.length) {
     const schedule: Record<string, ShiftHours> = {};
     const names: string[] = [];
@@ -198,11 +199,12 @@ async function getOnShift(dateStr: string): Promise<OnShiftResult> {
   }
 
   // Load managers for role filter
-  const { data: managers } = await supabase
+  const { data: managers, error: mgrsErr } = await supabase
     .from('app_users')
     .select('id,display_name')
     .eq('branch_id', BRANCH_ID)
     .eq('role', 'manager');
+  if (mgrsErr) console.error('[control] getOnShift managers:', mgrsErr.message);
   const managerIds   = new Set((managers ?? []).map(u => String(u.id)));
   const nameById     = new Map((managers ?? []).map(u => [String(u.id), String(u.display_name)]));
   const managerNames = new Set((managers ?? []).map(u => String(u.display_name)));
@@ -226,12 +228,13 @@ async function getOnShift(dateStr: string): Promise<OnShiftResult> {
   }
 
   // 4. metrics_day_input.on_shift
-  const { data: day } = await supabase
+  const { data: day, error: dayErr } = await supabase
     .from('metrics_day_input')
     .select('on_shift')
     .eq('branch_id', BRANCH_ID)
     .eq('day', dateStr)
     .maybeSingle();
+  if (dayErr) console.error('[control] getOnShift metrics:', dayErr.message);
   const arr   = (day?.on_shift as string[] | undefined) ?? [];
   const names = arr.filter(n => n && managerNames.has(n));
   return { names, source: 'metrics_day_input', schedule: {} };
@@ -267,10 +270,11 @@ async function loadUserMap(): Promise<UserMap> {
   const userIds = data.map((r: Record<string,unknown>) => r.user_id ?? r.app_user_id).filter(Boolean);
   if (!userIds.length) return map;
 
-  const { data: users } = await supabase
+  const { data: users, error: usersErr } = await supabase
     .from('app_users')
     .select('id,display_name')
     .in('id', userIds);
+  if (usersErr) console.error('[control] loadUserMap users:', usersErr.message);
   const userById = new Map((users ?? []).map((u: Record<string,unknown>) => [String(u.id), String(u.display_name)]));
 
   for (const r of data) {
@@ -284,7 +288,8 @@ async function loadUserMap(): Promise<UserMap> {
 }
 
 async function loadFinStaffMap(): Promise<Map<string, string>> {
-  const { data } = await supabase.from('fin_staff').select('fitbase_name,display_name');
+  const { data, error } = await supabase.from('fin_staff').select('fitbase_name,display_name');
+  if (error) console.error('[control] loadFinStaffMap:', error.message);
   return new Map((data ?? []).map((r: Record<string,unknown>) => [String(r.fitbase_name ?? ''), String(r.display_name ?? '')]));
 }
 
@@ -304,28 +309,34 @@ function isBadName(name: string, stopWords: string[]): boolean {
 
 // Check if any contact was made with a Fitbase client on a given day
 async function hasContactToday(fitbaseClientId: number, dayStart: string, dayEnd: string): Promise<boolean> {
-  const { data: lead } = await supabase.from('crm_leads')
+  const { data: lead, error: lErr } = await supabase.from('crm_leads')
     .select('id').eq('fitbase_client_id', fitbaseClientId).limit(1).maybeSingle();
+  if (lErr) console.error('[control] hasContactToday lead:', lErr.message);
   if (lead?.id) {
-    const { data: act } = await supabase.from('crm_lead_activity')
+    const { data: act, error: aErr } = await supabase.from('crm_lead_activity')
       .select('id').eq('lead_id', lead.id)
       .gte('created_at', dayStart).lte('created_at', dayEnd).limit(1);
+    if (aErr) console.error('[control] hasContactToday act:', aErr.message);
     if (act?.length) return true;
-    const { data: task } = await supabase.from('crm_lead_tasks')
+    const { data: task, error: tErr } = await supabase.from('crm_lead_tasks')
       .select('id').eq('lead_id', lead.id)
       .gte('created_at', dayStart).lte('created_at', dayEnd).limit(1);
+    if (tErr) console.error('[control] hasContactToday task:', tErr.message);
     if (task?.length) return true;
   }
   // Check script_events by phone
-  const { data: cc } = await supabase.from('fitbase_clients_cache')
+  const { data: cc, error: ccErr } = await supabase.from('fitbase_clients_cache')
     .select('phone').eq('fitbase_client_id', fitbaseClientId).maybeSingle();
+  if (ccErr) console.error('[control] hasContactToday cc:', ccErr.message);
   if (cc?.phone) {
     const phone = digitsOnly(String(cc.phone));
-    const { data: sc } = await supabase.from('script_clients').select('id').eq('phone', phone).maybeSingle();
+    const { data: sc, error: scErr } = await supabase.from('script_clients').select('id').eq('phone', phone).maybeSingle();
+    if (scErr) console.error('[control] hasContactToday sc:', scErr.message);
     if (sc?.id) {
-      const { data: se } = await supabase.from('script_events')
+      const { data: se, error: seErr } = await supabase.from('script_events')
         .select('id').eq('client_id', sc.id)
         .gte('created_at', dayStart).lte('created_at', dayEnd).limit(1);
+      if (seErr) console.error('[control] hasContactToday se:', seErr.message);
       if (se?.length) return true;
     }
   }
@@ -422,61 +433,73 @@ async function checkViolationFixed(checkCode: string, entityId: string, cfg: Con
   try {
     switch (checkCode) {
       case 's3_no_source': {
-        const { data } = await supabase.from('crm_leads').select('ad_source_id').eq('id', entityId).maybeSingle();
+        const { data, error } = await supabase.from('crm_leads').select('ad_source_id').eq('id', entityId).maybeSingle();
+        if (error) { console.error('[control] checkFixed s3_no_source:', error.message); return false; }
         return !!data?.ad_source_id;
       }
       case 's3_no_manager': {
-        const { data } = await supabase.from('crm_leads').select('fitbase_manager_name,manager_user_id').eq('id', entityId).maybeSingle();
+        const { data, error } = await supabase.from('crm_leads').select('fitbase_manager_name,manager_user_id').eq('id', entityId).maybeSingle();
+        if (error) { console.error('[control] checkFixed s3_no_manager:', error.message); return false; }
         return !!(data?.fitbase_manager_name || data?.manager_user_id);
       }
       case 's3_no_task': {
         const maxDue = new Date(Date.now() + TZ_MS + cfg.s3_task_max_days * 86400_000).toISOString().slice(0, 10);
-        const { data } = await supabase.from('crm_lead_tasks').select('id').eq('lead_id', entityId).eq('status', 'open').lte('due_at', maxDue + 'T23:59:59').limit(1);
+        const { data, error } = await supabase.from('crm_lead_tasks').select('id').eq('lead_id', entityId).eq('status', 'open').lte('due_at', maxDue + 'T23:59:59').limit(1);
+        if (error) { console.error('[control] checkFixed s3_no_task:', error.message); return false; }
         return !!data?.length;
       }
       case 's3_no_lost_reason': {
-        const { data } = await supabase.from('crm_leads').select('lost_reason_id').eq('id', entityId).maybeSingle();
+        const { data, error } = await supabase.from('crm_leads').select('lost_reason_id').eq('id', entityId).maybeSingle();
+        if (error) { console.error('[control] checkFixed s3_no_lost_reason:', error.message); return false; }
         return !!data?.lost_reason_id;
       }
       case 's3_bad_comment': {
-        const { data } = await supabase.from('crm_lead_activity').select('text').eq('lead_id', entityId).eq('kind', 'comment').order('created_at', { ascending: false }).limit(1);
+        const { data, error } = await supabase.from('crm_lead_activity').select('text').eq('lead_id', entityId).eq('kind', 'comment').order('created_at', { ascending: false }).limit(1);
+        if (error) { console.error('[control] checkFixed s3_bad_comment:', error.message); return false; }
         return !!(data?.[0] && checkCommentTemplate(String(data[0].text || '')));
       }
       case 's4_task_overdue': {
-        const { data } = await supabase.from('crm_lead_tasks').select('status').eq('id', entityId).maybeSingle();
+        const { data, error } = await supabase.from('crm_lead_tasks').select('status').eq('id', entityId).maybeSingle();
+        if (error) { console.error('[control] checkFixed s4_task_overdue:', error.message); return false; }
         return data?.status === 'done';
       }
       case 's5_unmarked': {
-        // entityId = fitbase_visits.id (integer as string)
-        const { data } = await supabase.from('fitbase_visits').select('status').eq('id', entityId).maybeSingle();
+        const { data, error } = await supabase.from('fitbase_visits').select('status').eq('fitbase_id', entityId).maybeSingle();
+        if (error) { console.error('[control] checkFixed s5_unmarked:', error.message); return false; }
         return !!(data && ![0, 1].includes(Number(data.status)));
       }
       case 's5_no_abonement':
       case 's5_expired_abonement': {
-        // entityId = fitbase_visits.id; check if client now has an active contract
-        const { data: visit } = await supabase.from('fitbase_visits').select('client_fitbase_id').eq('id', entityId).maybeSingle();
+        const { data: visit, error: vErr } = await supabase.from('fitbase_visits').select('client_fitbase_id').eq('fitbase_id', entityId).maybeSingle();
+        if (vErr) { console.error('[control] checkFixed s5_no_abonement:', vErr.message); return false; }
         if (!visit?.client_fitbase_id) return false;
-        const { data: active } = await supabase.from('fitbase_contracts').select('id').eq('client_fitbase_id', visit.client_fitbase_id).neq('status', 'closed').limit(1);
+        const { data: active, error: aErr } = await supabase.from('fitbase_contracts').select('id').eq('client_fitbase_id', visit.client_fitbase_id).neq('status', 'closed').limit(1);
+        if (aErr) { console.error('[control] checkFixed s5_contract:', aErr.message); return false; }
         return !!active?.length;
       }
       case 's3_no_client_card': {
-        const { data } = await supabase.from('crm_leads').select('fitbase_client_id').eq('id', entityId).maybeSingle();
+        const { data, error } = await supabase.from('crm_leads').select('fitbase_client_id').eq('id', entityId).maybeSingle();
+        if (error) { console.error('[control] checkFixed s3_no_client_card:', error.message); return false; }
         return data?.fitbase_client_id != null;
       }
       case 's3_bad_name': {
         const isUuid = entityId.includes('-');
         let name = '';
         if (isUuid) {
-          const { data: lead } = await supabase.from('crm_leads').select('fitbase_client_id,title').eq('id', entityId).maybeSingle();
+          const { data: lead, error: lErr } = await supabase.from('crm_leads').select('fitbase_client_id,title').eq('id', entityId).maybeSingle();
+          if (lErr) { console.error('[control] checkFixed s3_bad_name lead:', lErr.message); return false; }
           if (lead?.fitbase_client_id) {
-            const { data: cc } = await supabase.from('fitbase_clients_cache').select('name').eq('fitbase_client_id', lead.fitbase_client_id).maybeSingle();
+            const { data: cc, error: ccErr } = await supabase.from('fitbase_clients_cache').select('name').eq('fitbase_client_id', lead.fitbase_client_id).maybeSingle();
+            if (ccErr) console.error('[control] checkFixed s3_bad_name cc:', ccErr.message);
             name = String(cc?.name ?? '');
           }
           if (!name) name = String(lead?.title ?? '');
         } else {
-          const { data: vt } = await supabase.from('fitbase_visits').select('client_fitbase_id,client_name').eq('id', entityId).maybeSingle();
+          const { data: vt, error: vtErr } = await supabase.from('fitbase_visits').select('client_fitbase_id,client_name').eq('fitbase_id', entityId).maybeSingle();
+          if (vtErr) { console.error('[control] checkFixed s3_bad_name visit:', vtErr.message); return false; }
           if (vt?.client_fitbase_id) {
-            const { data: cc } = await supabase.from('fitbase_clients_cache').select('name').eq('fitbase_client_id', vt.client_fitbase_id).maybeSingle();
+            const { data: cc, error: ccErr } = await supabase.from('fitbase_clients_cache').select('name').eq('fitbase_client_id', vt.client_fitbase_id).maybeSingle();
+            if (ccErr) console.error('[control] checkFixed s3_bad_name cc2:', ccErr.message);
             name = String(cc?.name ?? '');
           }
           if (!name) name = String(vt?.client_name ?? '');
@@ -484,31 +507,40 @@ async function checkViolationFixed(checkCode: string, entityId: string, cfg: Con
         return !!name && !isBadName(name, cfg.name_stop_words);
       }
       case 's3_no_booking': {
-        const { data: lead } = await supabase.from('crm_leads').select('fitbase_client_id').eq('id', entityId).maybeSingle();
+        const { data: lead, error: lErr } = await supabase.from('crm_leads').select('fitbase_client_id').eq('id', entityId).maybeSingle();
+        if (lErr) { console.error('[control] checkFixed s3_no_booking lead:', lErr.message); return false; }
         if (!lead?.fitbase_client_id) return false;
-        const { data: trial } = await supabase.from('fitbase_visits').select('id').eq('client_fitbase_id', lead.fitbase_client_id).eq('is_trial', true).limit(1);
+        const { data: trial, error: tErr } = await supabase.from('fitbase_visits').select('fitbase_id').eq('client_fitbase_id', lead.fitbase_client_id).eq('is_trial', true).limit(1);
+        if (tErr) { console.error('[control] checkFixed s3_no_booking trial:', tErr.message); return false; }
         if (trial?.length) return true;
-        const { data: task } = await supabase.from('crm_lead_tasks').select('id').eq('lead_id', entityId).eq('status', 'open').limit(1);
+        const { data: task, error: tkErr } = await supabase.from('crm_lead_tasks').select('id').eq('lead_id', entityId).eq('status', 'open').limit(1);
+        if (tkErr) { console.error('[control] checkFixed s3_no_booking task:', tkErr.message); return false; }
         return !!task?.length;
       }
       case 's3_no_next_step': {
         const isUuid = entityId.includes('-');
         if (isUuid) {
-          const { data: act } = await supabase.from('crm_lead_activity').select('id').eq('lead_id', entityId).limit(1);
+          const { data: act, error: aErr } = await supabase.from('crm_lead_activity').select('id').eq('lead_id', entityId).limit(1);
+          if (aErr) { console.error('[control] checkFixed s3_no_next_step act:', aErr.message); return false; }
           if (act?.length) return true;
-          const { data: task } = await supabase.from('crm_lead_tasks').select('id').eq('lead_id', entityId).limit(1);
+          const { data: task, error: tErr } = await supabase.from('crm_lead_tasks').select('id').eq('lead_id', entityId).limit(1);
+          if (tErr) { console.error('[control] checkFixed s3_no_next_step task:', tErr.message); return false; }
           return !!task?.length;
         } else {
-          const { data: vt } = await supabase.from('fitbase_visits').select('client_fitbase_id').eq('id', entityId).maybeSingle();
+          const { data: vt, error: vtErr } = await supabase.from('fitbase_visits').select('client_fitbase_id').eq('fitbase_id', entityId).maybeSingle();
+          if (vtErr) { console.error('[control] checkFixed s3_no_next_step visit:', vtErr.message); return false; }
           if (!vt?.client_fitbase_id) return false;
-          const { data: lead } = await supabase.from('crm_leads').select('id').eq('fitbase_client_id', vt.client_fitbase_id).limit(1);
+          const { data: lead, error: lErr } = await supabase.from('crm_leads').select('id').eq('fitbase_client_id', vt.client_fitbase_id).limit(1);
+          if (lErr) { console.error('[control] checkFixed s3_no_next_step lead:', lErr.message); return false; }
           return !!lead?.length;
         }
       }
       case 's3_client_fields': {
-        const { data: lead } = await supabase.from('crm_leads').select('fitbase_client_id').eq('id', entityId).maybeSingle();
+        const { data: lead, error: lErr } = await supabase.from('crm_leads').select('fitbase_client_id').eq('id', entityId).maybeSingle();
+        if (lErr) { console.error('[control] checkFixed s3_client_fields lead:', lErr.message); return false; }
         if (!lead?.fitbase_client_id) return false;
-        const { data: cc } = await supabase.from('fitbase_clients_cache').select('name').eq('fitbase_client_id', lead.fitbase_client_id).maybeSingle();
+        const { data: cc, error: ccErr } = await supabase.from('fitbase_clients_cache').select('name').eq('fitbase_client_id', lead.fitbase_client_id).maybeSingle();
+        if (ccErr) { console.error('[control] checkFixed s3_client_fields cc:', ccErr.message); return false; }
         const name = String(cc?.name ?? '');
         return !!name && !isBadName(name, cfg.name_stop_words);
       }
@@ -569,12 +601,13 @@ async function computeShiftScores(
 
       // №2 special: not_reviewed if no reviews checked for this person this shift
       if (stdNum === 2 && !isNoShift) {
-        const { data: reviews } = await supabase
+        const { data: reviews, error: rErr } = await supabase
           .from('control_quality_reviews')
           .select('id,reviewed_at,c1_needs,c2_presented,c3_objections,c4_outcome')
           .eq('branch_id', BRANCH_ID)
           .eq('shift_date', dateStr)
           .eq('manager_name', person);
+        if (rErr) console.error('[control] computeShiftScores reviews:', rErr.message);
 
         const checked = (reviews ?? []).filter(r => r.reviewed_at);
         if (!checked.length) {
@@ -700,7 +733,7 @@ async function checkS1(
     const phone  = lead.phone ? digitsOnly(String(lead.phone)) : null;
 
     // Activity in crm_lead_activity
-    const { data: acts } = await supabase
+    const { data: acts, error: actsErr } = await supabase
       .from('crm_lead_activity')
       .select('author,created_at')
       .eq('lead_id', leadId)
@@ -708,26 +741,29 @@ async function checkS1(
       .gte('created_at', lead.fb_created_at as string)
       .order('created_at', { ascending: true })
       .limit(1);
+    if (actsErr) console.error('[control] s1 acts:', actsErr.message);
 
     // Tasks in crm_lead_tasks
-    const { data: tasks } = await supabase
+    const { data: tasks, error: tasksErr } = await supabase
       .from('crm_lead_tasks')
       .select('created_by,created_at')
       .eq('lead_id', leadId)
       .gte('created_at', lead.fb_created_at as string)
       .order('created_at', { ascending: true })
       .limit(1);
+    if (tasksErr) console.error('[control] s1 tasks:', tasksErr.message);
 
     // Script events (insert/copy/sent) for this phone — look up UUID via script_clients
     let scriptContactMs = Infinity;
     if (phone) {
-      const { data: sc } = await supabase
+      const { data: sc, error: scErr } = await supabase
         .from('script_clients')
         .select('id')
         .eq('phone', phone)
         .maybeSingle();
+      if (scErr) console.error('[control] s1 sc:', scErr.message);
       if (sc?.id) {
-        const { data: se } = await supabase
+        const { data: se, error: seErr } = await supabase
           .from('script_events')
           .select('created_at,manager')
           .eq('client_id', sc.id)
@@ -736,6 +772,7 @@ async function checkS1(
           .lte('created_at', dayEnd)
           .order('created_at', { ascending: true })
           .limit(1);
+        if (seErr) console.error('[control] s1 se:', seErr.message);
         if (se?.[0]) scriptContactMs = new Date(se[0].created_at as string).getTime();
       }
     }
@@ -916,9 +953,10 @@ async function checkS3(
   const stageById = new Map((stages ?? []).map((s: Record<string,unknown>) => [String(s.id), s]));
 
   // Load open tasks
-  const { data: tasks } = await supabase
+  const { data: tasks, error: tasksErr } = await supabase
     .from('crm_lead_tasks').select('lead_id,due_at')
     .in('lead_id', leadIds.slice(0, 200)).eq('status', 'open');
+  if (tasksErr) console.error('[control] s3 tasks:', tasksErr.message);
   const tasksByLead = new Map<string, { due_at: string }[]>();
   for (const t of tasks ?? []) {
     const lid = String(t.lead_id);
@@ -927,10 +965,11 @@ async function checkS3(
   }
 
   // Load last comment per lead
-  const { data: comments } = await supabase
+  const { data: comments, error: commentsErr } = await supabase
     .from('crm_lead_activity').select('lead_id,text,author,created_at')
     .in('lead_id', leadIds.slice(0, 200)).eq('kind', 'comment')
     .order('created_at', { ascending: false });
+  if (commentsErr) console.error('[control] s3 comments:', commentsErr.message);
   const lastCommentByLead = new Map<string, { text: string; author: string; created_at: string }>();
   for (const c of comments ?? []) {
     const lid = String(c.lead_id);
@@ -941,24 +980,27 @@ async function checkS3(
   const clientFbIds = leads.map(l => Number(l.fitbase_client_id)).filter(Boolean);
   const clientNameMap = new Map<number, string>(); // fitbase_client_id → name
   if (clientFbIds.length) {
-    const { data: cc } = await supabase.from('fitbase_clients_cache')
+    const { data: cc, error: ccErr } = await supabase.from('fitbase_clients_cache')
       .select('fitbase_client_id,name').in('fitbase_client_id', clientFbIds);
+    if (ccErr) console.error('[control] s3 cc:', ccErr.message);
     for (const r of cc ?? []) clientNameMap.set(Number(r.fitbase_client_id), String(r.name ?? ''));
   }
 
   // Load trial visits for clients (for s3_no_booking)
   const trialsForClient = new Set<number>();
   if (clientFbIds.length) {
-    const { data: trials } = await supabase.from('fitbase_visits')
+    const { data: trials, error: trialsErr } = await supabase.from('fitbase_visits')
       .select('client_fitbase_id').in('client_fitbase_id', clientFbIds).eq('is_trial', true).limit(1000);
+    if (trialsErr) console.error('[control] s3 trials:', trialsErr.message);
     for (const t of trials ?? []) trialsForClient.add(Number(t.client_fitbase_id));
   }
 
   // Load contracts for s3_client_fields
   const clientsWithContract = new Set<number>();
   if (clientFbIds.length) {
-    const { data: conts } = await supabase.from('fitbase_contracts')
+    const { data: conts, error: contsErr } = await supabase.from('fitbase_contracts')
       .select('client_fitbase_id').in('client_fitbase_id', clientFbIds).limit(1000);
+    if (contsErr) console.error('[control] s3 conts:', contsErr.message);
     for (const c of conts ?? []) clientsWithContract.add(Number(c.client_fitbase_id));
   }
 
@@ -1116,7 +1158,7 @@ async function checkS3TrialVisitors(
   // Load trial visits that happened on this date (status=3 = пришла)
   const { data: trials, error } = await supabase
     .from('fitbase_visits')
-    .select('id,client_fitbase_id,visit_at,client_name')
+    .select('fitbase_id,client_fitbase_id,visit_at,client_name')
     .eq('visit_date', dateStr)
     .eq('is_trial', true)
     .eq('status', 3);
@@ -1126,7 +1168,7 @@ async function checkS3TrialVisitors(
   let violations = 0;
 
   for (const visit of trials) {
-    const visitId     = String(visit.id);
+    const visitId     = String(visit.fitbase_id);
     const clientFbId  = visit.client_fitbase_id ? Number(visit.client_fitbase_id) : null;
     if (!clientFbId) continue;
 
@@ -1139,9 +1181,10 @@ async function checkS3TrialVisitors(
     const clientLabel = String(visit.client_name ?? `Клиент ${clientFbId}`);
 
     // Find crm_lead for this client
-    const { data: lead } = await supabase.from('crm_leads')
+    const { data: lead, error: leadErr } = await supabase.from('crm_leads')
       .select('id,fitbase_manager_name,title')
       .eq('fitbase_client_id', clientFbId).limit(1).maybeSingle();
+    if (leadErr) console.error('[control] s3_trial lead:', leadErr.message);
 
     // s3_bad_name for trial visitors
     if (enabled.has('s3_bad_name')) {
@@ -1175,12 +1218,14 @@ async function checkS3TrialVisitors(
 
     // Has lead — check for activity after trial
     const visitAt = visit.visit_at as string;
-    const { data: acts } = await supabase.from('crm_lead_activity')
+    const { data: acts, error: actsErr } = await supabase.from('crm_lead_activity')
       .select('id').eq('lead_id', lead.id).gte('created_at', visitAt).limit(1);
+    if (actsErr) console.error('[control] s3_trial acts:', actsErr.message);
     if (acts?.length) continue; // contact was made
 
-    const { data: taskActs } = await supabase.from('crm_lead_tasks')
+    const { data: taskActs, error: taskActsErr } = await supabase.from('crm_lead_tasks')
       .select('id').eq('lead_id', lead.id).gte('created_at', visitAt).limit(1);
+    if (taskActsErr) console.error('[control] s3_trial taskActs:', taskActsErr.message);
     if (taskActs?.length) continue;
 
     const managerName = lead.fitbase_manager_name ? null : null; // resolved elsewhere
@@ -1297,22 +1342,24 @@ async function checkS4(
         const clientLabel = String((raw?.client as Record<string,unknown>|null)?.name ?? `Клиент ${clientId}`);
 
         // Check if renewed (new contract after end_date)
-        const { data: newer } = await supabase
+        const { data: newer, error: newerErr } = await supabase
           .from('fitbase_contracts')
           .select('id')
           .eq('client_fitbase_id', c.client_fitbase_id)
           .gte('payment_date', c.end_date as string)
           .neq('status', 'closed')
           .limit(1);
+        if (newerErr) console.error('[control] s4_ended newer:', newerErr.message);
         if (newer?.length) continue;
 
         // Check if there's a reactivation activity
-        const { data: activity } = await supabase
+        const { data: activity, error: actErr } = await supabase
           .from('crm_lead_activity')
           .select('id')
           .eq('kind', 'comment')
           .gte('created_at', (c.end_date as string) + 'T00:00:00+05:00')
           .limit(1);
+        if (actErr) console.error('[control] s4_ended activity:', actErr.message);
         if (activity?.length) continue;
 
         if (await hasContactToday(Number(c.client_fitbase_id), dayStart, dayEnd)) continue;
@@ -1346,13 +1393,14 @@ async function checkS4(
         const isGift  = /подар/i.test(String(raw?.name ?? c.name ?? ''));
         if (isTrial || isGift) continue;
 
-        const { data: lastVisit } = await supabase
+        const { data: lastVisit, error: lvErr } = await supabase
           .from('fitbase_visits')
           .select('visit_date')
           .eq('client_fitbase_id', c.client_fitbase_id)
           .in('status', [3])
           .order('visit_date', { ascending: false })
           .limit(1);
+        if (lvErr) console.error('[control] s4_no_visits lastVisit:', lvErr.message);
 
         const lastDate = lastVisit?.[0]?.visit_date as string | undefined;
         if (lastDate && lastDate >= noVisitSince) continue;
@@ -1384,11 +1432,12 @@ async function checkS4(
       errors.push(`s4_task_overdue: ${odErr.message}`);
     } else {
       for (const t of overdue ?? []) {
-        const { data: lead } = await supabase
+        const { data: lead, error: leadErr } = await supabase
           .from('crm_leads')
           .select('funnel_id,fitbase_manager_name,fitbase_id')
           .eq('id', t.lead_id)
           .maybeSingle();
+        if (leadErr) console.error('[control] s4_task_overdue lead:', leadErr.message);
         // Check if lead is in base funnels (UUIDs, not integers)
         if (!lead || !funnelUuids.base.includes(String(lead.funnel_id))) continue;
 
@@ -1421,7 +1470,7 @@ async function checkS5(
 
   const { data: visits, error } = await supabase
     .from('fitbase_visits')
-    .select('id,client_fitbase_id,visit_date,visit_at,status,is_trial,client_name,resource')
+    .select('fitbase_id,client_fitbase_id,visit_date,visit_at,status,is_trial,client_name,resource')
     .eq('visit_date', dateStr);
   if (error) {
     errors.push(`s5: visits: ${error.message}`);
@@ -1432,7 +1481,7 @@ async function checkS5(
   for (const v of visits) {
     const clientFitbaseId = Number(v.client_fitbase_id ?? 0);
     const label   = String(v.client_name ?? `Клиент ${clientFitbaseId}`);
-    const visitId = String(v.id);
+    const visitId = String(v.fitbase_id);
 
     // s5_unmarked: status 0 or 1, N minutes after start
     if (enabled.has('s5_unmarked') && (v.status === 0 || v.status === 1)) {
@@ -1455,13 +1504,14 @@ async function checkS5(
 
     // s5_no_abonement: status 3 (пришла), not trial — check if client has active contract
     if (enabled.has('s5_no_abonement') && v.status === 3 && !v.is_trial && clientFitbaseId) {
-      const { data: active } = await supabase
+      const { data: active, error: activeErr } = await supabase
         .from('fitbase_contracts')
         .select('id')
         .eq('client_fitbase_id', clientFitbaseId)
         .neq('status', 'closed')
         .gte('end_date', dateStr)
         .limit(1);
+      if (activeErr) console.error('[control] s5_no_abonement:', activeErr.message);
       if (!active?.length) {
         await upsertViolation({
           dedup_key: `s5_no_abonement:${visitId}:${dateStr}`, shift_date: dateStr, standard_num: 5,
@@ -1475,7 +1525,7 @@ async function checkS5(
 
     // s5_expired_abonement: status 3, exists closed contract with end_date < today
     if (enabled.has('s5_expired_abonement') && v.status === 3 && clientFitbaseId) {
-      const { data: contract } = await supabase
+      const { data: contract, error: contErr } = await supabase
         .from('fitbase_contracts')
         .select('end_date')
         .eq('client_fitbase_id', clientFitbaseId)
@@ -1483,6 +1533,7 @@ async function checkS5(
         .lt('end_date', dateStr)
         .order('end_date', { ascending: false })
         .limit(1);
+      if (contErr) console.error('[control] s5_expired_abonement:', contErr.message);
       if (contract?.length) {
         await upsertViolation({
           dedup_key: `s5_expired_abonement:${visitId}:${dateStr}`, shift_date: dateStr, standard_num: 5,

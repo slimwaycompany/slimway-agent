@@ -5,11 +5,12 @@
 Дата: 06.11.2026.
 
 ## fitbase_visits
-Колонки: `id, client_fitbase_id, status, is_trial, client_phone, visit_at, visit_date, manager, resource, fitbase_id, client_name, raw`
+PK: `fitbase_id` (text, строка с числом). **НЕТ колонки `id`**.
+Колонки: `fitbase_id, client_fitbase_id, client_name, client_phone, is_trial, booked_at, visit_at, visit_date, status, service, manager, raw, synced_at, resource, abonement`
 - `client_fitbase_id` — integer (не `client_id`)
 - `visit_at` — timestamp with timezone (не `time_start`)
-- `status` — integer: 3=пришла, 2=не пришла, 0/1=не отмечена
-- НЕТ колонки `abonement`
+- `status` — integer: 0=записан (не подтверждено), 1=подтверждён, 2=отказ, 3=пришёл, 4=не пришёл
+- Есть колонка `abonement` (nullable text)
 
 ## fitbase_contracts
 Колонки: `id, fitbase_id, client_fitbase_id, name, payment_date, begin_date, end_date, status, price, raw`
@@ -45,9 +46,21 @@
 - Фильтр по дате через: `started_at >= 'YYYY-MM-DDT00:00:00+05:00' AND started_at <= 'YYYY-MM-DDT23:59:59+05:00'`
 
 ## control_shift_marks
-Колонки: `id, branch_id, shift_date (date), user_name (text), marked_at, replacing, source`
+Колонки: `branch_id, shift_date (date), user_name (text), marked_at, replacing, source, created_at`
 - Основной источник «кто на смене» (из Google-формы за 01.10–06.11.2026)
 - Только менеджеры (admin не вносится)
+- Нет `id`, уникальный ключ: `(branch_id, shift_date, user_name)`
+
+## control_shift_schedule
+Колонки: `id, branch_id, shift_date (date), user_name (text), plan_start (time HH:MM), plan_end (time HH:MM), fact_start (time HH:MM), fact_end (time HH:MM), is_fact (boolean), created_at, updated_at`
+- Загружается из Google-таблицы через `syncControlSheet()`
+- Уникальный ключ: `(branch_id, shift_date, user_name)`
+- Если `is_fact=true` — использует fact_start/fact_end; иначе plan_start/plan_end
+
+## fitbase_clients_cache
+Колонки: `fitbase_client_id (text, PK), name, phone (+7format), synced_at, fitbase_updated_at, raw (jsonb), phone_digits (generated)`
+- PK = `fitbase_client_id` (string с числом, совпадает с `fitbase_visits.client_fitbase_id`)
+- `phone_digits` — генерируется триггером из `phone`
 
 ## script_events
 Колонки: `id, client_id (UUID FK → script_clients.id), event_type, node_id, text, manager, fact_key, fact_value, meta, created_at`
@@ -65,11 +78,11 @@
 Колонки: `id, branch_id, lead_id, responsible_user_id, description, due_at, status (open/done), is_overdue, closed_at, closed_by, created_by, created_at`
 
 ## control_violations
-Колонки: `id, branch_id, dedup_key (unique), shift_date, standard_num, check_code, owner_name, is_shared, entity_id, entity_label, entity_link, details, how_to_fix, status (open/fixed/waived/failed), fix_deadline, fixed_at, waived_by, waived_reason, created_at, updated_at`
+Колонки: `id, branch_id, dedup_key (unique), shift_date, standard_num, check_code, owner_name, is_shared, entity_type, entity_id, entity_label, entity_link, details, how_to_fix, minutes_late, status (open/fixed/waived/failed), fix_deadline, fixed_at, detected_at, waived_by, waived_reason, waived_at, updated_at`
 
 ## control_shift_scores
-Колонки: `id, branch_id, shift_date, owner_name, standard_num, result (ok/fixed/pending/fail/not_reviewed/off/no_data), violations_count, amount, is_final, created_at, updated_at`
-- Уникальный ключ: `(branch_id, shift_date, owner_name, standard_num)`
+**НЕТ колонки `id`**. Уникальный ключ: `(branch_id, shift_date, owner_name, standard_num)`.
+Колонки: `branch_id, shift_date, owner_name, standard_num, result (ok/fixed/pending/fail/not_reviewed/off/no_data), violations_count, amount, is_final, computed_at, updated_at`
 
 ## control_quality_reviews
 Колонки: `id, branch_id, shift_date, manager_name, client_key, pick_reason (random/flagged), flag_no_facts, flag_no_outcome, flag_abandoned, c1_needs, c2_presented, c3_objections, c4_outcome, comment, reviewed_by, reviewed_at, created_at, updated_at`
