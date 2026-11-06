@@ -16,3 +16,5 @@ test-prod.js
 img/
 png/
 result.md
+probe_result.json
+/*.txt
