@@ -473,7 +473,7 @@ async function checkViolationFixed(checkCode: string, entityId: string, cfg: Con
         const { data: visit, error: vErr } = await supabase.from('fitbase_visits').select('client_fitbase_id').eq('fitbase_id', entityId).maybeSingle();
         if (vErr) { console.error('[control] checkFixed s5_no_abonement:', vErr.message); return false; }
         if (!visit?.client_fitbase_id) return false;
-        const { data: active, error: aErr } = await supabase.from('fitbase_contracts').select('id').eq('client_fitbase_id', visit.client_fitbase_id).neq('status', 'closed').limit(1);
+        const { data: active, error: aErr } = await supabase.from('fitbase_contracts').select('fitbase_id').eq('client_fitbase_id', visit.client_fitbase_id).neq('status', 'closed').limit(1);
         if (aErr) { console.error('[control] checkFixed s5_contract:', aErr.message); return false; }
         return !!active?.length;
       }
@@ -1295,7 +1295,7 @@ async function checkS4(
   if (enabled.has('s4_ending') && !isPast) {
     const { data: contracts, error: cErr } = await supabase
       .from('fitbase_contracts')
-      .select('id,client_fitbase_id,raw,name,end_date,begin_date')
+      .select('fitbase_id,client_fitbase_id,raw,name,end_date,begin_date')
       .neq('status', 'closed')
       .not('client_fitbase_id', 'is', null);
     if (cErr) {
@@ -1329,7 +1329,7 @@ async function checkS4(
     const daysAgo = yekDateMinus(cfg.s4_ended_contact_days);
     const { data: ended, error: eErr } = await supabase
       .from('fitbase_contracts')
-      .select('id,client_fitbase_id,raw,name,end_date')
+      .select('fitbase_id,client_fitbase_id,raw,name,end_date')
       .eq('status', 'closed')
       .gte('end_date', daysAgo)
       .lte('end_date', yekDateMinus(1));
@@ -1344,7 +1344,7 @@ async function checkS4(
         // Check if renewed (new contract after end_date)
         const { data: newer, error: newerErr } = await supabase
           .from('fitbase_contracts')
-          .select('id')
+          .select('fitbase_id')
           .eq('client_fitbase_id', c.client_fitbase_id)
           .gte('payment_date', c.end_date as string)
           .neq('status', 'closed')
@@ -1380,7 +1380,7 @@ async function checkS4(
     const noVisitSince = yekDateMinus(cfg.s4_no_visit_days);
     const { data: activeContracts, error: acErr } = await supabase
       .from('fitbase_contracts')
-      .select('id,client_fitbase_id,raw,name')
+      .select('fitbase_id,client_fitbase_id,raw,name')
       .neq('status', 'closed')
       .gt('end_date', dateStr)
       .not('client_fitbase_id', 'is', null);
@@ -1506,7 +1506,7 @@ async function checkS5(
     if (enabled.has('s5_no_abonement') && v.status === 3 && !v.is_trial && clientFitbaseId) {
       const { data: active, error: activeErr } = await supabase
         .from('fitbase_contracts')
-        .select('id')
+        .select('fitbase_id')
         .eq('client_fitbase_id', clientFitbaseId)
         .neq('status', 'closed')
         .gte('end_date', dateStr)
