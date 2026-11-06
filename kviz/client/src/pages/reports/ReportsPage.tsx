@@ -3701,16 +3701,21 @@ interface PersonSummary {
   total_earned: number; total_old: number;
 }
 
+const STD_NAMES: Record<number, string> = {
+  1: 'Скорость', 2: 'Качество', 3: 'Карточка', 4: 'База', 5: 'Посещения',
+};
+
 const STD_TIPS: Record<number, string> = {
-  1: '№1 Скорость: первый контакт с новой заявкой в течение N мин',
-  2: '№2 Качество: выяснила потребности, презентовала, отработала возражения, итог',
-  3: '№3 Карточка: источник, менеджер, этап, задача, причина отказа, комментарий по шаблону',
-  4: '№4 База: заканчивается абонемент, истёк, нет визитов, просроченные задачи',
-  5: '№5 Посещения: не отмечены вовремя, без абонемента, по истёкшему',
+  1: 'Скорость: первый контакт с новой заявкой в течение 5 мин (1 опоздание до 15 мин — прощается)',
+  2: 'Качество: выяснила потребности · презентовала · отработала возражения · итог',
+  3: 'Карточка: источник · менеджер · этап · задача ≤7 дней · причина отказа · комментарий по шаблону',
+  4: 'База: заканчивается абонемент · истёк · нет визитов 7 дней · просроченные задачи',
+  5: 'Посещения: не отмечены вовремя · без абонемента · по истёкшему абонементу',
 };
 
 const RESULT_ICON: Record<string, string> = {
-  ok: '✅', fixed: '🔄', pending: '🟡', fail: '❌', not_reviewed: '⚪', off: '—',
+  ok: '✅', fixed: '🔄', pending: '🟡', fail: '⚠️',
+  not_reviewed: '⚪', off: '—', no_data: '▫️',
 };
 
 function fmtAmt(n: number) { return n.toLocaleString('ru-RU') + ' ₸'; }
@@ -3724,7 +3729,10 @@ function ControlSection() {
   const [from, setFrom] = useState(todayYek);
   const [to, setTo] = useState(todayYek);
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<{ persons: PersonSummary[]; fix_rate: number; standard_price: number } | null>(null);
+  const [data, setData] = useState<{
+    persons: PersonSummary[]; fix_rate: number; standard_price: number;
+    shift_info?: Record<string, { names: string[]; source: string }>;
+  } | null>(null);
   const [err, setErr] = useState('');
   const [showHidden, setShowHidden] = useState(false);
 
@@ -3743,14 +3751,25 @@ function ControlSection() {
   const [qrForm, setQrForm] = useState({ c1: false, c2: false, c3: false, c4: false, comment: '' });
 
   useEffect(() => {
+    const stored = localStorage.getItem('control_period');
+    const storedDate = localStorage.getItem('control_date');
+    if (stored && ['day','week','month','custom'].includes(stored)) setPeriod(stored as typeof period);
+    if (storedDate && /^\d{4}-\d{2}-\d{2}$/.test(storedDate)) setFrom(storedDate);
+  }, []);
+
+  useEffect(() => { localStorage.setItem('control_period', period); }, [period]);
+  useEffect(() => { if (period === 'day') localStorage.setItem('control_date', from); }, [period, from]);
+
+  useEffect(() => {
     const now = new Date(Date.now() + 5 * 3600_000);
-    if (period === 'day') { setFrom(todayYek); setTo(todayYek); }
     if (period === 'week') {
       const dow = now.getUTCDay();
       const mon = new Date(now.getTime() - (dow === 0 ? 6 : dow - 1) * 86400_000);
       setFrom(mon.toISOString().slice(0, 10)); setTo(todayYek);
+    } else if (period === 'month') {
+      setFrom(todayYek.slice(0, 7) + '-01'); setTo(todayYek);
     }
-    if (period === 'month') { setFrom(todayYek.slice(0, 7) + '-01'); setTo(todayYek); }
+    // 'day' and 'custom' don't auto-reset dates
   }, [period]);
 
   async function load() {
@@ -3807,8 +3826,6 @@ function ControlSection() {
     load();
   }
 
-  const persons = (data?.persons ?? []).filter(p => showHidden || !p.person.startsWith('_'));
-
   // ── Cell renderer ──────────────────────────────────────────────────────────
   function CellBtn({ ps, stdNum }: { ps: PersonSummary; stdNum: number }) {
     // Aggregate across all days in range
@@ -3843,74 +3860,129 @@ function ControlSection() {
   }
 
   // ── Desktop table ───────────────────────────────────────────────────────────
+  const allPersons = (data?.persons ?? []).filter(p => showHidden || !p.person.startsWith('_'));
+  const noShiftRow = allPersons.find(p => p.person === '(без смены)');
+  const normalPersons = allPersons.filter(p => p.person !== '(без смены)');
+
   const tableView = (
     <div style={{ overflowX: 'auto', marginTop: 12 }}>
-      <table style={cs.table}>
+      <table style={{ ...cs.table, tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: 140 }} />
+          {[1,2,3,4,5].map(n => <col key={n} style={{ width: '1fr' }} />)}
+          <col style={{ width: 130 }} />
+          <col style={{ width: 110 }} />
+        </colgroup>
         <thead>
           <tr>
-            <th style={{ ...cs.th, textAlign: 'left', minWidth: 130 }}>Сотрудник</th>
+            <th style={{ ...cs.th, textAlign: 'left' }}>Сотрудник</th>
             {[1,2,3,4,5].map(n => (
-              <th key={n} style={{ ...cs.th, ...cs.stdTh }} title={STD_TIPS[n]}>№{n}</th>
+              <th key={n} style={cs.th} title={STD_TIPS[n]}>{STD_NAMES[n]}</th>
             ))}
-            <th style={{ ...cs.th, textAlign: 'right', minWidth: 120 }}>По новой, ₸</th>
-            <th style={{ ...cs.th, textAlign: 'right', minWidth: 100 }}>Сейчас, ₸</th>
+            <th style={{ ...cs.th, textAlign: 'right' }}>По новой, ₸</th>
+            <th style={{ ...cs.th, textAlign: 'right' }}>Сейчас, ₸</th>
           </tr>
         </thead>
         <tbody>
-          {persons.map(ps => {
+          {normalPersons.map(ps => {
             const shiftCount = period === 'day' ? 1 : ps.days.length;
             return (
               <tr key={ps.person} style={cs.tr}>
-                <td style={{ ...cs.td, fontWeight: 600 }}>{ps.person}</td>
+                <td style={{ ...cs.td, fontWeight: 600, textAlign: 'left' }}>{ps.person}</td>
                 {[1,2,3,4,5].map(n => <CellBtn key={n} ps={ps} stdNum={n} />)}
                 <td style={{ ...cs.td, textAlign: 'right', fontWeight: 700, color: '#02BDB6' }}>{fmtAmt(ps.total_earned)}</td>
                 <td style={{ ...cs.td, textAlign: 'right', color: '#64748b' }}>{fmtAmt(shiftCount * 15000)}</td>
               </tr>
             );
           })}
-          {!persons.length && !loading && (
+          {noShiftRow && (
+            <tr style={{ background: '#f8fafc' }}>
+              <td style={{ ...cs.td, fontWeight: 500, color: '#94a3b8', textAlign: 'left' }}>Без смены</td>
+              {[1,2,3,4,5].map(n => <CellBtn key={n} ps={noShiftRow} stdNum={n} />)}
+              <td colSpan={2} style={{ ...cs.td, color: '#94a3b8', fontSize: 12 }}>нарушения без смены</td>
+            </tr>
+          )}
+          {!allPersons.length && !loading && (
             <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: '#94a3b8' }}>Нет данных за период</td></tr>
           )}
         </tbody>
       </table>
+      {/* Legend */}
+      <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <span>✅ выполнено</span><span>🔄 исправлено</span><span>🟡 ждёт исправления</span>
+        <span>⚠️ нарушение</span><span>⚪ не проверено</span><span>▫️ нет данных</span><span>— отключено</span>
+      </div>
     </div>
   );
 
   // ── Mobile cards ─────────────────────────────────────────────────────────────
   const mobileView = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-      {persons.map(ps => {
+      {allPersons.map(ps => {
+        const isNoShiftCard = ps.person === '(без смены)';
         const scores = [1,2,3,4,5].map(n => {
           const s = ps.days.flatMap(d => { const x = d.standards[n]; return x ? [x] : []; });
-          const result = s.some(x => x.result === 'fail') ? 'fail' : s.some(x => x.result === 'pending') ? 'pending' : s.some(x => x.result === 'not_reviewed') ? 'not_reviewed' : s.length && s.every(x => x.result === 'off') ? 'off' : s.length ? 'ok' : 'off';
+          const result = s.some(x => x.result === 'fail') ? 'fail' : s.some(x => x.result === 'pending') ? 'pending' : s.some(x => x.result === 'not_reviewed') ? 'not_reviewed' : s.some(x => x.result === 'no_data') ? 'no_data' : s.length && s.every(x => x.result === 'off') ? 'off' : s.length ? 'ok' : 'off';
           return { n, result, amount: s.reduce((a, x) => a + x.amount, 0) };
         });
         return (
-          <div key={ps.person} style={cs.card}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>{ps.person}</div>
+          <div key={ps.person} style={{ ...cs.card, opacity: isNoShiftCard ? 0.7 : 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8, color: isNoShiftCard ? '#94a3b8' : undefined }}>
+              {isNoShiftCard ? 'Без смены' : ps.person}
+            </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-              {scores.map(({ n, result, amount }) => (
-                <button key={n} style={{ ...cs.stdChip, background: result === 'fail' ? '#fef2f2' : result === 'pending' ? '#fffbeb' : result === 'ok' ? '#f0fdf4' : '#f8fafc' }}
+              {scores.map(({ n, result }) => (
+                <button key={n} style={{ ...cs.stdChip, background: result === 'fail' ? '#fef2f2' : result === 'pending' ? '#fffbeb' : result === 'ok' || result === 'fixed' ? '#f0fdf4' : '#f8fafc' }}
                   onClick={() => openCell(from, ps.person, n)}>
-                  <span style={{ fontSize: 13 }}>{RESULT_ICON[result]}</span>
-                  <span style={{ fontSize: 11 }}>№{n}</span>
+                  <span style={{ fontSize: 13 }}>{RESULT_ICON[result] ?? '—'}</span>
+                  <span style={{ fontSize: 11 }}>{STD_NAMES[n]}</span>
                 </button>
               ))}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span style={{ color: '#64748b' }}>По новой схеме</span>
-              <span style={{ fontWeight: 700, color: '#02BDB6' }}>{fmtAmt(ps.total_earned)}</span>
-            </div>
+            {!isNoShiftCard && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                <span style={{ color: '#64748b' }}>По новой схеме</span>
+                <span style={{ fontWeight: 700, color: '#02BDB6' }}>{fmtAmt(ps.total_earned)}</span>
+              </div>
+            )}
           </div>
         );
       })}
     </div>
   );
 
+  // Date navigation helpers
+  function shiftDay(delta: number) {
+    const d = new Date(from + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + delta);
+    const next = d.toISOString().slice(0, 10);
+    setFrom(next); setTo(next);
+  }
+  function shiftWeek(delta: number) {
+    const d = new Date(from + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + delta * 7);
+    const newFrom = d.toISOString().slice(0, 10);
+    const toD = new Date(d.getTime() + 6 * 86400_000);
+    setFrom(newFrom); setTo(toD.toISOString().slice(0, 10));
+  }
+  function shiftMonth(delta: number) {
+    const [y, m] = from.split('-').map(Number);
+    const nm = m + delta;
+    const year = y + Math.floor((nm - 1) / 12);
+    const month = ((nm - 1 + 12 * 100) % 12) + 1;
+    const pad = String(month).padStart(2, '0');
+    setFrom(`${year}-${pad}-01`);
+    const lastDay = new Date(year, month, 0).getDate();
+    setTo(`${year}-${pad}-${String(lastDay).padStart(2, '0')}`);
+  }
+
+  // Shift info for day mode
+  const shiftInfo = period === 'day' ? data?.shift_info?.[from] : null;
+
   return (
     <div style={{ padding: '16px 16px 32px' }}>
       {/* Period selector */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         {(['day','week','month','custom'] as const).map(p => (
           <button key={p} onClick={() => setPeriod(p)}
             style={{ padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
@@ -3918,17 +3990,47 @@ function ControlSection() {
             {{ day: 'День', week: 'Неделя', month: 'Месяц', custom: 'Свой' }[p]}
           </button>
         ))}
-        {(period === 'custom') && (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={cs.dateInp} />
-            <span>—</span>
-            <input type="date" value={to} onChange={e => setTo(e.target.value)} style={cs.dateInp} />
-          </div>
-        )}
         <button onClick={() => setShowHidden(h => !h)}
           style={{ marginLeft: 'auto', padding: '6px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
           {showHidden ? '👁 Скрыть' : '👁 Скрытые'}
         </button>
+      </div>
+
+      {/* Date navigation */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        {period === 'day' && (
+          <>
+            <button style={cs.navBtn} onClick={() => shiftDay(-1)}>←</button>
+            <input type="date" value={from} onChange={e => { setFrom(e.target.value); setTo(e.target.value); }} style={{ ...cs.dateInp, width: 140 }} />
+            <button style={cs.navBtn} onClick={() => shiftDay(1)}>→</button>
+          </>
+        )}
+        {period === 'week' && (
+          <>
+            <button style={cs.navBtn} onClick={() => shiftWeek(-1)}>←</button>
+            <span style={{ fontSize: 13, color: '#475569' }}>{fmtDate(from)} — {fmtDate(to)}</span>
+            <button style={cs.navBtn} onClick={() => shiftWeek(1)}>→</button>
+          </>
+        )}
+        {period === 'month' && (
+          <>
+            <button style={cs.navBtn} onClick={() => shiftMonth(-1)}>←</button>
+            <span style={{ fontSize: 13, color: '#475569' }}>{from.slice(0, 7)}</span>
+            <button style={cs.navBtn} onClick={() => shiftMonth(1)}>→</button>
+          </>
+        )}
+        {period === 'custom' && (
+          <>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={cs.dateInp} />
+            <span>—</span>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} style={cs.dateInp} />
+          </>
+        )}
+        {shiftInfo && (
+          <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>
+            На смене: {shiftInfo.names.join(', ')} · <span style={{ color: '#94a3b8' }}>{shiftInfo.source}</span>
+          </span>
+        )}
       </div>
 
       {err && <div style={{ color: '#ef4444', marginBottom: 10, fontSize: 13 }}>{err}</div>}
@@ -4058,15 +4160,15 @@ function ControlSection() {
 const cs = {
   table:   { width: '100%', borderCollapse: 'collapse' as const, fontSize: 13 },
   th:      { padding: '8px 10px', background: '#f8fafc', borderBottom: '2px solid #e2e8f0', fontWeight: 700, fontSize: 12, textAlign: 'center' as const, whiteSpace: 'nowrap' as const },
-  stdTh:   { width: 80, cursor: 'help' },
   td:      { padding: '8px 10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' as const },
-  cell:    { padding: '6px 8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' as const, minWidth: 70 },
+  cell:    { padding: '6px 8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' as const },
   tr:      { background: '#fff' },
   card:    { background: '#fff', borderRadius: 12, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' },
-  stdChip: { padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 2, minWidth: 46 },
+  stdChip: { padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 2, minWidth: 56 },
   overlay: { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 200, overflowY: 'auto' as const, padding: '20px 10px' },
   modal:   { background: '#fff', borderRadius: 16, padding: 20, width: 'min(500px,96vw)', maxHeight: '85vh', overflow: 'auto' as const },
   closeBtn: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#64748b', padding: '0 4px' },
   saveBtn: { padding: '6px 14px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' },
   dateInp: { padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
+  navBtn:  { padding: '6px 10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 700 },
 };

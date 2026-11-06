@@ -29,7 +29,7 @@ import { mountScriptologRoutes } from './http/scriptolog';
 import { runCrmLifecycle } from './http/crm';
 import { runCrmLeadsSync } from './jobs/crmLeadsSync';
 import { runScriptologReminders, JOB_NAME as REMINDERS_JOB } from './jobs/scriptologReminders';
-import { runControl } from './jobs/control';
+import { runControl, runControlRange } from './jobs/control';
 import { runProbeControl } from './jobs/probeControl';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
@@ -295,10 +295,21 @@ app.post('/run/scriptolog-reminders', handleScriptologReminders);
 async function handleControl(req: express.Request, res: express.Response): Promise<void> {
   if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
   const finalize = req.query.finalize === '1';
-  const locked = await acquireLock('control', 8 * 60);
-  if (!locked) { res.json({ status: 'already_running' }); return; }
-  res.status(202).json({ status: 'accepted', job: 'control', finalize });
-  executeJob('control', () => runControl(finalize));
+  const date     = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : undefined;
+  const qFrom    = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : undefined;
+  const qTo      = typeof req.query.to   === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to)   ? req.query.to   : undefined;
+
+  if (qFrom && qTo) {
+    const locked = await acquireLock('control', 30 * 60);
+    if (!locked) { res.json({ status: 'already_running' }); return; }
+    res.status(202).json({ status: 'accepted', job: 'control-range', from: qFrom, to: qTo });
+    executeJob('control', () => runControlRange(qFrom, qTo));
+  } else {
+    const locked = await acquireLock('control', 8 * 60);
+    if (!locked) { res.json({ status: 'already_running' }); return; }
+    res.status(202).json({ status: 'accepted', job: 'control', finalize, date });
+    executeJob('control', () => runControl(finalize, date));
+  }
 }
 app.get('/run/control',  handleControl);
 app.post('/run/control', handleControl);

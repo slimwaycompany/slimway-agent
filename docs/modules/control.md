@@ -123,9 +123,9 @@
 - Скрытые продавцы — по общей кнопке «👁 Скрытые».
 
 ## Где код
-- **Движок стандартов:** `src/jobs/control.ts` — `loadSettings`, `saveSettings`, `getOnShift`, `loadUserMap`, `checkS1`–`checkS5`, `runControl(finalize)`
-- **API:** `src/http/control.ts` — `buildControlRouter()`, эндпоинты settings / violations / quality-reviews / summary / recompute
-- **Эндпоинт крона:** `src/index.ts` — `/run/control` (GET+POST, CRON_SECRET, finalize=1)
+- **Движок стандартов:** `src/jobs/control.ts` — `loadSettings`, `saveSettings`, `loadFunnelUuids`, `getOnShift` (→ `{names, source}`), `loadUserMap`, `checkS1`–`checkS5`, `recheckOpenViolations` (→ fixed/failed), `computeShiftScores` (строка `(без смены)` при пустой смене), `runControl(finalize, overrideDate?)`, `runControlRange(from, to)`
+- **API:** `src/http/control.ts` — `buildControlRouter()`, эндпоинты settings / violations / quality-reviews / summary (+ `shift_info`) / recompute (delete+rerun)
+- **Эндпоинт крона:** `src/index.ts` — `/run/control` (GET+POST, CRON_SECRET, `?finalize=1`, `?date=`, `?from=&to=`)
 - **Зонд API:** `src/jobs/probeControl.ts` — `/run/probe-control`
 - **Настройки UI:** `kviz/client/src/pages/crm/SettingsPage.tsx` — `ControlSettingsSection` (секция «Контроль менеджеров»)
 - **Отчёт:** `kviz/client/src/pages/reports/ReportsPage.tsx` — `ControlSection` (столбец Менеджер)
@@ -134,8 +134,10 @@
 ## Таблицы
 - `control_settings` (key text PK, value jsonb, branch_id, updated_by, updated_at) — настройки, key/value
 - `control_violations` (id, branch_id, dedup_key unique, shift_date, standard_num, check_code, owner_name, is_shared, entity_id, entity_label, entity_link, details, how_to_fix, status open/fixed/waived/failed, fix_deadline, fixed_at, waived_by, waived_reason, created_at, updated_at)
-- `control_shift_scores` (id, branch_id, shift_date, owner_name, standard_num, result ok/fixed/pending/fail/not_reviewed/off, violations_count, amount, is_final, created_at, updated_at)
+- `control_shift_scores` (id, branch_id, shift_date, owner_name, standard_num, result ok/fixed/pending/fail/not_reviewed/off/**no_data**, violations_count, amount, is_final, created_at, updated_at)
 - `control_quality_reviews` (id, branch_id, shift_date, manager_name, client_key, pick_reason random/flagged, flag_no_facts, flag_no_outcome, flag_abandoned, c1_needs, c2_presented, c3_objections, c4_outcome, comment, reviewed_by, reviewed_at, created_at, updated_at)
+- `control_shift_marks` (id, branch_id, shift_date date, user_name text, marked_at, replacing, source) — кто был на смене (из Google-формы); управляемый источник для движка
+- SQL нужен: `ALTER TABLE control_shift_scores ADD COLUMN IF NOT EXISTS result TEXT CHECK (result IN ('ok','fixed','pending','fail','not_reviewed','off','no_data'));` (добавить `no_data` в CHECK или снять CHECK)
 
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -152,6 +154,16 @@
 
 ## Сделано
 <!-- новые записи сверху -->
+### 06.11.2026 · (task 40-1) · Исправление движка: колонки, getOnShift, recheckViolations, UI
+- **Колонки исправлены** по реальной схеме: `crm_leads.funnel_id` = UUID (через `loadFunnelUuids`), `fitbase_contracts.status` text 'closed', `fitbase_operations.op_date` + кассир из `raw.client.id` (in-memory map), `fitbase_visits.client_fitbase_id` + `visit_at` timestamp, `staff_shifts` фильтр по `started_at`, `script_events.client_id` UUID (сначала `script_clients` по phone).
+- **`getOnShift`** теперь возвращает `{names, source}`, приоритет: `control_shift_marks` → `staff_shifts` (только `role=manager`) → `metrics_day_input.on_shift`; нарушения пишутся даже без смены (строка `(без смены)`).
+- **`recheckOpenViolations`** реализован полностью: каждый `check_code` проверяет реальное условие → `fixed` или ждёт; дедлайн прошёл → `failed`; waived не трогаем; №1 нефиксабелен.
+- **`runControl(finalize, overrideDate?)`** + **`runControlRange(from, to)`** — история с произвольных дат; `/run/control?date=`, `?from=&to=`; прошлые даты →финализация сразу; №4 прошлого дня → `no_data`.
+- **Обработка ошибок**: каждый вызов Supabase проверяет `error`, пишет в `errors[]`; сырые ошибки Postgres пользователю не уходят.
+- **`loadSettings`** добавлен фильтр `branch_id`; `funnel-stages` ищет UUID воронки по `fitbase_id=1`.
+- **`recompute`** API: удаляет violations (не waived) + scores + unreviewed reviews → запускает `runControl(true, date)`.
+- **UI ReportsPage `ControlSection`**: заголовки «Скорость/Качество/Карточка/База/Посещения», иконки ⚠️(fail) ▫️(no_data), таблица на всю ширину, навигация ← → по дням/неделям/месяцам, localStorage, строка `(без смены)`, легенда, `shift_info` в тултипе.
+
 ### 06.11.2026 · (task 40) · Контроль 5п: движок, настройки, отчёт (тестовый режим)
 - **Движок** `src/jobs/control.ts`: `ControlSettings` + `DEFAULT_SETTINGS`, `loadSettings`/`saveSettings` (key/value jsonb), `getOnShift` (staff_shifts + fallback metrics_day_input), `loadUserMap` (crm_fitbase_user_map → app_users), `upsertViolation` (upsert by dedup_key), 5 стандартов checkS1–checkS5, `computeShiftScores`, `recheckOpenViolations`, `runControl(finalize)`.
 - **Эндпоинт** `POST /run/control` в `src/index.ts` (CRON_SECRET, job_locks/job_runs, `?finalize=1`), `/run/probe-control`.
@@ -165,11 +177,8 @@
 - Файл модуля, сводка того, что уже есть про контроль в manager / reports / agent / ovcharka / crm-leads / scriptolog / chats / logins.
 
 ## Открытые баги
-- 06.11.2026, коммит 3555ee7 (задача 40): код написан не по схеме базы → «column control_shift_scores.owner_name does not exist» при входе в отчёт. Решение: таблицы пустые, поэтому БАЗУ подогнали под код SQL'ем (06.11.2026): scores `user_name→owner_name`, `standard→standard_num`, `violations→violations_count`, +`updated_at`; violations `standard→standard_num`, +`entity_link`, +`updated_at`, `entity_type` nullable, unique(`dedup_key`); quality_reviews `user_name→manager_name`, `need_found/presented/objections/outcome → c1_needs/c2_presented/c3_objections/c4_outcome`, +`flag_no_facts/flag_no_outcome/flag_abandoned`, +`updated_at`; settings unique(`key`), ключи — как в `DEFAULT_SETTINGS` кода (`alerts_to_agent`, `fix_rate`, `open_time`, `close_time_weekday/weekend`, списки проверок — массивы кодов).
-- Задача 40, не доделано (ревью 06.11.2026): `recheckOpenViolations` не проверяет исправление (только переводит в failed по сроку) → «исправлено» никогда не ставится; «Пересчитать день» только сбрасывает is_final; сырые ошибки Postgres уходят пользователю (`error.message`); `loadSettings` без фильтра `branch_id`. → задача 40-1.
-- 06.11.2026, первый запуск `/run/control`: `on_shift: none`, все стандарты 0 нарушений, ошибок нет. Причины:
-  - на смене никого: в `staff_shifts` за день пусто (девочки отмечаются в Google Chat / таблице, не нашей кнопкой), `metrics_day_input.on_shift` не заполнен → итоги не считаются вообще;
-  - движок читает выдуманные колонки и молча глотает ошибки Supabase (`const { data } = …` без проверки `error`) → пустой результат = «0 нарушений»: `crm_leads.funnel_id = 1` (а это uuid воронки), `fitbase_contracts.closed`, `fitbase_operations.cashier / manager / pay_ts / client_id`, `fitbase_visits.client_id / time_start` и др. — сверить со схемой.
+- **SQL нужен**: в `control_shift_scores` CHECK на `result` может не включать `no_data`. Выполнить в Supabase SQL Editor: `ALTER TABLE control_shift_scores DROP CONSTRAINT IF EXISTS control_shift_scores_result_check; ALTER TABLE control_shift_scores ADD CONSTRAINT control_shift_scores_result_check CHECK (result IN ('ok','fixed','pending','fail','not_reviewed','off','no_data'));`
+- 06.11.2026, коммит 3555ee7 (задача 40, закрыт в 40-1): движок читал выдуманные колонки, ошибки глотал. Исправлено в задаче 40-1.
   - нарушения должны записываться даже когда никто не на смене (общие / по владельцу), а не пропускаться.
 
 ## Следующее
@@ -186,7 +195,8 @@
   - «График работы» — шапка в 2 строки: «План» (B–D) / «Факт» (E–G) / «Статус» (H); колонки по сотрудникам: Ичетовкина Ангелина, Ергали Назерке, Савина Вера; ячейка = часы смены `08:00-20:00` / `10:00-22:00` или пусто; H = «Факт» у прошедших дней. Заполнен с 01.10 до 30.11.2026. **Даёт часы смены** — по ним точно видно, кто был на месте в момент события (лид в 08:30 → только тот, кто с 08:00).
   - «Пересменка-кассир» — сдача/приём кассы: дата, сдающий, принимающий, остатки Fitbase и факт, безнал, расхождение, «Касса ровная/кривая», причина. Для контроля пока не используем (идея на потом).
   - «Сейф» — не смотрели.
-- Решение Claude (06.11.2026, ждёт подтверждения Сергея): «кто на смене» = «График работы → Факт» (с часами), отметки формы — подтверждение прихода; общие нарушения раздаются только тем, у кого время события попадает в часы смены.
+- **РЕШЕНО (06.11.2026, Сергей подтвердил):** «кто на смене» = «График работы → Факт» (с часами), отметки формы — подтверждение прихода; общие нарушения раздаются только тем, у кого время события попадает в часы смены; расхождения график ↔ отметки показывать.
+- **Задача 40-2 (собрать ПОСЛЕ проверки 40-1 Сергеем):** таблица графика смен (план/факт, часы) + синхронизация Google-таблицы раз в 30 мин через Apps Script с секретом (листы «Отметки на смене» → `control_shift_marks`, «График работы» → график), сопоставление ФИО → display_name, раздача общих нарушений по часам смены.
 - Первый вид отчёта (06.11.2026): Ангелина, всё зелёное, 15 000 ₸ — НЕ достоверно, это следствие бага «ошибки глотаются → 0 нарушений».
 - **Cron** (Сергей добавляет вручную в cron-job.org): POST `/run/control` каждые 10 мин 08:00–23:00 (Asia/Yekaterinburg); POST `/run/control?finalize=1` ежедневно 07:55. Заголовок: `x-cron-secret: <CRON_SECRET>`.
 - После деплоя вручную: GET `/run/probe-control` → отчёт в `docs/reports/control-fitbase-probe.md`; GET `/run/control` → первый расчёт.

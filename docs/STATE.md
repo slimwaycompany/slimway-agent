@@ -20,7 +20,7 @@
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 05.11.2026 | task 38: fix sync (budget/title NOT NULL, user_id, stage kind), dict sync, deleted leads, LeadDrawer body→text, postMessage, ManagerPage groups |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | ⚪ | 05.11.2026 | Модуль создан: собраны решения по визуалу, аудит интерфейса (18 проблем) |
-| Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 06.11.2026 | task 40: движок 5 стандартов, настройки, отчёт «Контроль 5п», шаблон комментария в скриптологе (тест-режим) |
+| Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 06.11.2026 | task 40-1: исправлены колонки движка, getOnShift, recheckViolations, UI таблицы (навигация, заголовки, строка без смены) |
 
 Вкладка «Воронка» — модуль `modules/crm-leads.md` (пока заглушка, собираем требования).
 

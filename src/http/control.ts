@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
-import { loadSettings, saveSettings, DEFAULT_SETTINGS } from '../jobs/control';
+import { loadSettings, saveSettings, DEFAULT_SETTINGS, runControl } from '../jobs/control';
 
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -106,10 +106,18 @@ export function buildControlRouter(): Router {
   r.get('/kviz/api/control/funnel-stages', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
+      // Look up UUID for "Новые заявки" (fitbase_id=1) first
+      const { data: funnel } = await supabase
+        .from('crm_funnels')
+        .select('id')
+        .eq('branch_id', BRANCH_ID)
+        .eq('fitbase_id', 1)
+        .maybeSingle();
+      if (!funnel?.id) { res.json([]); return; }
       const { data, error } = await supabase
         .from('crm_funnel_stages')
         .select('id,name,kind,funnel_id,fitbase_id')
-        .eq('funnel_id', 1)  // "Новые заявки"
+        .eq('funnel_id', funnel.id)
         .eq('is_archived', false)
         .order('sort');
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -134,6 +142,20 @@ export function buildControlRouter(): Router {
         .order('owner_name')
         .order('standard_num');
       if (error) { res.status(500).json({ error: error.message }); return; }
+
+      // Load shift marks for the period (for UI display)
+      const { data: shiftMarks } = await supabase
+        .from('control_shift_marks')
+        .select('shift_date,user_name,source')
+        .eq('branch_id', BRANCH_ID)
+        .gte('shift_date', from)
+        .lte('shift_date', to);
+      const shiftByDate: Record<string, { names: string[]; source: string }> = {};
+      for (const m of shiftMarks ?? []) {
+        const k = String(m.shift_date);
+        if (!shiftByDate[k]) shiftByDate[k] = { names: [], source: String(m.source ?? 'control_shift_marks') };
+        shiftByDate[k].names.push(String(m.user_name));
+      }
 
       const cfg = await loadSettings();
 
@@ -176,7 +198,7 @@ export function buildControlRouter(): Router {
         persons.push({ person, days: daysArr, total_earned: totalEarned, total_old: totalOld });
       }
 
-      res.json({ from, to, persons, fix_rate: cfg.fix_rate, standard_price: cfg.standard_price });
+      res.json({ from, to, persons, fix_rate: cfg.fix_rate, standard_price: cfg.standard_price, shift_info: shiftByDate });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -303,7 +325,7 @@ export function buildControlRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // ── Recompute a day ───────────────────────────────────────────────────────
+  // ── Recompute a day — delete + rerun ─────────────────────────────────────
 
   r.post('/kviz/api/control/recompute', async (req, res) => {
     if (!requireAdmin(req, res)) return;
@@ -312,14 +334,19 @@ export function buildControlRouter(): Router {
       res.status(400).json({ error: 'Нужен параметр date в формате YYYY-MM-DD' }); return;
     }
     try {
-      // Reset is_final flag and rerun scores for the day
-      await supabase
-        .from('control_shift_scores')
-        .update({ is_final: false, updated_at: new Date().toISOString() })
-        .eq('branch_id', BRANCH_ID)
-        .eq('shift_date', date);
+      // Delete violations (keep waived — human decisions)
+      await supabase.from('control_violations').delete()
+        .eq('branch_id', BRANCH_ID).eq('shift_date', date).neq('status', 'waived');
+      // Delete scores
+      await supabase.from('control_shift_scores').delete()
+        .eq('branch_id', BRANCH_ID).eq('shift_date', date);
+      // Delete unreviewed quality reviews
+      await supabase.from('control_quality_reviews').delete()
+        .eq('branch_id', BRANCH_ID).eq('shift_date', date).is('reviewed_at', null);
 
-      res.json({ ok: true, message: `Флаги сброшены для ${date}. Запустите /run/control для пересчёта.` });
+      res.json({ ok: true, message: `День ${date} очищен, пересчёт запущен` });
+      // Fire-and-forget recompute (past date = finalize)
+      runControl(true, date).catch(e => console.error('[control] recompute run:', (e as Error).message));
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

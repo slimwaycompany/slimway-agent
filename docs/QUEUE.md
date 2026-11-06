@@ -69,7 +69,8 @@
 | 37 | crm-leads | CRM Воронка шаг 2: синхронизация с Fitbase, доска drag & drop, карточка заявки, Настройки воронки, задачи в Менеджере | `docs/tasks/37-crm-leads-board.md` | 🟡 частично (f4d2377; ошибки: budget NOT NULL, app_user_id, body→text) |
 | 38 | crm-leads | CRM Воронка: починка синка, недостающие шаги, доска/drawer/настройки/менеджер | `docs/tasks/38-crm-leads-board-fix.md` | 🟡 частично (e9d227d; не сделано: мобильный board, фильтры, режим «Список», reject-модал) |
 | 39 | scriptolog | Скриптолог v2: аккордеон 7 этапов, Акция/Материалы, напоминания, подтверждение «+» | `docs/tasks/39-scriptolog-v2-accordion.md` | ✅ готово (см. журнал) |
-| 40 | control | Контроль менеджеров «5п»: зонд API, настройки, движок 5 стандартов, отчёт, шаблон комментария | `docs/tasks/40-control-5p.md` | ✅ готово (см. журнал) |
+| 40 | control | Контроль менеджеров «5п»: зонд API, настройки, движок 5 стандартов, отчёт, шаблон комментария | `docs/tasks/40-control-5p.md` | 🟡 частично (3555ee7; ошибки схемы — задача 40-1) |
+| 40-1 | control | Контроль 5п: фикс колонок, getOnShift, recheckViolations, история, UI | `docs/tasks/40-1-control-fix.md` | 🟡 частично (нужен SQL: добавить no_data в CHECK; нужна проверка на проде после деплоя) |
 
 ## Сделано недавно (для контекста)
 
@@ -89,6 +90,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 06.11.2026 | Claude | 40-1 control: фикс колонок движка (funnel_id UUID, contracts.status, operations.op_date, visits.client_fitbase_id, staff_shifts.started_at, script_clients→script_events), getOnShift с источниками, recheckOpenViolations полный, runControl(overrideDate)+runControlRange, строка «(без смены)», UI заголовки/навигация/легенда | нужен SQL no_data в CHECK; деплой → GET /run/control?from=2026-10-01&to=2026-11-06 для истории |
 | 06.11.2026 | Claude | 40 control 5п: движок (checkS1–S5, upsertViolation, computeShiftScores, finalize), API (settings/violations/quality-reviews/summary/waive/recompute), SettingsPage «Контроль менеджеров», ControlSection в ReportsPage (таблица + карточки + модалы), кнопка «📝 Комментарий» в scriptolog.html. Тест-режим: Fitbase не пишем, тревоги не шлём, менеджерам не показываем. | Деплой → добавить 2 cron-задачи (см. docs/tasks/40-control-5p.md) |
 | 05.11.2026 | Claude | 39 scriptolog v2: аккордеон 7 этапов, дерево v2 JSON (RU+KZ), фикс setVar+EasyChat, подтверждение «+», Акция/Материалы API+SettingsPage, напоминания job | см. коммит | ч.1-7 выполнены; `/run/scriptolog-reminders` нужно добавить в cron-job.org (каждые 15 мин); `SCRIPTOLOG_REMINDERS_DRY_RUN=false` в Render когда готово; `SCRIPTOLOG_CONFIRM_DRY_RUN=false` когда Fitbase API подтверждён |
 | 05.11.2026 | Claude | 38 crm-leads: fix sync (budget NOT NULL, user_id, stage kind), dict sync, deleted leads detection, LeadDrawer body→text+postMessage, ManagerPage groups, shell-app open-cashier/schedule | текущий | crmLeadsSync.ts полный переписан; crmLeads.ts: lock 10 мин, user_id, /move, /notes, /recalculate; LeadDrawer: body→text, FB-notes, Продать/Записать; SettingsPage: user_id; ManagerPage: группы+LeadDrawer; shell: open-cashier/schedule. Не сделано: мобильный одноколоночный board, фильтры с localStorage, доска режим «Список», reject-модал на drop. Проверка на проде — ждать деплоя |
