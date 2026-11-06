@@ -30,7 +30,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu' | 'control';
 
 interface TbuPeriod {
   label: string; from: string; to: string;
@@ -91,8 +91,9 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
   {
     title: 'Менеджер', adminOnly: false,
     items: [
-      { id: 'tasks',  label: 'Задачи',   desc: 'Выполнение задач по периоду', adminOnly: false },
-      { id: 'shifts', label: 'Смены',    desc: 'Отметки, часы, сотрудники',   adminOnly: false },
+      { id: 'tasks',   label: 'Задачи',       desc: 'Выполнение задач по периоду',     adminOnly: false },
+      { id: 'shifts',  label: 'Смены',         desc: 'Отметки, часы, сотрудники',       adminOnly: false },
+      { id: 'control', label: 'Контроль 5п',   desc: '5 стандартов работы менеджеров',  adminOnly: true  },
     ],
   },
   {
@@ -225,6 +226,7 @@ export default function ReportsPage() {
       {section === 'daily-metrics'  && isAdmin && <DailyMetricsSection />}
       {section === 'payroll'        && isAdmin && <PayrollSection />}
       {section === 'tbu'            && isAdmin && <TbuSection />}
+      {section === 'control'        && isAdmin && <ControlSection />}
     </div>
   );
 }
@@ -3666,4 +3668,405 @@ const s: Record<string, React.CSSProperties> = {
   cancelBtn:    { padding: '8px 16px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
   saveBtn:      { padding: '8px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
   errBox:       { background: '#fef2f2', color: '#ef4444', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Control Section — 5-standard manager quality report
+// ══════════════════════════════════════════════════════════════════════════════
+
+interface ControlScore {
+  shift_date: string; owner_name: string; standard_num: number;
+  result: string; violations_count: number; amount: number; is_final: boolean;
+}
+interface ControlViolation {
+  id: string; dedup_key: string; shift_date: string; standard_num: number;
+  check_code: string; owner_name: string | null; is_shared: boolean;
+  entity_id: string; entity_label: string; entity_link: string | null;
+  details: string; how_to_fix: string; status: string;
+  fix_deadline: string; fixed_at: string | null;
+  waived_by: string | null; waived_reason: string | null; created_at: string;
+}
+interface QualityReview {
+  id: string; shift_date: string; manager_name: string; client_key: string;
+  pick_reason: string; flag_no_facts: boolean; flag_no_outcome: boolean; flag_abandoned: boolean;
+  c1_needs: boolean | null; c2_presented: boolean | null; c3_objections: boolean | null; c4_outcome: boolean | null;
+  comment: string | null; reviewed_by: string | null; reviewed_at: string | null;
+}
+interface PersonSummary {
+  person: string;
+  days: Array<{
+    date: string; earned: number;
+    standards: Record<string, { result: string; violations: number; amount: number; is_final: boolean }>;
+  }>;
+  total_earned: number; total_old: number;
+}
+
+const STD_TIPS: Record<number, string> = {
+  1: '№1 Скорость: первый контакт с новой заявкой в течение N мин',
+  2: '№2 Качество: выяснила потребности, презентовала, отработала возражения, итог',
+  3: '№3 Карточка: источник, менеджер, этап, задача, причина отказа, комментарий по шаблону',
+  4: '№4 База: заканчивается абонемент, истёк, нет визитов, просроченные задачи',
+  5: '№5 Посещения: не отмечены вовремя, без абонемента, по истёкшему',
+};
+
+const RESULT_ICON: Record<string, string> = {
+  ok: '✅', fixed: '🔄', pending: '🟡', fail: '❌', not_reviewed: '⚪', off: '—',
+};
+
+function fmtAmt(n: number) { return n.toLocaleString('ru-RU') + ' ₸'; }
+function isoToLocalDate(iso: string) {
+  return new Date(iso).toLocaleDateString('ru', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Yekaterinburg' });
+}
+
+function ControlSection() {
+  const todayYek = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
+  const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'custom'>('day');
+  const [from, setFrom] = useState(todayYek);
+  const [to, setTo] = useState(todayYek);
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<{ persons: PersonSummary[]; fix_rate: number; standard_price: number } | null>(null);
+  const [err, setErr] = useState('');
+  const [showHidden, setShowHidden] = useState(false);
+
+  // Violations modal
+  const [cellModal, setCellModal] = useState<{ date: string; person: string; stdNum: number } | null>(null);
+  const [vioList, setVioList] = useState<ControlViolation[]>([]);
+  const [vioLoading, setVioLoading] = useState(false);
+  const [waiveId, setWaiveId] = useState<string | null>(null);
+  const [waiveReason, setWaiveReason] = useState('');
+
+  // Quality review modal
+  const [qrModal, setQrModal] = useState<{ date: string; person: string } | null>(null);
+  const [qrList, setQrList] = useState<QualityReview[]>([]);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrEdit, setQrEdit] = useState<string | null>(null);
+  const [qrForm, setQrForm] = useState({ c1: false, c2: false, c3: false, c4: false, comment: '' });
+
+  useEffect(() => {
+    const now = new Date(Date.now() + 5 * 3600_000);
+    if (period === 'day') { setFrom(todayYek); setTo(todayYek); }
+    if (period === 'week') {
+      const dow = now.getUTCDay();
+      const mon = new Date(now.getTime() - (dow === 0 ? 6 : dow - 1) * 86400_000);
+      setFrom(mon.toISOString().slice(0, 10)); setTo(todayYek);
+    }
+    if (period === 'month') { setFrom(todayYek.slice(0, 7) + '-01'); setTo(todayYek); }
+  }, [period]);
+
+  async function load() {
+    setLoading(true); setErr('');
+    try {
+      const r = await fetch(`/kviz/api/control/summary?from=${from}&to=${to}`, { credentials: 'include' });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error || 'Ошибка'); return; }
+      setData(d);
+    } catch (e) { setErr(String(e)); } finally { setLoading(false); }
+  }
+
+  useEffect(() => { load(); }, [from, to]);
+
+  async function openCell(date: string, person: string, stdNum: number) {
+    if (stdNum === 2) { setQrModal({ date, person }); loadQR(date, person); return; }
+    setCellModal({ date, person, stdNum }); setVioLoading(true); setVioList([]);
+    const r = await fetch(`/kviz/api/control/violations?date=${date}&owner=${encodeURIComponent(person)}&standard=${stdNum}`, { credentials: 'include' });
+    const d = await r.json();
+    setVioList(Array.isArray(d) ? d : []);
+    setVioLoading(false);
+  }
+
+  async function doWaive(id: string) {
+    if (!waiveReason.trim()) { alert('Укажите причину'); return; }
+    await fetch(`/kviz/api/control/violations/${id}/waive`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: waiveReason }),
+    });
+    setWaiveId(null); setWaiveReason('');
+    // Reload violations
+    if (cellModal) {
+      const r = await fetch(`/kviz/api/control/violations?date=${cellModal.date}&owner=${encodeURIComponent(cellModal.person)}&standard=${cellModal.stdNum}`, { credentials: 'include' });
+      setVioList(await r.json());
+    }
+    load();
+  }
+
+  async function loadQR(date: string, person: string) {
+    setQrLoading(true);
+    const r = await fetch(`/kviz/api/control/quality-reviews?date=${date}&manager=${encodeURIComponent(person)}`, { credentials: 'include' });
+    const d = await r.json();
+    setQrList(Array.isArray(d) ? d : []);
+    setQrLoading(false);
+  }
+
+  async function saveQR(id: string) {
+    await fetch(`/kviz/api/control/quality-reviews/${id}/review`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ c1_needs: qrForm.c1, c2_presented: qrForm.c2, c3_objections: qrForm.c3, c4_outcome: qrForm.c4, comment: qrForm.comment }),
+    });
+    setQrEdit(null);
+    if (qrModal) loadQR(qrModal.date, qrModal.person);
+    load();
+  }
+
+  const persons = (data?.persons ?? []).filter(p => showHidden || !p.person.startsWith('_'));
+
+  // ── Cell renderer ──────────────────────────────────────────────────────────
+  function CellBtn({ ps, stdNum }: { ps: PersonSummary; stdNum: number }) {
+    // Aggregate across all days in range
+    const scores = ps.days.flatMap(d => {
+      const s = d.standards[String(stdNum)];
+      return s ? [{ ...s, date: d.date }] : [];
+    });
+    if (!scores.length) return <td style={cs.cell}>—</td>;
+    const anyFail    = scores.some(s => s.result === 'fail');
+    const anyPending = scores.some(s => s.result === 'pending');
+    const anyFixed   = scores.some(s => s.result === 'fixed');
+    const allOk      = scores.every(s => s.result === 'ok' || s.result === 'fixed');
+    const anyOff     = scores.every(s => s.result === 'off');
+    const anyNR      = scores.some(s => s.result === 'not_reviewed');
+    const totalAmt   = scores.reduce((s, x) => s + x.amount, 0);
+    const totalVio   = scores.reduce((s, x) => s + x.violations, 0);
+    const result     = anyFail ? 'fail' : anyPending ? 'pending' : anyFixed ? 'fixed' : anyNR ? 'not_reviewed' : anyOff ? 'off' : 'ok';
+    const icon = RESULT_ICON[result] ?? '—';
+    const bgColor = result === 'fail' ? '#fef2f2' : result === 'pending' ? '#fffbeb' : result === 'ok' || result === 'fixed' ? '#f0fdf4' : '#f8fafc';
+    const isFirst = scores[0].date === from || period === 'day';
+    return (
+      <td style={{ ...cs.cell, background: bgColor, cursor: 'pointer' }}
+        title={STD_TIPS[stdNum]}
+        onClick={() => openCell(scores[0].date, ps.person, stdNum)}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+          <span style={{ fontSize: 16 }}>{icon}</span>
+          <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>{fmtAmt(totalAmt)}</span>
+          {totalVio > 0 && <span style={{ fontSize: 10, color: '#94a3b8' }}>{totalVio} нар.</span>}
+        </div>
+      </td>
+    );
+  }
+
+  // ── Desktop table ───────────────────────────────────────────────────────────
+  const tableView = (
+    <div style={{ overflowX: 'auto', marginTop: 12 }}>
+      <table style={cs.table}>
+        <thead>
+          <tr>
+            <th style={{ ...cs.th, textAlign: 'left', minWidth: 130 }}>Сотрудник</th>
+            {[1,2,3,4,5].map(n => (
+              <th key={n} style={{ ...cs.th, ...cs.stdTh }} title={STD_TIPS[n]}>№{n}</th>
+            ))}
+            <th style={{ ...cs.th, textAlign: 'right', minWidth: 120 }}>По новой, ₸</th>
+            <th style={{ ...cs.th, textAlign: 'right', minWidth: 100 }}>Сейчас, ₸</th>
+          </tr>
+        </thead>
+        <tbody>
+          {persons.map(ps => {
+            const shiftCount = period === 'day' ? 1 : ps.days.length;
+            return (
+              <tr key={ps.person} style={cs.tr}>
+                <td style={{ ...cs.td, fontWeight: 600 }}>{ps.person}</td>
+                {[1,2,3,4,5].map(n => <CellBtn key={n} ps={ps} stdNum={n} />)}
+                <td style={{ ...cs.td, textAlign: 'right', fontWeight: 700, color: '#02BDB6' }}>{fmtAmt(ps.total_earned)}</td>
+                <td style={{ ...cs.td, textAlign: 'right', color: '#64748b' }}>{fmtAmt(shiftCount * 15000)}</td>
+              </tr>
+            );
+          })}
+          {!persons.length && !loading && (
+            <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: '#94a3b8' }}>Нет данных за период</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  // ── Mobile cards ─────────────────────────────────────────────────────────────
+  const mobileView = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+      {persons.map(ps => {
+        const scores = [1,2,3,4,5].map(n => {
+          const s = ps.days.flatMap(d => { const x = d.standards[n]; return x ? [x] : []; });
+          const result = s.some(x => x.result === 'fail') ? 'fail' : s.some(x => x.result === 'pending') ? 'pending' : s.some(x => x.result === 'not_reviewed') ? 'not_reviewed' : s.length && s.every(x => x.result === 'off') ? 'off' : s.length ? 'ok' : 'off';
+          return { n, result, amount: s.reduce((a, x) => a + x.amount, 0) };
+        });
+        return (
+          <div key={ps.person} style={cs.card}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>{ps.person}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              {scores.map(({ n, result, amount }) => (
+                <button key={n} style={{ ...cs.stdChip, background: result === 'fail' ? '#fef2f2' : result === 'pending' ? '#fffbeb' : result === 'ok' ? '#f0fdf4' : '#f8fafc' }}
+                  onClick={() => openCell(from, ps.person, n)}>
+                  <span style={{ fontSize: 13 }}>{RESULT_ICON[result]}</span>
+                  <span style={{ fontSize: 11 }}>№{n}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+              <span style={{ color: '#64748b' }}>По новой схеме</span>
+              <span style={{ fontWeight: 700, color: '#02BDB6' }}>{fmtAmt(ps.total_earned)}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div style={{ padding: '16px 16px 32px' }}>
+      {/* Period selector */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        {(['day','week','month','custom'] as const).map(p => (
+          <button key={p} onClick={() => setPeriod(p)}
+            style={{ padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
+              background: period === p ? '#02BDB6' : '#f1f5f9', color: period === p ? '#fff' : '#1a202c' }}>
+            {{ day: 'День', week: 'Неделя', month: 'Месяц', custom: 'Свой' }[p]}
+          </button>
+        ))}
+        {(period === 'custom') && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={cs.dateInp} />
+            <span>—</span>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} style={cs.dateInp} />
+          </div>
+        )}
+        <button onClick={() => setShowHidden(h => !h)}
+          style={{ marginLeft: 'auto', padding: '6px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
+          {showHidden ? '👁 Скрыть' : '👁 Скрытые'}
+        </button>
+      </div>
+
+      {err && <div style={{ color: '#ef4444', marginBottom: 10, fontSize: 13 }}>{err}</div>}
+      {loading && <div style={{ color: '#94a3b8', padding: 20 }}>Загрузка…</div>}
+
+      {/* Table (desktop/tablet) / cards (mobile) */}
+      <div className="control-desktop">{tableView}</div>
+      <div className="control-mobile">{mobileView}</div>
+
+      {/* Violations modal */}
+      {cellModal && (
+        <div style={cs.overlay} onClick={() => setCellModal(null)}>
+          <div style={cs.modal} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Нарушения №{cellModal.stdNum} — {cellModal.person} — {isoToLocalDate(cellModal.date)}</h3>
+              <button style={cs.closeBtn} onClick={() => setCellModal(null)}>✕</button>
+            </div>
+            {vioLoading && <div style={{ color: '#94a3b8' }}>Загрузка…</div>}
+            {!vioLoading && !vioList.length && <div style={{ color: '#94a3b8', padding: 10 }}>Нарушений нет</div>}
+            {vioList.map(v => (
+              <div key={v.id} style={{ background: v.status === 'waived' ? '#f8fafc' : '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{v.entity_label}</span>
+                  <span style={{ fontSize: 12, color: { open: '#f59e0b', fixed: '#16a34a', waived: '#94a3b8', failed: '#ef4444' }[v.status] ?? '#64748b' }}>
+                    {{ open: '🟡 Открыто', fixed: '✅ Исправлено', waived: '⚪ Снято', failed: '❌ Просрочено' }[v.status] ?? v.status}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>{v.details}</div>
+                <div style={{ fontSize: 12, color: '#02BDB6', marginBottom: 6 }}>Как исправить: {v.how_to_fix}</div>
+                {v.fix_deadline && <div style={{ fontSize: 11, color: '#94a3b8' }}>Срок: {isoToLocalDate(v.fix_deadline)}</div>}
+                {v.status === 'open' && waiveId !== v.id && (
+                  <button style={{ marginTop: 8, fontSize: 12, padding: '4px 10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer' }}
+                    onClick={() => { setWaiveId(v.id); setWaiveReason(''); }}>
+                    Не по вине менеджера
+                  </button>
+                )}
+                {waiveId === v.id && (
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                    <input value={waiveReason} onChange={e => setWaiveReason(e.target.value)}
+                      placeholder="Причина снятия…" style={{ ...cs.dateInp, flex: 1 }} />
+                    <button style={cs.saveBtn} onClick={() => doWaive(v.id)}>Снять</button>
+                    <button style={{ padding: '4px 8px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setWaiveId(null)}>✕</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quality review modal (Standard #2) */}
+      {qrModal && (
+        <div style={cs.overlay} onClick={() => setQrModal(null)}>
+          <div style={{ ...cs.modal, maxWidth: 540 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Качество диалогов №2 — {qrModal.person} — {isoToLocalDate(qrModal.date)}</h3>
+              <button style={cs.closeBtn} onClick={() => setQrModal(null)}>✕</button>
+            </div>
+            {qrLoading && <div style={{ color: '#94a3b8' }}>Загрузка…</div>}
+            {!qrLoading && !qrList.length && <div style={{ color: '#94a3b8', padding: 10 }}>Нет диалогов для проверки</div>}
+            {qrList.map(qr => (
+              <div key={qr.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{qr.client_key}</span>
+                  <span style={{ fontSize: 11, background: qr.pick_reason === 'flagged' ? '#fef2f2' : '#f0fdf4', color: qr.pick_reason === 'flagged' ? '#ef4444' : '#16a34a', padding: '2px 8px', borderRadius: 6 }}>
+                    {qr.pick_reason === 'flagged' ? '🚩 С флагом' : '🎲 Случайный'}
+                  </span>
+                </div>
+                {/* Flags */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, fontSize: 11 }}>
+                  {qr.flag_no_facts && <span style={{ background: '#fef9c3', padding: '1px 6px', borderRadius: 4 }}>нет фактов</span>}
+                  {qr.flag_no_outcome && <span style={{ background: '#fef9c3', padding: '1px 6px', borderRadius: 4 }}>нет итога</span>}
+                  {qr.flag_abandoned && <span style={{ background: '#fef9c3', padding: '1px 6px', borderRadius: 4 }}>брошен</span>}
+                </div>
+                {qr.reviewed_at ? (
+                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                    Проверено {qr.reviewed_by} · {isoToLocalDate(qr.reviewed_at)}:&nbsp;
+                    {[qr.c1_needs?'✓':'✗','потреб.',qr.c2_presented?'✓':'✗','презент.',qr.c3_objections?'✓':'✗','возраж.',qr.c4_outcome?'✓':'✗','итог'].join(' ')}
+                    {qr.comment && <span> · {qr.comment}</span>}
+                  </div>
+                ) : (
+                  qrEdit === qr.id ? (
+                    <div>
+                      {[['c1','Выяснила потребность'],['c2','Презентовала'],['c3','Отработала возражения'],['c4','Есть итог']].map(([k, lbl]) => (
+                        <label key={k} style={{ display: 'flex', gap: 8, fontSize: 13, marginBottom: 6, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={(qrForm as Record<string,unknown>)[k] as boolean}
+                            onChange={e => setQrForm(f => ({ ...f, [k]: e.target.checked }))} />
+                          {lbl}
+                        </label>
+                      ))}
+                      <input value={qrForm.comment} onChange={e => setQrForm(f => ({ ...f, comment: e.target.value }))}
+                        placeholder="Комментарий…" style={{ ...cs.dateInp, width: '100%', marginBottom: 8 }} />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button style={cs.saveBtn} onClick={() => saveQR(qr.id)}>Сохранить</button>
+                        <button style={{ padding: '6px 12px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 13 }} onClick={() => setQrEdit(null)}>Отмена</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button style={{ fontSize: 12, padding: '4px 10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, cursor: 'pointer' }}
+                      onClick={() => { setQrEdit(qr.id); setQrForm({ c1: false, c2: false, c3: false, c4: false, comment: '' }); }}>
+                      Проверить диалог
+                    </button>
+                  )
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .control-desktop { display: block; }
+        .control-mobile  { display: none; }
+        @media (max-width: 640px) {
+          .control-desktop { display: none; }
+          .control-mobile  { display: block; }
+        }
+        @media (max-width: 1024px) {
+          .control-desktop table th:nth-child(n+2),
+          .control-desktop table td:nth-child(n+2) { min-width: 70px; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+const cs = {
+  table:   { width: '100%', borderCollapse: 'collapse' as const, fontSize: 13 },
+  th:      { padding: '8px 10px', background: '#f8fafc', borderBottom: '2px solid #e2e8f0', fontWeight: 700, fontSize: 12, textAlign: 'center' as const, whiteSpace: 'nowrap' as const },
+  stdTh:   { width: 80, cursor: 'help' },
+  td:      { padding: '8px 10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' as const },
+  cell:    { padding: '6px 8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' as const, minWidth: 70 },
+  tr:      { background: '#fff' },
+  card:    { background: '#fff', borderRadius: 12, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' },
+  stdChip: { padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 2, minWidth: 46 },
+  overlay: { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 200, overflowY: 'auto' as const, padding: '20px 10px' },
+  modal:   { background: '#fff', borderRadius: 16, padding: 20, width: 'min(500px,96vw)', maxHeight: '85vh', overflow: 'auto' as const },
+  closeBtn: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#64748b', padding: '0 4px' },
+  saveBtn: { padding: '6px 14px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' },
+  dateInp: { padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
 };

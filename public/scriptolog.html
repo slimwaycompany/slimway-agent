@@ -242,6 +242,10 @@ input:focus{border-color:var(--brand)}
       <span id="cc-mgr-val" style="font-weight:600;color:#475569">—</span>
       <button class="icon-btn" id="mgr-edit-btn" title="Изменить менеджера">✏️</button>
     </div>
+    <div style="margin-top:5px">
+      <button class="small-btn" onclick="copyCommentTemplate()" style="font-size:11px;width:100%;justify-content:center">📝 Комментарий для карточки</button>
+    </div>
+    <div id="cc-toast" style="display:none;font-size:11px;color:#16a34a;margin-top:3px;text-align:center;font-weight:600">Скопировано</div>
   </div>
 
   <div id="main-area">
@@ -990,6 +994,26 @@ function insertRaw(text) {
 function copyRaw(text) {
   const decoded = text.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"');
   navigator.clipboard?.writeText(decoded).catch(() => {});
+}
+
+function copyCommentTemplate() {
+  const v = S.vars || {};
+  const stage = (S.tree?.stages || []).find(s => s.id === S.activeStage);
+  const stageName = stage?.title || 'этап ' + (S.activeStage || '?');
+  const name    = v['Имя'] || v['name'] || '—';
+  const goal    = v['Цель'] || v['goal'] || '—';
+  const date    = v['Дата'] || v['date'] || '—';
+  const time    = v['Время'] || v['time'] || '—';
+  const lines = [
+    'Сделано: ' + stageName,
+    'Результат: ' + name + (goal !== '—' ? ', ' + goal : ''),
+    'Дальше: ' + (date !== '—' ? date + (time !== '—' ? ' в ' + time : '') : '—'),
+    'Когда: ' + (date !== '—' ? date : '—'),
+  ];
+  const text = lines.join('\n');
+  navigator.clipboard?.writeText(text).catch(() => {});
+  const toast = document.getElementById('cc-toast');
+  if (toast) { toast.style.display = 'block'; setTimeout(() => { toast.style.display = 'none'; }, 2000); }
 }
 
 // ── Reference drawer ───────────────────────────

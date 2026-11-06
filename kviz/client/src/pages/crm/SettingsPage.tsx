@@ -14,7 +14,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog';
+type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -2345,6 +2345,218 @@ function ScriptologSection() {
   );
 }
 
+// ── Control Settings ───────────────────────────────────────────────────────────
+
+interface ControlCfg {
+  enabled: boolean; alerts_to_agent: boolean; show_to_managers: boolean;
+  fix_rate: number; standard_price: number;
+  open_time: string; close_time_weekday: string; close_time_weekend: string; fix_deadline_time: string;
+  s1_enabled: boolean; s1_contact_minutes: number; s1_grace_count: number; s1_grace_max_minutes: number;
+  s2_enabled: boolean; s2_random_per_shift: number; s2_unreviewed_counts: boolean;
+  s3_enabled: boolean; s3_task_max_days: number; s3_booked_stage_ids: string[]; s3_checks: string[];
+  s4_enabled: boolean; s4_sessions_left: number; s4_ended_contact_days: number; s4_no_visit_days: number; s4_retry_days: number; s4_checks: string[];
+  s5_enabled: boolean; s5_mark_minutes: number; s5_checks: string[];
+}
+
+const S3_CHECKS = ['s3_no_source','s3_no_manager','s3_wrong_stage','s3_no_task','s3_no_lost_reason','s3_bad_comment','s3_client_card'];
+const S3_LABELS: Record<string,string> = {
+  s3_no_source: 'Нет источника', s3_no_manager: 'Нет менеджера', s3_wrong_stage: 'Неверный этап (записан)',
+  s3_no_task: 'Нет задачи', s3_no_lost_reason: 'Нет причины отказа', s3_bad_comment: 'Комментарий не по шаблону',
+  s3_client_card: 'Не заполнена карточка клиента',
+};
+const S4_CHECKS = ['s4_ending','s4_ended','s4_no_visits','s4_task_overdue'];
+const S4_LABELS: Record<string,string> = {
+  s4_ending: 'Заканчивается абонемент', s4_ended: 'Истёк абонемент',
+  s4_no_visits: 'Нет визитов N дней', s4_task_overdue: 'Просроченные задачи',
+};
+const S5_CHECKS = ['s5_unmarked','s5_no_abonement','s5_expired_abonement'];
+const S5_LABELS: Record<string,string> = {
+  s5_unmarked: 'Не отмечены вовремя', s5_no_abonement: 'Без абонемента',
+  s5_expired_abonement: 'По истёкшему абонементу',
+};
+
+function CheckList({ checks, labels, value, onChange }: {
+  checks: string[]; labels: Record<string,string>; value: string[]; onChange: (v: string[]) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {checks.map(c => (
+        <label key={c} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={value.includes(c)} onChange={e => {
+            onChange(e.target.checked ? [...value, c] : value.filter(x => x !== c));
+          }} />
+          {labels[c] ?? c}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, cursor: 'pointer', marginBottom: 10 }}>
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} style={{ width: 16, height: 16 }} />
+      {label}
+    </label>
+  );
+}
+
+function NumField({ label, value, onChange, min, max }: { label: string; value: number; onChange: (v: number) => void; min?: number; max?: number }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>{label}</label>
+      <input type="number" value={value} min={min} max={max}
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+    </div>
+  );
+}
+
+function TimeField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>{label}</label>
+      <input type="time" value={value} onChange={e => onChange(e.target.value)}
+        style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+    </div>
+  );
+}
+
+function ControlSettingsSection() {
+  const [cfg, setCfg] = useState<ControlCfg | null>(null);
+  const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/kviz/api/control/settings', { credentials: 'include' }).then(r => r.json()),
+      fetch('/kviz/api/control/funnel-stages', { credentials: 'include' }).then(r => r.json()),
+    ]).then(([c, s]) => {
+      setCfg(c as ControlCfg);
+      setStages(Array.isArray(s) ? s : []);
+    });
+  }, []);
+
+  async function save() {
+    if (!cfg) return;
+    setSaving(true); setErr(''); setOk(false);
+    const { ok: success, data } = await api('PUT', '/kviz/api/control/settings', cfg);
+    setSaving(false);
+    if (!success) { setErr(data.error || 'Ошибка'); } else setOk(true);
+  }
+
+  if (!cfg) return <div style={S.section}><div style={{ color: '#94a3b8', padding: 24 }}>Загрузка…</div></div>;
+
+  function patch(p: Partial<ControlCfg>) { setCfg(prev => prev ? { ...prev, ...p } : prev); setOk(false); }
+
+  const grpStyle: React.CSSProperties = { background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: '14px 16px', marginBottom: 16 };
+  const grpTitle: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 12 };
+  const twoCol: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' };
+
+  return (
+    <div style={{ ...S.section, maxWidth: 640 }}>
+      {err && <div style={S.errBox}>{err}</div>}
+      {ok  && <div style={{ ...S.errBox, background: '#f0fdf4', color: '#16a34a' }}>Сохранено</div>}
+
+      {/* General */}
+      <div style={grpStyle}>
+        <div style={grpTitle}>Общие</div>
+        <ToggleRow label="Включено" checked={cfg.enabled} onChange={v => patch({ enabled: v })} />
+        <ToggleRow label="Тревоги в овчарку (сейчас выкл)" checked={cfg.alerts_to_agent} onChange={v => patch({ alerts_to_agent: v })} />
+        <ToggleRow label="Показывать результаты менеджерам (сейчас выкл)" checked={cfg.show_to_managers} onChange={v => patch({ show_to_managers: v })} />
+        <div style={twoCol}>
+          <NumField label="Фикс за смену ₸" value={cfg.fix_rate} onChange={v => patch({ fix_rate: v })} min={0} max={1000000} />
+          <NumField label="Цена стандарта ₸" value={cfg.standard_price} onChange={v => patch({ standard_price: v })} min={0} max={100000} />
+        </div>
+        <div style={twoCol}>
+          <TimeField label="Открытие" value={cfg.open_time} onChange={v => patch({ open_time: v })} />
+          <TimeField label="Срок исправления" value={cfg.fix_deadline_time} onChange={v => patch({ fix_deadline_time: v })} />
+        </div>
+        <div style={twoCol}>
+          <TimeField label="Закрытие пн–пт" value={cfg.close_time_weekday} onChange={v => patch({ close_time_weekday: v })} />
+          <TimeField label="Закрытие сб–вс" value={cfg.close_time_weekend} onChange={v => patch({ close_time_weekend: v })} />
+        </div>
+      </div>
+
+      {/* S1 */}
+      <div style={grpStyle}>
+        <div style={grpTitle}>№1 Скорость первого контакта</div>
+        <ToggleRow label="Включён" checked={cfg.s1_enabled} onChange={v => patch({ s1_enabled: v })} />
+        <div style={twoCol}>
+          <NumField label="Минут на первый контакт" value={cfg.s1_contact_minutes} onChange={v => patch({ s1_contact_minutes: v })} min={1} max={240} />
+          <NumField label="Опозданий прощается за смену" value={cfg.s1_grace_count} onChange={v => patch({ s1_grace_count: v })} min={0} max={10} />
+        </div>
+        <NumField label="Макс. мин. прощаемого опоздания" value={cfg.s1_grace_max_minutes} onChange={v => patch({ s1_grace_max_minutes: v })} min={1} max={240} />
+      </div>
+
+      {/* S2 */}
+      <div style={grpStyle}>
+        <div style={grpTitle}>№2 Качество диалога</div>
+        <ToggleRow label="Включён" checked={cfg.s2_enabled} onChange={v => patch({ s2_enabled: v })} />
+        <NumField label="Случайных диалогов за смену" value={cfg.s2_random_per_shift} onChange={v => patch({ s2_random_per_shift: v })} min={0} max={20} />
+        <ToggleRow label="Не проверено = выполнено" checked={cfg.s2_unreviewed_counts} onChange={v => patch({ s2_unreviewed_counts: v })} />
+      </div>
+
+      {/* S3 */}
+      <div style={grpStyle}>
+        <div style={grpTitle}>№3 Карточка заявки</div>
+        <ToggleRow label="Включён" checked={cfg.s3_enabled} onChange={v => patch({ s3_enabled: v })} />
+        <NumField label="Макс. дней до срока задачи" value={cfg.s3_task_max_days} onChange={v => patch({ s3_task_max_days: v })} min={1} max={30} />
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Этапы «Записан» (мультивыбор)</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {stages.map(st => (
+              <label key={st.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox"
+                  checked={cfg.s3_booked_stage_ids.includes(st.id)}
+                  onChange={e => patch({ s3_booked_stage_ids: e.target.checked ? [...cfg.s3_booked_stage_ids, st.id] : cfg.s3_booked_stage_ids.filter(x => x !== st.id) })}
+                />
+                {st.name}
+              </label>
+            ))}
+            {!stages.length && <span style={{ fontSize: 12, color: '#94a3b8' }}>Этапы не загружены</span>}
+          </div>
+        </div>
+        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Проверки</div>
+        <CheckList checks={S3_CHECKS} labels={S3_LABELS} value={cfg.s3_checks} onChange={v => patch({ s3_checks: v })} />
+      </div>
+
+      {/* S4 */}
+      <div style={grpStyle}>
+        <div style={grpTitle}>№4 База клиентов</div>
+        <ToggleRow label="Включён" checked={cfg.s4_enabled} onChange={v => patch({ s4_enabled: v })} />
+        <div style={twoCol}>
+          <NumField label="Визитов осталось (порог)" value={cfg.s4_sessions_left} onChange={v => patch({ s4_sessions_left: v })} min={1} max={20} />
+          <NumField label="Дней без контакта (истёк)" value={cfg.s4_ended_contact_days} onChange={v => patch({ s4_ended_contact_days: v })} min={1} max={30} />
+        </div>
+        <div style={twoCol}>
+          <NumField label="Дней без визитов" value={cfg.s4_no_visit_days} onChange={v => patch({ s4_no_visit_days: v })} min={1} max={60} />
+          <NumField label="Дней до повторной проверки" value={cfg.s4_retry_days} onChange={v => patch({ s4_retry_days: v })} min={1} max={30} />
+        </div>
+        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Проверки</div>
+        <CheckList checks={S4_CHECKS} labels={S4_LABELS} value={cfg.s4_checks} onChange={v => patch({ s4_checks: v })} />
+      </div>
+
+      {/* S5 */}
+      <div style={grpStyle}>
+        <div style={grpTitle}>№5 Посещения</div>
+        <ToggleRow label="Включён" checked={cfg.s5_enabled} onChange={v => patch({ s5_enabled: v })} />
+        <NumField label="Минут на отметку после начала сеанса" value={cfg.s5_mark_minutes} onChange={v => patch({ s5_mark_minutes: v })} min={5} max={240} />
+        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Проверки</div>
+        <CheckList checks={S5_CHECKS} labels={S5_LABELS} value={cfg.s5_checks} onChange={v => patch({ s5_checks: v })} />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button style={S.saveBtn} onClick={save} disabled={saving}>
+          {saving ? 'Сохранение…' : 'Сохранить'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
 const NAV: { id: Section; label: string; icon: string }[] = [
@@ -2365,6 +2577,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: 'lost-reasons', label: 'Причины отказа',       icon: '❌' },
   { id: 'fb-users',     label: 'Сопоставление FB',     icon: '👤' },
   { id: 'scriptolog',   label: 'Скриптолог',           icon: '📝' },
+  { id: 'control',      label: 'Контроль менеджеров',  icon: '📊' },
 ];
 
 export default function SettingsPage() {
@@ -2419,6 +2632,7 @@ export default function SettingsPage() {
         {section === 'lost-reasons' && <LostReasonsSection />}
         {section === 'fb-users'   && <FbUsersSection />}
         {section === 'scriptolog' && <ScriptologSection />}
+        {section === 'control'    && <ControlSettingsSection />}
       </div>
     </div>
   );
