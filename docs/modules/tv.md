@@ -44,7 +44,17 @@
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
-### 11.11.2026 · (текущий) · task 43 — 3-блочный цикл, до/после, акция, SSE, настройки
+### 11.11.2026 · 3817365 · task 43 дополнение — fixed-screen, логотип/миссия, Заменить/Удалить акцию, перенос выгрузки и миссии
+
+- `ResultsPage.tsx` переписан: `position: fixed; inset: 0; overflow: hidden` на `.results-screen`; body/html получают класс `tv-page` через useEffect; `.tv-block` = `grid-template-rows: auto 1fr auto` (`.tv-top` лого / `.tv-mid` контент / `.tv-bot` миссия+дата). Лого сверху по центру на всех блоках. Миссия снизу по центру на всех блоках. Дата+время `ДД.ММ.ГГГГ ЧЧ:ММ` (Asia/Almaty) — только на главном блоке, снизу справа, обновляется каждые 10 с. `Math.round` вместо `toFixed(1)`. Убран счётчик «Клиенток с результатом» и 4-й элемент массива `values`.
+- `index.css`: удалены `min-height`, `overflow-y: auto`, `.results-header/.results-logo/.results-mission/.results-footer`; добавлены `.tv-page`, `.tv-top/.tv-mid/.tv-bot`, `.tv-logo/.tv-mission/.tv-datetime`; все размеры через `clamp()`/`vh`/`vw`.
+- `src/http/tv.ts`: добавлен `DELETE /kviz/api/tv/promo` — удаляет файл из бакета, пишет `null` в `tv_settings.promo_image_path`, вызывает `tvNotify()`.
+- `SettingsPage.tsx` TvSection: кнопки «Заменить» (file input) + «Удалить» (inline-confirm) рядом с миниатюрой акции; добавлены `deletePromo` функция и `confirmDelPromo` state; в конце секции — `<BulkResultsSection />` + `<MissionSection />`.
+- `SettingsPage.tsx` ServiceSection: удалены вкладки `'bulk'` и `'mission'`.
+- `ReportsPage.tsx`: удалены мёртвые функции `MissionSection` и `BulkResultsSection` (нигде не вызывались).
+- `AdminPage.tsx`: удалены вкладка «Результаты студии», state `mission/resultsUrl/missionSaved`, callback `loadMission`, функция `saveMission`.
+
+### 11.11.2026 · 4f24b48 · task 43 — 3-блочный цикл, до/после, акция, SSE, настройки
 
 - Новый `src/http/tv.ts`: `tvNotify()` (SSE push), `GET /api/tv/data`, `GET /api/tv/stream`, `GET /api/tv/media` (публичные, ключ), `GET/PUT /kviz/api/tv/settings`, `POST /kviz/api/tv/settings/promo-upload`, полный CRUD `tv_results`, `before-upload`/`after-upload` с валидацией magic bytes, `GET /kviz/api/tv/media` (сессия).
 - `src/index.ts`: лимит 12mb для `/kviz/api/tv`; импорт `buildTvRouter`.
@@ -71,3 +81,4 @@
 ## Следующее
 - Добавить SSE heartbeat (25с комментарий) чтобы Render не закрывал idle-соединения.
 - Автопролистывание страниц в ResultsBlock если карточек больше results_show_count (сейчас показываются только первые).
+- Проверить scrollHeight === clientHeight на 1920×1080, 1366×768, 1280×720, 1024×768, 3840×2160 после деплоя.
