@@ -13,7 +13,7 @@
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 04.11.2026 | task 35: QuizPage tabs на мобиле (Вопрос/Ответы/Резюме) |
 | Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 04.11.2026 | task 35: camera fix, barcode-detector, ClientPage mobile (numbered points, zone list, mini-nav) |
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 04.11.2026 | task 35: аккордеон групп на мобиле (openGroups, localStorage) |
-| ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 11.11.2026 | task 44: UUID-имена файлов (нет кэш-коллизий), immutable-кэш публичного прокси, ошибки загрузки под блоком акции и карточки |
+| ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 11.11.2026 | task 45: иконки через Vite-import (хеш в имени), clamp-размеры карточек счётчиков, white-space:nowrap |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 06.11.2026 | Задача 41: EasyChat-клиент, автопрофиль, умные напоминания из Fitbase, парсер ответов, материалы, анкета |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |

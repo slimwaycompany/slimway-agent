@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import smIcon from '../assets/tv/sm.png';
+import kgIcon from '../assets/tv/kg.png';
+import fatIcon from '../assets/tv/fat.png';
+import logoImg from '../assets/tv/logo.png';
 
 interface TvSettings {
   main_enabled: boolean; main_seconds: number;
@@ -12,8 +16,6 @@ interface TvResult { id: string; title: string; before_path: string; after_path:
 interface TvData { settings: TvSettings; summary: TvSummary; results: TvResult[] }
 
 type BlockType = 'main' | 'results' | 'promo';
-
-const BASE = import.meta.env.BASE_URL;
 
 function getBlocks(d: TvData): BlockType[] {
   const b: BlockType[] = [];
@@ -48,7 +50,7 @@ function TvBlockLayout({ mission, datetime, children }: {
   return (
     <>
       <div className="tv-top">
-        <img src={`${BASE}tv/logo.png`} alt="SlimWay" className="tv-logo"
+        <img src={logoImg} alt="SlimWay" className="tv-logo"
           onError={e => { e.currentTarget.style.display = 'none'; }} />
       </div>
       <div className="tv-mid">{children}</div>
@@ -72,19 +74,19 @@ function MainBlock({ data, values, datetime }: { data: TvData; values: number[];
     <TvBlockLayout mission={s.mission} datetime={datetime}>
       <section className="results-counters">
         <article className="results-counter">
-          <img className="tv-icon-img" src={`${BASE}tv/sm.jpg`} alt=""
+          <img className="tv-icon-img" src={smIcon} alt=""
             onError={e => { e.currentTarget.style.display = 'none'; }} />
           <strong>{Math.round(values[0])}</strong>
           <span>{labels[0]}</span><small>см</small>
         </article>
         <article className="results-counter">
-          <img className="tv-icon-img" src={`${BASE}tv/kg.png`} alt=""
+          <img className="tv-icon-img" src={kgIcon} alt=""
             onError={e => { e.currentTarget.style.display = 'none'; }} />
           <strong>{Math.round(values[1])}</strong>
           <span>{labels[1]}</span><small>кг</small>
         </article>
         <article className="results-counter">
-          <img className="tv-icon-img" src={`${BASE}tv/fat.png`} alt=""
+          <img className="tv-icon-img" src={fatIcon} alt=""
             onError={e => { e.currentTarget.style.display = 'none'; }} />
           <strong>{Math.round(values[2])}</strong>
           <span>{labels[2]}</span><small>кг</small>

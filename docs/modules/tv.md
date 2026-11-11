@@ -44,6 +44,13 @@
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 11.11.2026 · (текущий) · task 45 — иконки через Vite-import, вёрстка карточек
+
+- `kviz/client/src/assets/tv/`: добавлены sm.png, kg.png, fat.png, logo.png (копия из `img/`).
+- `ResultsPage.tsx`: импорт четырёх иконок вместо `${BASE}tv/...`; `const BASE` удалён — теперь Vite добавляет хеш в имена файлов при сборке (например `sm-CjauMTJY.png`), кэш браузера инвалидируется автоматически при изменении файла.
+- `kviz/client/public/tv/` удалена полностью.
+- `index.css`: `.tv-mid` padding → `clamp(24px,4vw,96px)`; `.results-counters` gap → `clamp(16px,2vw,40px)`; `.tv-icon-img` высота → `clamp(48px,9vh,120px)`, ширина → `auto`; добавлен `white-space: nowrap` на `strong`, `span`, `small` внутри `.results-counter`.
+
 ### 11.11.2026 · 2ad02b3 · task 44 — UUID-имена файлов, immutable-кэш, ошибки загрузки под блоком
 
 - `src/http/tv.ts`: `promo-upload` теперь генерирует имя `promo/<uuid>.ext` (без `upsert`); читает старый `promo_image_path` до загрузки, удаляет после успешного update (async, ошибку только в `console.error`); вызывает `tvNotify()`. Аналогично `uploadResultImg`: `results/<uuid>.ext`, старый `${side}_path` удаляется после update, `tvNotify()`. `proxyMedia` принимает параметр `cacheImmutable`: публичный прокси `/api/tv/media` → `Cache-Control: public, max-age=31536000, immutable`; админский `/kviz/api/tv/media` → `no-cache`. Ошибки Storage/Postgres только в `console.error`, пользователю — русский текст.
