@@ -44,6 +44,11 @@
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 11.11.2026 · 2ad02b3 · task 44 — UUID-имена файлов, immutable-кэш, ошибки загрузки под блоком
+
+- `src/http/tv.ts`: `promo-upload` теперь генерирует имя `promo/<uuid>.ext` (без `upsert`); читает старый `promo_image_path` до загрузки, удаляет после успешного update (async, ошибку только в `console.error`); вызывает `tvNotify()`. Аналогично `uploadResultImg`: `results/<uuid>.ext`, старый `${side}_path` удаляется после update, `tvNotify()`. `proxyMedia` принимает параметр `cacheImmutable`: публичный прокси `/api/tv/media` → `Cache-Control: public, max-age=31536000, immutable`; админский `/kviz/api/tv/media` → `no-cache`. Ошибки Storage/Postgres только в `console.error`, пользователю — русский текст.
+- `SettingsPage.tsx`: добавлены state `promoErr` и `resultErr: Record<string, string>`; ошибки загрузки акции отображаются под блоком «Акция» (не в верхнем баннере `err`); ошибки загрузки фото результата — под соответствующей карточкой.
+
 ### 11.11.2026 · 3817365 · task 43 дополнение — fixed-screen, логотип/миссия, Заменить/Удалить акцию, перенос выгрузки и миссии
 
 - `ResultsPage.tsx` переписан: `position: fixed; inset: 0; overflow: hidden` на `.results-screen`; body/html получают класс `tv-page` через useEffect; `.tv-block` = `grid-template-rows: auto 1fr auto` (`.tv-top` лого / `.tv-mid` контент / `.tv-bot` миссия+дата). Лого сверху по центру на всех блоках. Миссия снизу по центру на всех блоках. Дата+время `ДД.ММ.ГГГГ ЧЧ:ММ` (Asia/Almaty) — только на главном блоке, снизу справа, обновляется каждые 10 с. `Math.round` вместо `toFixed(1)`. Убран счётчик «Клиенток с результатом» и 4-й элемент массива `values`.

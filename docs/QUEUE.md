@@ -72,7 +72,7 @@
 | 41 | scriptolog | EasyChat-интеграция, автопрофиль клиентки, умные напоминания, парсер ответов, материалы | `docs/tasks/41-scriptolog-auto-profile.md` | ✅ готово (см. журнал; ожидает cron + env на Render) |
 | 42 | zamery, reports, tv | Документация: разделение модулей zamery/reports/tv, чаты «Замеры», «Отчёты», «ТВ» | `docs/tasks/42-docs-split-zamery-reports-tv.md` | ✅ готово (5263fd5) |
 | 43 | tv | ТВ-экран: 3-блочный цикл, до/после, акция, SSE, настройки + дополнение (экран fixed, лого/миссия, замена/удаление акции, перенос выгрузки/миссии) | `docs/tasks/43-tv-screen.md` | ✅ готово (4f24b48, 3817365) |
-| 44 | tv | ТВ: уникальные имена файлов акции и результатов, кэш immutable для публичного прокси, ошибки загрузки под блоком | `docs/tasks/44-tv-cache-unique-files.md` | 🔧 в работе (Claude, 11.11.2026) |
+| 44 | tv | ТВ: уникальные имена файлов акции и результатов, кэш immutable для публичного прокси, ошибки загрузки под блоком | `docs/tasks/44-tv-cache-unique-files.md` | ✅ готово (2ad02b3; проверка на проде — на стороне Сергея) |
 | 40 | control | Контроль менеджеров «5п»: зонд API, настройки, движок 5 стандартов, отчёт, шаблон комментария | `docs/tasks/40-control-5p.md` | 🟡 частично (3555ee7; ошибки схемы — задача 40-1) |
 | 40-1 | control | Контроль 5п: фикс колонок, getOnShift, recheckViolations, история, UI | `docs/tasks/40-1-control-fix.md` | 🟡 частично (нужен SQL: добавить no_data в CHECK; нужна проверка на проде после деплоя) |
 | 40-2 | control | Контроль: Google Таблица (расписание+отметки), новые правила S3 (bad_name/no_booking/no_next_step/client_fields), фикс S4 (контакт-чек), S5 (прошедшие даты), клики нарушений | `docs/tasks/40-2-control-rules.md` | 🟡 частично (ч.1–5 + доп ч.6: fitbase_visits.id фикс, 53 error checks, schema, staff_name_map, bottom sheet — готовы; ждём деплоя для прогона range и проверки 5 примеров) |
@@ -95,6 +95,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 11.11.2026 | Claude | 44 tv: UUID-имена (promo/<uuid>.ext, results/<uuid>.ext), без upsert, старый файл удаляется после update; tvNotify() после promo-upload и result-upload; proxyMedia: immutable-кэш для /api/tv/media, no-cache для /kviz/api/tv/media; SettingsPage: promoErr под блоком акции, resultErr[id] под карточкой | 2ad02b3 | — |
 | 11.11.2026 | Claude | 43 дополнение: ResultsPage fixed-screen (position:fixed inset:0, grid logo/mid/mission), логотип топ-центр, миссия низ-центр, дата+время Almaty (только main), Math.round без десятых, убран счётчик клиенток; DELETE /kviz/api/tv/promo; SettingsPage: Заменить/Удалить фото акции + перенесены BulkResultsSection+MissionSection в ТВ-экран; ServiceSection без bulk/mission; AdminPage без вкладки «Результаты студии»; ReportsPage без дублей функций | 3817365 | — |
 | 11.11.2026 | Claude | 43 tv: tv.ts (SSE tvNotify, /api/tv/data/stream/media, CRUD tv_settings/tv_results, mediam-прокси, magic-bytes), ResultsPage 3-блока (main/results/promo + fade-анимация), TvSection в SettingsPage, tvNotify() в measure.ts, иконки /tv/, CSS .tv-block/tv-cards/tv-card/tv-promo | 4f24b48 | — |
 | 11.11.2026 | Claude | 42 docs: выделен модуль ТВ из zamery/reports; обновлены tv.md (новый), zamery.md, reports.md, STATE.md, QUEUE.md. Только документация, код не менялся. | 5263fd5 | — |
