@@ -4,13 +4,11 @@ import { supabase } from '../db/supabase';
 import { getSession } from './auth';
 
 const BUCKET = 'tv-media';
-
-// Active SSE connections for real-time push
 const sseClients = new Set<Response>();
 
 export function tvNotify(): void {
   if (!sseClients.size) return;
-  const msg = 'event: update\ndata: {}\n\n';
+  const msg = 'event: changed\ndata: {}\n\n';
   for (const c of sseClients) {
     try { c.write(msg); } catch { sseClients.delete(c); }
   }
@@ -32,7 +30,7 @@ function validImg(buf: Buffer): boolean {
          (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47);
 }
 
-// cacheImmutable=true for public (unique filenames never reuse a URL)
+// cacheImmutable=true for public (UUID filenames never reuse a URL)
 // cacheImmutable=false for admin preview (must always show latest)
 async function proxyMedia(storagePath: string, res: Response, cacheImmutable = false): Promise<void> {
   if (!storagePath || !/^[a-zA-Z0-9/_.-]+$/.test(storagePath)) { res.status(400).end(); return; }
@@ -46,6 +44,15 @@ async function proxyMedia(storagePath: string, res: Response, cacheImmutable = f
   } catch { res.status(500).end(); }
 }
 
+// Fetch tv_results rows for a list of UUIDs, returns a Map<id, row>
+async function fetchResultsByIds(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
+  if (!ids.length) return new Map();
+  const { data } = await supabase.from('tv_results').select('id,title,before_path,after_path').in('id', ids);
+  const map = new Map<string, Record<string, unknown>>();
+  for (const r of (data ?? [])) map.set(r.id as string, r as Record<string, unknown>);
+  return map;
+}
+
 export function buildTvRouter(): Router {
   const r = Router();
 
@@ -54,22 +61,38 @@ export function buildTvRouter(): Router {
   r.get('/api/tv/data', async (req, res) => {
     if (!checkKey(req)) { res.status(404).end(); return; }
     try {
-      const [{ data: settings }, { data: counters }, { data: results }, { data: mission }] = await Promise.all([
-        supabase.from('tv_settings').select('*').eq('id', 1).maybeSingle(),
+      const [settingsRes, countersRes, slidesRes, missionRes] = await Promise.all([
+        supabase.from('tv_settings').select('main_label_cm,main_label_kg,main_label_fat').eq('id', 1).maybeSingle(),
         supabase.from('studio_results').select('cm_lost,kg_lost,fat_kg_lost'),
-        supabase.from('tv_results').select('*').order('position'),
+        supabase.from('tv_slides').select('*').order('position'),
         supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle(),
       ]);
-      const totals = (counters || []).reduce((a: Record<string, number>, row) => ({
-        cm_lost: a.cm_lost + Number(row.cm_lost || 0),
-        kg_lost: a.kg_lost + Number(row.kg_lost || 0),
+      const totals = ((countersRes.data ?? []) as Record<string, unknown>[]).reduce((a: Record<string, number>, row) => ({
+        cm_lost:     a.cm_lost     + Number(row.cm_lost     || 0),
+        kg_lost:     a.kg_lost     + Number(row.kg_lost     || 0),
         fat_kg_lost: a.fat_kg_lost + Number(row.fat_kg_lost || 0),
       }), { cm_lost: 0, kg_lost: 0, fat_kg_lost: 0 });
+
+      const slides = (slidesRes.data ?? []) as Record<string, unknown>[];
+      const resultIds = [...new Set(
+        slides.flatMap(s => [s.result_a, s.result_b].filter(Boolean) as string[])
+      )];
+      const resultsMap = await fetchResultsByIds(resultIds);
+
+      const enriched = slides.map(s => ({
+        ...s,
+        result_a: s.result_a ? (resultsMap.get(s.result_a as string) ?? null) : null,
+        result_b: s.result_b ? (resultsMap.get(s.result_b as string) ?? null) : null,
+      }));
+
       res.setHeader('Cache-Control', 'no-store');
       res.json({
-        settings: settings ?? {},
-        summary: { ...totals, clients: (counters || []).length, mission: String(mission?.value || '') },
-        results: results ?? [],
+        settings: settingsRes.data ?? {},
+        counters: totals,
+        mission: String(missionRes.data?.value || ''),
+        slides: enriched,
+        serverTime: new Date().toISOString(),
+        version: '2',
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -110,38 +133,11 @@ export function buildTvRouter(): Router {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
     const b = req.body as Record<string, unknown>;
     const upd: Record<string, unknown> = { id: 1, updated_at: new Date().toISOString() };
-    const toB = (v: unknown) => v === true || v === 'true' || v === 1;
-    const toS = (v: unknown, def: number) => Math.max(5, Math.min(300, Number(v) || def));
-    if ('main_enabled'      in b) upd.main_enabled      = toB(b.main_enabled);
-    if ('main_seconds'      in b) upd.main_seconds      = toS(b.main_seconds, 15);
-    if ('main_label_cm'     in b) upd.main_label_cm     = String(b.main_label_cm  || '').slice(0, 60);
-    if ('main_label_kg'     in b) upd.main_label_kg     = String(b.main_label_kg  || '').slice(0, 60);
-    if ('main_label_fat'    in b) upd.main_label_fat    = String(b.main_label_fat || '').slice(0, 60);
-    if ('results_enabled'   in b) upd.results_enabled   = toB(b.results_enabled);
-    if ('results_seconds'   in b) upd.results_seconds   = toS(b.results_seconds, 15);
-    if ('results_show_count' in b) upd.results_show_count = Math.max(1, Math.min(12, Number(b.results_show_count) || 3));
-    if ('promo_enabled'     in b) upd.promo_enabled     = toB(b.promo_enabled);
-    if ('promo_seconds'     in b) upd.promo_seconds     = toS(b.promo_seconds, 15);
+    if ('main_label_cm'  in b) upd.main_label_cm  = String(b.main_label_cm  || '').slice(0, 60);
+    if ('main_label_kg'  in b) upd.main_label_kg  = String(b.main_label_kg  || '').slice(0, 60);
+    if ('main_label_fat' in b) upd.main_label_fat = String(b.main_label_fat || '').slice(0, 60);
     const { data, error } = await supabase.from('tv_settings').upsert(upd, { onConflict: 'id' }).select('*').single();
     if (error) { res.status(500).json({ error: error.message }); return; }
-    res.json(data);
-  });
-
-  r.post('/kviz/api/tv/settings/promo-upload', async (req, res) => {
-    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
-    const b = req.body as Record<string, unknown>;
-    if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'content_base64 обязателен' }); return; }
-    const buf = Buffer.from(b.content_base64, 'base64');
-    if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
-    const ext = buf[0] === 0x89 ? 'png' : 'jpg';
-    // Read old path before uploading so we can clean it up after
-    const { data: oldRow } = await supabase.from('tv_settings').select('promo_image_path').eq('id', 1).maybeSingle();
-    const sp = `promo/${randomUUID()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });
-    if (upErr) { console.error('tv promo upload:', upErr); res.status(500).json({ error: 'Ошибка загрузки файла' }); return; }
-    const { data, error } = await supabase.from('tv_settings').update({ promo_image_path: sp, updated_at: new Date().toISOString() }).eq('id', 1).select('*').single();
-    if (error) { console.error('tv promo settings:', error); res.status(500).json({ error: 'Ошибка обновления настроек' }); return; }
-    if (oldRow?.promo_image_path) supabase.storage.from(BUCKET).remove([oldRow.promo_image_path]).catch(e => console.error('tv promo remove old:', e));
     tvNotify();
     res.json(data);
   });
@@ -162,7 +158,7 @@ export function buildTvRouter(): Router {
     if (!title) { res.status(400).json({ error: 'Название обязательно' }); return; }
     const { data: last } = await supabase.from('tv_results').select('position').order('position', { ascending: false }).limit(1).maybeSingle();
     const { data, error } = await supabase.from('tv_results')
-      .insert({ title, before_path: '', after_path: '', position: (Number(last?.position ?? 0) + 1) })
+      .insert({ title, before_path: '', after_path: '', position: (Number((last as Record<string, number>)?.position ?? 0) + 1) })
       .select().single();
     if (error) { res.status(500).json({ error: error.message }); return; }
     res.json(data);
@@ -172,8 +168,7 @@ export function buildTvRouter(): Router {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
     const b = req.body as Record<string, unknown>;
     const upd: Record<string, unknown> = {};
-    if ('title'    in b) upd.title    = String(b.title || '').trim();
-    if ('position' in b) upd.position = Number(b.position);
+    if ('title' in b) upd.title = String(b.title || '').trim();
     if (!Object.keys(upd).length) { res.status(400).json({ error: 'Нет данных' }); return; }
     const { data, error } = await supabase.from('tv_results').update(upd).eq('id', req.params.id).select().single();
     if (error) { res.status(500).json({ error: error.message }); return; }
@@ -182,22 +177,30 @@ export function buildTvRouter(): Router {
 
   r.delete('/kviz/api/tv/results/:id', async (req, res) => {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    // Check usage in slides before deleting
+    const { data: usedSlide } = await supabase.from('tv_slides')
+      .select('position')
+      .or(`result_a.eq.${req.params.id},result_b.eq.${req.params.id}`)
+      .order('position').limit(1).maybeSingle();
+    if (usedSlide) {
+      res.status(409).json({ error: `Карточка используется в слайде №${(usedSlide as Record<string, number>).position}. Сначала удалите или измените слайд` });
+      return;
+    }
     const { data: row } = await supabase.from('tv_results').select('before_path,after_path').eq('id', req.params.id).maybeSingle();
     const { error } = await supabase.from('tv_results').delete().eq('id', req.params.id);
-    if (error) { res.status(500).json({ error: error.message }); return; }
-    const paths = [row?.before_path, row?.after_path].filter(Boolean) as string[];
+    if (error) {
+      if (error.code === '23503') {
+        res.status(409).json({ error: 'Карточка используется в слайде. Сначала удалите или измените слайд' });
+      } else {
+        console.error('tv results delete:', error);
+        res.status(500).json({ error: 'Ошибка удаления' });
+      }
+      return;
+    }
+    const paths = [(row as Record<string, string>)?.before_path, (row as Record<string, string>)?.after_path].filter(Boolean) as string[];
     if (paths.length) supabase.storage.from(BUCKET).remove(paths).catch(e => console.error('tv result delete paths:', e));
-    res.json({ ok: true });
-  });
-
-  r.delete('/kviz/api/tv/promo', async (req, res) => {
-    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
-    const { data: row } = await supabase.from('tv_settings').select('promo_image_path').eq('id', 1).maybeSingle();
-    if (row?.promo_image_path) supabase.storage.from(BUCKET).remove([row.promo_image_path]).catch(e => console.error('tv promo delete:', e));
-    const { data, error } = await supabase.from('tv_settings').update({ promo_image_path: null, updated_at: new Date().toISOString() }).eq('id', 1).select('*').single();
-    if (error) { res.status(500).json({ error: error.message }); return; }
     tvNotify();
-    res.json(data);
+    res.json({ ok: true });
   });
 
   r.post('/kviz/api/tv/results/:id/before-upload', async (req, res) => {
@@ -210,6 +213,139 @@ export function buildTvRouter(): Router {
     await uploadResultImg(req, res, 'after');
   });
 
+  // ── Admin tv_slides CRUD ───────────────────────────────────────────────────
+
+  r.get('/kviz/api/tv/slides', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const { data, error } = await supabase.from('tv_slides').select('*').order('position');
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    res.json(data ?? []);
+  });
+
+  r.post('/kviz/api/tv/slides', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const b = req.body as Record<string, unknown>;
+    const kind = String(b.kind || '');
+    if (!['result1', 'result2', 'promo', 'usp'].includes(kind)) {
+      res.status(400).json({ error: 'Неверный тип слайда' }); return;
+    }
+
+    const { count } = await supabase.from('tv_slides').select('*', { count: 'exact', head: true });
+    if ((count ?? 0) >= 20) { res.status(400).json({ error: 'Можно добавить не больше 20 слайдов' }); return; }
+
+    const result_a = b.result_a ? String(b.result_a) : null;
+    const result_b = b.result_b ? String(b.result_b) : null;
+    if (kind === 'result1' && !result_a) { res.status(400).json({ error: 'Выберите карточку клиента' }); return; }
+    if (kind === 'result2') {
+      if (!result_a || !result_b) { res.status(400).json({ error: 'Выберите двух клиентов' }); return; }
+      if (result_a === result_b) { res.status(400).json({ error: 'Выберите двух разных клиентов' }); return; }
+    }
+
+    let image_path: string | null = null;
+    if (kind === 'promo' || kind === 'usp') {
+      if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'Загрузите изображение' }); return; }
+      const buf = Buffer.from(b.content_base64, 'base64');
+      if (buf.length > 2 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 2 МБ' }); return; }
+      if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
+      const ext = buf[0] === 0x89 ? 'png' : 'jpg';
+      const sp = `slides/${randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });
+      if (upErr) { console.error('tv slide upload:', upErr); res.status(500).json({ error: 'Ошибка загрузки файла' }); return; }
+      image_path = sp;
+    }
+
+    const dur = Math.max(2, Math.min(300, Number(b.duration_sec) || 10));
+    const { data: last } = await supabase.from('tv_slides').select('position').order('position', { ascending: false }).limit(1).maybeSingle();
+    const position = (Number((last as Record<string, number>)?.position ?? 0) + 1);
+
+    const { data, error } = await supabase.from('tv_slides').insert({
+      kind, position, duration_sec: dur,
+      enabled: b.enabled !== false,
+      result_a: (kind === 'result1' || kind === 'result2') ? result_a : null,
+      result_b: kind === 'result2' ? result_b : null,
+      image_path,
+    }).select().single();
+    if (error) { console.error('tv slide insert:', error); res.status(500).json({ error: 'Ошибка создания слайда' }); return; }
+    tvNotify();
+    res.json(data);
+  });
+
+  r.patch('/kviz/api/tv/slides/:id', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const b = req.body as Record<string, unknown>;
+    const upd: Record<string, unknown> = {};
+
+    if ('duration_sec' in b) upd.duration_sec = Math.max(2, Math.min(300, Number(b.duration_sec) || 10));
+    if ('enabled'      in b) upd.enabled      = b.enabled === true || b.enabled === 'true';
+    if ('result_a'     in b) upd.result_a     = b.result_a || null;
+    if ('result_b'     in b) upd.result_b     = b.result_b || null;
+
+    // Position swap: exchange with the slide currently at the target position
+    if ('position' in b) {
+      const newPos = Number(b.position);
+      const [curRes, targetRes] = await Promise.all([
+        supabase.from('tv_slides').select('position').eq('id', req.params.id).maybeSingle(),
+        supabase.from('tv_slides').select('id,position').eq('position', newPos).maybeSingle(),
+      ]);
+      const curPos = (curRes.data as Record<string, number> | null)?.position;
+      const target = targetRes.data as Record<string, unknown> | null;
+      if (curPos != null && target && target.id !== req.params.id) {
+        // Use high temp position to avoid unique-constraint conflict during swap
+        await supabase.from('tv_slides').update({ position: 9999 }).eq('id', req.params.id);
+        await supabase.from('tv_slides').update({ position: curPos }).eq('id', target.id as string);
+        await supabase.from('tv_slides').update({ position: newPos }).eq('id', req.params.id);
+      }
+      tvNotify();
+      const { data: updated } = await supabase.from('tv_slides').select('*').eq('id', req.params.id).single();
+      res.json(updated ?? {});
+      return;
+    }
+
+    if (!Object.keys(upd).length) { res.status(400).json({ error: 'Нет данных' }); return; }
+    const { data, error } = await supabase.from('tv_slides').update(upd).eq('id', req.params.id).select().single();
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    tvNotify();
+    res.json(data);
+  });
+
+  r.post('/kviz/api/tv/slides/:id/image', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const b = req.body as Record<string, unknown>;
+    if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'content_base64 обязателен' }); return; }
+    const buf = Buffer.from(b.content_base64, 'base64');
+    if (buf.length > 2 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 2 МБ' }); return; }
+    if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
+    const ext = buf[0] === 0x89 ? 'png' : 'jpg';
+    const { data: oldRow } = await supabase.from('tv_slides').select('image_path').eq('id', req.params.id).maybeSingle();
+    const sp = `slides/${randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });
+    if (upErr) { console.error('tv slide img upload:', upErr); res.status(500).json({ error: 'Ошибка загрузки файла' }); return; }
+    const { data, error } = await supabase.from('tv_slides').update({ image_path: sp }).eq('id', req.params.id).select().single();
+    if (error) { console.error('tv slide img update:', error); res.status(500).json({ error: 'Ошибка обновления слайда' }); return; }
+    const oldPath = (oldRow as Record<string, string> | null)?.image_path;
+    if (oldPath) supabase.storage.from(BUCKET).remove([oldPath]).catch(e => console.error('tv slide remove old:', e));
+    tvNotify();
+    res.json(data);
+  });
+
+  r.delete('/kviz/api/tv/slides/:id', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const { data: row } = await supabase.from('tv_slides').select('image_path').eq('id', req.params.id).maybeSingle();
+    const { error } = await supabase.from('tv_slides').delete().eq('id', req.params.id);
+    if (error) { console.error('tv slide delete:', error); res.status(500).json({ error: 'Ошибка удаления слайда' }); return; }
+    const imgPath = (row as Record<string, string> | null)?.image_path;
+    if (imgPath) supabase.storage.from(BUCKET).remove([imgPath]).catch(e => console.error('tv slide delete img:', e));
+    // Renumber remaining slides 1..n so there are no gaps
+    const { data: remaining } = await supabase.from('tv_slides').select('id').order('position');
+    if (remaining?.length) {
+      await Promise.all((remaining as Record<string, string>[]).map((s, i) =>
+        supabase.from('tv_slides').update({ position: i + 1 }).eq('id', s.id)
+      ));
+    }
+    tvNotify();
+    res.json({ ok: true });
+  });
+
   return r;
 }
 
@@ -219,7 +355,6 @@ async function uploadResultImg(req: Request, res: Response, side: 'before' | 'af
   const buf = Buffer.from(b.content_base64, 'base64');
   if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
   const ext = buf[0] === 0x89 ? 'png' : 'jpg';
-  // Read old path before uploading so we can clean it up after
   const { data: oldRow } = await supabase.from('tv_results').select(`${side}_path`).eq('id', req.params.id).maybeSingle();
   const sp = `results/${randomUUID()}.${ext}`;
   const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });

@@ -2640,13 +2640,13 @@ function ControlSettingsSection() {
 
 // ── TV settings ───────────────────────────────────────────────────────────────
 
-interface TvSettings {
-  main_enabled: boolean; main_seconds: number;
-  main_label_cm: string; main_label_kg: string; main_label_fat: string;
-  results_enabled: boolean; results_seconds: number; results_show_count: number;
-  promo_enabled: boolean; promo_seconds: number; promo_image_path: string | null;
-}
+interface TvSettingsLabels { main_label_cm: string; main_label_kg: string; main_label_fat: string }
 interface TvResult { id: string; title: string; before_path: string; after_path: string; position: number }
+interface TvSlideRaw {
+  id: string; position: number; kind: 'result1' | 'result2' | 'promo' | 'usp';
+  result_a: string | null; result_b: string | null; image_path: string | null;
+  duration_sec: number; enabled: boolean;
+}
 
 async function compressImg(file: File): Promise<string> {
   const MAX = 1600;
@@ -2665,51 +2665,157 @@ async function compressImg(file: File): Promise<string> {
   });
 }
 
-function TvSection() {
-  const [cfg, setCfg] = useState<TvSettings | null>(null);
-  const [results, setResults] = useState<TvResult[]>([]);
+const KIND_LABELS: Record<string, string> = { result1: '1 результат', result2: '2 результата', promo: 'Акция', usp: 'USP' };
+
+function AddSlideModal({ results, onAdd, onClose }: {
+  results: TvResult[];
+  onAdd: (d: { kind: string; result_a: string | null; result_b: string | null; file: File | null; duration_sec: number }) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [kind, setKind] = useState<'result1' | 'result2' | 'promo' | 'usp'>('result1');
+  const [resultA, setResultA] = useState('');
+  const [resultB, setResultB] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [duration, setDuration] = useState(8);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
-  const [ok, setOk] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [uploading, setUploading] = useState<string>('');
-  const [confirmDelPromo, setConfirmDelPromo] = useState(false);
-  const [promoErr, setPromoErr] = useState('');
+  const INP: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' as const };
+
+  async function submit() {
+    setSaving(true); setErr('');
+    try { await onAdd({ kind, result_a: resultA || null, result_b: resultB || null, file, duration_sec: duration }); }
+    catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); setSaving(false); }
+  }
+
+  return (
+    <Modal title="Добавить слайд" onClose={onClose}>
+      {err && <div style={S.errBox}>{err}</div>}
+      <div style={{ marginBottom: 12 }}>
+        <label style={S.label}>Тип</label>
+        <select value={kind} onChange={e => setKind(e.target.value as typeof kind)} style={INP}>
+          <option value="result1">1 результат (одна карточка)</option>
+          <option value="result2">2 результата (две карточки)</option>
+          <option value="promo">Акция (изображение)</option>
+          <option value="usp">USP (изображение)</option>
+        </select>
+      </div>
+      {(kind === 'result1' || kind === 'result2') && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={S.label}>Карточка {kind === 'result2' ? 'А' : ''}</label>
+          <select value={resultA} onChange={e => setResultA(e.target.value)} style={INP}>
+            <option value="">— выберите —</option>
+            {results.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+          </select>
+        </div>
+      )}
+      {kind === 'result2' && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={S.label}>Карточка Б</label>
+          <select value={resultB} onChange={e => setResultB(e.target.value)} style={INP}>
+            <option value="">— выберите —</option>
+            {results.filter(r => r.id !== resultA).map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+          </select>
+        </div>
+      )}
+      {(kind === 'promo' || kind === 'usp') && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={S.label}>Изображение</label>
+          <label style={{ ...S.saveBtn, display: 'inline-block', cursor: 'pointer' }}>
+            {file ? file.name : '📷 Выбрать файл'}
+            <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
+              onChange={e => setFile(e.target.files?.[0] ?? null)} />
+          </label>
+        </div>
+      )}
+      <div style={{ marginBottom: 12 }}>
+        <label style={S.label}>Длительность (сек)</label>
+        <input type="number" min={2} max={300} value={duration}
+          onChange={e => setDuration(+e.target.value)}
+          style={{ width: 100, padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit' }} />
+      </div>
+      <div style={S.mBtns}>
+        <button style={S.cancelBtn} onClick={onClose}>Отмена</button>
+        <button style={S.saveBtn} onClick={submit} disabled={saving}>{saving ? 'Добавляем…' : 'Добавить'}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function TvSection() {
+  const [labels, setLabels] = useState<TvSettingsLabels>({ main_label_cm: '', main_label_kg: '', main_label_fat: '' });
+  const [slides, setSlides] = useState<TvSlideRaw[]>([]);
+  const [results, setResults] = useState<TvResult[]>([]);
+  const [labelsSaving, setLabelsSaving] = useState(false);
+  const [labelsOk, setLabelsOk] = useState(false);
+  const [labelsErr, setLabelsErr] = useState('');
+  const [slideErr, setSlideErr] = useState<Record<string, string>>({});
   const [resultErr, setResultErr] = useState<Record<string, string>>({});
+  const [confirmDelSlide, setConfirmDelSlide] = useState<string | null>(null);
+  const [confirmDelResult, setConfirmDelResult] = useState<string | null>(null);
+  const [addSlideOpen, setAddSlideOpen] = useState(false);
+  const [uploading, setUploading] = useState('');
+  const [newResultTitle, setNewResultTitle] = useState('');
+  const [addingResult, setAddingResult] = useState(false);
 
   useEffect(() => {
-    api('GET', '/kviz/api/tv/settings').then(r => { if (r.ok) setCfg(r.data); });
+    api('GET', '/kviz/api/tv/settings').then(r => {
+      if (r.ok) setLabels({ main_label_cm: r.data.main_label_cm || '', main_label_kg: r.data.main_label_kg || '', main_label_fat: r.data.main_label_fat || '' });
+    });
+    api('GET', '/kviz/api/tv/slides').then(r => { if (r.ok) setSlides(r.data); });
     api('GET', '/kviz/api/tv/results').then(r => { if (r.ok) setResults(r.data); });
   }, []);
 
-  function patch(upd: Partial<TvSettings>) {
-    setCfg(c => c ? { ...c, ...upd } : c);
+  async function saveLabels() {
+    setLabelsSaving(true); setLabelsErr(''); setLabelsOk(false);
+    const r = await api('PUT', '/kviz/api/tv/settings', labels);
+    setLabelsSaving(false);
+    if (r.ok) { setLabelsOk(true); setTimeout(() => setLabelsOk(false), 2000); }
+    else setLabelsErr(r.data?.error || 'Ошибка сохранения');
   }
 
-  async function save() {
-    if (!cfg) return;
-    setSaving(true); setErr(''); setOk(false);
-    const r = await api('PUT', '/kviz/api/tv/settings', cfg);
-    setSaving(false);
-    if (r.ok) { setCfg(r.data); setOk(true); setTimeout(() => setOk(false), 2000); }
-    else setErr(r.data?.error || 'Ошибка сохранения');
+  async function refreshSlides() {
+    const r = await api('GET', '/kviz/api/tv/slides');
+    if (r.ok) setSlides(r.data);
+  }
+
+  async function patchSlide(id: string, upd: object, doRefresh = false) {
+    setSlideErr(prev => { const n = { ...prev }; delete n[id]; return n; });
+    const r = await api('PATCH', `/kviz/api/tv/slides/${id}`, upd);
+    if (r.ok) { if (doRefresh) await refreshSlides(); else setSlides(prev => prev.map(s => s.id === id ? r.data : s)); }
+    else setSlideErr(prev => ({ ...prev, [id]: r.data?.error || 'Ошибка' }));
+  }
+
+  async function deleteSlide(id: string) {
+    const r = await api('DELETE', `/kviz/api/tv/slides/${id}`);
+    if (!r.ok) { setSlideErr(prev => ({ ...prev, [id]: r.data?.error || 'Ошибка удаления' })); setConfirmDelSlide(null); return; }
+    await refreshSlides();
+    setConfirmDelSlide(null);
+  }
+
+  async function addSlide(d: { kind: string; result_a: string | null; result_b: string | null; file: File | null; duration_sec: number }) {
+    const payload: Record<string, unknown> = { kind: d.kind, duration_sec: d.duration_sec };
+    if (d.result_a) payload.result_a = d.result_a;
+    if (d.result_b) payload.result_b = d.result_b;
+    if (d.file) payload.content_base64 = await compressImg(d.file);
+    const r = await api('POST', '/kviz/api/tv/slides', payload);
+    if (!r.ok) throw new Error(r.data?.error || 'Ошибка добавления слайда');
+    await refreshSlides();
+    setAddSlideOpen(false);
   }
 
   async function addResult() {
-    if (!newTitle.trim()) return;
-    setAdding(true);
-    const r = await api('POST', '/kviz/api/tv/results', { title: newTitle.trim() });
-    setAdding(false);
-    if (r.ok) { setResults(prev => [...prev, r.data]); setNewTitle(''); }
-    else setErr(r.data?.error || 'Ошибка');
+    if (!newResultTitle.trim()) return;
+    setAddingResult(true);
+    const r = await api('POST', '/kviz/api/tv/results', { title: newResultTitle.trim() });
+    setAddingResult(false);
+    if (r.ok) { setResults(prev => [...prev, r.data]); setNewResultTitle(''); }
   }
 
   async function deleteResult(id: string) {
-    if (!confirm('Удалить карточку результата?')) return;
     const r = await api('DELETE', `/kviz/api/tv/results/${id}`);
     if (r.ok) setResults(prev => prev.filter(x => x.id !== id));
-    else setErr(r.data?.error || 'Ошибка');
+    else setResultErr(prev => ({ ...prev, [id]: r.data?.error || 'Ошибка' }));
+    setConfirmDelResult(null);
   }
 
   async function uploadImg(id: string, side: 'before' | 'after', file: File) {
@@ -2725,147 +2831,124 @@ function TvSection() {
     setUploading('');
   }
 
-  async function uploadPromo(file: File) {
-    setUploading('promo');
-    setPromoErr('');
-    try {
-      const b64 = await compressImg(file);
-      const r = await api('POST', '/kviz/api/tv/settings/promo-upload', { content_base64: b64 });
-      if (r.ok) { setCfg(r.data); setConfirmDelPromo(false); }
-      else setPromoErr(r.data?.error || 'Ошибка загрузки');
-    } catch { setPromoErr('Ошибка обработки фото'); }
-    setUploading('');
-  }
-
-  async function deletePromo() {
-    setUploading('promo');
-    setPromoErr('');
-    try {
-      const r = await api('DELETE', '/kviz/api/tv/promo');
-      if (r.ok) setCfg(r.data);
-      else setPromoErr(r.data?.error || 'Ошибка удаления');
-    } catch { setPromoErr('Ошибка удаления'); }
-    setUploading('');
-    setConfirmDelPromo(false);
-  }
-
-  if (!cfg) return <div style={{ padding: 32, color: '#94a3b8' }}>Загрузка…</div>;
-
-  const F: React.CSSProperties = { marginBottom: 10 };
-  const INP: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' };
-  const SEC_TITLE: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: '#1a202c', marginBottom: 12 };
-  const imgSrc = (path: string | null) =>
-    path ? `/kviz/api/tv/media?path=${encodeURIComponent(path)}` : null;
+  const resMap = Object.fromEntries(results.map(r => [r.id, r.title]));
+  const imgSrc = (path: string | null) => path ? `/kviz/api/tv/media?path=${encodeURIComponent(path)}` : null;
+  const INP: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const };
+  const SEC: React.CSSProperties = { background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 16 };
 
   return (
     <div style={S.section}>
-      <div style={SEC_TITLE}>ТВ-экран — настройки</div>
-      {err && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{err}</div>}
-      {ok  && <div style={{ background: '#d1fae5', color: '#16a34a', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>Сохранено</div>}
+      <div style={{ fontSize: 15, fontWeight: 700, color: '#1a202c', marginBottom: 16 }}>ТВ-экран — настройки</div>
 
-      {/* Main block */}
-      <div style={{ background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Блок «Счётчики»</div>
-        <ToggleRow label="Показывать" checked={!!cfg.main_enabled} onChange={v => patch({ main_enabled: v })} />
-        <div style={F}><label style={S.label}>Длительность (сек)</label><input type="number" min={5} max={300} value={cfg.main_seconds || 15} onChange={e => patch({ main_seconds: +e.target.value })} style={INP} /></div>
-        <div style={F}><label style={S.label}>Подпись «см»</label><input value={cfg.main_label_cm || ''} onChange={e => patch({ main_label_cm: e.target.value })} placeholder="Сантиметров убрали" style={INP} /></div>
-        <div style={F}><label style={S.label}>Подпись «кг»</label><input value={cfg.main_label_kg || ''} onChange={e => patch({ main_label_kg: e.target.value })} placeholder="Килограммов сбросили" style={INP} /></div>
-        <div style={F}><label style={S.label}>Подпись «жир»</label><input value={cfg.main_label_fat || ''} onChange={e => patch({ main_label_fat: e.target.value })} placeholder="Жира сожгли" style={INP} /></div>
-      </div>
-
-      {/* Results block */}
-      <div style={{ background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Блок «До / После»</div>
-        <ToggleRow label="Показывать" checked={!!cfg.results_enabled} onChange={v => patch({ results_enabled: v })} />
-        <div style={F}><label style={S.label}>Длительность (сек)</label><input type="number" min={5} max={300} value={cfg.results_seconds || 15} onChange={e => patch({ results_seconds: +e.target.value })} style={INP} /></div>
-        <div style={F}><label style={S.label}>Карточек на экране</label><input type="number" min={1} max={12} value={cfg.results_show_count || 3} onChange={e => patch({ results_show_count: +e.target.value })} style={INP} /></div>
-      </div>
-
-      {/* Promo block */}
-      <div style={{ background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Блок «Акция»</div>
-        <ToggleRow label="Показывать" checked={!!cfg.promo_enabled} onChange={v => patch({ promo_enabled: v })} />
-        <div style={F}><label style={S.label}>Длительность (сек)</label><input type="number" min={5} max={300} value={cfg.promo_seconds || 15} onChange={e => patch({ promo_seconds: +e.target.value })} style={INP} /></div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-          {cfg.promo_image_path ? (
-            <>
-              <img src={imgSrc(cfg.promo_image_path)!} alt="Акция" style={{ height: 72, borderRadius: 8, objectFit: 'contain', border: '1px solid #e2e8f0' }} />
-              <label style={{ ...S.csvBtn, cursor: 'pointer', display: 'inline-block' }}>
-                {uploading === 'promo' ? 'Загрузка…' : 'Заменить'}
-                <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
-                  disabled={!!uploading}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadPromo(f); e.target.value = ''; }} />
-              </label>
-              {confirmDelPromo ? (
-                <>
-                  <span style={{ fontSize: 13, color: '#ef4444' }}>Удалить фото?</span>
-                  <button style={S.saveBtn} onClick={deletePromo} disabled={!!uploading}>Да, удалить</button>
-                  <button style={S.cancelBtn} onClick={() => setConfirmDelPromo(false)}>Отмена</button>
-                </>
-              ) : (
-                <button style={{ ...S.cancelBtn, color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => setConfirmDelPromo(true)}>Удалить</button>
-              )}
-            </>
-          ) : (
-            <label style={{ ...S.saveBtn, cursor: 'pointer', display: 'inline-block', background: uploading === 'promo' ? '#94a3b8' : undefined }}>
-              {uploading === 'promo' ? 'Загрузка…' : '📷 Загрузить фото'}
-              <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
-                disabled={!!uploading}
-                onChange={e => { const f = e.target.files?.[0]; if (f) uploadPromo(f); e.target.value = ''; }} />
-            </label>
-          )}
+      {/* Счётчики */}
+      <div style={SEC}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Счётчики</div>
+        {labelsErr && <div style={S.errBox}>{labelsErr}</div>}
+        {labelsOk  && <div style={{ background: '#d1fae5', color: '#16a34a', padding: '7px 12px', borderRadius: 8, marginBottom: 10, fontSize: 13 }}>Сохранено</div>}
+        <div style={{ marginBottom: 10 }}><label style={S.label}>Подпись «см»</label><input value={labels.main_label_cm} onChange={e => setLabels(l => ({ ...l, main_label_cm: e.target.value }))} placeholder="Сантиметров убрали" style={INP} /></div>
+        <div style={{ marginBottom: 10 }}><label style={S.label}>Подпись «кг»</label><input value={labels.main_label_kg} onChange={e => setLabels(l => ({ ...l, main_label_kg: e.target.value }))} placeholder="Килограммов сбросили" style={INP} /></div>
+        <div style={{ marginBottom: 10 }}><label style={S.label}>Подпись «жир»</label><input value={labels.main_label_fat} onChange={e => setLabels(l => ({ ...l, main_label_fat: e.target.value }))} placeholder="Жира сожгли" style={INP} /></div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button style={S.saveBtn} onClick={saveLabels} disabled={labelsSaving}>{labelsSaving ? 'Сохранение…' : 'Сохранить'}</button>
         </div>
-        {promoErr && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 8 }}>{promoErr}</div>}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-        <button style={S.saveBtn} onClick={save} disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить настройки'}</button>
-      </div>
-
-      {/* Results list */}
-      <div style={SEC_TITLE}>Карточки «До / После»</div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-        <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Название карточки"
-          style={{ ...INP, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addResult()} />
-        <button style={S.saveBtn} onClick={addResult} disabled={adding || !newTitle.trim()}>{adding ? '…' : '+ Добавить'}</button>
-      </div>
-      {results.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 12 }}>Нет карточек. Добавьте первую.</div>}
-      {results.map(res => (
-        <div key={res.id} style={{ background: '#f8fafc', borderRadius: 10, padding: 12, marginBottom: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, color: '#1a202c' }}>{res.title || '—'}</div>
-            <button style={{ ...S.iconBtn, color: '#ef4444' }} onClick={() => deleteResult(res.id)}>✕</button>
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            {(['before', 'after'] as const).map(side => {
-              const path = side === 'before' ? res.before_path : res.after_path;
-              const label = side === 'before' ? 'До' : 'После';
-              const uk = `${res.id}-${side}`;
-              return (
-                <div key={side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</div>
-                  {path
-                    ? <img src={imgSrc(path)!} alt={label} style={{ width: 72, height: 96, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
-                    : <div style={{ width: 72, height: 96, background: '#e2e8f0', borderRadius: 8, display: 'grid', placeItems: 'center', fontSize: 22, color: '#94a3b8' }}>📷</div>
-                  }
-                  <label style={{ fontSize: 11, color: '#263CD9', cursor: 'pointer', fontWeight: 600 }}>
-                    {uploading === uk ? '…' : path ? 'Заменить' : 'Загрузить'}
-                    <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
-                      disabled={uploading === uk}
-                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadImg(res.id, side, f); e.target.value = ''; }} />
+      {/* Слайды */}
+      <div style={SEC}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Слайды ({slides.length}/20)</div>
+          {slides.length < 20 && <button style={S.addBtn} onClick={() => setAddSlideOpen(true)}>+ Добавить слайд</button>}
+        </div>
+        {slides.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Нет слайдов. Добавьте первый.</div>}
+        {slides.map((sl, idx) => {
+          const isFirst = idx === 0;
+          const isLast  = idx === slides.length - 1;
+          const name = sl.kind === 'result1'
+            ? (resMap[sl.result_a ?? ''] || '—')
+            : sl.kind === 'result2'
+            ? [resMap[sl.result_a ?? ''], resMap[sl.result_b ?? '']].filter(Boolean).join(' / ') || '—'
+            : '';
+          return (
+            <div key={sl.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ minWidth: 24, fontSize: 13, fontWeight: 700, color: '#64748b' }}>#{sl.position}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, background: '#eff6ff', color: '#3b82f6', padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap' }}>{KIND_LABELS[sl.kind]}</span>
+                {(sl.kind === 'promo' || sl.kind === 'usp') && sl.image_path
+                  ? <img src={imgSrc(sl.image_path)!} alt="" style={{ height: 36, borderRadius: 4, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+                  : <span style={{ fontSize: 13, color: '#374151', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                }
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', flexShrink: 0, flexWrap: 'wrap' }}>
+                  <input type="number" min={2} max={300} value={sl.duration_sec}
+                    onChange={e => setSlides(prev => prev.map(s => s.id === sl.id ? { ...s, duration_sec: +e.target.value } : s))}
+                    onBlur={e => patchSlide(sl.id, { duration_sec: +e.target.value })}
+                    style={{ width: 54, padding: '4px 6px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                    title="Длительность (сек)" />
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>сек</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>
+                    <input type="checkbox" checked={sl.enabled} onChange={e => patchSlide(sl.id, { enabled: e.target.checked })} />
+                    показывать
                   </label>
+                  <button style={S.iconBtn} disabled={isFirst} onClick={() => patchSlide(sl.id, { position: sl.position - 1 }, true)} title="Выше">↑</button>
+                  <button style={S.iconBtn} disabled={isLast}  onClick={() => patchSlide(sl.id, { position: sl.position + 1 }, true)} title="Ниже">↓</button>
+                  <button style={{ ...S.iconBtn, color: '#ef4444' }} onClick={() => setConfirmDelSlide(sl.id)} title="Удалить">✕</button>
                 </div>
-              );
-            })}
-          </div>
-          {resultErr[res.id] && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{resultErr[res.id]}</div>}
+              </div>
+              {slideErr[sl.id] && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{slideErr[sl.id]}</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Карточки */}
+      <div style={SEC}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Карточки клиентов (библиотека)</div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+          <input value={newResultTitle} onChange={e => setNewResultTitle(e.target.value)} placeholder="Название карточки"
+            style={{ ...INP, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addResult()} />
+          <button style={S.saveBtn} onClick={addResult} disabled={addingResult || !newResultTitle.trim()}>{addingResult ? '…' : '+ Добавить'}</button>
         </div>
-      ))}
+        {results.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Нет карточек.</div>}
+        {results.map(res => (
+          <div key={res.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: '#1a202c' }}>{res.title || '—'}</div>
+              <button style={{ ...S.iconBtn, color: '#ef4444' }} onClick={() => setConfirmDelResult(res.id)}>✕</button>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              {(['before', 'after'] as const).map(side => {
+                const path = side === 'before' ? res.before_path : res.after_path;
+                const label = side === 'before' ? 'До' : 'После';
+                const uk = `${res.id}-${side}`;
+                return (
+                  <div key={side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</div>
+                    {path
+                      ? <img src={imgSrc(path)!} alt={label} style={{ width: 72, height: 96, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                      : <div style={{ width: 72, height: 96, background: '#e2e8f0', borderRadius: 8, display: 'grid', placeItems: 'center', fontSize: 22, color: '#94a3b8' }}>📷</div>
+                    }
+                    <label style={{ fontSize: 11, color: '#263CD9', cursor: 'pointer', fontWeight: 600 }}>
+                      {uploading === uk ? '…' : path ? 'Заменить' : 'Загрузить'}
+                      <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
+                        disabled={uploading === uk}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadImg(res.id, side, f); e.target.value = ''; }} />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+            {resultErr[res.id] && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{resultErr[res.id]}</div>}
+          </div>
+        ))}
+      </div>
 
       <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 8, paddingTop: 8 }}>
         <BulkResultsSection />
         <MissionSection />
       </div>
+
+      {addSlideOpen && <AddSlideModal results={results} onAdd={addSlide} onClose={() => setAddSlideOpen(false)} />}
+      {confirmDelSlide && <ConfirmModal message="Удалить слайд?" onConfirm={() => deleteSlide(confirmDelSlide)} onClose={() => setConfirmDelSlide(null)} />}
+      {confirmDelResult && <ConfirmModal message="Удалить карточку? Убедитесь, что она не используется в слайдах." onConfirm={() => deleteResult(confirmDelResult)} onClose={() => setConfirmDelResult(null)} />}
     </div>
   );
 }

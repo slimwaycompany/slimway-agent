@@ -598,52 +598,64 @@ img, video, svg, iframe { max-width: 100%; }
 
 /* Public results display */
 .tv-page { height: 100%; width: 100%; overflow: hidden; }
-.results-screen { position: fixed; inset: 0; overflow: hidden; display: flex; flex-direction: column; color: #17234b; background: linear-gradient(135deg,#e8fbfa 0%,#f7f8ff 52%,#eef0ff 100%); font-family: Manrope,system-ui,sans-serif; }
-.results-glow { position: absolute; width: 44vw; height: 44vw; border-radius: 50%; filter: blur(100px); opacity: .28; pointer-events: none; }
-.results-glow-a { top: -23vw; left: -9vw; background: #02BDB6; }
-.results-glow-b { bottom: -28vw; right: -7vw; background: #263CD9; }
+.tv-screen { position: fixed; inset: 0; overflow: hidden; display: flex; flex-direction: column; color: #17234b; background: linear-gradient(135deg,#e8fbfa 0%,#f7f8ff 52%,#eef0ff 100%); font-family: Manrope,system-ui,sans-serif; }
+.tv-glow { position: absolute; width: 44vw; height: 44vw; border-radius: 50%; filter: blur(100px); opacity: .28; pointer-events: none; }
+.tv-glow-a { top: -23vw; left: -9vw; background: #02BDB6; }
+.tv-glow-b { bottom: -28vw; right: -7vw; background: #263CD9; }
 .results-invalid { position: fixed; inset: 0; display: grid; place-items: center; color: #64748b; font: 700 20px system-ui; }
 
-/* ── TV block: grid of 3 rows — logo / content / mission ── */
-.tv-block { flex: 1; min-height: 0; position: relative; z-index: 1; display: grid; grid-template-rows: auto 1fr auto; }
-@keyframes tv-fade-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-28px); } }
-@keyframes tv-fade-in  { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
-.tv-block--exit  { animation: tv-fade-out 0.4s ease-in  forwards; pointer-events: none; }
-.tv-block--enter { animation: tv-fade-in  0.4s ease-out forwards; }
+/* ── TV screen layout ── */
+.tv-hdr { flex-shrink: 0; display: flex; justify-content: center; align-items: center; padding: clamp(10px,2vh,32px) clamp(16px,3vw,48px) clamp(4px,0.6vh,8px); z-index: 1; }
+.tv-logo { max-height: clamp(48px,7vh,94px); max-width: clamp(120px,16vw,240px); object-fit: contain; }
+.tv-body { flex: 1; min-height: 0; display: flex; overflow: hidden; z-index: 1; }
+.tv-left { width: 30%; flex-shrink: 0; display: flex; flex-direction: column; align-items: stretch; padding: clamp(6px,1.2vh,16px) clamp(8px,1.2vw,16px) clamp(6px,1.2vh,16px) clamp(16px,2vw,32px); }
+.tv-right { flex: 1; min-width: 0; position: relative; padding: clamp(6px,1.2vh,16px) clamp(16px,2vw,32px) clamp(6px,1.2vh,16px) clamp(8px,1vw,14px); }
+.tv-ftr { flex-shrink: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: clamp(4px,0.8vh,10px) clamp(16px,2.5vw,40px) clamp(14px,3vh,36px); z-index: 1; }
+.tv-mission { grid-column: 2; color: #263CD9; font-size: clamp(12px,1.6vw,24px); font-weight: 600; text-align: center; }
+.tv-datetime { grid-column: 3; justify-self: end; color: #000; font-size: clamp(15px,1.3vw,21px); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
 
-/* ── TV layout rows ── */
-.tv-top { display: flex; justify-content: center; align-items: center; padding: clamp(12px,2.5vh,36px) clamp(20px,4vw,64px) clamp(6px,1vh,14px); }
-.tv-logo { max-height: clamp(36px,5.5vh,72px); max-width: clamp(100px,14vw,200px); object-fit: contain; }
-.tv-mid { min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 0 clamp(24px,4vw,96px); }
-.tv-bot { display: flex; align-items: center; justify-content: center; position: relative; padding: clamp(6px,1vh,14px) clamp(24px,4vw,96px) clamp(12px,2.5vh,36px); }
-.tv-mission { color: #263CD9; font-size: clamp(14px,1.8vw,28px); font-weight: 600; text-align: center; }
-.tv-datetime { position: absolute; right: clamp(24px,4vw,96px); color: #94a3b8; font-size: clamp(11px,0.9vw,15px); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* ── TV counter cards (left column, stacked vertically) ── */
+.tv-counters { display: flex; flex-direction: column; gap: clamp(5px,1vh,12px); height: 100%; }
+.tv-counter { flex: 1; min-height: 0; border: 1px solid rgba(255,255,255,.8); border-radius: clamp(12px,1.5vw,22px); background: rgba(255,255,255,.58); box-shadow: 0 10px 32px rgba(38,60,217,.1); backdrop-filter: blur(22px); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: clamp(6px,1vh,12px) clamp(6px,0.8vw,12px); overflow: hidden; }
+.tv-counter:nth-child(2) { background: linear-gradient(145deg,rgba(2,189,182,.18),rgba(255,255,255,.68)); }
+.tv-counter:nth-child(3) { background: linear-gradient(145deg,rgba(38,60,217,.12),rgba(255,255,255,.68)); }
+.tv-counter-icon  { height: clamp(24px,4.5vh,56px); width: auto; object-fit: contain; }
+.tv-counter-num   { margin: clamp(3px,0.5vh,7px) 0 2px; color: #263CD9; font-size: clamp(24px,4.2vw,64px); line-height: 1; font-variant-numeric: tabular-nums; font-weight: 800; white-space: nowrap; }
+.tv-counter-label { font-size: clamp(9px,0.9vw,14px); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.tv-counter-unit  { margin-top: 1px; color: #64748b; font-size: clamp(8px,0.65vw,11px); white-space: nowrap; }
 
-/* ── TV counters ── */
-.results-counters { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: clamp(16px,2vw,40px); width: min(1400px,100%); }
-.results-counter { padding: clamp(14px,2.5vh,40px) clamp(16px,2.5vw,36px); border: 1px solid rgba(255,255,255,.8); border-radius: clamp(16px,2vw,30px); background: rgba(255,255,255,.58); box-shadow: 0 20px 70px rgba(38,60,217,.1); backdrop-filter: blur(22px); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.results-counter:nth-child(2) { background: linear-gradient(145deg,rgba(2,189,182,.18),rgba(255,255,255,.68)); }
-.results-counter:nth-child(3) { background: linear-gradient(145deg,rgba(38,60,217,.12),rgba(255,255,255,.68)); }
-.results-counter strong { margin: clamp(6px,1vh,14px) 0 4px; color: #263CD9; font-size: clamp(44px,7.5vw,110px); line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.results-counter > span:not(.results-icon) { font-size: clamp(13px,1.6vw,22px); font-weight: 700; white-space: nowrap; }
-.results-counter small { margin-top: 4px; color: #64748b; font-size: clamp(11px,0.9vw,15px); white-space: nowrap; }
+/* ── TV slide (right column) ── */
+@keyframes tv-slide-out { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-40px); } }
+@keyframes tv-slide-in  { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes tv-fade-only-out { to { opacity: 0; } }
+@keyframes tv-fade-only-in  { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .tv-slide--exit  { animation: tv-fade-only-out 0.4s ease-in  forwards !important; }
+  .tv-slide--enter { animation: tv-fade-only-in  0.6s ease-in-out forwards !important; }
+}
+.tv-slide { position: absolute; inset: 0; display: flex; align-items: stretch; }
+.tv-slide--exit  { animation: tv-slide-out 0.4s ease-in  forwards; pointer-events: none; }
+.tv-slide--enter { animation: tv-slide-in  0.6s ease-in-out forwards; }
 
-/* ── TV counter icons ── */
-.tv-icon-img { width: auto; height: clamp(48px,9vh,120px); object-fit: contain; }
+/* ── TV slide frame (gradient border + glass) ── */
+.tv-frame { flex: 1; display: flex; overflow: hidden; border-radius: clamp(14px,1.8vw,28px); border: 2px solid transparent; background: linear-gradient(rgba(255,255,255,.58),rgba(255,255,255,.58)) padding-box, linear-gradient(135deg,#02BDB6,#263CD9) border-box; box-shadow: 0 12px 48px rgba(38,60,217,.13); backdrop-filter: blur(16px); }
 
-/* ── TV before/after cards ── */
-.tv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px,20vw), 1fr)); gap: clamp(10px,1.8vw,28px); width: 100%; }
-.tv-card { background: rgba(255,255,255,.58); border: 1px solid rgba(255,255,255,.8); border-radius: clamp(14px,1.5vw,24px); overflow: hidden; box-shadow: 0 12px 40px rgba(38,60,217,.1); backdrop-filter: blur(16px); }
-.tv-card-images { display: flex; gap: 2px; }
-.tv-card-side { flex: 1; position: relative; overflow: hidden; aspect-ratio: 3/4; }
-.tv-card-side img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tv-card-label { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.52); color: #fff; font-size: clamp(10px,0.9vw,13px); font-weight: 700; padding: 3px 10px; border-radius: 20px; letter-spacing: .04em; }
-.tv-card-label--after { background: rgba(2,189,182,.8); }
-.tv-card-title { padding: clamp(6px,0.8vh,10px) 14px; font-size: clamp(12px,1.1vw,16px); font-weight: 700; color: #263CD9; text-align: center; }
+/* ── result1 slide (single client card) ── */
+.tv-res1 { flex: 1; display: flex; flex-direction: column; padding: clamp(10px,1.8vh,22px) clamp(10px,1.5vw,20px); gap: clamp(6px,1vh,12px); }
+.tv-res-title  { font-size: clamp(12px,1.3vw,20px); font-weight: 700; color: #1a202c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-res-photos { display: flex; gap: clamp(5px,0.8vw,12px); flex: 1; min-height: 0; }
+.tv-res-side   { flex: 1; min-width: 0; position: relative; overflow: hidden; border-radius: clamp(6px,0.8vw,12px); }
+.tv-res-side img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tv-res-label  { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.52); color: #fff; font-size: clamp(8px,0.7vw,11px); font-weight: 700; padding: 2px 7px; border-radius: 20px; letter-spacing: .04em; white-space: nowrap; }
+.tv-res-label--after { background: rgba(2,189,182,.8); }
 
-/* ── TV promo block ── */
-.tv-promo { display: flex; align-items: center; justify-content: center; width: 100%; }
-.tv-promo img { max-width: 100%; max-height: 72vh; object-fit: contain; border-radius: clamp(16px,2vw,30px); box-shadow: 0 20px 60px rgba(38,60,217,.18); }
+/* ── result2 slide (two cards side by side) ── */
+.tv-res2      { flex: 1; display: flex; gap: clamp(6px,1vw,16px); padding: clamp(10px,1.8vh,22px) clamp(10px,1.5vw,20px); }
+.tv-res2-card { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* ── promo / usp slide (image) ── */
+.tv-img-slide { flex: 1; display: flex; align-items: center; justify-content: center; padding: clamp(10px,1.8vh,22px) clamp(10px,1.5vw,20px); }
+.tv-img-slide img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
 /* ─── Measure dropdown ─── */
 .measure-dropdown {

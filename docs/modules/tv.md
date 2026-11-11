@@ -6,8 +6,8 @@
 Экран результатов студии для ТВ (`/results?key=…`): счётчики «Сантиметров убрали / Килограммов сбросили / Жира сожгли / клиенток с результатом», миссия студии. Инструменты для сотрудников: ссылка для ТВ (копирование, «открыть на весь экран»), выгрузка всех результатов в общий, отправка результата клиента.
 
 ## Где код
-- `kviz/client/src/pages/ResultsPage.tsx` — ТВ-экран `/results?key=…` (3-блочный цикл: счётчики / до-после / акция)
-- `src/http/tv.ts` — TV-роутер: SSE (`tvNotify`), прокси медиа, CRUD tv_settings/tv_results, загрузка фото
+- `kviz/client/src/pages/ResultsPage.tsx` — ТВ-экран `/results?key=…` (flex 2-кол: счётчики слева 30%, карусель слайдов справа 70%)
+- `src/http/tv.ts` — TV-роутер: SSE (`tvNotify`), прокси медиа, CRUD tv_settings/tv_results/tv_slides, загрузка фото
 - `kviz/client/src/pages/crm/SettingsPage.tsx` → `TvSection` — настройки блоков, карточки «До/После», загрузка фото
 - `kviz/client/src/pages/reports/ReportsPage.tsx` → `StudioSection` — ссылка для ТВ, счётчики, кнопка «Выгрузить все результаты»
 - `kviz/client/src/pages/measure/ClientPage.tsx` — кнопка «Отправить в результаты студии» (внутри карточки клиента)
@@ -19,8 +19,9 @@
 ## Таблицы
 - `studio_results` — результаты клиентов для ТВ: `client_id`, `cm_lost`, `kg_lost`, `fat_kg_lost`, `from_measure_no`, `to_measure_no` (оба nullable), `sent_by`, `sent_at`
 - `studio_settings` — ключ-значение (миссия студии)
-- `tv_settings` — одна строка (id=1): настройки трёх блоков (`main_*`, `results_*`, `promo_*`), `promo_image_path`
-- `tv_results` — карточки «До/После»: `id`, `title`, `before_path`, `after_path`, `position`
+- `tv_settings` — одна строка (id=1): `main_label_cm`, `main_label_kg`, `main_label_fat` (прочие старые колонки не используются после task 46)
+- `tv_results` — карточки «До/После» (библиотека): `id`, `title`, `before_path`, `after_path`, `position`
+- `tv_slides` — слайды карусели: `id`, `position` (NOT NULL, unique), `kind` (result1|result2|promo|usp), `result_a` (uuid FK tv_results, nullable), `result_b` (uuid FK tv_results, nullable), `image_path` (nullable), `duration_sec` (default 8), `enabled` (default true), `created_at`
 
 ## env
 - `RESULTS_DISPLAY_KEY` — ключ защиты публичного ТВ-экрана и медиа-прокси
@@ -35,8 +36,12 @@
 - ТВ-экран защищён `RESULTS_DISPLAY_KEY` в query-параметре `key` — не требует входа в систему.
 - Три блока цикла: `main` (счётчики+миссия), `results` (карточки до/после), `promo` (акция). Пропускаются если выключен или нет данных.
 - Переходы между блоками: fade-out 400ms → смена → fade-in 400ms (CSS-анимация `.tv-block--exit/enter`).
-- SSE `/api/tv/stream?key=...` — push-уведомление `event: update` при изменении studio_results. EventSource на клиенте переподключается автоматически.
-- Медиа (tv_results, promo) — приватный бакет `tv-media`. Прокси: `/api/tv/media?path=...&key=...` (публичный с ключом) и `/kviz/api/tv/media?path=...` (сессия, для превью в настройках).
+- SSE `/api/tv/stream?key=...` — push-уведомление `event: changed` (после task 46, было `event: update`) при изменении данных. EventSource на клиенте переподключается автоматически.
+- Медиа (tv_results, slides) — приватный бакет `tv-media`. Прокси: `/api/tv/media?path=...&key=...` (публичный с ключом) и `/kviz/api/tv/media?path=...` (сессия, для превью в настройках).
+- Слайды хранятся в `tv_slides` (позиции 1..n без пробелов); position swap через temp=9999; DELETE ренумерует оставшиеся.
+- Gradient border у `.tv-frame`: `background: ...padding-box, ...border-box; border: 2px solid transparent` (border-image не работает с border-radius).
+- После task 46 блок «Акция» в настройках удалён — промо теперь добавляется как слайд типа `promo`.
+- `/api/tv/data` возвращает `version: "2"` для различения от старого формата.
 - Загрузка фото: клиент сжимает до 1600px JPEG 0.85 через canvas, отправляет base64. Сервер проверяет magic bytes (JPEG/PNG), сохраняет в бакет.
 - Лимит тела для TV-маршрутов: `app.use('/kviz/api/tv', express.json({ limit: '12mb' }))` добавлен в `src/index.ts` до глобального `express.json()`.
 
@@ -44,6 +49,32 @@
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 11.11.2026 · (текущий) · task 46 — 2-колоночный экран, tv_slides, настройки переписаны
+
+- `src/http/tv.ts` полностью переписан:
+  - `tvNotify()` теперь шлёт `event: changed` (было `event: update`).
+  - `GET /api/tv/data` возвращает `{ settings:{main_label_cm/kg/fat}, counters, mission, slides:[] }` — слайды обогащены объектами result_a/result_b.
+  - `PUT /kviz/api/tv/settings` обновляет только метки счётчиков; вызывает `tvNotify()`.
+  - Удалены эндпоинты `POST /kviz/api/tv/settings/promo-upload` и `DELETE /kviz/api/tv/promo`.
+  - `DELETE /kviz/api/tv/results/:id` перед удалением проверяет использование в `tv_slides.result_a/result_b` → 409 с текстом «Карточка используется в слайде №N».
+  - Новый CRUD `tv_slides`: GET/POST/PATCH/DELETE + `POST .../image`. POST загружает image_path для promo/usp. PATCH поддерживает position swap (3-шаговый через temp=9999 против unique-constraint). DELETE ренумерует оставшиеся слайды 1..n.
+- `kviz/client/src/pages/ResultsPage.tsx` полностью переписан:
+  - Новый layout: `<main class="tv-screen">` → `.tv-hdr` (лого, center) → `.tv-body` (`.tv-left` 30% + `.tv-right` 70%) → `.tv-ftr` (миссия center, время right, grid `1fr auto 1fr`).
+  - Четыре типа слайдов: `result1` (одна карточка), `result2` (две карточки рядом), `promo/usp` (изображение).
+  - SSE слушает `event: changed`. Fallback poll каждые 60 с. Слайды с упавшими картинками пропускаются (`failedIds`). Следующий слайд предзагружается через `new Image()`.
+  - Анимация счётчиков работает только при изменении значений (`prevTargetRef`).
+  - Slide transitions: exit 400ms, enter 600ms, `translateX` по горизонтали.
+- `kviz/client/src/index.css` TV-секция полностью переписана:
+  - `.tv-screen` (fixed inset:0), `.tv-body` (flex-row), `.tv-left/.tv-right`, `.tv-counters/.tv-counter`.
+  - `.tv-frame` — градиентная рамка через `background-clip: padding-box / border-box`.
+  - `.tv-res1/.tv-res2/.tv-img-slide` для трёх типов слайдов.
+  - Анимации `tv-slide-out/in` + `tv-fade-only-out/in` для `prefers-reduced-motion`.
+- `kviz/client/src/pages/crm/SettingsPage.tsx` TvSection переписан:
+  - Убраны `TvSettings` (старая с promo/results fields), `ToggleRow` в TV-контексте.
+  - Добавлены `TvSettingsLabels`, `TvSlideRaw`, `KIND_LABELS`, `AddSlideModal`.
+  - Три блока: Счётчики (3 метки + Save), Слайды (список с duration/enabled/up/down/delete + AddSlideModal), Карточки (библиотека с 409 per-row).
+  - Удалён блок «Акция».
+
 ### 11.11.2026 · (текущий) · task 45 — иконки через Vite-import, вёрстка карточек
 
 - `kviz/client/src/assets/tv/`: добавлены sm.png, kg.png, fat.png, logo.png (копия из `img/`).
@@ -91,6 +122,7 @@
 - (нет)
 
 ## Следующее
-- Добавить SSE heartbeat (25с комментарий) чтобы Render не закрывал idle-соединения.
-- Автопролистывание страниц в ResultsBlock если карточек больше results_show_count (сейчас показываются только первые).
-- Проверить scrollHeight === clientHeight на 1920×1080, 1366×768, 1280×720, 1024×768, 3840×2160 после деплоя.
+- Добавить SSE heartbeat (25с `comment:` строка) чтобы Render не закрывал idle-соединения.
+- Проверить layout на 1920×1080, 1366×768, 1280×720, 1024×768, 3840×2160 после деплоя.
+- В AddSlideModal нет предпросмотра загруженного изображения для promo/usp — можно добавить по желанию.
+- Для result1/result2 слайдов в настройках нет редактирования после создания (нельзя сменить карточку) — сейчас надо удалить и добавить заново.
