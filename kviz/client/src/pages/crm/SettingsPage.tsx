@@ -1356,13 +1356,11 @@ function MissionSection() {
 }
 
 function ServiceSection() {
-  type Sub = 'inbody' | 'migrate' | 'bulk' | 'mission';
+  type Sub = 'inbody' | 'migrate';
   const [sub, setSub] = useState<Sub>('inbody');
   const subs: { id: Sub; label: string }[] = [
-    { id: 'inbody',   label: 'InBody: импорт, пересчёт' },
-    { id: 'migrate',  label: 'Перенести клиентов InBody' },
-    { id: 'bulk',     label: 'Выгрузить все результаты' },
-    { id: 'mission',  label: 'Миссия студии' },
+    { id: 'inbody',  label: 'InBody: импорт, пересчёт' },
+    { id: 'migrate', label: 'Перенести клиентов InBody' },
   ];
   return (
     <div style={S.section}>
@@ -1373,8 +1371,6 @@ function ServiceSection() {
       </div>
       {sub === 'inbody'  && <InBodySettingsSection />}
       {sub === 'migrate' && <MigrateSection />}
-      {sub === 'bulk'    && <BulkResultsSection />}
-      {sub === 'mission' && <MissionSection />}
     </div>
   );
 }
@@ -2678,6 +2674,7 @@ function TvSection() {
   const [newTitle, setNewTitle] = useState('');
   const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState<string>('');
+  const [confirmDelPromo, setConfirmDelPromo] = useState(false);
 
   useEffect(() => {
     api('GET', '/kviz/api/tv/settings').then(r => { if (r.ok) setCfg(r.data); });
@@ -2736,6 +2733,17 @@ function TvSection() {
     setUploading('');
   }
 
+  async function deletePromo() {
+    setUploading('promo');
+    try {
+      const r = await api('DELETE', '/kviz/api/tv/promo');
+      if (r.ok) setCfg(r.data);
+      else setErr(r.data?.error || 'Ошибка удаления');
+    } catch { setErr('Ошибка удаления'); }
+    setUploading('');
+    setConfirmDelPromo(false);
+  }
+
   if (!cfg) return <div style={{ padding: 32, color: '#94a3b8' }}>Загрузка…</div>;
 
   const F: React.CSSProperties = { marginBottom: 10 };
@@ -2773,16 +2781,34 @@ function TvSection() {
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Блок «Акция»</div>
         <ToggleRow label="Показывать" checked={!!cfg.promo_enabled} onChange={v => patch({ promo_enabled: v })} />
         <div style={F}><label style={S.label}>Длительность (сек)</label><input type="number" min={5} max={300} value={cfg.promo_seconds || 15} onChange={e => patch({ promo_seconds: +e.target.value })} style={INP} /></div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
-          {cfg.promo_image_path && (
-            <img src={imgSrc(cfg.promo_image_path)!} alt="Акция" style={{ height: 72, borderRadius: 8, objectFit: 'contain', border: '1px solid #e2e8f0' }} />
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+          {cfg.promo_image_path ? (
+            <>
+              <img src={imgSrc(cfg.promo_image_path)!} alt="Акция" style={{ height: 72, borderRadius: 8, objectFit: 'contain', border: '1px solid #e2e8f0' }} />
+              <label style={{ ...S.csvBtn, cursor: 'pointer', display: 'inline-block' }}>
+                {uploading === 'promo' ? 'Загрузка…' : 'Заменить'}
+                <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
+                  disabled={!!uploading}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadPromo(f); e.target.value = ''; }} />
+              </label>
+              {confirmDelPromo ? (
+                <>
+                  <span style={{ fontSize: 13, color: '#ef4444' }}>Удалить фото?</span>
+                  <button style={S.saveBtn} onClick={deletePromo} disabled={!!uploading}>Да, удалить</button>
+                  <button style={S.cancelBtn} onClick={() => setConfirmDelPromo(false)}>Отмена</button>
+                </>
+              ) : (
+                <button style={{ ...S.cancelBtn, color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => setConfirmDelPromo(true)}>Удалить</button>
+              )}
+            </>
+          ) : (
+            <label style={{ ...S.saveBtn, cursor: 'pointer', display: 'inline-block', background: uploading === 'promo' ? '#94a3b8' : undefined }}>
+              {uploading === 'promo' ? 'Загрузка…' : '📷 Загрузить фото'}
+              <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
+                disabled={!!uploading}
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadPromo(f); e.target.value = ''; }} />
+            </label>
           )}
-          <label style={{ ...S.saveBtn, cursor: 'pointer', display: 'inline-block', background: uploading === 'promo' ? '#94a3b8' : undefined }}>
-            {uploading === 'promo' ? 'Загрузка…' : '📷 Загрузить фото'}
-            <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
-              disabled={uploading === 'promo'}
-              onChange={e => { const f = e.target.files?.[0]; if (f) uploadPromo(f); e.target.value = ''; }} />
-          </label>
         </div>
       </div>
 
@@ -2828,6 +2854,11 @@ function TvSection() {
           </div>
         </div>
       ))}
+
+      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 8, paddingTop: 8 }}>
+        <BulkResultsSection />
+        <MissionSection />
+      </div>
     </div>
   );
 }

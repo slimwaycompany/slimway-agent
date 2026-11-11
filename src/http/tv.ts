@@ -183,6 +183,16 @@ export function buildTvRouter(): Router {
     res.json({ ok: true });
   });
 
+  r.delete('/kviz/api/tv/promo', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const { data: row } = await supabase.from('tv_settings').select('promo_image_path').eq('id', 1).maybeSingle();
+    if (row?.promo_image_path) await supabase.storage.from(BUCKET).remove([row.promo_image_path]).catch(() => {});
+    const { data, error } = await supabase.from('tv_settings').update({ promo_image_path: null, updated_at: new Date().toISOString() }).eq('id', 1).select('*').single();
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    tvNotify();
+    res.json(data);
+  });
+
   r.post('/kviz/api/tv/results/:id/before-upload', async (req, res) => {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
     await uploadResultImg(req, res, 'before');
