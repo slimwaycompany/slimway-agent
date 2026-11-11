@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
 
@@ -31,14 +32,16 @@ function validImg(buf: Buffer): boolean {
          (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47);
 }
 
-async function proxyMedia(storagePath: string, res: Response): Promise<void> {
+// cacheImmutable=true for public (unique filenames never reuse a URL)
+// cacheImmutable=false for admin preview (must always show latest)
+async function proxyMedia(storagePath: string, res: Response, cacheImmutable = false): Promise<void> {
   if (!storagePath || !/^[a-zA-Z0-9/_.-]+$/.test(storagePath)) { res.status(400).end(); return; }
   try {
     const { data, error } = await supabase.storage.from(BUCKET).download(storagePath);
     if (error || !data) { res.status(404).end(); return; }
     const buf = Buffer.from(await data.arrayBuffer());
     res.setHeader('Content-Type', data.type || (storagePath.endsWith('.png') ? 'image/png' : 'image/jpeg'));
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Cache-Control', cacheImmutable ? 'public, max-age=31536000, immutable' : 'no-cache');
     res.send(buf);
   } catch { res.status(500).end(); }
 }
@@ -82,16 +85,16 @@ export function buildTvRouter(): Router {
     req.on('close', () => sseClients.delete(res));
   });
 
-  // Public media proxy (key-protected)
+  // Public media proxy: immutable cache — URL always changes on upload
   r.get('/api/tv/media', async (req, res) => {
     if (!checkKey(req)) { res.status(404).end(); return; }
-    await proxyMedia(String(req.query.path || ''), res);
+    await proxyMedia(String(req.query.path || ''), res, true);
   });
 
-  // Admin media proxy (session auth — for settings preview)
+  // Admin media proxy: no-cache — always show latest for settings preview
   r.get('/kviz/api/tv/media', async (req, res) => {
     if (!getSession(req)) { res.status(401).end(); return; }
-    await proxyMedia(String(req.query.path || ''), res);
+    await proxyMedia(String(req.query.path || ''), res, false);
   });
 
   // ── Admin settings ─────────────────────────────────────────────────────────
@@ -131,11 +134,15 @@ export function buildTvRouter(): Router {
     const buf = Buffer.from(b.content_base64, 'base64');
     if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
     const ext = buf[0] === 0x89 ? 'png' : 'jpg';
-    const sp = `promo/promo.${ext}`;
-    const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}`, upsert: true });
-    if (upErr) { res.status(500).json({ error: upErr.message }); return; }
+    // Read old path before uploading so we can clean it up after
+    const { data: oldRow } = await supabase.from('tv_settings').select('promo_image_path').eq('id', 1).maybeSingle();
+    const sp = `promo/${randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });
+    if (upErr) { console.error('tv promo upload:', upErr); res.status(500).json({ error: 'Ошибка загрузки файла' }); return; }
     const { data, error } = await supabase.from('tv_settings').update({ promo_image_path: sp, updated_at: new Date().toISOString() }).eq('id', 1).select('*').single();
-    if (error) { res.status(500).json({ error: error.message }); return; }
+    if (error) { console.error('tv promo settings:', error); res.status(500).json({ error: 'Ошибка обновления настроек' }); return; }
+    if (oldRow?.promo_image_path) supabase.storage.from(BUCKET).remove([oldRow.promo_image_path]).catch(e => console.error('tv promo remove old:', e));
+    tvNotify();
     res.json(data);
   });
 
@@ -179,14 +186,14 @@ export function buildTvRouter(): Router {
     const { error } = await supabase.from('tv_results').delete().eq('id', req.params.id);
     if (error) { res.status(500).json({ error: error.message }); return; }
     const paths = [row?.before_path, row?.after_path].filter(Boolean) as string[];
-    if (paths.length) supabase.storage.from(BUCKET).remove(paths).catch(() => {});
+    if (paths.length) supabase.storage.from(BUCKET).remove(paths).catch(e => console.error('tv result delete paths:', e));
     res.json({ ok: true });
   });
 
   r.delete('/kviz/api/tv/promo', async (req, res) => {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
     const { data: row } = await supabase.from('tv_settings').select('promo_image_path').eq('id', 1).maybeSingle();
-    if (row?.promo_image_path) await supabase.storage.from(BUCKET).remove([row.promo_image_path]).catch(() => {});
+    if (row?.promo_image_path) supabase.storage.from(BUCKET).remove([row.promo_image_path]).catch(e => console.error('tv promo delete:', e));
     const { data, error } = await supabase.from('tv_settings').update({ promo_image_path: null, updated_at: new Date().toISOString() }).eq('id', 1).select('*').single();
     if (error) { res.status(500).json({ error: error.message }); return; }
     tvNotify();
@@ -212,10 +219,15 @@ async function uploadResultImg(req: Request, res: Response, side: 'before' | 'af
   const buf = Buffer.from(b.content_base64, 'base64');
   if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
   const ext = buf[0] === 0x89 ? 'png' : 'jpg';
-  const sp = `results/${req.params.id}/${side}.${ext}`;
-  const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}`, upsert: true });
-  if (upErr) { res.status(500).json({ error: upErr.message }); return; }
+  // Read old path before uploading so we can clean it up after
+  const { data: oldRow } = await supabase.from('tv_results').select(`${side}_path`).eq('id', req.params.id).maybeSingle();
+  const sp = `results/${randomUUID()}.${ext}`;
+  const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });
+  if (upErr) { console.error('tv result upload:', upErr); res.status(500).json({ error: 'Ошибка загрузки файла' }); return; }
   const { data, error } = await supabase.from('tv_results').update({ [`${side}_path`]: sp }).eq('id', req.params.id).select().single();
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { console.error('tv result update:', error); res.status(500).json({ error: 'Ошибка обновления записи' }); return; }
+  const oldPath = (oldRow as Record<string, unknown>)?.[`${side}_path`] as string | undefined;
+  if (oldPath) supabase.storage.from(BUCKET).remove([oldPath]).catch(e => console.error('tv result remove old:', e));
+  tvNotify();
   res.json(data);
 }

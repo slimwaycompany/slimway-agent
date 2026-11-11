@@ -2675,6 +2675,8 @@ function TvSection() {
   const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState<string>('');
   const [confirmDelPromo, setConfirmDelPromo] = useState(false);
+  const [promoErr, setPromoErr] = useState('');
+  const [resultErr, setResultErr] = useState<Record<string, string>>({});
 
   useEffect(() => {
     api('GET', '/kviz/api/tv/settings').then(r => { if (r.ok) setCfg(r.data); });
@@ -2713,33 +2715,36 @@ function TvSection() {
   async function uploadImg(id: string, side: 'before' | 'after', file: File) {
     const key = `${id}-${side}`;
     setUploading(key);
+    setResultErr(prev => { const n = { ...prev }; delete n[id]; return n; });
     try {
       const b64 = await compressImg(file);
       const r = await api('POST', `/kviz/api/tv/results/${id}/${side}-upload`, { content_base64: b64 });
       if (r.ok) setResults(prev => prev.map(x => x.id === id ? r.data : x));
-      else setErr(r.data?.error || 'Ошибка загрузки');
-    } catch { setErr('Ошибка обработки фото'); }
+      else setResultErr(prev => ({ ...prev, [id]: r.data?.error || 'Ошибка загрузки' }));
+    } catch { setResultErr(prev => ({ ...prev, [id]: 'Ошибка обработки фото' })); }
     setUploading('');
   }
 
   async function uploadPromo(file: File) {
     setUploading('promo');
+    setPromoErr('');
     try {
       const b64 = await compressImg(file);
       const r = await api('POST', '/kviz/api/tv/settings/promo-upload', { content_base64: b64 });
-      if (r.ok) setCfg(r.data);
-      else setErr(r.data?.error || 'Ошибка загрузки');
-    } catch { setErr('Ошибка обработки фото'); }
+      if (r.ok) { setCfg(r.data); setConfirmDelPromo(false); }
+      else setPromoErr(r.data?.error || 'Ошибка загрузки');
+    } catch { setPromoErr('Ошибка обработки фото'); }
     setUploading('');
   }
 
   async function deletePromo() {
     setUploading('promo');
+    setPromoErr('');
     try {
       const r = await api('DELETE', '/kviz/api/tv/promo');
       if (r.ok) setCfg(r.data);
-      else setErr(r.data?.error || 'Ошибка удаления');
-    } catch { setErr('Ошибка удаления'); }
+      else setPromoErr(r.data?.error || 'Ошибка удаления');
+    } catch { setPromoErr('Ошибка удаления'); }
     setUploading('');
     setConfirmDelPromo(false);
   }
@@ -2810,6 +2815,7 @@ function TvSection() {
             </label>
           )}
         </div>
+        {promoErr && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 8 }}>{promoErr}</div>}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
@@ -2852,6 +2858,7 @@ function TvSection() {
               );
             })}
           </div>
+          {resultErr[res.id] && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{resultErr[res.id]}</div>}
         </div>
       ))}
 
