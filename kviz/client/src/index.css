@@ -619,6 +619,36 @@ img, video, svg, iframe { max-width: 100%; }
 .results-invalid { min-height: 100vh; display: grid; place-items: center; color: #64748b; font: 700 20px system-ui; }
 @media (max-width: 760px) { .results-header { align-items: flex-start; flex-direction: column; gap: 16px; } .results-mission { text-align: left; } .results-counters { grid-template-columns: 1fr; margin: 28px auto; } .results-counter { min-height: 180px; } .results-screen { overflow-y: auto; } }
 
+/* ── TV block transitions ── */
+.tv-block { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; height: 100%; flex: 1; }
+@keyframes tv-fade-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-28px); } }
+@keyframes tv-fade-in  { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+.tv-block--exit  { animation: tv-fade-out 0.4s ease-in  forwards; pointer-events: none; }
+.tv-block--enter { animation: tv-fade-in  0.4s ease-out forwards; }
+
+/* ── TV counter icons ── */
+.tv-icon-img { width: 54px; height: 54px; object-fit: contain; margin-bottom: 4px; }
+
+/* ── TV before/after cards ── */
+.tv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: clamp(16px,2.5vw,36px); flex: 1; align-items: start; padding: 0 0 16px; }
+.tv-card { background: rgba(255,255,255,.58); border: 1px solid rgba(255,255,255,.8); border-radius: 24px; overflow: hidden; box-shadow: 0 12px 40px rgba(38,60,217,.1); backdrop-filter: blur(16px); }
+.tv-card-images { display: flex; gap: 2px; }
+.tv-card-side { flex: 1; position: relative; overflow: hidden; aspect-ratio: 3/4; }
+.tv-card-side img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tv-card-label { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.52); color: #fff; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 20px; letter-spacing: .04em; }
+.tv-card-label--after { background: rgba(2,189,182,.8); }
+.tv-card-title { padding: 10px 14px; font-size: clamp(13px,1.4vw,17px); font-weight: 700; color: #263CD9; text-align: center; }
+
+/* ── TV promo block ── */
+.tv-promo { flex: 1; display: flex; align-items: center; justify-content: center; }
+.tv-promo img { max-width: 100%; max-height: calc(100vh - 80px); object-fit: contain; border-radius: 24px; box-shadow: 0 20px 60px rgba(38,60,217,.18); }
+
+@media (max-width: 760px) {
+  .tv-cards { grid-template-columns: 1fr; }
+  .tv-card-side { aspect-ratio: 4/5; }
+  .tv-icon-img { width: 38px; height: 38px; }
+}
+
 /* ─── Measure dropdown ─── */
 .measure-dropdown {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;

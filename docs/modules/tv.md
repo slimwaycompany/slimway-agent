@@ -6,18 +6,24 @@
 Экран результатов студии для ТВ (`/results?key=…`): счётчики «Сантиметров убрали / Килограммов сбросили / Жира сожгли / клиенток с результатом», миссия студии. Инструменты для сотрудников: ссылка для ТВ (копирование, «открыть на весь экран»), выгрузка всех результатов в общий, отправка результата клиента.
 
 ## Где код
-- `kviz/client/src/pages/ResultsPage.tsx` — ТВ-экран `/results?key=…` (счётчики, миссия, fullscreen)
-- `kviz/client/src/pages/reports/ReportsPage.tsx` → `StudioSection` — панель в Отчётах: ссылка для ТВ, счётчики, кнопка «Выгрузить все результаты»
+- `kviz/client/src/pages/ResultsPage.tsx` — ТВ-экран `/results?key=…` (3-блочный цикл: счётчики / до-после / акция)
+- `src/http/tv.ts` — TV-роутер: SSE (`tvNotify`), прокси медиа, CRUD tv_settings/tv_results, загрузка фото
+- `kviz/client/src/pages/crm/SettingsPage.tsx` → `TvSection` — настройки блоков, карточки «До/После», загрузка фото
+- `kviz/client/src/pages/reports/ReportsPage.tsx` → `StudioSection` — ссылка для ТВ, счётчики, кнопка «Выгрузить все результаты»
 - `kviz/client/src/pages/measure/ClientPage.tsx` — кнопка «Отправить в результаты студии» (внутри карточки клиента)
-- `kviz/client/src/pages/crm/SettingsPage.tsx` — ввод миссии студии (секция Настройки)
-- `src/http/inbody.ts` — `calcAllResults` (пересчёт всех результатов), `GET /kviz/api/results/summary`, эндпоинты выгрузки и обновления результатов студии
-- `src/http/measure.ts` — `POST /kviz/api/measure/clients/:id/results` (отправка результата одного клиента в `studio_results`)
+- `src/http/measure.ts` — `POST /kviz/api/measure/clients/:id/results` и `bulk-results`; вызывает `tvNotify()` после upsert
+- `kviz/client/public/tv/` — статичные иконки (logo.png, sm.jpg, kg.png, fat.png, bodyr.png)
 
-> Код TV-функций лежит в общих файлах с замерами (`measure.ts`, `inbody.ts`, `ClientPage.tsx`). Код не переносился — файлы общие; принадлежность логики указана выше.
+> Старый `/api/results/summary?key=...` и `/kviz/api/results/summary` (сессия) сохранены для совместимости в `src/http/kviz.ts`.
 
 ## Таблицы
-- `studio_results` — результаты клиентов для ТВ: `client_fitbase_id`, `name`, `cm_lost`, `kg_lost`, `fat_lost`, `from_measure_no`, `to_measure_no` (оба nullable)
-- `studio_settings` — настройки студии: миссия и другие параметры ТВ-экрана
+- `studio_results` — результаты клиентов для ТВ: `client_id`, `cm_lost`, `kg_lost`, `fat_kg_lost`, `from_measure_no`, `to_measure_no` (оба nullable), `sent_by`, `sent_at`
+- `studio_settings` — ключ-значение (миссия студии)
+- `tv_settings` — одна строка (id=1): настройки трёх блоков (`main_*`, `results_*`, `promo_*`), `promo_image_path`
+- `tv_results` — карточки «До/После»: `id`, `title`, `before_path`, `after_path`, `position`
+
+## env
+- `RESULTS_DISPLAY_KEY` — ключ защиты публичного ТВ-экрана и медиа-прокси
 
 ## env
 - `RESULTS_DISPLAY_KEY` — ключ защиты `/results?key=…`; URL открывается без входа в систему
@@ -27,11 +33,28 @@
 - Результаты студии — только **реальные** потери (не null, > 0). Клиенты только с InBody получают кг и жир; 0 см — норма (InBody-only, замеров тела нет).
 - `from_measure_no` / `to_measure_no` в `studio_results` — nullable. `null` означает «у клиента нет замеров тела, только InBody».
 - ТВ-экран защищён `RESULTS_DISPLAY_KEY` в query-параметре `key` — не требует входа в систему.
+- Три блока цикла: `main` (счётчики+миссия), `results` (карточки до/после), `promo` (акция). Пропускаются если выключен или нет данных.
+- Переходы между блоками: fade-out 400ms → смена → fade-in 400ms (CSS-анимация `.tv-block--exit/enter`).
+- SSE `/api/tv/stream?key=...` — push-уведомление `event: update` при изменении studio_results. EventSource на клиенте переподключается автоматически.
+- Медиа (tv_results, promo) — приватный бакет `tv-media`. Прокси: `/api/tv/media?path=...&key=...` (публичный с ключом) и `/kviz/api/tv/media?path=...` (сессия, для превью в настройках).
+- Загрузка фото: клиент сжимает до 1600px JPEG 0.85 через canvas, отправляет base64. Сервер проверяет magic bytes (JPEG/PNG), сохраняет в бакет.
+- Лимит тела для TV-маршрутов: `app.use('/kviz/api/tv', express.json({ limit: '12mb' }))` добавлен в `src/index.ts` до глобального `express.json()`.
 
 ## Мобильная версия
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 11.11.2026 · (текущий) · task 43 — 3-блочный цикл, до/после, акция, SSE, настройки
+
+- Новый `src/http/tv.ts`: `tvNotify()` (SSE push), `GET /api/tv/data`, `GET /api/tv/stream`, `GET /api/tv/media` (публичные, ключ), `GET/PUT /kviz/api/tv/settings`, `POST /kviz/api/tv/settings/promo-upload`, полный CRUD `tv_results`, `before-upload`/`after-upload` с валидацией magic bytes, `GET /kviz/api/tv/media` (сессия).
+- `src/index.ts`: лимит 12mb для `/kviz/api/tv`; импорт `buildTvRouter`.
+- `src/http/kviz.ts`: `app.use(buildTvRouter())`.
+- `src/http/measure.ts`: `tvNotify()` после upsert в `/clients/:id/results` и `/bulk-results`.
+- `kviz/client/public/tv/`: logo.png, sm.jpg, kg.png, fat.png, bodyr.png.
+- `ResultsPage.tsx` переписан: `getBlocks()` → цикл `main/results/promo` с fade-анимацией; `MainBlock` (иконки из `/tv/`), `ResultsBlock` (сетка карточек с медиа-прокси), `PromoBlock`; SSE подключение; анимация счётчиков сохранена.
+- `SettingsPage.tsx`: `TvSection` с редактором настроек трёх блоков + CRUD карточек + загрузка фото (canvas compress + base64 POST).
+- `index.css`: `.tv-block--exit/enter` (fade-анимации), `.tv-cards`, `.tv-card`, `.tv-card-side`, `.tv-card-label`, `.tv-promo`, `.tv-icon-img`, мобильная адаптация ≤760px.
+
 ### 29.10.2026 · (текущий) · фикс from/to_measure_no в studio_results (задача 17)
 - `calcAllResults` (`src/http/inbody.ts`): добавлены `from_measure_no` / `to_measure_no` в каждую строку upsert — первый и последний `measure_no` замеров клиента, `null` если замеров нет.
 - `POST /kviz/api/measure/clients/:id/results`: заменены хардкод `from_measure_no: 1, to_measure_no: 0` на реальные номера (или `null`).
@@ -46,4 +69,5 @@
 - (нет)
 
 ## Следующее
-- (нет запланированного)
+- Добавить SSE heartbeat (25с комментарий) чтобы Render не закрывал idle-соединения.
+- Автопролистывание страниц в ResultsBlock если карточек больше results_show_count (сейчас показываются только первые).

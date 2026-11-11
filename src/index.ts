@@ -26,6 +26,7 @@ import { buildShiftsAutocloseRoute }                  from './http/shifts';
 import { runFitbaseOps, JOB_NAME as FITBASE_OPS_JOB } from './jobs/fitbaseOps';
 import { runFitbaseCrmSync } from './jobs/fitbaseCrmSync';
 import { mountScriptologRoutes } from './http/scriptolog';
+import { buildTvRouter } from './http/tv';
 import { runCrmLifecycle } from './http/crm';
 import { runCrmLeadsSync } from './jobs/crmLeadsSync';
 import { runScriptologReminders, JOB_NAME as REMINDERS_JOB } from './jobs/scriptologReminders';
@@ -461,6 +462,8 @@ app.use('/kviz/api/inbody/csv-preview', express.json({ limit: '2mb' }));
 app.use('/kviz/api/inbody/csv-import',  express.json({ limit: '2mb' }));
 // Raise limit for materials upload (base64 file content)
 app.use('/api/scriptolog/settings/materials', express.json({ limit: '20mb' }));
+// Raise limit for TV image uploads (base64, max ~12MB after compression)
+app.use('/kviz/api/tv', express.json({ limit: '12mb' }));
 app.use(express.json());
 // Serve PWA manifest, icons and other public root assets
 app.use(express.static(path.join(__dirname, '../public'), { index: false, maxAge: '1d' }));

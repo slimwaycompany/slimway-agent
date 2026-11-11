@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
+import { tvNotify } from './tv';
 import { addClientNote, paginateGet, rawGet, FITBASE_PAGE_SIZE } from './fitbase';
 import { fetchAll } from './metrics';
 
@@ -383,6 +384,7 @@ export function buildMeasureRouter(): Router {
         cm_lost: cmLost, kg_lost: kgLost, fat_kg_lost: fatKgLost, sent_by: session.display_name, sent_at: new Date().toISOString() };
       const { data, error } = await supabase.from('studio_results').upsert(row, { onConflict: 'client_id' }).select('*').single();
       if (error) { console.error('studio_results upsert error:', error); res.status(500).json({ error: 'Не удалось сохранить результаты студии, попробуйте ещё раз' }); return; }
+      tvNotify();
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -732,6 +734,7 @@ export function buildClientsSyncRoute(): Router {
         if (error) { console.error('bulk-results upsert error:', error); res.status(500).json({ error: 'Не удалось сохранить результаты студии, попробуйте ещё раз' }); return; }
       }
       for (const r of toUpsert) { if (newIds.has(r.client_id)) added++; else updated++; }
+      tvNotify();
       res.json({ added, updated });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });

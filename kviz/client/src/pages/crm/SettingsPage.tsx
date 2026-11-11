@@ -14,7 +14,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control';
+type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'tv';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -2642,6 +2642,196 @@ function ControlSettingsSection() {
   );
 }
 
+// ── TV settings ───────────────────────────────────────────────────────────────
+
+interface TvSettings {
+  main_enabled: boolean; main_seconds: number;
+  main_label_cm: string; main_label_kg: string; main_label_fat: string;
+  results_enabled: boolean; results_seconds: number; results_show_count: number;
+  promo_enabled: boolean; promo_seconds: number; promo_image_path: string | null;
+}
+interface TvResult { id: string; title: string; before_path: string; after_path: string; position: number }
+
+async function compressImg(file: File): Promise<string> {
+  const MAX = 1600;
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, MAX / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+      res(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = rej;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function TvSection() {
+  const [cfg, setCfg] = useState<TvSettings | null>(null);
+  const [results, setResults] = useState<TvResult[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [uploading, setUploading] = useState<string>('');
+
+  useEffect(() => {
+    api('GET', '/kviz/api/tv/settings').then(r => { if (r.ok) setCfg(r.data); });
+    api('GET', '/kviz/api/tv/results').then(r => { if (r.ok) setResults(r.data); });
+  }, []);
+
+  function patch(upd: Partial<TvSettings>) {
+    setCfg(c => c ? { ...c, ...upd } : c);
+  }
+
+  async function save() {
+    if (!cfg) return;
+    setSaving(true); setErr(''); setOk(false);
+    const r = await api('PUT', '/kviz/api/tv/settings', cfg);
+    setSaving(false);
+    if (r.ok) { setCfg(r.data); setOk(true); setTimeout(() => setOk(false), 2000); }
+    else setErr(r.data?.error || 'Ошибка сохранения');
+  }
+
+  async function addResult() {
+    if (!newTitle.trim()) return;
+    setAdding(true);
+    const r = await api('POST', '/kviz/api/tv/results', { title: newTitle.trim() });
+    setAdding(false);
+    if (r.ok) { setResults(prev => [...prev, r.data]); setNewTitle(''); }
+    else setErr(r.data?.error || 'Ошибка');
+  }
+
+  async function deleteResult(id: string) {
+    if (!confirm('Удалить карточку результата?')) return;
+    const r = await api('DELETE', `/kviz/api/tv/results/${id}`);
+    if (r.ok) setResults(prev => prev.filter(x => x.id !== id));
+    else setErr(r.data?.error || 'Ошибка');
+  }
+
+  async function uploadImg(id: string, side: 'before' | 'after', file: File) {
+    const key = `${id}-${side}`;
+    setUploading(key);
+    try {
+      const b64 = await compressImg(file);
+      const r = await api('POST', `/kviz/api/tv/results/${id}/${side}-upload`, { content_base64: b64 });
+      if (r.ok) setResults(prev => prev.map(x => x.id === id ? r.data : x));
+      else setErr(r.data?.error || 'Ошибка загрузки');
+    } catch { setErr('Ошибка обработки фото'); }
+    setUploading('');
+  }
+
+  async function uploadPromo(file: File) {
+    setUploading('promo');
+    try {
+      const b64 = await compressImg(file);
+      const r = await api('POST', '/kviz/api/tv/settings/promo-upload', { content_base64: b64 });
+      if (r.ok) setCfg(r.data);
+      else setErr(r.data?.error || 'Ошибка загрузки');
+    } catch { setErr('Ошибка обработки фото'); }
+    setUploading('');
+  }
+
+  if (!cfg) return <div style={{ padding: 32, color: '#94a3b8' }}>Загрузка…</div>;
+
+  const F: React.CSSProperties = { marginBottom: 10 };
+  const INP: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' };
+  const SEC_TITLE: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: '#1a202c', marginBottom: 12 };
+  const imgSrc = (path: string | null) =>
+    path ? `/kviz/api/tv/media?path=${encodeURIComponent(path)}` : null;
+
+  return (
+    <div style={S.section}>
+      <div style={SEC_TITLE}>ТВ-экран — настройки</div>
+      {err && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{err}</div>}
+      {ok  && <div style={{ background: '#d1fae5', color: '#16a34a', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>Сохранено</div>}
+
+      {/* Main block */}
+      <div style={{ background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Блок «Счётчики»</div>
+        <ToggleRow label="Показывать" checked={!!cfg.main_enabled} onChange={v => patch({ main_enabled: v })} />
+        <div style={F}><label style={S.label}>Длительность (сек)</label><input type="number" min={5} max={300} value={cfg.main_seconds || 15} onChange={e => patch({ main_seconds: +e.target.value })} style={INP} /></div>
+        <div style={F}><label style={S.label}>Подпись «см»</label><input value={cfg.main_label_cm || ''} onChange={e => patch({ main_label_cm: e.target.value })} placeholder="Сантиметров убрали" style={INP} /></div>
+        <div style={F}><label style={S.label}>Подпись «кг»</label><input value={cfg.main_label_kg || ''} onChange={e => patch({ main_label_kg: e.target.value })} placeholder="Килограммов сбросили" style={INP} /></div>
+        <div style={F}><label style={S.label}>Подпись «жир»</label><input value={cfg.main_label_fat || ''} onChange={e => patch({ main_label_fat: e.target.value })} placeholder="Жира сожгли" style={INP} /></div>
+      </div>
+
+      {/* Results block */}
+      <div style={{ background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Блок «До / После»</div>
+        <ToggleRow label="Показывать" checked={!!cfg.results_enabled} onChange={v => patch({ results_enabled: v })} />
+        <div style={F}><label style={S.label}>Длительность (сек)</label><input type="number" min={5} max={300} value={cfg.results_seconds || 15} onChange={e => patch({ results_seconds: +e.target.value })} style={INP} /></div>
+        <div style={F}><label style={S.label}>Карточек на экране</label><input type="number" min={1} max={12} value={cfg.results_show_count || 3} onChange={e => patch({ results_show_count: +e.target.value })} style={INP} /></div>
+      </div>
+
+      {/* Promo block */}
+      <div style={{ background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Блок «Акция»</div>
+        <ToggleRow label="Показывать" checked={!!cfg.promo_enabled} onChange={v => patch({ promo_enabled: v })} />
+        <div style={F}><label style={S.label}>Длительность (сек)</label><input type="number" min={5} max={300} value={cfg.promo_seconds || 15} onChange={e => patch({ promo_seconds: +e.target.value })} style={INP} /></div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+          {cfg.promo_image_path && (
+            <img src={imgSrc(cfg.promo_image_path)!} alt="Акция" style={{ height: 72, borderRadius: 8, objectFit: 'contain', border: '1px solid #e2e8f0' }} />
+          )}
+          <label style={{ ...S.saveBtn, cursor: 'pointer', display: 'inline-block', background: uploading === 'promo' ? '#94a3b8' : undefined }}>
+            {uploading === 'promo' ? 'Загрузка…' : '📷 Загрузить фото'}
+            <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
+              disabled={uploading === 'promo'}
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadPromo(f); e.target.value = ''; }} />
+          </label>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
+        <button style={S.saveBtn} onClick={save} disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить настройки'}</button>
+      </div>
+
+      {/* Results list */}
+      <div style={SEC_TITLE}>Карточки «До / После»</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+        <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Название карточки"
+          style={{ ...INP, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addResult()} />
+        <button style={S.saveBtn} onClick={addResult} disabled={adding || !newTitle.trim()}>{adding ? '…' : '+ Добавить'}</button>
+      </div>
+      {results.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 12 }}>Нет карточек. Добавьте первую.</div>}
+      {results.map(res => (
+        <div key={res.id} style={{ background: '#f8fafc', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: '#1a202c' }}>{res.title || '—'}</div>
+            <button style={{ ...S.iconBtn, color: '#ef4444' }} onClick={() => deleteResult(res.id)}>✕</button>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            {(['before', 'after'] as const).map(side => {
+              const path = side === 'before' ? res.before_path : res.after_path;
+              const label = side === 'before' ? 'До' : 'После';
+              const uk = `${res.id}-${side}`;
+              return (
+                <div key={side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</div>
+                  {path
+                    ? <img src={imgSrc(path)!} alt={label} style={{ width: 72, height: 96, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                    : <div style={{ width: 72, height: 96, background: '#e2e8f0', borderRadius: 8, display: 'grid', placeItems: 'center', fontSize: 22, color: '#94a3b8' }}>📷</div>
+                  }
+                  <label style={{ fontSize: 11, color: '#263CD9', cursor: 'pointer', fontWeight: 600 }}>
+                    {uploading === uk ? '…' : path ? 'Заменить' : 'Загрузить'}
+                    <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
+                      disabled={uploading === uk}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadImg(res.id, side, f); e.target.value = ''; }} />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
 const NAV: { id: Section; label: string; icon: string }[] = [
@@ -2663,6 +2853,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: 'fb-users',     label: 'Сопоставление FB',     icon: '👤' },
   { id: 'scriptolog',   label: 'Скриптолог',           icon: '📝' },
   { id: 'control',      label: 'Контроль менеджеров',  icon: '📊' },
+  { id: 'tv',           label: 'ТВ-экран',             icon: '📺' },
 ];
 
 export default function SettingsPage() {
@@ -2718,6 +2909,7 @@ export default function SettingsPage() {
         {section === 'fb-users'   && <FbUsersSection />}
         {section === 'scriptolog' && <ScriptologSection />}
         {section === 'control'    && <ControlSettingsSection />}
+        {section === 'tv'         && <TvSection />}
       </div>
     </div>
   );
