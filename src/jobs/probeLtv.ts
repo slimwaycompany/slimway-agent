@@ -104,6 +104,7 @@ export async function runProbeLtv(params: { limit?: number } = {}): Promise<{
     item_type:      'contract',
     operation_type: 'purchase',
     date_from:      dateFr,
+    date_to:        new Date().toISOString().slice(0, 10),
     page_size:      100,
   });
 

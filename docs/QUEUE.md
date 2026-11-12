@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 48 | agent, tv | Агент: syncVisits date_to fix; ТВ: фикс цикла FreeSlide, счётчики в панели, intro_text | ТЗ в чате | ✅ готово (проверка на проде — на стороне Сергея) |
 | 47 | tv | ТВ: свободный блок слайда — редактор элементов (текст, картинка, шрифт, размер, растяжение, пропорции) | ТЗ в чате | ✅ готово (проверка на проде — на стороне Сергея) |
 | 1 | zamery | Замеры: карточка клиента «фигура слева на всю высоту — справа Потеряно / график / все замеры», страница на всю ширину вкладки, печать бланка без нового окна, блок «Потеряно» + «Отправить в результаты студии», экран /results | `docs/tasks/01-measurements-layout.md` | ✅ готово (039631f, 51cd5db + сессия 21.10) |
 | 2 | ovcharka | Векторный «Кабинет агента» (девушка + овчарка) вместо пиксельного | — | ✅ готово (4c67966) |
@@ -98,6 +99,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 12.11.2026 | Claude | 48 agent: syncVisits date_to (fitbaseCrmSync.ts — dateFrom−7d/dateTo+14d, fallback 7-дневными окнами при 400); watch.ts loadNewPurchases + probeLtv.ts recentSteps — date_to профилактически. 48 tv: FreeSlide.tsx useLayoutEffect deps+prevOverflowRef (React #185); tv.ts intro_text в GET+PUT; ResultsPage CounterBlock (Barlow Condensed 800 scaleY 1.2, ResizeObserver font-size), tv-counter-panel; SettingsPage intro_text textarea. | (текущий) | Проверка на проде — Сергей. |
 | 12.11.2026 | Claude | 47 tv: FreeSlide.tsx (ResizeObserver, текст/картинка абсолютно, overflow-hint preview), tv.ts (validateLayout, POST free, PATCH layout + удаление старых файлов, POST free-image, DELETE free-файлы), ResultsPage (kind free + frame conditionally), SettingsPage (FreeEditorModal 3-панели + мини-preview в списке + кнопка «Редактировать»), index.html Google Fonts 6 семейств | (текущий) | Barlow Condensed без кириллицы. Проверка на проде — Сергей. |
 | 11.11.2026 | Claude | 46 tv: src/http/tv.ts переписан (tv_slides CRUD, /api/tv/data новая структура с slides, DELETE results 409, SSE event:changed); ResultsPage.tsx переписан (flex 2-кол: 30% счётчики + 70% карусель, result1/result2/promo/usp слайды, fade-transition, preload next); index.css TV-секция переписана (.tv-screen fixed, .tv-body flex, .tv-frame gradient-border, слайд-анимации); SettingsPage.tsx TvSection переписан (Счётчики labels, Слайды CRUD+AddSlideModal, Карточки+409, убрана Акция) | (текущий) | — |
 | 11.11.2026 | Claude | 45 tv: иконки sm/kg/fat/logo перенесены в src/assets/tv/ (Vite хеширует имена); ResultsPage.tsx использует import-переменные, BASE/tv/ удалены; public/tv/ удалена; CSS: .tv-mid padding→96px, gap→40px, .tv-icon-img height clamp(48px,9vh,120px), white-space:nowrap | (текущий) | — |

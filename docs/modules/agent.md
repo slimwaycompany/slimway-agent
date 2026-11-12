@@ -38,8 +38,14 @@
 - DRY-флаги: `TRIAL_AGENT_DRY_RUN`, `BUDGET_DRY_RUN`, `INACTIVE_DRY_RUN` — ничего не менять в Fitbase.
 - Агент жизненного цикла (`lifecyclePlan`) — без DRY-флага, не запускать без явной просьбы Сергея.
 - Менеджер клиента в сводке = залогиненный пользователь (display_name из сессии).
+- **`/schedule-registration` всегда date_from + date_to** — Fitbase 400 без date_to (с 11.2026). dateFrom = today−7 дней, dateTo = today+14 дней (захватывает будущие пробные). Fallback на 7-дневные окна если 400 на весь диапазон.
 
 ## Сделано
+### 12.11.2026 · (задача 48) · syncVisits date_to fix — Fitbase требует date_to для /schedule-registration
+- `fitbaseCrmSync.ts → syncVisits`: добавлен `dateTo = yekDate(now + 14 × 86400 сек)` — будущие записи на пробные теперь попадают в `fitbase_visits`. При 400 (слишком большой диапазон) — fallback: 7-дневные окна с дедупликацией по id, паузой 400 мс.
+- `watch.ts → loadNewPurchases`: добавлен `date_to: almatyDate(now)` для `/till-order-steps` — профилактика.
+- `probeLtv.ts → recentSteps`: добавлен `date_to: today` для `/till-order-steps` — профилактика.
+
 ### до 28.10.2026 · 5ef230a · базовый сервер + агент пробных (DRY)
 - Stage 1A: сервер, Supabase, агент пробных в DRY.
 

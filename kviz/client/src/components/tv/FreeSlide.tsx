@@ -32,6 +32,7 @@ interface Props {
 export default function FreeSlide({ layout, mediaUrl, preview }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const textRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const prevOverflowKey = useRef('');
   const [dim, setDim] = useState({ w: 0, h: 0 });
   const [overflows, setOverflows] = useState<Set<string>>(new Set());
 
@@ -46,15 +47,18 @@ export default function FreeSlide({ layout, mediaUrl, preview }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  // Check text overflow after every render (only in preview mode)
   useLayoutEffect(() => {
     if (!preview || !dim.h) return;
     const ovSet = new Set<string>();
     for (const [id, el] of Object.entries(textRefs.current)) {
       if (el && el.scrollHeight > el.clientHeight + 1) ovSet.add(id);
     }
-    setOverflows(ovSet);
-  });
+    const key = [...ovSet].sort().join(',');
+    if (key !== prevOverflowKey.current) {
+      prevOverflowKey.current = key;
+      setOverflows(ovSet);
+    }
+  }, [layout, dim.h, preview]);
 
   const sorted = [...layout.elements].sort((a, b) => a.z - b.z);
 

@@ -103,7 +103,7 @@ export function buildTvRouter(): Router {
     if (!checkKey(req)) { res.status(404).end(); return; }
     try {
       const [settingsRes, countersRes, slidesRes, missionRes] = await Promise.all([
-        supabase.from('tv_settings').select('main_label_cm,main_label_kg,main_label_fat').eq('id', 1).maybeSingle(),
+        supabase.from('tv_settings').select('main_label_cm,main_label_kg,main_label_fat,intro_text').eq('id', 1).maybeSingle(),
         supabase.from('studio_results').select('cm_lost,kg_lost,fat_kg_lost'),
         supabase.from('tv_slides').select('*').order('position'),
         supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle(),
@@ -177,6 +177,11 @@ export function buildTvRouter(): Router {
     if ('main_label_cm'  in b) upd.main_label_cm  = String(b.main_label_cm  || '').slice(0, 60);
     if ('main_label_kg'  in b) upd.main_label_kg  = String(b.main_label_kg  || '').slice(0, 60);
     if ('main_label_fat' in b) upd.main_label_fat = String(b.main_label_fat || '').slice(0, 60);
+    if ('intro_text' in b) {
+      const t = String(b.intro_text || '').trim();
+      if (t.length > 120) { res.status(400).json({ error: 'Вступительный текст — не больше 120 символов' }); return; }
+      upd.intro_text = t;
+    }
     const { data, error } = await supabase.from('tv_settings').upsert(upd, { onConflict: 'id' }).select('*').single();
     if (error) { res.status(500).json({ error: error.message }); return; }
     tvNotify();

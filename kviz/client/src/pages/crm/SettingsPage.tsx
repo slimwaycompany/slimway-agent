@@ -2641,7 +2641,7 @@ function ControlSettingsSection() {
 
 // ── TV settings ───────────────────────────────────────────────────────────────
 
-interface TvSettingsLabels { main_label_cm: string; main_label_kg: string; main_label_fat: string }
+interface TvSettingsLabels { main_label_cm: string; main_label_kg: string; main_label_fat: string; intro_text: string }
 interface TvResult { id: string; title: string; before_path: string; after_path: string; position: number }
 interface TvSlideRaw {
   id: string; position: number; kind: 'result1' | 'result2' | 'promo' | 'usp' | 'free';
@@ -3102,7 +3102,7 @@ function FreeEditorModal({ slide, onClose, onSaved }: {
 }
 
 function TvSection() {
-  const [labels, setLabels] = useState<TvSettingsLabels>({ main_label_cm: '', main_label_kg: '', main_label_fat: '' });
+  const [labels, setLabels] = useState<TvSettingsLabels>({ main_label_cm: '', main_label_kg: '', main_label_fat: '', intro_text: '' });
   const [slides, setSlides] = useState<TvSlideRaw[]>([]);
   const [results, setResults] = useState<TvResult[]>([]);
   const [labelsSaving, setLabelsSaving] = useState(false);
@@ -3120,7 +3120,7 @@ function TvSection() {
 
   useEffect(() => {
     api('GET', '/kviz/api/tv/settings').then(r => {
-      if (r.ok) setLabels({ main_label_cm: r.data.main_label_cm || '', main_label_kg: r.data.main_label_kg || '', main_label_fat: r.data.main_label_fat || '' });
+      if (r.ok) setLabels({ main_label_cm: r.data.main_label_cm || '', main_label_kg: r.data.main_label_kg || '', main_label_fat: r.data.main_label_fat || '', intro_text: r.data.intro_text || '' });
     });
     api('GET', '/kviz/api/tv/slides').then(r => { if (r.ok) setSlides(r.data); });
     api('GET', '/kviz/api/tv/results').then(r => { if (r.ok) setResults(r.data); });
@@ -3210,6 +3210,11 @@ function TvSection() {
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Счётчики</div>
         {labelsErr && <div style={S.errBox}>{labelsErr}</div>}
         {labelsOk  && <div style={{ background: '#d1fae5', color: '#16a34a', padding: '7px 12px', borderRadius: 8, marginBottom: 10, fontSize: 13 }}>Сохранено</div>}
+        <div style={{ marginBottom: 10 }}>
+          <label style={S.label}>Вступительный текст (вверху панели)</label>
+          <textarea value={labels.intro_text} onChange={e => setLabels(l => ({ ...l, intro_text: e.target.value }))} placeholder="Результаты наших клиенток" maxLength={120} rows={2} style={{ ...INP, resize: 'vertical' as const }} />
+          <div style={{ fontSize: 11, color: labels.intro_text.length > 100 ? '#ef4444' : '#94a3b8', textAlign: 'right', marginTop: 2 }}>{labels.intro_text.length}/120</div>
+        </div>
         <div style={{ marginBottom: 10 }}><label style={S.label}>Подпись «см»</label><input value={labels.main_label_cm} onChange={e => setLabels(l => ({ ...l, main_label_cm: e.target.value }))} placeholder="Сантиметров убрали" style={INP} /></div>
         <div style={{ marginBottom: 10 }}><label style={S.label}>Подпись «кг»</label><input value={labels.main_label_kg} onChange={e => setLabels(l => ({ ...l, main_label_kg: e.target.value }))} placeholder="Килограммов сбросили" style={INP} /></div>
         <div style={{ marginBottom: 10 }}><label style={S.label}>Подпись «жир»</label><input value={labels.main_label_fat} onChange={e => setLabels(l => ({ ...l, main_label_fat: e.target.value }))} placeholder="Жира сожгли" style={INP} /></div>

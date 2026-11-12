@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import smIcon  from '../assets/tv/sm.png';
 import kgIcon  from '../assets/tv/kg.png';
@@ -6,7 +6,7 @@ import fatIcon from '../assets/tv/fat.png';
 import logoImg from '../assets/tv/logo.png';
 import FreeSlide, { type FreeLayout } from '../components/tv/FreeSlide';
 
-interface TvSettings { main_label_cm: string; main_label_kg: string; main_label_fat: string }
+interface TvSettings { main_label_cm: string; main_label_kg: string; main_label_fat: string; intro_text: string }
 interface TvCounters { cm_lost: number; kg_lost: number; fat_kg_lost: number }
 interface TvResult  { id: string; title: string; before_path: string; after_path: string }
 interface TvSlide {
@@ -76,6 +76,46 @@ function SlideContent({ slide, tvKey, onFail }: { slide: TvSlide; tvKey: string;
     );
   }
   return null;
+}
+
+// ── Counter block: icon left, number+unit+label right ───────────────────────
+function CounterBlock({ icon, value, unit, label }: { icon: string; value: number; unit: string; label: string }) {
+  const blockRef = useRef<HTMLDivElement>(null);
+  const iconRef  = useRef<HTMLImageElement>(null);
+  const [fs, setFs] = useState(50);
+
+  useLayoutEffect(() => {
+    const block = blockRef.current;
+    if (!block) return;
+    const compute = () => {
+      const { width, height } = block.getBoundingClientRect();
+      if (!height || !width) return;
+      const iconW = iconRef.current ? iconRef.current.offsetWidth : height * 0.55;
+      const digits = Math.max(1, String(Math.round(value)).length);
+      const avail = width - iconW - 16;
+      const byH = height * 0.55;
+      const byW = avail / (digits * 0.48); // Barlow Condensed width ratio
+      setFs(Math.max(20, Math.floor(Math.min(byH, byW))));
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(block);
+    return () => ro.disconnect();
+  }, [value]);
+
+  return (
+    <div ref={blockRef} className="tv-counter-block">
+      <img ref={iconRef} src={icon} className="tv-counter-icon" alt=""
+        onError={e => { e.currentTarget.style.display = 'none'; }} />
+      <div className="tv-counter-data">
+        <div className="tv-counter-numrow">
+          <span className="tv-counter-num" style={{ fontSize: fs }}>{Math.round(value)}</span>
+          <span className="tv-counter-unit">{unit}</span>
+        </div>
+        <div className="tv-counter-label">{label}</div>
+      </div>
+    </div>
+  );
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
@@ -229,15 +269,10 @@ export default function ResultsPage() {
       {/* Body: left 30% counters + right 70% carousel */}
       <div className="tv-body">
         <div className="tv-left">
-          <div className="tv-counters">
+          <div className="tv-counter-panel">
+            {st.intro_text && <div className="tv-counter-intro">{st.intro_text}</div>}
             {values.map((v, i) => (
-              <div key={i} className="tv-counter">
-                <img src={icons[i]} className="tv-counter-icon" alt=""
-                  onError={e => { e.currentTarget.style.display = 'none'; }} />
-                <div className="tv-counter-num">{Math.round(v)}</div>
-                <div className="tv-counter-label">{labels[i]}</div>
-                <div className="tv-counter-unit">{units[i]}</div>
-              </div>
+              <CounterBlock key={i} icon={icons[i]} value={v} unit={units[i]} label={labels[i]} />
             ))}
           </div>
         </div>

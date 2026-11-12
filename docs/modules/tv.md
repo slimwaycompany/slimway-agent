@@ -19,7 +19,7 @@
 ## Таблицы
 - `studio_results` — результаты клиентов для ТВ: `client_id`, `cm_lost`, `kg_lost`, `fat_kg_lost`, `from_measure_no`, `to_measure_no` (оба nullable), `sent_by`, `sent_at`
 - `studio_settings` — ключ-значение (миссия студии)
-- `tv_settings` — одна строка (id=1): `main_label_cm`, `main_label_kg`, `main_label_fat` (прочие старые колонки не используются после task 46)
+- `tv_settings` — одна строка (id=1): `main_label_cm`, `main_label_kg`, `main_label_fat`, `intro_text` (добавлена в task 48; вступительный текст в панели счётчиков, max 120 символов)
 - `tv_results` — карточки «До/После» (библиотека): `id`, `title`, `before_path`, `after_path`, `position`
 - `tv_slides` — слайды карусели: `id`, `position` (NOT NULL, unique), `kind` (result1|result2|promo|usp|**free**), `result_a` (uuid FK tv_results, nullable), `result_b` (uuid FK tv_results, nullable), `image_path` (nullable), `duration_sec` (default 8), `enabled` (default true), `layout` (jsonb, только для free), `created_at`
 
@@ -59,6 +59,13 @@ JSON-схема: `{ frame: boolean, elements: [...] }` (до 12 элементо
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 12.11.2026 · (текущий) · task 48 — исправление цикла FreeSlide, счётчики в панели с иконками и вступительным текстом
+- `kviz/client/src/components/tv/FreeSlide.tsx`: исправлен React error #185 (бесконечный цикл) — `useLayoutEffect` получил deps `[layout, dim.h, preview]`; добавлен `prevOverflowRef` для сравнения ключа до вызова `setOverflows`.
+- `src/http/tv.ts`: `GET /api/tv/data` выбирает `intro_text` из `tv_settings`; `PUT /kviz/api/tv/settings` принимает и валидирует `intro_text` (trim, max 120 симв., 400 если длиннее).
+- `kviz/client/src/pages/ResultsPage.tsx`: новый компонент `CounterBlock` (ResizeObserver → динамический font-size, Barlow Condensed 800, scaleY 1.2, иконка слева + данные справа); счётчики теперь в одной стеклянной панели `.tv-counter-panel` с `intro_text` вверху и разделителями между блоками.
+- `kviz/client/src/index.css`: удалены старые классы `.tv-counters/.tv-counter`; добавлены `.tv-counter-panel`, `.tv-counter-intro`, `.tv-counter-block`, `.tv-counter-data`, `.tv-counter-numrow`.
+- `kviz/client/src/pages/crm/SettingsPage.tsx`: `TvSettingsLabels` + `intro_text`; textarea с счётчиком символов (красный при >100) добавлена в блок «Счётчики»; данные загружаются и сохраняются вместе с остальными метками.
+
 ### 12.11.2026 · (текущий) · task 47 — свободный блок слайда
 
 - `src/http/tv.ts`: добавлен тип `free` в POST, валидация layout (validateLayout — шрифт, диапазоны, UUID), эндпоинт `POST .../free-image` (сохраняет `free/<uuid>.ext`), PATCH принимает `layout` целиком + удаляет из бакета картинки которые исчезли из нового layout, DELETE удаляет все файлы из `layout.elements`.

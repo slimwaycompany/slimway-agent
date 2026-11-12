@@ -391,6 +391,7 @@ async function loadNewPurchases(lastRunAt: number): Promise<Record<string, unkno
       item_type:      'contract',
       operation_type: 'purchase',
       date_from:      since,
+      date_to:        almatyDate(Date.now()),
       page_size:      100,
     });
     return items.filter(p => Number(p.price_full ?? p.price ?? 0) >= PURCHASE_MIN);

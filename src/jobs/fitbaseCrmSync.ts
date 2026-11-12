@@ -90,8 +90,41 @@ async function syncLeads(): Promise<number> {
 }
 
 async function syncVisits(): Promise<number> {
-  const dateFrom = yekDate(Date.now() - 7 * 86400_000); // refresh last 7 days for status updates
-  const items = await paginateGet('/schedule-registration', { page_size: 100, date_from: dateFrom }, 'crm-sync-visits');
+  const now      = Date.now();
+  const dateFrom = yekDate(now - 7 * 86400_000);  // last 7 days for status updates
+  const dateTo   = yekDate(now + 14 * 86400_000); // +14 days to catch future trial bookings
+
+  let items: Record<string, unknown>[];
+  try {
+    items = await paginateGet(
+      '/schedule-registration',
+      { page_size: 100, date_from: dateFrom, date_to: dateTo },
+      'crm-sync-visits',
+    );
+  } catch (e) {
+    if (!/→ 400 /.test((e as Error).message)) throw e;
+    // Fitbase rejects large ranges; split into 7-day windows and deduplicate
+    items = [];
+    const seen = new Set<string>();
+    let cur = now - 7 * 86400_000;
+    const end = now + 14 * 86400_000;
+    while (cur < end) {
+      const winFrom = yekDate(cur);
+      const winTo   = yekDate(Math.min(cur + 7 * 86400_000, end));
+      const chunk   = await paginateGet(
+        '/schedule-registration',
+        { page_size: 100, date_from: winFrom, date_to: winTo },
+        'crm-sync-visits',
+      );
+      for (const item of chunk) {
+        const id = String((item as Record<string, unknown>).id);
+        if (!seen.has(id)) { seen.add(id); items.push(item); }
+      }
+      cur += 7 * 86400_000;
+      await sleep(400);
+    }
+  }
+
   if (!items.length) return 0;
 
   // Batch-fetch client names/phones from fitbase_clients_cache by client_id

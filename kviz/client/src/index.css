@@ -614,15 +614,17 @@ img, video, svg, iframe { max-width: 100%; }
 .tv-mission { grid-column: 2; color: #263CD9; font-size: clamp(12px,1.6vw,24px); font-weight: 600; text-align: center; }
 .tv-datetime { grid-column: 3; justify-self: end; color: #000; font-size: clamp(15px,1.3vw,21px); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
 
-/* ── TV counter cards (left column, stacked vertically) ── */
-.tv-counters { display: flex; flex-direction: column; gap: clamp(5px,1vh,12px); height: 100%; }
-.tv-counter { flex: 1; min-height: 0; border: 1px solid rgba(255,255,255,.8); border-radius: clamp(12px,1.5vw,22px); background: rgba(255,255,255,.58); box-shadow: 0 10px 32px rgba(38,60,217,.1); backdrop-filter: blur(22px); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: clamp(6px,1vh,12px) clamp(6px,0.8vw,12px); overflow: hidden; }
-.tv-counter:nth-child(2) { background: linear-gradient(145deg,rgba(2,189,182,.18),rgba(255,255,255,.68)); }
-.tv-counter:nth-child(3) { background: linear-gradient(145deg,rgba(38,60,217,.12),rgba(255,255,255,.68)); }
-.tv-counter-icon  { height: clamp(24px,4.5vh,56px); width: auto; object-fit: contain; }
-.tv-counter-num   { margin: clamp(3px,0.5vh,7px) 0 2px; color: #263CD9; font-size: clamp(24px,4.2vw,64px); line-height: 1; font-variant-numeric: tabular-nums; font-weight: 800; white-space: nowrap; }
-.tv-counter-label { font-size: clamp(9px,0.9vw,14px); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.tv-counter-unit  { margin-top: 1px; color: #64748b; font-size: clamp(8px,0.65vw,11px); white-space: nowrap; }
+/* ── TV counter panel (left column) ── */
+.tv-counter-panel { display: flex; flex-direction: column; height: 100%; border-radius: clamp(14px,1.8vw,28px); border: 1.5px solid rgba(255,255,255,.85); background: rgba(255,255,255,.58); box-shadow: 0 12px 48px rgba(38,60,217,.13); backdrop-filter: blur(22px); padding: clamp(10px,1.5vh,24px) clamp(10px,1.2vw,20px); overflow: hidden; }
+.tv-counter-intro { flex-shrink: 0; font-size: clamp(11px,1.1vw,17px); font-weight: 600; color: #263CD9; text-align: center; margin-bottom: clamp(6px,1vh,14px); }
+.tv-counter-block { flex: 1; min-height: 0; display: flex; align-items: center; gap: clamp(8px,1vw,16px); }
+.tv-counter-block + .tv-counter-block { border-top: 1px solid rgba(38,60,217,.12); }
+.tv-counter-icon  { height: clamp(28px,4.5vh,60px); width: auto; object-fit: contain; flex-shrink: 0; }
+.tv-counter-data  { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.tv-counter-numrow { display: flex; align-items: flex-end; gap: 4px; }
+.tv-counter-num   { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; color: #263CD9; line-height: 1; font-variant-numeric: tabular-nums; transform: scaleY(1.2); transform-origin: center bottom; display: block; white-space: nowrap; }
+.tv-counter-unit  { color: #64748b; font-size: clamp(11px,1vw,16px); font-weight: 600; white-space: nowrap; padding-bottom: 2px; }
+.tv-counter-label { font-size: clamp(9px,0.9vw,14px); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; margin-top: 2px; color: #17234b; }
 
 /* ── TV slide (right column) ── */
 @keyframes tv-slide-out { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-40px); } }
