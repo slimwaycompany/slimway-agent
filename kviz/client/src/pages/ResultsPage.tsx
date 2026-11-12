@@ -16,6 +16,7 @@ interface TvSlide {
 interface TvData {
   screen_layout: ScreenLayout;
   counters: TvCounters;
+  mission: string;
   slides: TvSlide[];
   serverTime: string;
   version: string;
@@ -241,9 +242,11 @@ export default function ResultsPage() {
       <div className="tv-glow tv-glow-b" />
       <TvScreen
         layout={screenLayout}
-        counters={{ cm: values[0], kg: values[1], fat: values[2] }}
+        values={{ value_cm: values[0], value_kg: values[1], value_fat: values[2] }}
+        mission={data.mission ?? ''}
         carousel={carousel}
         datetime={datetime}
+        mediaUrl={p => mediaUrl(p, tvKey)}
       />
     </main>
   );

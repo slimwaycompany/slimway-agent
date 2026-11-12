@@ -6,14 +6,14 @@
 Экран результатов студии для ТВ (`/results?key=…`): счётчики «Сантиметров убрали / Килограммов сбросили / Жира сожгли / клиенток с результатом», миссия студии. Инструменты для сотрудников: ссылка для ТВ (копирование, «открыть на весь экран»), выгрузка всех результатов в общий, отправка результата клиента.
 
 ## Где код
-- `kviz/client/src/pages/ResultsPage.tsx` — ТВ-экран `/results?key=…`: загружает `screen_layout` из `/api/tv/data`, анимирует счётчики, рендерит `TvScreen` с carousel-слотом
-- `kviz/client/src/components/tv/TvScreen.tsx` — рендерит `ScreenLayout`: каждый элемент позиционируется абсолютно (x/y/w/h % экрана), `--screen-h` CSS-var для шрифтов
-- `kviz/client/src/components/tv/TvScreenEditor.tsx` — редактор экрана (drag/resize, дерево элементов, свойства, undo/redo 50 шагов), сохраняет через `PUT /kviz/api/tv/screen`
-- `kviz/client/src/lib/tvScreenLayout.ts` — типы `ScreenEl`/`ScreenLayout`, `defaultScreenLayout()`, `SCREEN_EL_LABELS`
-- `kviz/client/src/components/tv/TextBox.tsx` — рендер текстового элемента FreeSlide (font-size через CSS calc(`--screen-h`), без overflow:hidden на себе)
+- `kviz/client/src/pages/ResultsPage.tsx` — ТВ-экран `/results?key=…`: загружает `screen_layout` v2 из `/api/tv/data`, анимирует счётчики, рендерит `TvScreen` с carousel-слотом
+- `kviz/client/src/components/tv/TvScreen.tsx` — рендерит v2 `ScreenLayout`: 7 типов элементов (text/value/mission/datetime/image/shape/carousel), абсолютное позиционирование %, `--screen-h` CSS-var, поворот через transform
+- `kviz/client/src/components/tv/TvScreenEditor.tsx` — полноэкранный редактор (~500 строк): 8 ручек ресайза + ручка поворота (snap 5°/15°), snap-гайды 0/50/100%, undo/redo 50 шагов, drag-reorder слоёв, загрузка изображений через POST /kviz/api/tv/screen/image
+- `kviz/client/src/lib/tvScreenLayout.ts` — v2-схема `{ v: 2, elements: ScreenEl[] }`: 7 типов, `TextStyle`, `ShapeFill`, `migrateV1ToV2()`, `defaultScreenLayout()` (18 элементов)
+- `kviz/client/src/components/tv/TextBox.tsx` — рендер текста: принимает `style: TextStyle; text: string` (используется TvScreen и FreeSlide)
 - `kviz/client/src/components/tv/ImageBox.tsx` — рендер картинки FreeSlide
 - `kviz/client/src/components/tv/FreeSlide.tsx` — общий компонент free-слайда: устанавливает `--screen-h`, использует TextBox/ImageBox
-- `src/http/tv.ts` — TV-роутер: SSE, прокси медиа, CRUD tv_settings/tv_results/tv_slides, `GET/PUT /kviz/api/tv/screen`, `GET /api/tv/data` v3
+- `src/http/tv.ts` — TV-роутер: SSE, прокси медиа, CRUD tv_settings/tv_results/tv_slides, `GET/PUT /kviz/api/tv/screen`, `POST /kviz/api/tv/screen/image`, `GET /api/tv/data` v4
 - `kviz/client/src/pages/crm/SettingsPage.tsx` → `TvSection` — кнопка «Редактор экрана», карточки «До/После», слайды
 - `kviz/client/src/pages/reports/ReportsPage.tsx` → `StudioSection` — ссылка для ТВ, счётчики, кнопка «Выгрузить все результаты»
 - `kviz/client/src/pages/measure/ClientPage.tsx` — кнопка «Отправить в результаты студии» (внутри карточки клиента)
@@ -39,12 +39,17 @@ JSON-схема: `{ frame: boolean, elements: [...] }` (до 12 элементо
 Файлы картинок — в бакете `tv-media/free/`. Удаляются при сохранении нового layout (если убраны из элементов) и при удалении слайда.
 
 ## screen_layout (ScreenLayout)
-JSON-схема `{ version: 1, elements: ScreenEl[] }` хранится в `tv_settings.screen_layout`.
-Каждый `ScreenEl`: `{ kind, x, y, w, h (% экрана), z? }` + опциональные поля по виду:
-- Текст (`intro`/`mission`/`datetime`): `font`, `size` (% высоты экрана), `weight`, `color`, `align`, `text`
-- Счётчик (`counter_cm/kg/fat`): `label` (подпись), `unit` (единица)
-- `logo` / `panel` / `carousel` — позиция/размер только
-Виды: `logo | panel | carousel | intro | mission | datetime | counter_cm | counter_kg | counter_fat`
+JSON-схема **v2**: `{ v: 2, elements: ScreenEl[] }` хранится в `tv_settings.screen_layout`.
+Каждый `ScreenEl`: `{ id (uuid), type, x, y, w, h (% экрана), z (0–99), visible?, rotate? }` + поля по типу:
+- `text` / `mission` / `datetime`: `TextStyle` (font, size % экрана, weight, color, opacity, align, scaleX, scaleY) + для `text` — поле `text: string`
+- `value`: `TextStyle` + `bind: 'value_cm' | 'value_kg' | 'value_fat'` — показывает анимированный счётчик
+- `image`: `asset?: 'logo'|'icon_cm'|'icon_kg'|'icon_fat'` или `path?: string` (screen/<uuid>.ext) + `fit`, `opacity`, `radius`
+- `shape`: `shape: rect|rounded|circle|ellipse|pill`, `fill: ShapeFill (solid|gradient)`, `border?`, `shadow?`, `blur?`, `radius?`
+- `carousel`: слот карусели слайдов, `radius?`
+
+**Миграция**: сервер при GET автоматически мигрирует v1 → v2 (или генерирует v2 по умолчанию). Старый v1 различается по наличию поля `version: 1` вместо `v: 2`.
+**Миссия** в v2 хранится отдельно в `studio_settings` и возвращается рядом с layout: `{ layout, mission }`.
+**Файлы экрана**: загружаются через `POST /kviz/api/tv/screen/image` → `screen/<uuid>.<ext>`. При PUT layout сервер сравнивает старые и новые пути, удаляет убранные из бакета.
 
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -58,14 +63,25 @@ JSON-схема `{ version: 1, elements: ScreenEl[] }` хранится в `tv_s
 - Слайды хранятся в `tv_slides` (позиции 1..n без пробелов); position swap через temp=9999; DELETE ренумерует оставшиеся.
 - Gradient border у `.tv-frame`: `background: ...padding-box, ...border-box; border: 2px solid transparent` (border-image не работает с border-radius).
 - После task 46 блок «Акция» в настройках удалён — промо теперь добавляется как слайд типа `promo`.
-- `/api/tv/data` возвращает `version: "3"` (task 49). `v2` — старый формат со slides без screen_layout. `v3` — `{ screen_layout, counters, slides, serverTime, version: "3" }`.
+- `/api/tv/data` v4 (task 50): `{ screen_layout (v2), counters: {cm_lost,kg_lost,fat_kg_lost}, mission: string, slides, serverTime, version: "4" }`. v3 — устаревший (без mission на верхнем уровне).
 - Загрузка фото: клиент сжимает до 1600px JPEG 0.85 через canvas, отправляет base64. Сервер проверяет magic bytes (JPEG/PNG), сохраняет в бакет.
 - Лимит тела для TV-маршрутов: `app.use('/kviz/api/tv', express.json({ limit: '12mb' }))` добавлен в `src/index.ts` до глобального `express.json()`.
+- v2 screen_layout: миссия студии живёт в `studio_settings` (не в layout). `GET/PUT /kviz/api/tv/screen` принимает `{ layout, mission }` — одним запросом. Редактор сохраняет и layout, и текст миссии вместе.
+- TvScreenEditor: поворот элемента — atan2(dx,dy)+90° с привязкой к 5° (Shift: 15°). Ручка поворота позиционируется `top: -26px, left: 50%` над выделенным элементом. История хранит `[ScreenLayout, string][]` (layout+mission) — undo/redo восстанавливает оба состояния.
 
 ## Мобильная версия
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 12.11.2026 · (текущий) · task 50 — конструктор экрана v2 (свободные элементы, поворот, слои)
+- **`kviz/client/src/lib/tvScreenLayout.ts`** (полный рерайт): v2-схема `{ v: 2, elements: ScreenEl[] }`. 7 типов: text/value/mission/datetime/image/shape/carousel. `TextStyle` (font/size/weight/color/opacity/align/scaleX/scaleY). `ShapeFill` (solid/gradient). Экспорты: `TYPE_LABELS`, `BIND_LABELS`, `SHAPE_LABELS`, `VALID_FONTS`, `ASSET_LABELS`, `newId()`, `migrateV1ToV2()`, `defaultScreenLayout()` (18 элементов).
+- **`kviz/client/src/components/tv/TextBox.tsx`**: сигнатура изменена на `style: TextStyle; text: string`; добавлен `opacity`; используется и в TvScreen, и в FreeSlide.
+- **`kviz/client/src/components/tv/TvScreen.tsx`** (полный рерайт): `ShapeBox` (5 форм, glassmorphism/gradient/border/shadow), `ImageEl` (asset или path), 7 типов в `sorted.map()`, поворот через `transform: rotate`, `opacity: 0.25` для скрытых в режиме редактора.
+- **`kviz/client/src/components/tv/TvScreenEditor.tsx`** (полный рерайт, ~500 строк): 8 ручек ресайза (nw/ne/sw/se/n/s/e/w) + ручка поворота (top -26px), snap-гайды к 0/50/100% (порог 2%), история `[ScreenLayout, string][]` (undo/redo включает миссию), drag-reorder слоёв через HTML5 DnD (z переназначается по порядку), загрузка изображений `POST /kviz/api/tv/screen/image`, панели свойств для всех 7 типов, предупреждение «Нет элемента «Карусель»».
+- **`src/http/tv.ts`**: `validateScreenLayoutV2()`, `migrateToV2Server()` (v1→v2: счётчик→4 элемента), `defaultScreenLayoutV2Server()`, `extractScreenPaths()`. `GET /api/tv/data` → v4 (c `mission` на верхнем уровне). `GET /kviz/api/tv/screen` → `{ layout (v2), mission }`. `PUT /kviz/api/tv/screen` → принимает v2, сохраняет mission, удаляет убранные `screen/*` файлы. `POST /kviz/api/tv/screen/image` → `screen/<uuid>.<ext>`.
+- **`kviz/client/src/pages/ResultsPage.tsx`**: добавлено `mission: string` в `TvData`; обновлён вызов `TvScreen` (`values={{value_cm,value_kg,value_fat}}`, `mission`, `mediaUrl`).
+- **`kviz/client/src/pages/crm/SettingsPage.tsx`**: `screenMission` state; GET считывает `r.data.mission`; PUT отправляет `{ layout, mission }`; `initialMission` у `TvScreenEditor`.
+
 ### 12.11.2026 · (текущий) · task 49 — редактор экрана (screen_layout, TvScreen, TvScreenEditor, TextBox/ImageBox)
 - **`kviz/client/src/lib/tvScreenLayout.ts`** (новый): типы `ScreenEl`/`ScreenLayout`, `defaultScreenLayout()`, `SCREEN_EL_LABELS`. 9 видов элементов: logo/panel/carousel/intro/mission/datetime/counter_cm/counter_kg/counter_fat.
 - **`kviz/client/src/components/tv/TextBox.tsx`** (новый): рендер текста FreeSlide (font-size через CSS calc(`--screen-h`)); wrapper имеет `overflow:hidden`, сам TextBox — нет (фикс бага обрезки scaleX).
@@ -171,4 +187,4 @@ JSON-схема `{ version: 1, elements: ScreenEl[] }` хранится в `tv_s
 - В AddSlideModal нет предпросмотра загруженного изображения для promo/usp — можно добавить по желанию.
 - Для result1/result2 слайдов в настройках нет редактирования после создания (нельзя сменить карточку) — сейчас надо удалить и добавить заново.
 - Перетаскивание элементов мышью в редакторе free-слайда — не реализовано, позиция задаётся числами.
-- **SQL нужен** (добавить колонку): `ALTER TABLE tv_settings ADD COLUMN IF NOT EXISTS screen_layout jsonb;`
+- **SQL выполнен (task 49)**: `ALTER TABLE tv_settings ADD COLUMN IF NOT EXISTS screen_layout jsonb;`

@@ -1,167 +1,90 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import smIcon  from '../../assets/tv/sm.png';
 import kgIcon  from '../../assets/tv/kg.png';
 import fatIcon from '../../assets/tv/fat.png';
 import logoImg from '../../assets/tv/logo.png';
-import type { ScreenLayout, ScreenEl, ScreenElKind } from '../../lib/tvScreenLayout';
+import TextBox from './TextBox';
+import type { ScreenEl, ScreenElImage, ScreenElShape, ScreenLayout } from '../../lib/tvScreenLayout';
 
-// ── Counter block ────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-interface CounterBlockProps { icon: string; value: number; unit: string; label: string }
+const ASSET_SRC: Record<string, string> = {
+  logo: logoImg, icon_cm: smIcon, icon_kg: kgIcon, icon_fat: fatIcon,
+};
 
-function CounterBlock({ icon, value, unit, label }: CounterBlockProps) {
-  const blockRef = useRef<HTMLDivElement>(null);
-  const iconRef  = useRef<HTMLImageElement>(null);
-  const [fs, setFs] = useState(50);
+function hexA(hex: string, opacity: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${opacity})`;
+}
 
-  useLayoutEffect(() => {
-    const block = blockRef.current;
-    if (!block) return;
-    const compute = () => {
-      const { width, height } = block.getBoundingClientRect();
-      if (!height || !width) return;
-      const iconW = iconRef.current ? iconRef.current.offsetWidth : height * 0.55;
-      const digits = Math.max(1, String(Math.round(value)).length);
-      const avail = width - iconW - 16;
-      const byH = height * 0.55;
-      const byW = avail / (digits * 0.48);
-      setFs(Math.max(20, Math.floor(Math.min(byH, byW))));
-    };
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(block);
-    return () => ro.disconnect();
-  }, [value]);
+// ── ShapeBox ──────────────────────────────────────────────────────────────────
+
+function ShapeBox({ el }: { el: ScreenElShape }) {
+  const r = el.radius ?? 0;
+  const borderRadius: React.CSSProperties['borderRadius'] = ({
+    rect:    '0',
+    rounded: `calc(var(--screen-h,400px) * ${r} / 100)`,
+    circle:  '50%',
+    ellipse: '50%',
+    pill:    '999px',
+  } as Record<string, string>)[el.shape];
+
+  let background: string | undefined;
+  if (el.fill?.type === 'solid') {
+    background = hexA(el.fill.color, el.fill.opacity);
+  } else if (el.fill?.type === 'gradient') {
+    const { from, to, angle, opacity } = el.fill;
+    background = `linear-gradient(${angle}deg, ${hexA(from, opacity)}, ${hexA(to, opacity)})`;
+  }
+
+  const border = el.border
+    ? `calc(var(--screen-h,400px) * ${el.border.width} / 100) solid ${hexA(el.border.color, el.border.opacity)}`
+    : undefined;
 
   return (
-    <div ref={blockRef} className="tv-counter-block">
-      <img ref={iconRef} src={icon} className="tv-counter-icon" alt=""
-        onError={e => { e.currentTarget.style.display = 'none'; }} />
-      <div className="tv-counter-data">
-        <div className="tv-counter-numrow">
-          <span className="tv-counter-num" style={{ fontSize: fs }}>{Math.round(value)}</span>
-          <span className="tv-counter-unit">{unit}</span>
-        </div>
-        <div className="tv-counter-label">{label}</div>
-      </div>
-    </div>
+    <div style={{
+      width: '100%', height: '100%', borderRadius, background, border,
+      boxShadow:      el.shadow ? '0 12px 48px rgba(38,60,217,.13)' : undefined,
+      backdropFilter: el.blur   ? 'blur(22px)' : undefined,
+      boxSizing:      'border-box',
+    }} />
   );
 }
 
-const COUNTER_ICONS: Record<string, string> = {
-  counter_cm: smIcon, counter_kg: kgIcon, counter_fat: fatIcon,
-};
-const COUNTER_DEFAULTS: Record<string, { label: string; unit: string }> = {
-  counter_cm:  { label: 'Сантиметров убрали',   unit: 'см' },
-  counter_kg:  { label: 'Килограммов сбросили',  unit: 'кг' },
-  counter_fat: { label: 'Жира сожгли',           unit: 'кг' },
-};
+// ── ImageEl ───────────────────────────────────────────────────────────────────
 
-// ── Render helpers ──────────────────────────────────────────────────────────
-
-interface RenderCtx {
-  counterValues: Record<string, number>;
-  carousel: ReactNode;
-  datetime: string;
-}
-
-function renderEl(el: ScreenEl, ctx: RenderCtx): ReactNode {
-  const { kind } = el;
-
-  if (kind === 'logo') {
-    return (
-      <img src={logoImg} alt="SlimWay"
-        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-        onError={e => { e.currentTarget.style.display = 'none'; }} />
-    );
-  }
-
-  if (kind === 'panel') {
-    return (
-      <div style={{
-        width: '100%', height: '100%',
-        borderRadius: 'clamp(14px,1.8vw,28px)',
-        border: '1.5px solid rgba(255,255,255,.85)',
-        background: 'rgba(255,255,255,.58)',
-        boxShadow: '0 12px 48px rgba(38,60,217,.13)',
-        backdropFilter: 'blur(22px)',
-      }} />
-    );
-  }
-
-  if (kind === 'intro' || kind === 'mission') {
-    const justify =
-      el.align === 'right' ? 'flex-end' :
-      el.align === 'left'  ? 'flex-start' : 'center';
-    return (
-      <div style={{
-        width: '100%', height: '100%',
-        fontFamily: `'${el.font || 'Manrope'}', sans-serif`,
-        fontSize: `calc(var(--screen-h, 400px) * ${el.size ?? 1.6} / 100)`,
-        fontWeight: el.weight ?? 600,
-        color: el.color ?? '#263CD9',
-        textAlign: (el.align ?? 'center') as React.CSSProperties['textAlign'],
-        display: 'flex', alignItems: 'center', justifyContent: justify,
-        wordBreak: 'break-word',
-      }}>
-        {el.text || ''}
-      </div>
-    );
-  }
-
-  if (kind === 'datetime') {
-    const justify = el.align === 'left' ? 'flex-start' : el.align === 'center' ? 'center' : 'flex-end';
-    return (
-      <div style={{
-        width: '100%', height: '100%',
-        fontFamily: `'${el.font || 'Manrope'}', sans-serif`,
-        fontSize: `calc(var(--screen-h, 400px) * ${el.size ?? 1.3} / 100)`,
-        fontWeight: el.weight ?? 600,
-        color: el.color ?? '#000000',
-        display: 'flex', alignItems: 'center', justifyContent: justify,
-        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-      }}>
-        {ctx.datetime}
-      </div>
-    );
-  }
-
-  if (kind === 'counter_cm' || kind === 'counter_kg' || kind === 'counter_fat') {
-    const def = COUNTER_DEFAULTS[kind];
-    return (
-      <CounterBlock
-        icon={COUNTER_ICONS[kind]}
-        value={ctx.counterValues[kind] ?? 0}
-        unit={el.unit || def.unit}
-        label={el.label || def.label}
-      />
-    );
-  }
-
-  if (kind === 'carousel') {
-    return (
-      <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
-        {ctx.carousel}
-      </div>
-    );
-  }
-
-  return null;
+function ImageEl({ el, mediaUrl }: { el: ScreenElImage; mediaUrl?: (p: string) => string }) {
+  const src = el.asset ? ASSET_SRC[el.asset] : (el.path && mediaUrl ? mediaUrl(el.path) : undefined);
+  if (!src) return null;
+  const objFit: React.CSSProperties['objectFit'] = el.fit === 'stretch' ? 'fill' : (el.fit ?? 'contain');
+  const radius = el.radius ? `calc(var(--screen-h,400px) * ${el.radius} / 100)` : undefined;
+  return (
+    <img src={src} alt="" style={{
+      width: '100%', height: '100%', objectFit: objFit,
+      opacity: el.opacity, borderRadius: radius, display: 'block',
+    }} onError={e => { e.currentTarget.style.display = 'none'; }} />
+  );
 }
 
 // ── TvScreen ─────────────────────────────────────────────────────────────────
 
 export interface TvScreenProps {
   layout: ScreenLayout;
-  counters: { cm: number; kg: number; fat: number };
+  values: { value_cm: number; value_kg: number; value_fat: number };
+  mission: string;
   carousel: ReactNode;
   datetime: string;
-  // Editor props: overlay click handler (kind of element clicked)
-  onElementClick?: (kind: ScreenElKind) => void;
-  selectedKind?: ScreenElKind | null;
+  mediaUrl?: (path: string) => string;
+  selectedId?: string | null;
+  onElementClick?: (id: string) => void;
 }
 
-export default function TvScreen({ layout, counters, carousel, datetime, onElementClick, selectedKind }: TvScreenProps) {
+export default function TvScreen({
+  layout, values, mission, carousel, datetime,
+  mediaUrl, selectedId, onElementClick,
+}: TvScreenProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [screenH, setScreenH] = useState(0);
 
@@ -173,33 +96,72 @@ export default function TvScreen({ layout, counters, carousel, datetime, onEleme
   }, []);
 
   const style = { '--screen-h': `${screenH || 400}px` } as React.CSSProperties;
-  const counterValues = {
-    counter_cm: counters.cm, counter_kg: counters.kg, counter_fat: counters.fat,
-  };
-  const ctx: RenderCtx = { counterValues, carousel, datetime };
-  const sorted = [...layout.elements].sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
+  const isEditor = !!onElementClick;
+  const sorted = [...layout.elements]
+    .filter(el => isEditor || el.visible !== false)
+    .sort((a, b) => a.z - b.z);
 
   return (
     <div ref={ref} style={{ position: 'absolute', inset: 0, ...style }}>
-      {sorted.map(el => (
-        <div
-          key={el.kind}
-          style={{
-            position: 'absolute',
-            left: `${el.x}%`, top: `${el.y}%`,
-            width: `${el.w}%`, height: `${el.h}%`,
-            zIndex: el.z ?? 0,
-            overflow: 'hidden',
-            ...(onElementClick ? {
-              outline: selectedKind === el.kind ? '2px solid #02BDB6' : undefined,
-              cursor: 'pointer',
-            } : {}),
-          }}
-          onClick={onElementClick ? () => onElementClick(el.kind) : undefined}
-        >
-          {renderEl(el, ctx)}
-        </div>
-      ))}
+      {sorted.map(el => {
+        const hidden = el.visible === false;
+        const rotate = el.rotate ?? 0;
+        const wrapStyle: React.CSSProperties = {
+          position: 'absolute',
+          left: `${el.x}%`, top: `${el.y}%`,
+          width: `${el.w}%`, height: `${el.h}%`,
+          zIndex: el.z,
+          transform: rotate ? `rotate(${rotate}deg)` : undefined,
+          transformOrigin: 'center center',
+          opacity: isEditor && hidden ? 0.25 : undefined,
+          ...(onElementClick ? {
+            outline: selectedId === el.id ? '2px solid #02BDB6' : undefined,
+            cursor: 'pointer',
+          } : {}),
+        };
+
+        let content: ReactNode;
+        switch (el.type) {
+          case 'text':
+            content = <TextBox style={el} text={el.text} />;
+            break;
+          case 'value': {
+            const v = values[el.bind] ?? 0;
+            content = <TextBox style={el} text={String(Math.round(v))} />;
+            break;
+          }
+          case 'mission':
+            content = <TextBox style={el} text={mission} />;
+            break;
+          case 'datetime':
+            content = <TextBox style={el} text={datetime} />;
+            break;
+          case 'image':
+            content = <ImageEl el={el} mediaUrl={mediaUrl} />;
+            break;
+          case 'shape':
+            content = <ShapeBox el={el} />;
+            break;
+          case 'carousel':
+            content = (
+              <div style={{
+                position: 'relative', width: '100%', height: '100%', overflow: 'hidden',
+                borderRadius: el.radius ? `calc(var(--screen-h,400px) * ${el.radius} / 100)` : undefined,
+              }}>
+                {carousel}
+              </div>
+            );
+            break;
+          default:
+            content = null;
+        }
+
+        return (
+          <div key={el.id} style={wrapStyle} onClick={onElementClick ? () => onElementClick(el.id) : undefined}>
+            {content}
+          </div>
+        );
+      })}
     </div>
   );
 }

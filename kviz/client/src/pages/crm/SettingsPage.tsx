@@ -3117,11 +3117,12 @@ function TvSection() {
   const [freeEditSlide, setFreeEditSlide] = useState<(TvSlideRaw & { layout: FreeLayout }) | null>(null);
   const [screenEditorOpen, setScreenEditorOpen] = useState(false);
   const [screenLayout, setScreenLayout] = useState<ScreenLayout | null>(null);
+  const [screenMission, setScreenMission] = useState('');
   const [tvUrl, setTvUrl] = useState('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    api('GET', '/kviz/api/tv/screen').then(r => { if (r.ok) setScreenLayout(r.data); });
+    api('GET', '/kviz/api/tv/screen').then(r => { if (r.ok) { setScreenLayout(r.data.layout); setScreenMission(r.data.mission ?? ''); } });
     api('GET', '/kviz/api/tv/slides').then(r => { if (r.ok) setSlides(r.data); });
     api('GET', '/kviz/api/tv/results').then(r => { if (r.ok) setResults(r.data); });
     fetch('/kviz/api/results/mission', { credentials: 'include' })
@@ -3130,10 +3131,10 @@ function TvSection() {
       .catch(() => {});
   }, []);
 
-  async function saveScreenLayout(layout: ScreenLayout) {
-    const r = await api('PUT', '/kviz/api/tv/screen', layout);
+  async function saveScreenLayout(layout: ScreenLayout, mission: string) {
+    const r = await api('PUT', '/kviz/api/tv/screen', { layout, mission });
     if (!r.ok) throw new Error(r.data?.error || 'Ошибка сохранения');
-    setScreenLayout(layout);
+    setScreenLayout(layout); setScreenMission(mission);
   }
 
   async function refreshSlides() {
@@ -3332,6 +3333,7 @@ function TvSection() {
       {screenEditorOpen && screenLayout && (
         <TvScreenEditor
           initialLayout={screenLayout}
+          initialMission={screenMission}
           onSave={saveScreenLayout}
           onClose={() => setScreenEditorOpen(false)}
         />

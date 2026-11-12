@@ -144,6 +144,177 @@ function defaultScreenLayoutServer(): ScreenLayoutServer {
   };
 }
 
+// ── Screen layout v2 ──────────────────────────────────────────────────────────
+// синхронизировать с kviz/client/src/lib/tvScreenLayout.ts
+
+function validateScreenLayoutV2(raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null) return 'layout должен быть объектом';
+  const l = raw as Record<string, unknown>;
+  if (l.v !== 2) return 'layout.v должно быть 2';
+  if (!Array.isArray(l.elements)) return 'elements должен быть массивом';
+  if ((l.elements as unknown[]).length > 50) return 'Максимум 50 элементов';
+  const VALID_TYPES  = new Set(['text','value','mission','datetime','image','shape','carousel']);
+  const VALID_BINDS  = new Set(['value_cm','value_kg','value_fat']);
+  const VALID_ASSETS = new Set(['logo','icon_cm','icon_kg','icon_fat']);
+  const VALID_SHAPES = new Set(['rect','rounded','circle','ellipse','pill']);
+  const VALID_FITS   = new Set(['contain','cover','stretch']);
+  const TEXT_TYPES   = new Set(['text','value','mission','datetime']);
+  const ids = new Set<string>();
+  for (const item of l.elements as unknown[]) {
+    if (typeof item !== 'object' || item === null) return 'Элемент не объект';
+    const e = item as Record<string, unknown>;
+    if (typeof e.id !== 'string' || !UUID_RE.test(e.id)) return 'id элемента должен быть UUID';
+    if (ids.has(e.id)) return `Дублирующийся id: ${e.id}`;
+    ids.add(e.id);
+    if (!VALID_TYPES.has(String(e.type))) return `Неверный type: ${e.type}`;
+    for (const [k, min, max] of [['x',0,100],['y',0,100],['w',1,100],['h',1,100]] as const) {
+      if (typeof e[k] !== 'number' || (e[k] as number) < min || (e[k] as number) > max) return `${k}: число ${min}–${max}`;
+    }
+    if (typeof e.z !== 'number' || !Number.isInteger(e.z) || e.z < 0 || e.z > 500) return 'z: целое 0–500';
+    if ('rotate'  in e && e.rotate  !== undefined && (typeof e.rotate  !== 'number' || (e.rotate  as number) < -180 || (e.rotate  as number) > 180)) return 'rotate: -180..180';
+    if ('visible' in e && e.visible !== undefined && typeof e.visible !== 'boolean') return 'visible: boolean';
+    if ('locked'  in e && e.locked  !== undefined && typeof e.locked  !== 'boolean') return 'locked: boolean';
+    if (TEXT_TYPES.has(String(e.type))) {
+      if ('font'    in e && e.font    !== undefined && !VALID_FONTS.has(e.font as string)) return `Неверный шрифт: ${e.font}`;
+      if ('size'    in e && e.size    !== undefined && (typeof e.size !== 'number'    || (e.size as number) < 1   || (e.size as number) > 60)) return 'size: 1–60';
+      if ('weight'  in e && e.weight  !== undefined && e.weight !== 400 && e.weight !== 600 && e.weight !== 800) return 'weight: 400, 600 или 800';
+      if ('color'   in e && e.color   !== undefined && (typeof e.color !== 'string'   || !HEX_RE.test(e.color as string))) return 'color: формат #RRGGBB';
+      if ('align'   in e && e.align   !== undefined && e.align !== 'left' && e.align !== 'center' && e.align !== 'right') return 'align: left, center или right';
+      if ('opacity' in e && e.opacity !== undefined && (typeof e.opacity !== 'number' || (e.opacity as number) < 0 || (e.opacity as number) > 1)) return 'opacity: 0–1';
+      if ('scaleX'  in e && e.scaleX  !== undefined && (typeof e.scaleX  !== 'number' || (e.scaleX as number)  < 0.5 || (e.scaleX as number)  > 2)) return 'scaleX: 0.5–2';
+      if ('scaleY'  in e && e.scaleY  !== undefined && (typeof e.scaleY  !== 'number' || (e.scaleY as number)  < 0.5 || (e.scaleY as number)  > 2)) return 'scaleY: 0.5–2';
+    }
+    if (e.type === 'text') {
+      if (typeof e.text !== 'string' || (e.text as string).length > 500) return 'text: строка до 500 символов';
+    }
+    if (e.type === 'value') {
+      if (!VALID_BINDS.has(String(e.bind))) return 'bind: value_cm, value_kg или value_fat';
+    }
+    if (e.type === 'image') {
+      const hasAsset = 'asset' in e && e.asset !== undefined;
+      const hasPath  = 'path'  in e && e.path  !== undefined;
+      if (!hasAsset && !hasPath) return 'image: нужен asset или path';
+      if (hasAsset && hasPath)   return 'image: только один из asset или path';
+      if (hasAsset && !VALID_ASSETS.has(e.asset as string)) return 'asset: logo, icon_cm, icon_kg или icon_fat';
+      if (hasPath  && (typeof e.path !== 'string' || !/^screen\/[0-9a-f-]+\.(jpg|png)$/.test(e.path as string))) return 'path: screen/<uuid>.jpg или screen/<uuid>.png';
+      if ('fit' in e && e.fit !== undefined && !VALID_FITS.has(e.fit as string)) return 'fit: contain, cover или stretch';
+    }
+    if (e.type === 'shape') {
+      if (!VALID_SHAPES.has(String(e.shape))) return 'shape: rect, rounded, circle, ellipse или pill';
+      if ('radius' in e && e.radius !== undefined && (typeof e.radius !== 'number' || (e.radius as number) < 0 || (e.radius as number) > 10)) return 'shape.radius: 0–10';
+      if ('fill' in e && e.fill !== undefined) {
+        const f = e.fill as Record<string, unknown>;
+        if (f.type !== 'solid' && f.type !== 'gradient') return 'fill.type: solid или gradient';
+        if (f.type === 'solid') {
+          if (!HEX_RE.test(String(f.color || ''))) return 'fill.color: #RRGGBB';
+          if (typeof f.opacity !== 'number' || (f.opacity as number) < 0 || (f.opacity as number) > 1) return 'fill.opacity: 0–1';
+        }
+        if (f.type === 'gradient') {
+          if (!HEX_RE.test(String(f.from || '')) || !HEX_RE.test(String(f.to || ''))) return 'fill.from/to: #RRGGBB';
+          if (typeof f.angle !== 'number' || (f.angle as number) < 0 || (f.angle as number) > 360) return 'fill.angle: 0–360';
+          if (typeof f.opacity !== 'number' || (f.opacity as number) < 0 || (f.opacity as number) > 1) return 'fill.opacity: 0–1';
+        }
+      }
+      if ('border' in e && e.border !== undefined) {
+        const b = e.border as Record<string, unknown>;
+        if (typeof b.width !== 'number' || (b.width as number) < 0 || (b.width as number) > 1) return 'border.width: 0–1';
+        if (!HEX_RE.test(String(b.color || ''))) return 'border.color: #RRGGBB';
+        if (typeof b.opacity !== 'number' || (b.opacity as number) < 0 || (b.opacity as number) > 1) return 'border.opacity: 0–1';
+      }
+    }
+    if (e.type === 'carousel') {
+      if ('radius' in e && e.radius !== undefined && (typeof e.radius !== 'number' || (e.radius as number) < 0 || (e.radius as number) > 10)) return 'carousel.radius: 0–10';
+    }
+  }
+  return null;
+}
+
+function migrateCounterServer(
+  el: Record<string, unknown>, iconAsset: string, bind: string, unit: string, label: string,
+): Record<string, unknown>[] {
+  const x = el.x as number, y = el.y as number, w = el.w as number, h = el.h as number, z = Number(el.z ?? 1);
+  const iW = Math.round(w * 0.33 * 2) / 2;
+  const dX = Math.round((x + w * 0.35) * 2) / 2;
+  const dW = Math.round(w * 0.65 * 2) / 2;
+  const nH = Math.round(h * 0.52 * 2) / 2;
+  const uH = Math.round(h * 0.18 * 2) / 2;
+  const lH = h - nH - uH;
+  return [
+    { id: randomUUID(), type: 'image', x, y, w: iW, h, z, visible: true, locked: false, asset: iconAsset, fit: 'contain' },
+    { id: randomUUID(), type: 'value', x: dX, y, w: dW, h: nH, z, visible: true, locked: false, bind, font: 'Barlow Condensed', size: Math.round(h * 0.47 * 10) / 10, weight: 800, color: '#1e293b', align: 'right' },
+    { id: randomUUID(), type: 'text',  x: dX, y: y + nH, w: dW, h: uH, z, visible: true, locked: false, text: unit, font: 'Manrope', size: Math.round(h * 0.14 * 10) / 10, weight: 600, color: '#64748b', align: 'right' },
+    { id: randomUUID(), type: 'text',  x: dX, y: y + nH + uH, w: dW, h: lH, z, visible: true, locked: false, text: label, font: 'Manrope', size: Math.round(h * 0.1 * 10) / 10, weight: 400, color: '#475569', align: 'right' },
+  ];
+}
+
+interface V1Seed { label_cm?: string; label_kg?: string; label_fat?: string }
+
+function migrateToV2Server(v1: { version: number; elements: Record<string, unknown>[] }, seed?: V1Seed): object {
+  const elements: Record<string, unknown>[] = [];
+  for (const el of v1.elements) {
+    const z = Number(el.z ?? 0);
+    if (el.kind === 'logo') {
+      elements.push({ id: randomUUID(), type: 'image',   x: el.x, y: el.y, w: el.w, h: el.h, z: z || 2, visible: true, locked: false, asset: 'logo', fit: 'contain' });
+    } else if (el.kind === 'panel') {
+      elements.push({ id: randomUUID(), type: 'shape',   x: el.x, y: el.y, w: el.w, h: el.h, z: 0, visible: true, locked: false, shape: 'rounded', radius: 2, fill: { type: 'solid', color: '#ffffff', opacity: 0.58 }, border: { width: 0.15, color: '#ffffff', opacity: 0.85 }, shadow: true, blur: true });
+    } else if (el.kind === 'intro') {
+      elements.push({ id: randomUUID(), type: 'text',    x: el.x, y: el.y, w: el.w, h: el.h, z: z || 1, visible: true, locked: false, text: el.text ?? 'На сегодня мы', font: el.font ?? 'Manrope', size: el.size ?? 1.1, weight: el.weight ?? 600, color: el.color ?? '#263CD9', align: el.align ?? 'center' });
+    } else if (el.kind === 'counter_cm') {
+      elements.push(...migrateCounterServer(el, 'icon_cm',  'value_cm',  String(el.unit || 'см'), seed?.label_cm  || String(el.label || 'Сантиметров убрали')));
+    } else if (el.kind === 'counter_kg') {
+      elements.push(...migrateCounterServer(el, 'icon_kg',  'value_kg',  String(el.unit || 'кг'), seed?.label_kg  || String(el.label || 'Килограммов сбросили')));
+    } else if (el.kind === 'counter_fat') {
+      elements.push(...migrateCounterServer(el, 'icon_fat', 'value_fat', String(el.unit || 'кг'), seed?.label_fat || String(el.label || 'Жира сожгли')));
+    } else if (el.kind === 'carousel') {
+      elements.push({ id: randomUUID(), type: 'carousel', x: el.x, y: el.y, w: el.w, h: el.h, z: 0, visible: true, locked: false, frame: false });
+    } else if (el.kind === 'mission') {
+      // text lives in studio_settings in v2 — not stored in the element
+      elements.push({ id: randomUUID(), type: 'mission',  x: el.x, y: el.y, w: el.w, h: el.h, z: z || 2, visible: true, locked: false, font: el.font ?? 'Manrope', size: el.size ?? 1.6, weight: el.weight ?? 600, color: el.color ?? '#263CD9', align: el.align ?? 'center' });
+    } else if (el.kind === 'datetime') {
+      elements.push({ id: randomUUID(), type: 'datetime', x: el.x, y: el.y, w: el.w, h: el.h, z: z || 2, visible: true, locked: false, font: el.font ?? 'Manrope', size: el.size ?? 1.3, weight: el.weight ?? 600, color: el.color ?? '#000000', align: el.align ?? 'right' });
+    }
+  }
+  return { v: 2, elements };
+}
+
+function defaultScreenLayoutV2Server(seed?: V1Seed): object {
+  const lCm  = seed?.label_cm  || 'Сантиметров убрали';
+  const lKg  = seed?.label_kg  || 'Килограммов сбросили';
+  const lFat = seed?.label_fat || 'Жира сожгли';
+  return {
+    v: 2,
+    elements: [
+      { id: randomUUID(), type: 'image',    x: 36,   y: 1,    w: 28,  h: 9,    z: 2, visible: true, locked: false, asset: 'logo',    fit: 'contain' },
+      { id: randomUUID(), type: 'shape',    x: 2,    y: 11,   w: 27,  h: 80,   z: 0, visible: true, locked: false, shape: 'rounded', radius: 2, fill: { type: 'solid', color: '#ffffff', opacity: 0.58 }, border: { width: 0.15, color: '#ffffff', opacity: 0.85 }, shadow: true, blur: true },
+      { id: randomUUID(), type: 'text',     x: 3,    y: 12,   w: 25,  h: 7,    z: 1, visible: true, locked: false, text: 'На сегодня мы', font: 'Manrope', size: 1.1, weight: 600, color: '#263CD9', align: 'center' },
+      { id: randomUUID(), type: 'image',    x: 3,    y: 20,   w: 8,   h: 23,   z: 1, visible: true, locked: false, asset: 'icon_cm',  fit: 'contain' },
+      { id: randomUUID(), type: 'value',    x: 11.5, y: 20,   w: 16.5,h: 12,   z: 1, visible: true, locked: false, bind: 'value_cm',  font: 'Barlow Condensed', size: 11, weight: 800, color: '#1e293b', align: 'right' },
+      { id: randomUUID(), type: 'text',     x: 11.5, y: 32,   w: 16.5,h: 4,    z: 1, visible: true, locked: false, text: 'см', font: 'Manrope', size: 3.2, weight: 600, color: '#64748b', align: 'right' },
+      { id: randomUUID(), type: 'text',     x: 11.5, y: 36,   w: 16.5,h: 7,    z: 1, visible: true, locked: false, text: lCm, font: 'Manrope', size: 2.3, weight: 400, color: '#475569', align: 'right' },
+      { id: randomUUID(), type: 'image',    x: 3,    y: 44,   w: 8,   h: 23,   z: 1, visible: true, locked: false, asset: 'icon_kg',  fit: 'contain' },
+      { id: randomUUID(), type: 'value',    x: 11.5, y: 44,   w: 16.5,h: 12,   z: 1, visible: true, locked: false, bind: 'value_kg',  font: 'Barlow Condensed', size: 11, weight: 800, color: '#1e293b', align: 'right' },
+      { id: randomUUID(), type: 'text',     x: 11.5, y: 56,   w: 16.5,h: 4,    z: 1, visible: true, locked: false, text: 'кг', font: 'Manrope', size: 3.2, weight: 600, color: '#64748b', align: 'right' },
+      { id: randomUUID(), type: 'text',     x: 11.5, y: 60,   w: 16.5,h: 7,    z: 1, visible: true, locked: false, text: lKg, font: 'Manrope', size: 2.3, weight: 400, color: '#475569', align: 'right' },
+      { id: randomUUID(), type: 'image',    x: 3,    y: 68,   w: 8,   h: 22,   z: 1, visible: true, locked: false, asset: 'icon_fat', fit: 'contain' },
+      { id: randomUUID(), type: 'value',    x: 11.5, y: 68,   w: 16.5,h: 11.5, z: 1, visible: true, locked: false, bind: 'value_fat', font: 'Barlow Condensed', size: 10.5, weight: 800, color: '#1e293b', align: 'right' },
+      { id: randomUUID(), type: 'text',     x: 11.5, y: 79.5, w: 16.5,h: 3.5,  z: 1, visible: true, locked: false, text: 'кг', font: 'Manrope', size: 3.2, weight: 600, color: '#64748b', align: 'right' },
+      { id: randomUUID(), type: 'text',     x: 11.5, y: 83,   w: 16.5,h: 7,    z: 1, visible: true, locked: false, text: lFat, font: 'Manrope', size: 2.3, weight: 400, color: '#475569', align: 'right' },
+      { id: randomUUID(), type: 'carousel', x: 30,   y: 11,   w: 69,  h: 80,   z: 0, visible: true, locked: false, frame: false },
+      { id: randomUUID(), type: 'mission',  x: 20,   y: 92,   w: 60,  h: 5,    z: 2, visible: true, locked: false, font: 'Manrope', size: 1.6, weight: 600, color: '#263CD9', align: 'center' },
+      { id: randomUUID(), type: 'datetime', x: 81,   y: 92,   w: 18,  h: 5,    z: 2, visible: true, locked: false, font: 'Manrope', size: 1.3, weight: 600, color: '#000000', align: 'right' },
+    ],
+  };
+}
+
+function extractScreenPaths(layout: Record<string, unknown> | null): Set<string> {
+  const paths = new Set<string>();
+  if (!layout || !Array.isArray(layout.elements)) return paths;
+  for (const el of layout.elements as Record<string, unknown>[]) {
+    if (el.type === 'image' && typeof el.path === 'string' && (el.path as string).startsWith('screen/')) paths.add(el.path as string);
+  }
+  return paths;
+}
+
 // JPEG: FF D8 FF | PNG: 89 50 4E 47
 function validImg(buf: Buffer): boolean {
   if (buf.length < 4) return false;
@@ -183,7 +354,7 @@ export function buildTvRouter(): Router {
     if (!checkKey(req)) { res.status(404).end(); return; }
     try {
       const [settingsRes, countersRes, slidesRes, missionRes] = await Promise.all([
-        supabase.from('tv_settings').select('screen_layout,main_label_cm,main_label_kg,main_label_fat,intro_text').eq('id', 1).maybeSingle(),
+        supabase.from('tv_settings').select('screen_layout,main_label_cm,main_label_kg,main_label_fat').eq('id', 1).maybeSingle(),
         supabase.from('studio_results').select('cm_lost,kg_lost,fat_kg_lost'),
         supabase.from('tv_slides').select('*').order('position'),
         supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle(),
@@ -194,23 +365,23 @@ export function buildTvRouter(): Router {
         fat_kg_lost: a.fat_kg_lost + Number(row.fat_kg_lost || 0),
       }), { cm_lost: 0, kg_lost: 0, fat_kg_lost: 0 });
 
-      // Resolve screen_layout: use saved or generate default seeded with current values
       const settings = settingsRes.data as Record<string, unknown> | null;
-      let screenLayout = (settings?.screen_layout ?? null) as ScreenLayoutServer | null;
-      if (!screenLayout) {
-        screenLayout = defaultScreenLayoutServer();
-        const mission = String(missionRes.data?.value || '');
-        const intro   = String(settings?.intro_text || '');
-        const lCm  = String(settings?.main_label_cm  || 'Сантиметров убрали');
-        const lKg  = String(settings?.main_label_kg  || 'Килограммов сбросили');
-        const lFat = String(settings?.main_label_fat || 'Жира сожгли');
-        for (const el of screenLayout.elements) {
-          if (el.kind === 'mission'     && mission) el.text  = mission;
-          if (el.kind === 'intro'       && intro)   el.text  = intro;
-          if (el.kind === 'counter_cm')             el.label = lCm;
-          if (el.kind === 'counter_kg')             el.label = lKg;
-          if (el.kind === 'counter_fat')            el.label = lFat;
-        }
+      const mission  = String((missionRes.data as Record<string, unknown> | null)?.value || '');
+      const seed: V1Seed = {
+        label_cm:  String(settings?.main_label_cm  || ''),
+        label_kg:  String(settings?.main_label_kg  || ''),
+        label_fat: String(settings?.main_label_fat || ''),
+      };
+
+      // Resolve screen_layout: migrate v1→v2 or generate v2 default
+      const raw = settings?.screen_layout as Record<string, unknown> | null;
+      let screenLayout: object;
+      if (!raw) {
+        screenLayout = defaultScreenLayoutV2Server(seed);
+      } else if (raw.version === 1) {
+        screenLayout = migrateToV2Server(raw as { version: number; elements: Record<string, unknown>[] }, seed);
+      } else {
+        screenLayout = raw; // already v2
       }
 
       const slides = (slidesRes.data ?? []) as Record<string, unknown>[];
@@ -229,9 +400,10 @@ export function buildTvRouter(): Router {
       res.json({
         screen_layout: screenLayout,
         counters: totals,
+        mission,
         slides: enriched,
         serverTime: new Date().toISOString(),
-        version: '3',
+        version: '4',
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -290,41 +462,66 @@ export function buildTvRouter(): Router {
 
   r.get('/kviz/api/tv/screen', async (req, res) => {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
-    const { data } = await supabase.from('tv_settings').select('screen_layout,main_label_cm,main_label_kg,main_label_fat,intro_text').eq('id', 1).maybeSingle();
-    const settings = data as Record<string, unknown> | null;
-    let layout = (settings?.screen_layout ?? null) as ScreenLayoutServer | null;
-    if (!layout) {
-      layout = defaultScreenLayoutServer();
-      const lCm  = String(settings?.main_label_cm  || 'Сантиметров убрали');
-      const lKg  = String(settings?.main_label_kg  || 'Килограммов сбросили');
-      const lFat = String(settings?.main_label_fat || 'Жира сожгли');
-      const intro = String(settings?.intro_text || '');
-      for (const el of layout.elements) {
-        if (el.kind === 'intro'       && intro)  el.text  = intro;
-        if (el.kind === 'counter_cm')            el.label = lCm;
-        if (el.kind === 'counter_kg')            el.label = lKg;
-        if (el.kind === 'counter_fat')           el.label = lFat;
-      }
-      // mission from studio_settings
-      const { data: missionRow } = await supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle();
-      const mission = String((missionRow as Record<string, unknown> | null)?.value || '');
-      for (const el of layout.elements) {
-        if (el.kind === 'mission' && mission) el.text = mission;
-      }
+    const [settingsRes, missionRes] = await Promise.all([
+      supabase.from('tv_settings').select('screen_layout,main_label_cm,main_label_kg,main_label_fat').eq('id', 1).maybeSingle(),
+      supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle(),
+    ]);
+    const settings = settingsRes.data as Record<string, unknown> | null;
+    const mission  = String((missionRes.data as Record<string, unknown> | null)?.value || '');
+    const seed: V1Seed = {
+      label_cm:  String(settings?.main_label_cm  || ''),
+      label_kg:  String(settings?.main_label_kg  || ''),
+      label_fat: String(settings?.main_label_fat || ''),
+    };
+    const raw = settings?.screen_layout as Record<string, unknown> | null;
+    let layout: object;
+    if (!raw) {
+      layout = defaultScreenLayoutV2Server(seed);
+    } else if (raw.version === 1) {
+      layout = migrateToV2Server(raw as { version: number; elements: Record<string, unknown>[] }, seed);
+    } else {
+      layout = raw;
     }
-    res.json(layout);
+    res.json({ layout, mission });
   });
 
   r.put('/kviz/api/tv/screen', async (req, res) => {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
-    const err = validateScreenLayout(req.body);
+    const b = req.body as Record<string, unknown>;
+    const err = validateScreenLayoutV2(b.layout);
     if (err) { res.status(400).json({ error: err }); return; }
+
+    // Get old layout to find screen/* paths that might be removed
+    const { data: cur } = await supabase.from('tv_settings').select('screen_layout').eq('id', 1).maybeSingle();
+    const oldPaths = extractScreenPaths((cur as Record<string, unknown> | null)?.screen_layout as Record<string, unknown> | null);
+    const newPaths = extractScreenPaths(b.layout as Record<string, unknown>);
+    const toRemove = [...oldPaths].filter(p => !newPaths.has(p));
+
     const { data, error } = await supabase.from('tv_settings')
-      .upsert({ id: 1, screen_layout: req.body, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+      .upsert({ id: 1, screen_layout: b.layout, updated_at: new Date().toISOString() }, { onConflict: 'id' })
       .select('screen_layout').single();
     if (error) { res.status(500).json({ error: error.message }); return; }
+
+    if (typeof b.mission === 'string') {
+      await supabase.from('studio_settings').upsert({ key: 'mission', value: b.mission }, { onConflict: 'key' });
+    }
+    if (toRemove.length) supabase.storage.from(BUCKET).remove(toRemove).catch(e => console.error('tv screen remove old imgs:', e));
     tvNotify();
-    res.json((data as Record<string, unknown>).screen_layout);
+    res.json({ layout: (data as Record<string, unknown>).screen_layout, mission: b.mission ?? '' });
+  });
+
+  r.post('/kviz/api/tv/screen/image', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const b = req.body as Record<string, unknown>;
+    if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'content_base64 обязателен' }); return; }
+    const buf = Buffer.from(b.content_base64, 'base64');
+    if (buf.length > 2 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 2 МБ' }); return; }
+    if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
+    const ext = buf[0] === 0x89 ? 'png' : 'jpg';
+    const sp = `screen/${randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });
+    if (upErr) { console.error('tv screen img upload:', upErr); res.status(500).json({ error: 'Ошибка загрузки файла' }); return; }
+    res.json({ path: sp });
   });
 
   // ── Admin tv_results CRUD ──────────────────────────────────────────────────

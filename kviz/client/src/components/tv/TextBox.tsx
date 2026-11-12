@@ -1,7 +1,8 @@
-import type { FreeEl } from './FreeSlide';
+import type { TextStyle } from '../../lib/tvScreenLayout';
 
 interface Props {
-  el: FreeEl;
+  style: TextStyle;
+  text: string;
   overflowing?: boolean;
   preview?: boolean;
   onRef?: (r: HTMLDivElement | null) => void;
@@ -10,9 +11,9 @@ interface Props {
 // Renders text inside a positioned wrapper. Does NOT set overflow:hidden so
 // scaleX/scaleY transform is not clipped by its own container.
 // Parent wrapper is responsible for overflow clipping.
-export default function TextBox({ el, overflowing, preview, onRef }: Props) {
+export default function TextBox({ style: el, text, overflowing, preview, onRef }: Props) {
   const origin =
-    el.align === 'right' ? 'right center' :
+    el.align === 'right'  ? 'right center' :
     el.align === 'center' ? 'center center' : 'left center';
 
   return (
@@ -25,6 +26,7 @@ export default function TextBox({ el, overflowing, preview, onRef }: Props) {
         fontSize: `calc(var(--screen-h, 400px) * ${el.size ?? 10} / 100)`,
         fontWeight: el.weight ?? 400,
         color: el.color ?? '#000000',
+        opacity: el.opacity,
         textAlign: (el.align ?? 'left') as React.CSSProperties['textAlign'],
         transform: `scale(${el.scaleX ?? 1}, ${el.scaleY ?? 1})`,
         transformOrigin: origin,
@@ -34,7 +36,7 @@ export default function TextBox({ el, overflowing, preview, onRef }: Props) {
         outline: preview && overflowing ? '2px solid #ef4444' : undefined,
       }}
     >
-      {el.text}
+      {text}
       {preview && overflowing && (
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0,

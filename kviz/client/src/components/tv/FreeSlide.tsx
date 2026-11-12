@@ -86,7 +86,8 @@ export default function FreeSlide({ layout, mediaUrl, preview }: Props) {
           return (
             <div key={el.id} style={wrapStyle}>
               <TextBox
-                el={el}
+                style={el}
+                text={el.text || ''}
                 overflowing={isOver}
                 preview={preview}
                 onRef={r => { textRefs.current[el.id] = r; }}
