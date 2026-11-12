@@ -169,6 +169,40 @@ export function migrateV1ToV2(v1: V1Layout, seed?: { label_cm?: string; label_kg
 
 // ── Default layout (v2) ───────────────────────────────────────────────────────
 
+// ── Carousel aspect: carousel slot in default layout (w=69% of 16, h=80% of 9) ─
+export const CAROUSEL_ASPECT = (69 * 16) / (80 * 9); // ≈ 1.533
+
+// ── Free slide layout (v2 — subset of ScreenLayout: text/image/shape only) ─────
+
+export interface FreeLayout { v: 2; frame: boolean; elements: ScreenEl[] }
+
+/** Migrates old v1 free layout {frame, elements:[{type:'text'|'image'}]} to v2 */
+export function migrateFreeLayoutToV2(raw: unknown): FreeLayout {
+  if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).v === 2) {
+    return raw as FreeLayout;
+  }
+  const v1 = raw as { frame?: boolean; elements?: Record<string, unknown>[] } | null;
+  const frame = v1?.frame ?? false;
+  const els: ScreenEl[] = (v1?.elements ?? []).map(el => {
+    const id = typeof el.id === 'string' ? el.id : newId();
+    const base = { id, x: Number(el.x) || 0, y: Number(el.y) || 0, w: Number(el.w) || 10, h: Number(el.h) || 10, z: Number(el.z) || 0, visible: true as const, locked: false as const };
+    if (el.type === 'image') {
+      return { ...base, type: 'image' as const, path: typeof el.path === 'string' ? el.path : undefined, fit: (['contain','cover','stretch'].includes(el.fit as string) ? el.fit : 'cover') as 'contain' | 'cover' | 'stretch' };
+    }
+    return {
+      ...base, type: 'text' as const,
+      text:   typeof el.text === 'string' ? el.text : '',
+      font:   (VALID_FONTS.includes(el.font as FontNameV2) ? el.font : 'Manrope') as FontNameV2,
+      size:   Number(el.size) || 2,
+      weight: ([400, 600, 800].includes(Number(el.weight)) ? Number(el.weight) : 400) as 400 | 600 | 800,
+      color:  (typeof el.color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(el.color)) ? el.color : '#000000',
+      align:  (['left','center','right'].includes(el.align as string) ? el.align : 'left') as TextAlignV2,
+      scaleX: Number(el.scaleX) || 1, scaleY: Number(el.scaleY) || 1,
+    };
+  });
+  return { v: 2, frame, elements: els };
+}
+
 export function defaultScreenLayout(): ScreenLayout {
   return {
     v: 2,

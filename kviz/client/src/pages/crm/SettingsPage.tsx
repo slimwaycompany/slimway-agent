@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
-import FreeSlide, { type FreeEl, type FreeLayout } from '../../components/tv/FreeSlide';
+import FreeSlide from '../../components/tv/FreeSlide';
 import TvScreenEditor from '../../components/tv/TvScreenEditor';
-import type { ScreenLayout } from '../../lib/tvScreenLayout';
+import type { FreeLayout, ScreenLayout } from '../../lib/tvScreenLayout';
+import { migrateFreeLayoutToV2 } from '../../lib/tvScreenLayout';
+import { compressForUpload } from '../../lib/tvImage';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -2652,23 +2654,6 @@ interface TvSlideRaw {
   layout?: FreeLayout;
 }
 
-async function compressImg(file: File): Promise<string> {
-  const MAX = 1600;
-  return new Promise((res, rej) => {
-    const img = new Image();
-    img.onload = () => {
-      const s = Math.min(1, MAX / Math.max(img.width, img.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-      res(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
-      URL.revokeObjectURL(img.src);
-    };
-    img.onerror = rej;
-    img.src = URL.createObjectURL(file);
-  });
-}
-
 const KIND_LABELS: Record<string, string> = { result1: '1 результат', result2: '2 результата', promo: 'Акция', usp: 'USP', free: 'Свободный блок' };
 
 function AddSlideModal({ results, onAdd, onClose }: {
@@ -2746,362 +2731,6 @@ function AddSlideModal({ results, onAdd, onClose }: {
   );
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-interface ElLock { scale?: boolean; size?: boolean }
-
-function nf(v: number, min: number, max: number, step = 0.5): number {
-  return Math.min(max, Math.max(min, Math.round(v / step) * step));
-}
-
-const FONTS = ['Manrope', 'Montserrat', 'Oswald', 'Barlow Condensed', 'Playfair Display', 'Russo One'];
-
-const FRAME_INLINE: React.CSSProperties = {
-  border: '2px solid transparent',
-  background: 'linear-gradient(rgba(255,255,255,.58),rgba(255,255,255,.58)) padding-box, linear-gradient(135deg,#02BDB6,#263CD9) border-box',
-  boxShadow: '0 12px 48px rgba(38,60,217,.13)',
-  backdropFilter: 'blur(16px)',
-};
-
-function FreeEditorModal({ slide, onClose, onSaved }: {
-  slide: TvSlideRaw & { layout: FreeLayout };
-  onClose: () => void;
-  onSaved: (s: TvSlideRaw) => void;
-}) {
-  const [layout, setLayout] = useState<FreeLayout>(() => JSON.parse(JSON.stringify(slide.layout)));
-  const initRef = useRef<string>(JSON.stringify(slide.layout));
-  const [selId, setSelId] = useState<string | null>(null);
-  const [locks, setLocks] = useState<Record<string, ElLock>>({});
-  const [imgAR, setImgAR] = useState<Record<string, number>>({});
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [err, setErr] = useState('');
-  const [confirmClose, setConfirmClose] = useState(false);
-
-  const selEl = selId ? layout.elements.find(e => e.id === selId) ?? null : null;
-  const isDirty = JSON.stringify(layout) !== initRef.current;
-  const freeMediaUrl = (p: string) => `/kviz/api/tv/media?path=${encodeURIComponent(p)}`;
-
-  function updEl(id: string, patch: Partial<FreeEl>) {
-    setLayout(l => ({ ...l, elements: l.elements.map(e => e.id === id ? { ...e, ...patch } : e) }));
-  }
-
-  function getLock(id: string): ElLock { return locks[id] ?? {}; }
-  function setLock(id: string, patch: Partial<ElLock>) { setLocks(l => ({ ...l, [id]: { ...getLock(id), ...patch } })); }
-
-  function moveZ(id: string, dir: -1 | 1) {
-    setLayout(l => {
-      const sorted = [...l.elements].sort((a, b) => a.z - b.z);
-      const idx = sorted.findIndex(e => e.id === id);
-      const swap = idx + dir;
-      if (swap < 0 || swap >= sorted.length) return l;
-      const [za, zb] = [sorted[idx].z, sorted[swap].z];
-      return { ...l, elements: l.elements.map(e => e.id === id ? { ...e, z: zb } : e.id === sorted[swap].id ? { ...e, z: za } : e) };
-    });
-  }
-
-  function delEl(id: string) {
-    setLayout(l => ({ ...l, elements: l.elements.filter(e => e.id !== id) }));
-    if (selId === id) setSelId(null);
-  }
-
-  function addText() {
-    if (layout.elements.length >= 12) return;
-    const id = crypto.randomUUID();
-    const maxZ = layout.elements.reduce((m, e) => Math.max(m, e.z), -1);
-    const el: FreeEl = { id, type: 'text', x: 10, y: 10, w: 80, h: 15, z: maxZ + 1, text: 'Новый текст', font: 'Manrope', size: 10, weight: 400, color: '#000000', align: 'left', scaleX: 1, scaleY: 1 };
-    setLayout(l => ({ ...l, elements: [...l.elements, el] }));
-    setSelId(id);
-  }
-
-  async function addImage(file: File) {
-    if (layout.elements.length >= 12) return;
-    setUploading(true); setErr('');
-    try {
-      const b64 = await compressImg(file);
-      const r = await api('POST', `/kviz/api/tv/slides/${slide.id}/free-image`, { content_base64: b64 });
-      if (!r.ok) { setErr(r.data?.error || 'Ошибка загрузки'); return; }
-      const path = r.data.path as string;
-      let ar = 1;
-      try {
-        const img = new Image();
-        await new Promise<void>(res => { img.onload = () => res(); img.onerror = () => res(); img.src = freeMediaUrl(path); });
-        if (img.naturalWidth && img.naturalHeight) ar = img.naturalWidth / img.naturalHeight;
-      } catch { /* ignore */ }
-      const id = crypto.randomUUID();
-      const maxZ = layout.elements.reduce((m, e) => Math.max(m, e.z), -1);
-      const el: FreeEl = { id, type: 'image', x: 10, y: 10, w: 50, h: Math.min(100, nf(50 / ar, 1, 100, 0.5)), z: maxZ + 1, path, fit: 'cover' };
-      setLayout(l => ({ ...l, elements: [...l.elements, el] }));
-      setImgAR(m => ({ ...m, [id]: ar }));
-      setLocks(m => ({ ...m, [id]: { size: true } }));
-      setSelId(id);
-    } finally { setUploading(false); }
-  }
-
-  async function handleSave() {
-    const emptyText = layout.elements.find(e => e.type === 'text' && !e.text?.trim());
-    if (emptyText) { setErr('Пустой текстовый элемент. Введите текст или удалите его.'); return; }
-    setSaving(true); setErr('');
-    const r = await api('PATCH', `/kviz/api/tv/slides/${slide.id}`, { layout });
-    setSaving(false);
-    if (!r.ok) { setErr(r.data?.error || 'Ошибка сохранения'); return; }
-    initRef.current = JSON.stringify(layout);
-    onSaved(r.data);
-    onClose();
-  }
-
-  function tryClose() { if (isDirty) { setConfirmClose(true); } else { onClose(); } }
-
-  // ── Sorted for layer list (highest z first = top of stack) ──
-  const sortedLayers = [...layout.elements].sort((a, b) => b.z - a.z);
-
-  const INP: React.CSSProperties = { width: '100%', padding: '5px 8px', border: '1.5px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const };
-  const TINY: React.CSSProperties = { width: 64, padding: '4px 6px', border: '1.5px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' };
-  const BTN: React.CSSProperties = { padding: '5px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', background: '#f8fafc', color: '#374151' };
-  const BTN_ACT: React.CSSProperties = { ...BTN, background: '#02BDB6', color: '#fff', border: '1px solid #02BDB6' };
-
-  // Lock icon
-  const LockBtn = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
-    <button onClick={onClick} title="Замок пропорций" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: on ? '#02BDB6' : '#94a3b8', padding: '0 4px' }}>
-      {on ? '🔒' : '🔓'}
-    </button>
-  );
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(0px,2vw,32px)' }}>
-      <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 1400, height: '100%', maxHeight: 900, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>Редактор свободного блока #{slide.position}</div>
-          <button onClick={tryClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#64748b', padding: '0 4px' }}>✕</button>
-        </div>
-
-        {/* Body: 3-column on desktop, stacked on mobile */}
-        <div className="free-editor-body" style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
-
-          {/* Left: layer list */}
-          <div style={{ width: 220, flexShrink: 0, borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: 12, gap: 8 }}>
-            {/* Frame toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: '6px 2px' }}>
-              <input type="checkbox" checked={layout.frame} onChange={e => setLayout(l => ({ ...l, frame: e.target.checked }))} />
-              Рамка
-            </label>
-            <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>Слои</div>
-              {sortedLayers.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>Нет элементов</div>}
-              {sortedLayers.map((el, idx) => {
-                const isTop = idx === 0;
-                const isBot = idx === sortedLayers.length - 1;
-                return (
-                  <div key={el.id} onClick={() => setSelId(el.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 6px', borderRadius: 7, cursor: 'pointer', marginBottom: 3,
-                      background: selId === el.id ? 'rgba(2,189,182,.12)' : '#f8fafc', border: selId === el.id ? '1.5px solid #02BDB6' : '1.5px solid transparent' }}>
-                    <span style={{ fontSize: 12 }}>{el.type === 'text' ? '📝' : '🖼️'}</span>
-                    <span style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#374151' }}>
-                      {el.type === 'text' ? (el.text || '—') : (el.path?.split('/').pop() || '—')}
-                    </span>
-                    <button onClick={e => { e.stopPropagation(); moveZ(el.id, 1); }} disabled={isBot} style={{ ...BTN, padding: '1px 5px', fontSize: 10 }} title="Вниз">↓</button>
-                    <button onClick={e => { e.stopPropagation(); moveZ(el.id, -1); }} disabled={isTop} style={{ ...BTN, padding: '1px 5px', fontSize: 10 }} title="Вверх">↑</button>
-                    <button onClick={e => { e.stopPropagation(); delEl(el.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#ef4444', padding: '1px 4px' }}>✕</button>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Add buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 'auto', paddingTop: 12 }}>
-              <button onClick={addText} disabled={layout.elements.length >= 12}
-                title={layout.elements.length >= 12 ? 'Максимум 12 элементов' : ''}
-                style={{ ...BTN, background: '#02BDB6', color: '#fff', border: 'none', fontWeight: 600 }}>
-                + Текст
-              </button>
-              <label title={layout.elements.length >= 12 ? 'Максимум 12 элементов' : ''}
-                style={{ ...BTN, background: layout.elements.length >= 12 ? '#f1f5f9' : '#263CD9', color: layout.elements.length >= 12 ? '#94a3b8' : '#fff', border: 'none', fontWeight: 600, textAlign: 'center', cursor: layout.elements.length >= 12 ? 'default' : 'pointer' }}>
-                {uploading ? '…' : '+ Картинка'}
-                <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }} disabled={layout.elements.length >= 12 || uploading}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) addImage(f); e.target.value = ''; }} />
-              </label>
-            </div>
-          </div>
-
-          {/* Center: preview */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#f8fafc', overflow: 'hidden' }}>
-            <div style={{ width: '100%', maxWidth: '100%', maxHeight: '100%', aspectRatio: '1.6 / 1', position: 'relative', overflow: 'hidden', borderRadius: 24, ...(layout.frame ? FRAME_INLINE : { border: '1.5px solid #e2e8f0', background: '#fff' }) }}>
-              <FreeSlide layout={layout} mediaUrl={freeMediaUrl} preview />
-            </div>
-          </div>
-
-          {/* Right: properties */}
-          <div style={{ width: 280, flexShrink: 0, borderLeft: '1px solid #e2e8f0', overflowY: 'auto', padding: 14 }}>
-            {!selEl && <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', paddingTop: 32 }}>Выберите элемент</div>}
-            {selEl && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {/* Position & Size */}
-                <div style={{ fontWeight: 700, fontSize: 12, color: '#64748b', textTransform: 'uppercase' }}>Позиция и размер</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                  {(['x', 'y', 'w', 'h'] as const).map(k => (
-                    <div key={k}>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{k.toUpperCase()} %</div>
-                      <input type="number" value={selEl[k]} min={k === 'w' || k === 'h' ? 1 : 0} max={100} step={0.5}
-                        onChange={e => {
-                          const v = nf(+e.target.value, k === 'w' || k === 'h' ? 1 : 0, 100);
-                          if ((k === 'w' || k === 'h') && getLock(selEl.id).size) {
-                            const ar = selEl.w / selEl.h;
-                            if (k === 'w') updEl(selEl.id, { w: v, h: nf(v / ar, 1, 100) });
-                            else updEl(selEl.id, { h: v, w: nf(v * ar, 1, 100) });
-                          } else updEl(selEl.id, { [k]: v });
-                        }}
-                        style={TINY} />
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#374151' }}>
-                  <LockBtn on={!!getLock(selEl.id).size} onClick={() => setLock(selEl.id, { size: !getLock(selEl.id).size })} />
-                  Пропорции размера
-                </div>
-
-                {/* Text properties */}
-                {selEl.type === 'text' && (
-                  <>
-                    <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, fontWeight: 700, fontSize: 12, color: '#64748b', textTransform: 'uppercase' }}>Текст</div>
-                    <textarea value={selEl.text ?? ''} rows={3}
-                      onChange={e => updEl(selEl.id, { text: e.target.value })}
-                      style={{ ...INP, resize: 'vertical' as const }} />
-                    <div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>Шрифт</div>
-                      <select value={selEl.font ?? 'Manrope'} onChange={e => updEl(selEl.id, { font: e.target.value })} style={INP}>
-                        {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Размер: {selEl.size ?? 10}%</div>
-                      <input type="range" min={1} max={60} step={0.5} value={selEl.size ?? 10}
-                        onChange={e => updEl(selEl.id, { size: +e.target.value })}
-                        style={{ width: '100%' }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Насыщенность</div>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {([400, 600, 800] as const).map(w => (
-                          <button key={w} onClick={() => updEl(selEl.id, { weight: w })}
-                            style={selEl.weight === w ? BTN_ACT : BTN}>{w}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Цвет</div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <input type="color" value={selEl.color ?? '#000000'} onChange={e => updEl(selEl.id, { color: e.target.value })} style={{ width: 36, height: 32, border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', padding: 2 }} />
-                        <input type="text" value={selEl.color ?? '#000000'} maxLength={7}
-                          onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) updEl(selEl.id, { color: e.target.value }); }}
-                          style={{ ...TINY, flex: 1 }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Выравнивание</div>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {(['left', 'center', 'right'] as const).map(a => (
-                          <button key={a} onClick={() => updEl(selEl.id, { align: a })}
-                            style={selEl.align === a ? BTN_ACT : BTN}>{a === 'left' ? '←' : a === 'center' ? '↔' : '→'}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>ScaleX: {(selEl.scaleX ?? 1).toFixed(2)}</div>
-                      <input type="range" min={0.5} max={2} step={0.05} value={selEl.scaleX ?? 1}
-                        onChange={e => {
-                          const sx = +e.target.value;
-                          if (getLock(selEl.id).scale) updEl(selEl.id, { scaleX: sx, scaleY: sx });
-                          else updEl(selEl.id, { scaleX: sx });
-                        }}
-                        style={{ width: '100%' }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>ScaleY: {(selEl.scaleY ?? 1).toFixed(2)}</div>
-                      <input type="range" min={0.5} max={2} step={0.05} value={selEl.scaleY ?? 1}
-                        onChange={e => {
-                          const sy = +e.target.value;
-                          if (getLock(selEl.id).scale) updEl(selEl.id, { scaleX: sy, scaleY: sy });
-                          else updEl(selEl.id, { scaleY: sy });
-                        }}
-                        style={{ width: '100%' }} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#374151' }}>
-                      <LockBtn on={!!getLock(selEl.id).scale} onClick={() => setLock(selEl.id, { scale: !getLock(selEl.id).scale })} />
-                      Пропорции масштаба
-                    </div>
-                  </>
-                )}
-
-                {/* Image properties */}
-                {selEl.type === 'image' && (
-                  <>
-                    <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, fontWeight: 700, fontSize: 12, color: '#64748b', textTransform: 'uppercase' }}>Картинка</div>
-                    <label style={{ ...BTN, display: 'block', textAlign: 'center', cursor: 'pointer', fontWeight: 600 }}>
-                      {uploading ? '…' : '📷 Заменить'}
-                      <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }} disabled={uploading}
-                        onChange={async e => {
-                          const f = e.target.files?.[0]; if (!f) return;
-                          setUploading(true); setErr('');
-                          try {
-                            const b64 = await compressImg(f);
-                            const r = await api('POST', `/kviz/api/tv/slides/${slide.id}/free-image`, { content_base64: b64 });
-                            if (!r.ok) { setErr(r.data?.error || 'Ошибка'); return; }
-                            const path = r.data.path as string;
-                            let ar = imgAR[selEl.id] ?? 1;
-                            try {
-                              const img = new Image();
-                              await new Promise<void>(res => { img.onload = () => res(); img.onerror = () => res(); img.src = freeMediaUrl(path); });
-                              if (img.naturalWidth && img.naturalHeight) ar = img.naturalWidth / img.naturalHeight;
-                            } catch { /* ignore */ }
-                            setImgAR(m => ({ ...m, [selEl.id]: ar }));
-                            updEl(selEl.id, { path });
-                          } finally { setUploading(false); }
-                          e.target.value = '';
-                        }} />
-                    </label>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>Вписывание</div>
-                      <select value={selEl.fit ?? 'cover'} onChange={e => updEl(selEl.id, { fit: e.target.value as FreeEl['fit'] })} style={INP}>
-                        <option value="cover">Cover (заполнить)</option>
-                        <option value="contain">Contain (вписать)</option>
-                        <option value="stretch">Stretch (растянуть)</option>
-                      </select>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#374151' }}>
-                      <LockBtn on={!!getLock(selEl.id).size} onClick={() => setLock(selEl.id, { size: !getLock(selEl.id).size })} />
-                      Пропорции (по ширине)
-                    </div>
-                    {getLock(selEl.id).size && imgAR[selEl.id] && (
-                      <div style={{ fontSize: 11, color: '#64748b' }}>AR: {imgAR[selEl.id].toFixed(2)} — меняйте W</div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexShrink: 0 }}>
-          <div style={{ flex: 1 }}>{err && <div style={S.errBox}>{err}</div>}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button style={S.cancelBtn} onClick={tryClose}>Отмена</button>
-            <button style={S.saveBtn} onClick={handleSave} disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить'}</button>
-          </div>
-        </div>
-      </div>
-
-      {confirmClose && (
-        <ConfirmModal
-          message="Закрыть без сохранения? Изменения будут потеряны."
-          onConfirm={onClose}
-          onClose={() => setConfirmClose(false)}
-        />
-      )}
-    </div>
-  );
-}
 
 function TvSection() {
   const [slides, setSlides] = useState<TvSlideRaw[]>([]);
@@ -3114,7 +2743,7 @@ function TvSection() {
   const [uploading, setUploading] = useState('');
   const [newResultTitle, setNewResultTitle] = useState('');
   const [addingResult, setAddingResult] = useState(false);
-  const [freeEditSlide, setFreeEditSlide] = useState<(TvSlideRaw & { layout: FreeLayout }) | null>(null);
+  const [slideEditorState, setSlideEditorState] = useState<{ id: string; layout: FreeLayout } | null>(null);
   const [screenEditorOpen, setScreenEditorOpen] = useState(false);
   const [screenLayout, setScreenLayout] = useState<ScreenLayout | null>(null);
   const [screenMission, setScreenMission] = useState('');
@@ -3160,14 +2789,15 @@ function TvSection() {
     const payload: Record<string, unknown> = { kind: d.kind, duration_sec: d.duration_sec };
     if (d.result_a) payload.result_a = d.result_a;
     if (d.result_b) payload.result_b = d.result_b;
-    if (d.file) payload.content_base64 = await compressImg(d.file);
+    if (d.file) payload.content_base64 = await compressForUpload(d.file);
     const r = await api('POST', '/kviz/api/tv/slides', payload);
     if (!r.ok) throw new Error(r.data?.error || 'Ошибка добавления слайда');
     await refreshSlides();
     setAddSlideOpen(false);
     // Open editor immediately after creating a free slide
     if (d.kind === 'free' && r.data?.layout) {
-      setFreeEditSlide(r.data as TvSlideRaw & { layout: FreeLayout });
+      const sl = r.data as TvSlideRaw;
+      setSlideEditorState({ id: sl.id, layout: migrateFreeLayoutToV2(sl.layout) });
     }
   }
 
@@ -3191,7 +2821,7 @@ function TvSection() {
     setUploading(key);
     setResultErr(prev => { const n = { ...prev }; delete n[id]; return n; });
     try {
-      const b64 = await compressImg(file);
+      const b64 = await compressForUpload(file);
       const r = await api('POST', `/kviz/api/tv/results/${id}/${side}-upload`, { content_base64: b64 });
       if (r.ok) setResults(prev => prev.map(x => x.id === id ? r.data : x));
       else setResultErr(prev => ({ ...prev, [id]: r.data?.error || 'Ошибка загрузки' }));
@@ -3258,7 +2888,7 @@ function TvSection() {
                   </label>
                   {sl.kind === 'free' && (
                     <button style={{ ...S.editBtn, color: '#263CD9', borderColor: '#c7d2fe' }}
-                      onClick={() => setFreeEditSlide(sl as TvSlideRaw & { layout: FreeLayout })}>Редактировать</button>
+                      onClick={() => setSlideEditorState({ id: sl.id, layout: migrateFreeLayoutToV2(sl.layout) })}>Редактировать</button>
                   )}
                   <button style={S.iconBtn} disabled={isFirst} onClick={() => patchSlide(sl.id, { position: sl.position - 1 }, true)} title="Выше">↑</button>
                   <button style={S.iconBtn} disabled={isLast}  onClick={() => patchSlide(sl.id, { position: sl.position + 1 }, true)} title="Ниже">↓</button>
@@ -3320,14 +2950,14 @@ function TvSection() {
       {addSlideOpen && <AddSlideModal results={results} onAdd={addSlide} onClose={() => setAddSlideOpen(false)} />}
       {confirmDelSlide && <ConfirmModal message="Удалить слайд?" onConfirm={() => deleteSlide(confirmDelSlide)} onClose={() => setConfirmDelSlide(null)} />}
       {confirmDelResult && <ConfirmModal message="Удалить карточку? Убедитесь, что она не используется в слайдах." onConfirm={() => deleteResult(confirmDelResult)} onClose={() => setConfirmDelResult(null)} />}
-      {freeEditSlide && (
-        <FreeEditorModal
-          slide={freeEditSlide}
-          onClose={() => setFreeEditSlide(null)}
-          onSaved={updated => {
-            setSlides(prev => prev.map(s => s.id === updated.id ? { ...s, ...updated } : s));
-            setFreeEditSlide(null);
-          }}
+      {slideEditorState && (
+        <TvScreenEditor
+          mode="slide"
+          slideId={slideEditorState.id}
+          initialLayout={{ v: 2, elements: slideEditorState.layout.elements }}
+          initialFrame={slideEditorState.layout.frame}
+          initialMission=""
+          onClose={() => { refreshSlides(); setSlideEditorState(null); }}
         />
       )}
       {screenEditorOpen && screenLayout && (

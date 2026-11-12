@@ -12,7 +12,7 @@ const ASSET_SRC: Record<string, string> = {
   logo: logoImg, icon_cm: smIcon, icon_kg: kgIcon, icon_fat: fatIcon,
 };
 
-function hexA(hex: string, opacity: number): string {
+export function hexA(hex: string, opacity: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
@@ -21,7 +21,7 @@ function hexA(hex: string, opacity: number): string {
 
 // ── ShapeBox ──────────────────────────────────────────────────────────────────
 
-function ShapeBox({ el }: { el: ScreenElShape }) {
+export function ShapeBox({ el }: { el: ScreenElShape }) {
   const r = el.radius ?? 0;
   const borderRadius: React.CSSProperties['borderRadius'] = ({
     rect:    '0',
@@ -55,7 +55,7 @@ function ShapeBox({ el }: { el: ScreenElShape }) {
 
 // ── ImageEl ───────────────────────────────────────────────────────────────────
 
-function ImageEl({ el, mediaUrl }: { el: ScreenElImage; mediaUrl?: (p: string) => string }) {
+export function ImageEl({ el, mediaUrl }: { el: ScreenElImage; mediaUrl?: (p: string) => string }) {
   const src = el.asset ? ASSET_SRC[el.asset] : (el.path && mediaUrl ? mediaUrl(el.path) : undefined);
   if (!src) return null;
   const objFit: React.CSSProperties['objectFit'] = el.fit === 'stretch' ? 'fill' : (el.fit ?? 'contain');

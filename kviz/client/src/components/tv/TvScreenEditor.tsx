@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import TvScreen from './TvScreen';
 import type { ScreenEl, ScreenElImage, ScreenElShape, ScreenElType, ScreenLayout } from '../../lib/tvScreenLayout';
-import { ASSET_LABELS, BIND_LABELS, SHAPE_LABELS, TYPE_LABELS, VALID_FONTS, defaultScreenLayout, newId } from '../../lib/tvScreenLayout';
+import { ASSET_LABELS, BIND_LABELS, CAROUSEL_ASPECT, SHAPE_LABELS, TYPE_LABELS, VALID_FONTS, defaultScreenLayout, newId } from '../../lib/tvScreenLayout';
+import { compressForUpload } from '../../lib/tvImage';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -17,9 +18,12 @@ interface DragState {
 }
 
 interface Props {
+  mode?: 'screen' | 'slide';
+  slideId?: string;
+  initialFrame?: boolean;
   initialLayout: ScreenLayout;
   initialMission: string;
-  onSave: (layout: ScreenLayout, mission: string) => Promise<void>;
+  onSave?: (layout: ScreenLayout, mission: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -90,15 +94,6 @@ function formatAlmaty(d: Date): string {
   }).format(d).replace(',', '');
 }
 
-async function readBase64(file: File): Promise<string> {
-  return new Promise((res, rej) => {
-    const reader = new FileReader();
-    reader.onload = e => res((e.target!.result as string).split(',')[1]);
-    reader.onerror = rej;
-    reader.readAsDataURL(file);
-  });
-}
-
 async function apiPut(url: string, body: unknown) {
   const r = await fetch(url, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));
@@ -106,6 +101,11 @@ async function apiPut(url: string, body: unknown) {
 }
 async function apiPost(url: string, body: unknown) {
   const r = await fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  return { ok: r.ok, data: d };
+}
+async function apiPatch(url: string, body: unknown) {
+  const r = await fetch(url, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));
   return { ok: r.ok, data: d };
 }
@@ -358,9 +358,11 @@ function ImageProps({ el, onChange, uploadError, onUpload }: {
 
 const MOCK_VALUES = { value_cm: 15847, value_kg: 3241, value_fat: 1256 };
 
-export default function TvScreenEditor({ initialLayout, initialMission, onSave, onClose }: Props) {
+export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame = false, initialLayout, initialMission, onSave, onClose }: Props) {
+  const isSlide = mode === 'slide';
   const [layout, setLayout]         = useState<ScreenLayout>(initialLayout);
   const [missionText, setMission]   = useState(initialMission);
+  const [frame, setFrame]           = useState(initialFrame);
   const [history, setHistory]       = useState<[ScreenLayout, string][]>([]);
   const [future, setFuture]         = useState<[ScreenLayout, string][]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -534,19 +536,29 @@ export default function TvScreenEditor({ initialLayout, initialMission, onSave, 
   async function uploadImage(id: string, file: File) {
     setUploadErr('');
     try {
-      const b64 = await readBase64(file);
-      const r = await apiPost('/kviz/api/tv/screen/image', { content_base64: b64 });
+      const b64 = await compressForUpload(file);
+      const url = isSlide
+        ? `/kviz/api/tv/slides/${slideId}/free-image`
+        : '/kviz/api/tv/screen/image';
+      const r = await apiPost(url, { content_base64: b64 });
       if (r.ok) updateEl(id, { path: r.data.path, asset: undefined });
       else setUploadErr(r.data?.error || 'Ошибка загрузки');
-    } catch { setUploadErr('Ошибка загрузки'); }
+    } catch (e) { setUploadErr(typeof e === 'string' ? e : 'Ошибка загрузки'); }
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────────
 
   async function handleSave() {
     setSaving(true); setError('');
-    try { await onSave(layout, missionText); onClose(); }
-    catch (e) { setError(String(e)); setSaving(false); }
+    try {
+      if (isSlide) {
+        const r = await apiPatch(`/kviz/api/tv/slides/${slideId}`, { layout: { v: 2, frame, elements: layout.elements } });
+        if (!r.ok) { setError(r.data?.error || 'Ошибка сохранения'); setSaving(false); return; }
+      } else {
+        await onSave!(layout, missionText);
+      }
+      onClose();
+    } catch (e) { setError(String(e)); setSaving(false); }
   }
 
   // ── Snap guides ───────────────────────────────────────────────────────────────
@@ -567,7 +579,7 @@ export default function TvScreenEditor({ initialLayout, initialMission, onSave, 
 
   const hasCarousel = layout.elements.some(e => e.type === 'carousel' && e.visible !== false);
   const warnings: string[] = [];
-  if (!hasCarousel) warnings.push('Нет элемента «Карусель» — слайды не будут показаны');
+  if (!isSlide && !hasCarousel) warnings.push('Нет элемента «Карусель» — слайды не будут показаны');
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -578,17 +590,19 @@ export default function TvScreenEditor({ initialLayout, initialMission, onSave, 
 
       {/* Header */}
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 16px', background: '#0f172a', borderBottom: '1px solid #1e293b', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ flex: 1, color: '#e2e8f0', fontWeight: 700, fontSize: 14 }}>Редактор экрана ТВ</span>
+        <span style={{ flex: 1, color: '#e2e8f0', fontWeight: 700, fontSize: 14 }}>{isSlide ? 'Редактор слайда' : 'Редактор экрана ТВ'}</span>
         <button style={BTN} onClick={undo} disabled={!history.length} title="Ctrl+Z">↩</button>
         <button style={BTN} onClick={redo} disabled={!future.length} title="Ctrl+Y">↪</button>
         <button style={{ ...BTN, color: tvMode ? '#02BDB6' : '#94a3b8', borderColor: tvMode ? '#02BDB6' : '#334155' }}
           onClick={() => setTvMode(m => !m)} title="Режим просмотра ТВ">TV</button>
-        <button style={{ ...BTN, color: '#fbbf24', borderColor: '#78350f' }}
-          onClick={() => { pushHistory(); setLayout(defaultScreenLayout()); }}>Сброс</button>
+        {!isSlide && (
+          <button style={{ ...BTN, color: '#fbbf24', borderColor: '#78350f' }}
+            onClick={() => { pushHistory(); setLayout(defaultScreenLayout()); }}>Сброс</button>
+        )}
         <button style={{ ...BTN, background: '#02BDB6', color: '#fff', border: 'none' }} onClick={handleSave} disabled={saving}>
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
-        <button style={{ ...BTN, marginLeft: 4 }} onClick={onClose}>✕</button>
+        <button style={{ ...BTN, marginLeft: 4 }} onClick={onClose}>Отмена</button>
       </div>
 
       {error && <div style={{ padding: '6px 16px', background: '#7f1d1d', color: '#fca5a5', fontSize: 12, flexShrink: 0 }}>{error}</div>}
@@ -602,7 +616,10 @@ export default function TvScreenEditor({ initialLayout, initialMission, onSave, 
           {/* Add buttons */}
           <div style={{ padding: '10px 12px 4px', fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.06em' }}>Добавить</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: '0 8px 8px' }}>
-            {(['text','value','mission','datetime','image','shape','carousel'] as ScreenElType[]).map(t => (
+            {(isSlide
+              ? ['text','image','shape'] as ScreenElType[]
+              : ['text','value','mission','datetime','image','shape','carousel'] as ScreenElType[]
+            ).map(t => (
               <button key={t} style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addEl(t)}>
                 + {TYPE_LABELS[t]}
               </button>
@@ -659,8 +676,10 @@ export default function TvScreenEditor({ initialLayout, initialMission, onSave, 
             style={{
               position: 'relative',
               width: '100%',
-              maxWidth: 'min(100%, calc((100vh - 120px) * 16 / 9))',
-              aspectRatio: '16/9',
+              maxWidth: isSlide
+                ? `min(100%, calc((100vh - 120px) * ${CAROUSEL_ASPECT}))`
+                : 'min(100%, calc((100vh - 120px) * 16 / 9))',
+              aspectRatio: isSlide ? String(CAROUSEL_ASPECT) : '16/9',
               background: 'linear-gradient(135deg,#e8fbfa 0%,#f7f8ff 52%,#eef0ff 100%)',
               borderRadius: 8, overflow: 'hidden',
               cursor: drag ? (drag.mode === 'move' ? 'grabbing' : drag.mode + '-resize') : 'default',
@@ -679,6 +698,7 @@ export default function TvScreenEditor({ initialLayout, initialMission, onSave, 
               layout={layout}
               values={MOCK_VALUES}
               mission={missionText}
+              mediaUrl={p => `/kviz/api/tv/media?path=${encodeURIComponent(p)}`}
               carousel={
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(38,60,217,.12)', borderRadius: 'clamp(14px,1.8vw,28px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ color: '#263CD9', fontSize: 'clamp(10px,1.4vw,20px)', fontWeight: 700, opacity: .6 }}>Карусель слайдов</span>
@@ -837,6 +857,17 @@ export default function TvScreenEditor({ initialLayout, initialMission, onSave, 
                   onClick={() => deleteEl(selEl.id)}>Удалить элемент</button>
               </div>
             </>
+          ) : isSlide ? (
+            <div style={{ padding: '0 2px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#e2e8f0', marginBottom: 16 }}>
+                <input type="checkbox" checked={frame} onChange={e => setFrame(e.target.checked)} />
+                Рамка слайда
+              </label>
+              <button style={{ ...BTN, color: '#fbbf24', borderColor: '#78350f', width: '100%' }}
+                onClick={() => { pushHistory(); setLayout({ v: 2, elements: [] }); }}>
+                Сбросить слайд
+              </button>
+            </div>
           ) : (
             <div style={{ color: '#475569', fontSize: 12, textAlign: 'center', marginTop: 32 }}>
               Выберите элемент<br />в дереве или на экране

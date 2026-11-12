@@ -32,10 +32,10 @@
 - `RESULTS_DISPLAY_KEY` — ключ защиты `/results?key=…`; URL открывается без входа в систему
 
 ## layout (kind = 'free')
-JSON-схема: `{ frame: boolean, elements: [...] }` (до 12 элементов).
-Элемент: `{ id: uuid, type: 'text'|'image', x, y, w, h (% области), z (0–50) }`.
-Текстовый: `font` (6 вариантов), `size` (% высоты слайда), `weight` (400/600/800), `color` (#RRGGBB), `align`, `scaleX/scaleY` (0.5–2).
-Картинка: `path` (free/<uuid>.jpg|png), `fit` (cover/contain/stretch).
+JSON-схема v2: `{ v: 2, frame: boolean, elements: ScreenEl[] }` (до 30 элементов; только типы text/image/shape).
+Элемент: v2 `ScreenEl` (те же поля что у screen_layout, но без value/mission/datetime/carousel).
+Сервер мигрирует v1→v2 при GET /kviz/api/tv/slides и GET /api/tv/data. Клиент мигрирует при рендере через `migrateFreeLayoutToV2()`.
+Редактор слайда — `TvScreenEditor mode="slide"`: CAROUSEL_ASPECT ≈ 1.533 (размер слота карусели в 16:9 экране), сохраняет через PATCH /kviz/api/tv/slides/:id `{ layout: { v:2, frame, elements } }`.
 Файлы картинок — в бакете `tv-media/free/`. Удаляются при сохранении нового layout (если убраны из элементов) и при удалении слайда.
 
 ## screen_layout (ScreenLayout)
@@ -64,8 +64,8 @@ JSON-схема **v2**: `{ v: 2, elements: ScreenEl[] }` хранится в `tv
 - Gradient border у `.tv-frame`: `background: ...padding-box, ...border-box; border: 2px solid transparent` (border-image не работает с border-radius).
 - После task 46 блок «Акция» в настройках удалён — промо теперь добавляется как слайд типа `promo`.
 - `/api/tv/data` v4 (task 50): `{ screen_layout (v2), counters: {cm_lost,kg_lost,fat_kg_lost}, mission: string, slides, serverTime, version: "4" }`. v3 — устаревший (без mission на верхнем уровне).
-- Загрузка фото: клиент сжимает до 1600px JPEG 0.85 через canvas, отправляет base64. Сервер проверяет magic bytes (JPEG/PNG), сохраняет в бакет.
-- Лимит тела для TV-маршрутов: `app.use('/kviz/api/tv', express.json({ limit: '12mb' }))` добавлен в `src/index.ts` до глобального `express.json()`.
+- Загрузка фото: клиент сжимает через `compressForUpload()` (tvImage.ts) до 2400px длинной стороны (PNG→PNG, JPEG→JPEG q0.9), лимит 8 МБ после сжатия. Сервер проверяет magic bytes (JPEG/PNG), 8 МБ, сохраняет в бакет.
+- Лимит тела для TV-маршрутов: `app.use('/kviz/api/tv', express.json({ limit: '16mb' }))` в `src/index.ts` (было 12mb, повышено в task 51).
 - v2 screen_layout: миссия студии живёт в `studio_settings` (не в layout). `GET/PUT /kviz/api/tv/screen` принимает `{ layout, mission }` — одним запросом. Редактор сохраняет и layout, и текст миссии вместе.
 - TvScreenEditor: поворот элемента — atan2(dx,dy)+90° с привязкой к 5° (Shift: 15°). Ручка поворота позиционируется `top: -26px, left: 50%` над выделенным элементом. История хранит `[ScreenLayout, string][]` (layout+mission) — undo/redo восстанавливает оба состояния.
 
@@ -73,6 +73,17 @@ JSON-схема **v2**: `{ v: 2, elements: ScreenEl[] }` хранится в `tv
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 12.11.2026 · (текущий) · task 51 — картинки в предпросмотре редактора, лимит 8 МБ, редактор слайда в том же конструкторе
+- **`kviz/client/src/lib/tvImage.ts`** (новый): `compressForUpload(file)` — сжимает до 2400px длинной стороны (PNG→PNG, JPEG→JPEG q0.9), проверяет 8 МБ после сжатия; заменил `compressImg` везде в SettingsPage.
+- **`kviz/client/src/lib/tvScreenLayout.ts`**: добавлены `CAROUSEL_ASPECT ≈ 1.533`, `FreeLayout { v: 2, frame, elements: ScreenEl[] }`, `migrateFreeLayoutToV2(raw)` (v1→v2 для клиента).
+- **`kviz/client/src/components/tv/TvScreen.tsx`**: `hexA`, `ShapeBox`, `ImageEl` стали `export function` (используются в FreeSlide).
+- **`kviz/client/src/components/tv/FreeSlide.tsx`** (рерайт): использует TextBox, ShapeBox, ImageEl из TvScreen; работает с v2 ScreenEl[]; auto-migrate через `migrateFreeLayoutToV2`.
+- **`kviz/client/src/components/tv/TvScreenEditor.tsx`** (расширен): prop `mode: 'screen'|'slide'`, `slideId`, `initialFrame`; `onSave` стал optional; `compressImg` заменён на `compressForUpload`; в slide-режиме: canvas с CAROUSEL_ASPECT, только text/image/shape в «Добавить», правая панель без выбора — toggle Рамка + «Сбросить слайд», сохраняет PATCH на /kviz/api/tv/slides/:id; исправлен баг ЧАСТЬ 1 — добавлен `mediaUrl` в рендер TvScreen в редакторе.
+- **`kviz/client/src/pages/crm/SettingsPage.tsx`**: `FreeEditorModal` удалён (~330 строк); `freeEditSlide` → `slideEditorState`; «Редактировать» открывает `TvScreenEditor mode="slide"`; `compressImg` → `compressForUpload`.
+- **`kviz/client/src/pages/ResultsPage.tsx`**: `FreeLayout` импортируется из `tvScreenLayout` вместо `FreeSlide`.
+- **`src/http/tv.ts`**: 2 МБ → 8 МБ во всех upload-эндпоинтах; `migrateFreeLayoutServer()`, `validateFreeLayoutV2()`; GET /kviz/api/tv/slides + GET /api/tv/data мигрируют v1→v2 на выходе; default layout free-слайда: `{ v:2, frame:true, elements:[] }`.
+- **`src/index.ts`**: лимит JSON для `/kviz/api/tv` повышен с 12mb до 16mb.
+
 ### 12.11.2026 · (текущий) · task 50 — конструктор экрана v2 (свободные элементы, поворот, слои)
 - **`kviz/client/src/lib/tvScreenLayout.ts`** (полный рерайт): v2-схема `{ v: 2, elements: ScreenEl[] }`. 7 типов: text/value/mission/datetime/image/shape/carousel. `TextStyle` (font/size/weight/color/opacity/align/scaleX/scaleY). `ShapeFill` (solid/gradient). Экспорты: `TYPE_LABELS`, `BIND_LABELS`, `SHAPE_LABELS`, `VALID_FONTS`, `ASSET_LABELS`, `newId()`, `migrateV1ToV2()`, `defaultScreenLayout()` (18 элементов).
 - **`kviz/client/src/components/tv/TextBox.tsx`**: сигнатура изменена на `style: TextStyle; text: string`; добавлен `opacity`; используется и в TvScreen, и в FreeSlide.

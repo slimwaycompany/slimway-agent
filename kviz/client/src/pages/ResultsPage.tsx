@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import FreeSlide, { type FreeLayout } from '../components/tv/FreeSlide';
+import FreeSlide from '../components/tv/FreeSlide';
 import TvScreen from '../components/tv/TvScreen';
-import type { ScreenLayout } from '../lib/tvScreenLayout';
+import type { FreeLayout, ScreenLayout } from '../lib/tvScreenLayout';
 import { defaultScreenLayout } from '../lib/tvScreenLayout';
 
 interface TvCounters { cm_lost: number; kg_lost: number; fat_kg_lost: number }

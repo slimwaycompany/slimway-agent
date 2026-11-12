@@ -27,12 +27,35 @@ const VALID_FONTS = new Set(['Manrope', 'Montserrat', 'Oswald', 'Barlow Condense
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function validateLayout(raw: unknown): string | null {
+/** Migrate old v1 free layout {frame, elements:[{type:'text'|'image'}]} → v2 */
+function migrateFreeLayoutServer(raw: Record<string, unknown>): Record<string, unknown> {
+  const frame = typeof raw.frame === 'boolean' ? raw.frame : false;
+  const els = (Array.isArray(raw.elements) ? raw.elements as Record<string, unknown>[] : []).map(el => {
+    const base = { id: UUID_RE.test(String(el.id ?? '')) ? el.id : randomUUID(), x: el.x ?? 0, y: el.y ?? 0, w: el.w ?? 10, h: el.h ?? 10, z: el.z ?? 0, visible: true, locked: false };
+    if (el.type === 'image') {
+      return { ...base, type: 'image', path: el.path, fit: el.fit ?? 'cover' };
+    }
+    return {
+      ...base, type: 'text',
+      text:   typeof el.text === 'string' ? el.text : '',
+      font:   VALID_FONTS.has(el.font as string) ? el.font : 'Manrope',
+      size:   el.size ?? 2, weight: el.weight ?? 400, color: el.color ?? '#000000', align: el.align ?? 'left',
+      scaleX: el.scaleX ?? 1, scaleY: el.scaleY ?? 1,
+    };
+  });
+  return { v: 2, frame, elements: els };
+}
+
+function validateFreeLayoutV2(raw: unknown): string | null {
   if (typeof raw !== 'object' || raw === null) return 'layout должен быть объектом';
   const l = raw as Record<string, unknown>;
+  if (l.v !== 2) return 'layout.v должно быть 2';
   if (typeof l.frame !== 'boolean') return 'layout.frame должен быть true или false';
   if (!Array.isArray(l.elements)) return 'layout.elements должен быть массивом';
-  if ((l.elements as unknown[]).length > 12) return 'Максимум 12 элементов в слайде';
+  if ((l.elements as unknown[]).length > 30) return 'Максимум 30 элементов в слайде';
+  const FREE_TYPES = new Set(['text','image','shape']);
+  const VALID_FITS  = new Set(['contain','cover','stretch']);
+  const VALID_SHAPES = new Set(['rect','rounded','circle','ellipse','pill']);
   const ids = new Set<string>();
   for (const item of l.elements as unknown[]) {
     if (typeof item !== 'object' || item === null) return 'Элемент не является объектом';
@@ -40,25 +63,50 @@ function validateLayout(raw: unknown): string | null {
     if (typeof e.id !== 'string' || !UUID_RE.test(e.id)) return 'id элемента должен быть UUID';
     if (ids.has(e.id)) return `Дублирующийся id: ${e.id}`;
     ids.add(e.id);
-    if (e.type !== 'text' && e.type !== 'image') return 'type элемента: text или image';
-    for (const [k, min, max] of [['x', 0, 100], ['y', 0, 100], ['w', 1, 100], ['h', 1, 100]] as const) {
-      const v = e[k];
-      if (typeof v !== 'number' || v < min || v > max) return `${k}: число ${min}–${max}`;
+    if (!FREE_TYPES.has(String(e.type))) return `type элемента: text, image или shape (получено: ${e.type})`;
+    for (const [k, min, max] of [['x',0,100],['y',0,100],['w',1,100],['h',1,100]] as const) {
+      if (typeof e[k] !== 'number' || (e[k] as number) < min || (e[k] as number) > max) return `${k}: число ${min}–${max}`;
     }
-    if (typeof e.z !== 'number' || !Number.isInteger(e.z) || e.z < 0 || e.z > 50) return 'z: целое 0–50';
+    if (typeof e.z !== 'number' || !Number.isInteger(e.z) || e.z < 0 || e.z > 500) return 'z: целое 0–500';
+    if ('rotate'  in e && e.rotate  !== undefined && (typeof e.rotate  !== 'number' || (e.rotate  as number) < -180 || (e.rotate  as number) > 180)) return 'rotate: -180..180';
+    if ('visible' in e && e.visible !== undefined && typeof e.visible !== 'boolean') return 'visible: boolean';
+    if ('locked'  in e && e.locked  !== undefined && typeof e.locked  !== 'boolean') return 'locked: boolean';
     if (e.type === 'text') {
-      if (typeof e.text !== 'string' || e.text.length > 500) return 'text: строка до 500 символов';
-      if (!VALID_FONTS.has(e.font as string)) return `Неверный шрифт: ${e.font}. Допустимые: ${[...VALID_FONTS].join(', ')}`;
-      if (typeof e.size !== 'number' || e.size < 1 || e.size > 60) return 'size: число 1–60';
-      if (e.weight !== 400 && e.weight !== 600 && e.weight !== 800) return 'weight: 400, 600 или 800';
-      if (typeof e.color !== 'string' || !HEX_RE.test(e.color)) return 'color: формат #RRGGBB';
-      if (e.align !== 'left' && e.align !== 'center' && e.align !== 'right') return 'align: left, center или right';
-      if (typeof e.scaleX !== 'number' || e.scaleX < 0.5 || e.scaleX > 2) return 'scaleX: 0.5–2';
-      if (typeof e.scaleY !== 'number' || e.scaleY < 0.5 || e.scaleY > 2) return 'scaleY: 0.5–2';
+      if (typeof e.text !== 'string' || (e.text as string).length > 500) return 'text: строка до 500 символов';
+      if ('font'   in e && e.font   !== undefined && !VALID_FONTS.has(e.font as string)) return `Неверный шрифт: ${e.font}`;
+      if ('size'   in e && e.size   !== undefined && (typeof e.size !== 'number' || (e.size as number) < 1 || (e.size as number) > 60)) return 'size: 1–60';
+      if ('weight' in e && e.weight !== undefined && e.weight !== 400 && e.weight !== 600 && e.weight !== 800) return 'weight: 400, 600 или 800';
+      if ('color'  in e && e.color  !== undefined && (typeof e.color !== 'string' || !HEX_RE.test(e.color as string))) return 'color: формат #RRGGBB';
+      if ('align'  in e && e.align  !== undefined && e.align !== 'left' && e.align !== 'center' && e.align !== 'right') return 'align: left, center или right';
+      if ('scaleX' in e && e.scaleX !== undefined && (typeof e.scaleX !== 'number' || (e.scaleX as number) < 0.5 || (e.scaleX as number) > 2)) return 'scaleX: 0.5–2';
+      if ('scaleY' in e && e.scaleY !== undefined && (typeof e.scaleY !== 'number' || (e.scaleY as number) < 0.5 || (e.scaleY as number) > 2)) return 'scaleY: 0.5–2';
     }
     if (e.type === 'image') {
-      if (typeof e.path !== 'string' || !/^free\/[0-9a-f-]+\.(jpg|png)$/.test(e.path)) return 'path: free/<uuid>.jpg или free/<uuid>.png';
-      if (e.fit !== 'cover' && e.fit !== 'contain' && e.fit !== 'stretch') return 'fit: cover, contain или stretch';
+      if ('path' in e && e.path !== undefined && (typeof e.path !== 'string' || !/^free\/[0-9a-f-]+\.(jpg|png)$/.test(e.path as string))) return 'path: free/<uuid>.jpg или free/<uuid>.png';
+      if ('fit'  in e && e.fit  !== undefined && !VALID_FITS.has(e.fit as string)) return 'fit: cover, contain или stretch';
+    }
+    if (e.type === 'shape') {
+      if (!VALID_SHAPES.has(String(e.shape))) return 'shape: rect, rounded, circle, ellipse или pill';
+      if ('radius' in e && e.radius !== undefined && (typeof e.radius !== 'number' || (e.radius as number) < 0 || (e.radius as number) > 10)) return 'shape.radius: 0–10';
+      if ('fill' in e && e.fill !== undefined) {
+        const f = e.fill as Record<string, unknown>;
+        if (f.type !== 'solid' && f.type !== 'gradient') return 'fill.type: solid или gradient';
+        if (f.type === 'solid') {
+          if (!HEX_RE.test(String(f.color || ''))) return 'fill.color: #RRGGBB';
+          if (typeof f.opacity !== 'number' || (f.opacity as number) < 0 || (f.opacity as number) > 1) return 'fill.opacity: 0–1';
+        }
+        if (f.type === 'gradient') {
+          if (!HEX_RE.test(String(f.from || '')) || !HEX_RE.test(String(f.to || ''))) return 'fill.from/to: #RRGGBB';
+          if (typeof f.angle !== 'number' || (f.angle as number) < 0 || (f.angle as number) > 360) return 'fill.angle: 0–360';
+          if (typeof f.opacity !== 'number' || (f.opacity as number) < 0 || (f.opacity as number) > 1) return 'fill.opacity: 0–1';
+        }
+      }
+      if ('border' in e && e.border !== undefined) {
+        const b = e.border as Record<string, unknown>;
+        if (typeof b.width !== 'number' || (b.width as number) < 0 || (b.width as number) > 1) return 'border.width: 0–1';
+        if (!HEX_RE.test(String(b.color || ''))) return 'border.color: #RRGGBB';
+        if (typeof b.opacity !== 'number' || (b.opacity as number) < 0 || (b.opacity as number) > 1) return 'border.opacity: 0–1';
+      }
     }
   }
   return null;
@@ -390,11 +438,17 @@ export function buildTvRouter(): Router {
       )];
       const resultsMap = await fetchResultsByIds(resultIds);
 
-      const enriched = slides.map(s => ({
-        ...s,
-        result_a: s.result_a ? (resultsMap.get(s.result_a as string) ?? null) : null,
-        result_b: s.result_b ? (resultsMap.get(s.result_b as string) ?? null) : null,
-      }));
+      const enriched = slides.map(s => {
+        const layout = s.kind === 'free' && s.layout && typeof s.layout === 'object' && (s.layout as Record<string, unknown>).v !== 2
+          ? migrateFreeLayoutServer(s.layout as Record<string, unknown>)
+          : s.layout;
+        return {
+          ...s,
+          layout,
+          result_a: s.result_a ? (resultsMap.get(s.result_a as string) ?? null) : null,
+          result_b: s.result_b ? (resultsMap.get(s.result_b as string) ?? null) : null,
+        };
+      });
 
       res.setHeader('Cache-Control', 'no-store');
       res.json({
@@ -515,7 +569,7 @@ export function buildTvRouter(): Router {
     const b = req.body as Record<string, unknown>;
     if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'content_base64 обязателен' }); return; }
     const buf = Buffer.from(b.content_base64, 'base64');
-    if (buf.length > 2 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 2 МБ' }); return; }
+    if (buf.length > 8 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 8 МБ' }); return; }
     if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
     const ext = buf[0] === 0x89 ? 'png' : 'jpg';
     const sp = `screen/${randomUUID()}.${ext}`;
@@ -601,7 +655,13 @@ export function buildTvRouter(): Router {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
     const { data, error } = await supabase.from('tv_slides').select('*').order('position');
     if (error) { res.status(500).json({ error: error.message }); return; }
-    res.json(data ?? []);
+    const rows = (data ?? []) as Record<string, unknown>[];
+    res.json(rows.map(s => {
+      if (s.kind === 'free' && s.layout && typeof s.layout === 'object' && (s.layout as Record<string, unknown>).v !== 2) {
+        return { ...s, layout: migrateFreeLayoutServer(s.layout as Record<string, unknown>) };
+      }
+      return s;
+    }));
   });
 
   r.post('/kviz/api/tv/slides', async (req, res) => {
@@ -616,9 +676,9 @@ export function buildTvRouter(): Router {
     if ((count ?? 0) >= 20) { res.status(400).json({ error: 'Можно добавить не больше 20 слайдов' }); return; }
 
     if (kind === 'free') {
-      const layout = b.layout ?? { frame: true, elements: [] };
+      const layout = b.layout ?? { v: 2, frame: true, elements: [] };
       if (b.layout) {
-        const validErr = validateLayout(layout);
+        const validErr = validateFreeLayoutV2(layout);
         if (validErr) { res.status(400).json({ error: validErr }); return; }
       }
       const dur = Math.max(2, Math.min(300, Number(b.duration_sec) || 10));
@@ -646,7 +706,7 @@ export function buildTvRouter(): Router {
     if (kind === 'promo' || kind === 'usp') {
       if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'Загрузите изображение' }); return; }
       const buf = Buffer.from(b.content_base64, 'base64');
-      if (buf.length > 2 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 2 МБ' }); return; }
+      if (buf.length > 8 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 8 МБ' }); return; }
       if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
       const ext = buf[0] === 0x89 ? 'png' : 'jpg';
       const sp = `slides/${randomUUID()}.${ext}`;
@@ -676,7 +736,7 @@ export function buildTvRouter(): Router {
     const b = req.body as Record<string, unknown>;
     if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'content_base64 обязателен' }); return; }
     const buf = Buffer.from(b.content_base64, 'base64');
-    if (buf.length > 2 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 2 МБ' }); return; }
+    if (buf.length > 8 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 8 МБ' }); return; }
     if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
     const ext = buf[0] === 0x89 ? 'png' : 'jpg';
     const sp = `free/${randomUUID()}.${ext}`;
@@ -696,11 +756,12 @@ export function buildTvRouter(): Router {
       if ((curRow as Record<string, unknown> | null)?.kind !== 'free') {
         res.status(400).json({ error: 'layout можно изменить только у слайда типа free' }); return;
       }
-      const validErr = validateLayout(b.layout);
+      const validErr = validateFreeLayoutV2(b.layout);
       if (validErr) { res.status(400).json({ error: validErr }); return; }
       type LayoutEl = { type: string; path?: string };
       type LayoutObj = { elements?: LayoutEl[] };
-      const oldLayout = (curRow as Record<string, unknown> | null)?.layout as LayoutObj | null;
+      const curLayout = (curRow as Record<string, unknown> | null)?.layout as Record<string, unknown> | null;
+      const oldLayout: LayoutObj | null = curLayout?.v === 2 ? curLayout as LayoutObj : (curLayout ? migrateFreeLayoutServer(curLayout) as LayoutObj : null);
       const oldPaths = new Set((oldLayout?.elements ?? []).filter(e => e.type === 'image' && e.path).map(e => e.path as string));
       const newPaths = new Set(((b.layout as LayoutObj).elements ?? []).filter(e => e.type === 'image' && e.path).map(e => (e as LayoutEl).path as string));
       const toRemove = [...oldPaths].filter(p => !newPaths.has(p));
@@ -750,7 +811,7 @@ export function buildTvRouter(): Router {
     const b = req.body as Record<string, unknown>;
     if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'content_base64 обязателен' }); return; }
     const buf = Buffer.from(b.content_base64, 'base64');
-    if (buf.length > 2 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 2 МБ' }); return; }
+    if (buf.length > 8 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 8 МБ' }); return; }
     if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
     const ext = buf[0] === 0x89 ? 'png' : 'jpg';
     const { data: oldRow } = await supabase.from('tv_slides').select('image_path').eq('id', req.params.id).maybeSingle();
@@ -799,6 +860,7 @@ async function uploadResultImg(req: Request, res: Response, side: 'before' | 'af
   const b = req.body as Record<string, unknown>;
   if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'content_base64 обязателен' }); return; }
   const buf = Buffer.from(b.content_base64, 'base64');
+  if (buf.length > 8 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 8 МБ' }); return; }
   if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
   const ext = buf[0] === 0x89 ? 'png' : 'jpg';
   const { data: oldRow } = await supabase.from('tv_results').select(`${side}_path`).eq('id', req.params.id).maybeSingle();

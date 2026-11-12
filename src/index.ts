@@ -462,8 +462,8 @@ app.use('/kviz/api/inbody/csv-preview', express.json({ limit: '2mb' }));
 app.use('/kviz/api/inbody/csv-import',  express.json({ limit: '2mb' }));
 // Raise limit for materials upload (base64 file content)
 app.use('/api/scriptolog/settings/materials', express.json({ limit: '20mb' }));
-// Raise limit for TV image uploads (base64, max ~12MB after compression)
-app.use('/kviz/api/tv', express.json({ limit: '12mb' }));
+// Raise limit for TV image uploads (base64, max ~11MB for 8MB binary)
+app.use('/kviz/api/tv', express.json({ limit: '16mb' }));
 app.use(express.json());
 // Serve PWA manifest, icons and other public root assets
 app.use(express.static(path.join(__dirname, '../public'), { index: false, maxAge: '1d' }));
