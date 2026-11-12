@@ -23,7 +23,7 @@ function isAdmin(req: Request): boolean {
   return getSession(req)?.role === 'admin';
 }
 
-const VALID_FONTS = new Set(['Manrope', 'Montserrat', 'Oswald', 'Barlow Condensed', 'Playfair Display', 'Russo One']);
+const VALID_FONTS = new Set(['Manrope', 'Montserrat', 'Oswald', 'Barlow Condensed', 'Playfair Display', 'Russo One', 'Unbounded']);
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -62,6 +62,86 @@ function validateLayout(raw: unknown): string | null {
     }
   }
   return null;
+}
+
+// ── Screen layout (синхронизировать с kviz/client/src/lib/tvScreenLayout.ts) ──
+
+const VALID_SCREEN_KINDS = new Set([
+  'logo', 'panel', 'carousel', 'intro', 'mission', 'datetime',
+  'counter_cm', 'counter_kg', 'counter_fat',
+]);
+const TEXT_SCREEN_KINDS   = new Set(['intro', 'mission', 'datetime']);
+const COUNTER_SCREEN_KINDS = new Set(['counter_cm', 'counter_kg', 'counter_fat']);
+
+function validateScreenLayout(raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null) return 'screen_layout должен быть объектом';
+  const l = raw as Record<string, unknown>;
+  if (l.version !== 1) return 'version должна быть 1';
+  if (!Array.isArray(l.elements)) return 'elements должен быть массивом';
+  const kinds = new Set<string>();
+  for (const item of l.elements as unknown[]) {
+    if (typeof item !== 'object' || item === null) return 'элемент не объект';
+    const e = item as Record<string, unknown>;
+    const kind = String(e.kind);
+    if (!VALID_SCREEN_KINDS.has(kind)) return `Неверный kind: ${kind}`;
+    if (kinds.has(kind)) return `Дублирующийся kind: ${kind}`;
+    kinds.add(kind);
+    for (const [k, min, max] of [['x', 0, 100], ['y', 0, 100], ['w', 1, 100], ['h', 1, 100]] as const) {
+      const v = e[k];
+      if (typeof v !== 'number' || v < min || v > max) return `${kind}.${k}: число ${min}–${max}`;
+    }
+    if ('z' in e && (typeof e.z !== 'number' || !Number.isInteger(e.z) || (e.z as number) < 0 || (e.z as number) > 50))
+      return `${kind}.z: целое 0–50`;
+    if (TEXT_SCREEN_KINDS.has(kind) || COUNTER_SCREEN_KINDS.has(kind)) {
+      if ('font' in e && e.font !== undefined && !VALID_FONTS.has(e.font as string))
+        return `${kind}.font: неверный шрифт`;
+      if ('size' in e && e.size !== undefined && (typeof e.size !== 'number' || (e.size as number) < 0.3 || (e.size as number) > 20))
+        return `${kind}.size: 0.3–20`;
+      if ('weight' in e && e.weight !== undefined && e.weight !== 400 && e.weight !== 600 && e.weight !== 800)
+        return `${kind}.weight: 400, 600 или 800`;
+      if ('color' in e && e.color !== undefined && (typeof e.color !== 'string' || !HEX_RE.test(e.color as string)))
+        return `${kind}.color: формат #RRGGBB`;
+      if ('align' in e && e.align !== undefined && e.align !== 'left' && e.align !== 'center' && e.align !== 'right')
+        return `${kind}.align: left, center или right`;
+    }
+    if (TEXT_SCREEN_KINDS.has(kind) && 'text' in e && e.text !== undefined) {
+      if (typeof e.text !== 'string' || (e.text as string).length > 300) return `${kind}.text: строка до 300 символов`;
+    }
+    if (COUNTER_SCREEN_KINDS.has(kind)) {
+      if ('label' in e && e.label !== undefined && (typeof e.label !== 'string' || (e.label as string).length > 100))
+        return `${kind}.label: строка до 100 символов`;
+      if ('unit' in e && e.unit !== undefined && (typeof e.unit !== 'string' || (e.unit as string).length > 20))
+        return `${kind}.unit: строка до 20 символов`;
+    }
+  }
+  return null;
+}
+
+type ScreenElServer = Record<string, unknown>;
+interface ScreenLayoutServer { version: 1; elements: ScreenElServer[] }
+
+// синхронизировать с kviz/client/src/lib/tvScreenLayout.ts (defaultScreenLayout)
+function defaultScreenLayoutServer(): ScreenLayoutServer {
+  return {
+    version: 1,
+    elements: [
+      { kind: 'logo',        x: 36, y: 1,  w: 28, h: 9,  z: 2 },
+      { kind: 'panel',       x: 2,  y: 11, w: 27, h: 80, z: 0 },
+      { kind: 'intro',       x: 3,  y: 12, w: 25, h: 7,  z: 1,
+        text: 'На сегодня мы', font: 'Manrope', size: 1.1, weight: 600, color: '#263CD9', align: 'center' },
+      { kind: 'counter_cm',  x: 3,  y: 20, w: 25, h: 23, z: 1,
+        label: 'Сантиметров убрали',    unit: 'см' },
+      { kind: 'counter_kg',  x: 3,  y: 44, w: 25, h: 23, z: 1,
+        label: 'Килограммов сбросили',  unit: 'кг' },
+      { kind: 'counter_fat', x: 3,  y: 68, w: 25, h: 22, z: 1,
+        label: 'Жира сожгли',           unit: 'кг' },
+      { kind: 'carousel',    x: 30, y: 11, w: 69, h: 80, z: 0 },
+      { kind: 'mission',     x: 20, y: 92, w: 60, h: 5,  z: 2,
+        text: 'Вместе к лучшей версии себя', font: 'Manrope', size: 1.6, weight: 600, color: '#263CD9', align: 'center' },
+      { kind: 'datetime',    x: 81, y: 92, w: 18, h: 5,  z: 2,
+        font: 'Manrope', size: 1.3, weight: 600, color: '#000000', align: 'right' },
+    ],
+  };
 }
 
 // JPEG: FF D8 FF | PNG: 89 50 4E 47
@@ -103,7 +183,7 @@ export function buildTvRouter(): Router {
     if (!checkKey(req)) { res.status(404).end(); return; }
     try {
       const [settingsRes, countersRes, slidesRes, missionRes] = await Promise.all([
-        supabase.from('tv_settings').select('main_label_cm,main_label_kg,main_label_fat,intro_text').eq('id', 1).maybeSingle(),
+        supabase.from('tv_settings').select('screen_layout,main_label_cm,main_label_kg,main_label_fat,intro_text').eq('id', 1).maybeSingle(),
         supabase.from('studio_results').select('cm_lost,kg_lost,fat_kg_lost'),
         supabase.from('tv_slides').select('*').order('position'),
         supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle(),
@@ -113,6 +193,25 @@ export function buildTvRouter(): Router {
         kg_lost:     a.kg_lost     + Number(row.kg_lost     || 0),
         fat_kg_lost: a.fat_kg_lost + Number(row.fat_kg_lost || 0),
       }), { cm_lost: 0, kg_lost: 0, fat_kg_lost: 0 });
+
+      // Resolve screen_layout: use saved or generate default seeded with current values
+      const settings = settingsRes.data as Record<string, unknown> | null;
+      let screenLayout = (settings?.screen_layout ?? null) as ScreenLayoutServer | null;
+      if (!screenLayout) {
+        screenLayout = defaultScreenLayoutServer();
+        const mission = String(missionRes.data?.value || '');
+        const intro   = String(settings?.intro_text || '');
+        const lCm  = String(settings?.main_label_cm  || 'Сантиметров убрали');
+        const lKg  = String(settings?.main_label_kg  || 'Килограммов сбросили');
+        const lFat = String(settings?.main_label_fat || 'Жира сожгли');
+        for (const el of screenLayout.elements) {
+          if (el.kind === 'mission'     && mission) el.text  = mission;
+          if (el.kind === 'intro'       && intro)   el.text  = intro;
+          if (el.kind === 'counter_cm')             el.label = lCm;
+          if (el.kind === 'counter_kg')             el.label = lKg;
+          if (el.kind === 'counter_fat')            el.label = lFat;
+        }
+      }
 
       const slides = (slidesRes.data ?? []) as Record<string, unknown>[];
       const resultIds = [...new Set(
@@ -128,12 +227,11 @@ export function buildTvRouter(): Router {
 
       res.setHeader('Cache-Control', 'no-store');
       res.json({
-        settings: settingsRes.data ?? {},
+        screen_layout: screenLayout,
         counters: totals,
-        mission: String(missionRes.data?.value || ''),
         slides: enriched,
         serverTime: new Date().toISOString(),
-        version: '2',
+        version: '3',
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -174,18 +272,59 @@ export function buildTvRouter(): Router {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
     const b = req.body as Record<string, unknown>;
     const upd: Record<string, unknown> = { id: 1, updated_at: new Date().toISOString() };
-    if ('main_label_cm'  in b) upd.main_label_cm  = String(b.main_label_cm  || '').slice(0, 60);
-    if ('main_label_kg'  in b) upd.main_label_kg  = String(b.main_label_kg  || '').slice(0, 60);
-    if ('main_label_fat' in b) upd.main_label_fat = String(b.main_label_fat || '').slice(0, 60);
-    if ('intro_text' in b) {
-      const t = String(b.intro_text || '').trim();
-      if (t.length > 120) { res.status(400).json({ error: 'Вступительный текст — не больше 120 символов' }); return; }
-      upd.intro_text = t;
+    // main_label_* и intro_text перенесены в screen_layout (screen editor)
+    if ('main_enabled'   in b) upd.main_enabled  = b.main_enabled === true || b.main_enabled === 'true';
+    if ('main_seconds'   in b) upd.main_seconds  = Math.max(1, Math.min(300, Number(b.main_seconds) || 5));
+    if ('results_enabled' in b) upd.results_enabled = b.results_enabled === true || b.results_enabled === 'true';
+    if ('results_seconds' in b) upd.results_seconds = Math.max(1, Math.min(300, Number(b.results_seconds) || 5));
+    if (!Object.keys(upd).some(k => !['id', 'updated_at'].includes(k))) {
+      res.status(400).json({ error: 'Нет допустимых полей для обновления. Текст экрана редактируется в редакторе экрана.' }); return;
     }
     const { data, error } = await supabase.from('tv_settings').upsert(upd, { onConflict: 'id' }).select('*').single();
     if (error) { res.status(500).json({ error: error.message }); return; }
     tvNotify();
     res.json(data);
+  });
+
+  // ── Screen layout ──────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/tv/screen', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const { data } = await supabase.from('tv_settings').select('screen_layout,main_label_cm,main_label_kg,main_label_fat,intro_text').eq('id', 1).maybeSingle();
+    const settings = data as Record<string, unknown> | null;
+    let layout = (settings?.screen_layout ?? null) as ScreenLayoutServer | null;
+    if (!layout) {
+      layout = defaultScreenLayoutServer();
+      const lCm  = String(settings?.main_label_cm  || 'Сантиметров убрали');
+      const lKg  = String(settings?.main_label_kg  || 'Килограммов сбросили');
+      const lFat = String(settings?.main_label_fat || 'Жира сожгли');
+      const intro = String(settings?.intro_text || '');
+      for (const el of layout.elements) {
+        if (el.kind === 'intro'       && intro)  el.text  = intro;
+        if (el.kind === 'counter_cm')            el.label = lCm;
+        if (el.kind === 'counter_kg')            el.label = lKg;
+        if (el.kind === 'counter_fat')           el.label = lFat;
+      }
+      // mission from studio_settings
+      const { data: missionRow } = await supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle();
+      const mission = String((missionRow as Record<string, unknown> | null)?.value || '');
+      for (const el of layout.elements) {
+        if (el.kind === 'mission' && mission) el.text = mission;
+      }
+    }
+    res.json(layout);
+  });
+
+  r.put('/kviz/api/tv/screen', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const err = validateScreenLayout(req.body);
+    if (err) { res.status(400).json({ error: err }); return; }
+    const { data, error } = await supabase.from('tv_settings')
+      .upsert({ id: 1, screen_layout: req.body, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+      .select('screen_layout').single();
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    tvNotify();
+    res.json((data as Record<string, unknown>).screen_layout);
   });
 
   // ── Admin tv_results CRUD ──────────────────────────────────────────────────

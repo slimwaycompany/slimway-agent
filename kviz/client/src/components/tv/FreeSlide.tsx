@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import TextBox from './TextBox';
+import ImageBox from './ImageBox';
 
 export interface FreeEl {
   id: string;
@@ -62,68 +64,41 @@ export default function FreeSlide({ layout, mediaUrl, preview }: Props) {
 
   const sorted = [...layout.elements].sort((a, b) => a.z - b.z);
 
+  // Set --screen-h so TextBox can compute font-size via CSS calc
+  const screenStyle = {
+    position: 'absolute' as const, inset: 0, overflow: 'hidden',
+    '--screen-h': `${dim.h || 400}px`,
+  } as React.CSSProperties;
+
   return (
-    <div ref={containerRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+    <div ref={containerRef} style={screenStyle}>
       {sorted.map(el => {
-        const base: React.CSSProperties = {
+        const wrapStyle: React.CSSProperties = {
           position: 'absolute',
-          left: `${el.x}%`,
-          top: `${el.y}%`,
-          width: `${el.w}%`,
-          height: `${el.h}%`,
+          left: `${el.x}%`, top: `${el.y}%`,
+          width: `${el.w}%`, height: `${el.h}%`,
           zIndex: el.z,
-          overflow: 'hidden',
+          overflow: 'hidden', // clipping handled by wrapper, not by TextBox
         };
 
         if (el.type === 'text') {
-          const pxSize = dim.h > 0 ? dim.h * (el.size ?? 10) / 100 : 16;
-          const origin =
-            el.align === 'right' ? 'right center' :
-            el.align === 'center' ? 'center center' : 'left center';
           const isOver = overflows.has(el.id);
           return (
-            <div
-              key={el.id}
-              ref={r => { textRefs.current[el.id] = r; }}
-              style={{
-                ...base,
-                fontFamily: `'${el.font || 'Manrope'}', sans-serif`,
-                fontSize: pxSize,
-                fontWeight: el.weight ?? 400,
-                color: el.color ?? '#000000',
-                textAlign: (el.align ?? 'left') as React.CSSProperties['textAlign'],
-                transform: `scale(${el.scaleX ?? 1}, ${el.scaleY ?? 1})`,
-                transformOrigin: origin,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                lineHeight: 1.2,
-                outline: preview && isOver ? '2px solid #ef4444' : undefined,
-              }}
-            >
-              {el.text}
-              {preview && isOver && (
-                <div style={{
-                  position: 'absolute', bottom: 0, left: 0, right: 0,
-                  background: 'rgba(239,68,68,0.9)', color: '#fff',
-                  fontSize: 10, padding: '2px 4px', textAlign: 'center', pointerEvents: 'none',
-                }}>
-                  Не помещается, уменьшите размер
-                </div>
-              )}
+            <div key={el.id} style={wrapStyle}>
+              <TextBox
+                el={el}
+                overflowing={isOver}
+                preview={preview}
+                onRef={r => { textRefs.current[el.id] = r; }}
+              />
             </div>
           );
         }
 
         if (el.type === 'image' && el.path) {
-          const objFit: React.CSSProperties['objectFit'] =
-            el.fit === 'stretch' ? 'fill' : (el.fit ?? 'cover');
           return (
-            <div key={el.id} style={base}>
-              <img
-                src={mediaUrl(el.path)}
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: objFit, display: 'block' }}
-              />
+            <div key={el.id} style={wrapStyle}>
+              <ImageBox el={el as FreeEl & { type: 'image' }} mediaUrl={mediaUrl} />
             </div>
           );
         }

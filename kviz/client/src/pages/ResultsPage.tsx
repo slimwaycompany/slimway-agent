@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import smIcon  from '../assets/tv/sm.png';
-import kgIcon  from '../assets/tv/kg.png';
-import fatIcon from '../assets/tv/fat.png';
-import logoImg from '../assets/tv/logo.png';
 import FreeSlide, { type FreeLayout } from '../components/tv/FreeSlide';
+import TvScreen from '../components/tv/TvScreen';
+import type { ScreenLayout } from '../lib/tvScreenLayout';
+import { defaultScreenLayout } from '../lib/tvScreenLayout';
 
-interface TvSettings { main_label_cm: string; main_label_kg: string; main_label_fat: string; intro_text: string }
 interface TvCounters { cm_lost: number; kg_lost: number; fat_kg_lost: number }
 interface TvResult  { id: string; title: string; before_path: string; after_path: string }
 interface TvSlide {
@@ -16,8 +14,11 @@ interface TvSlide {
   layout?: FreeLayout;
 }
 interface TvData {
-  settings: TvSettings; counters: TvCounters; mission: string;
-  slides: TvSlide[]; serverTime: string;
+  screen_layout: ScreenLayout;
+  counters: TvCounters;
+  slides: TvSlide[];
+  serverTime: string;
+  version: string;
 }
 
 function mediaUrl(path: string, key: string) {
@@ -32,7 +33,7 @@ function formatAlmaty(d: Date): string {
   }).format(d).replace(',', '');
 }
 
-// ── Result card: title + two photos (before/after) ──────────────────────────
+// ── Result card ──────────────────────────────────────────────────────────────
 function ResultCard({ res, tvKey, small }: { res: TvResult; tvKey: string; small?: boolean }) {
   return (
     <div className="tv-res1" style={small ? { padding: 'clamp(6px,1vh,12px) clamp(6px,1vw,12px)' } : undefined}>
@@ -53,10 +54,8 @@ function ResultCard({ res, tvKey, small }: { res: TvResult; tvKey: string; small
   );
 }
 
-// ── Slide content by kind ───────────────────────────────────────────────────
+// ── Slide content ────────────────────────────────────────────────────────────
 function SlideContent({ slide, tvKey, onFail }: { slide: TvSlide; tvKey: string; onFail: () => void }) {
-  const handleErr = useCallback(() => { onFail(); }, [onFail]);
-
   if (slide.kind === 'result1' && slide.result_a) {
     return <ResultCard res={slide.result_a} tvKey={tvKey} />;
   }
@@ -71,54 +70,14 @@ function SlideContent({ slide, tvKey, onFail }: { slide: TvSlide; tvKey: string;
   if ((slide.kind === 'promo' || slide.kind === 'usp') && slide.image_path) {
     return (
       <div className="tv-img-slide">
-        <img src={mediaUrl(slide.image_path, tvKey)} alt={slide.kind} onError={handleErr} />
+        <img src={mediaUrl(slide.image_path, tvKey)} alt={slide.kind} onError={onFail} />
       </div>
     );
   }
   return null;
 }
 
-// ── Counter block: icon left, number+unit+label right ───────────────────────
-function CounterBlock({ icon, value, unit, label }: { icon: string; value: number; unit: string; label: string }) {
-  const blockRef = useRef<HTMLDivElement>(null);
-  const iconRef  = useRef<HTMLImageElement>(null);
-  const [fs, setFs] = useState(50);
-
-  useLayoutEffect(() => {
-    const block = blockRef.current;
-    if (!block) return;
-    const compute = () => {
-      const { width, height } = block.getBoundingClientRect();
-      if (!height || !width) return;
-      const iconW = iconRef.current ? iconRef.current.offsetWidth : height * 0.55;
-      const digits = Math.max(1, String(Math.round(value)).length);
-      const avail = width - iconW - 16;
-      const byH = height * 0.55;
-      const byW = avail / (digits * 0.48); // Barlow Condensed width ratio
-      setFs(Math.max(20, Math.floor(Math.min(byH, byW))));
-    };
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(block);
-    return () => ro.disconnect();
-  }, [value]);
-
-  return (
-    <div ref={blockRef} className="tv-counter-block">
-      <img ref={iconRef} src={icon} className="tv-counter-icon" alt=""
-        onError={e => { e.currentTarget.style.display = 'none'; }} />
-      <div className="tv-counter-data">
-        <div className="tv-counter-numrow">
-          <span className="tv-counter-num" style={{ fontSize: fs }}>{Math.round(value)}</span>
-          <span className="tv-counter-unit">{unit}</span>
-        </div>
-        <div className="tv-counter-label">{label}</div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main page ──────────────────────────────────────────────────────────────
+// ── Main page ────────────────────────────────────────────────────────────────
 export default function ResultsPage() {
   const { search } = useLocation();
   const tvKey = new URLSearchParams(search).get('key') || '';
@@ -131,13 +90,12 @@ export default function ResultsPage() {
   const [datetime, setDatetime] = useState(() => formatAlmaty(new Date()));
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
 
-  const valuesRef  = useRef([0, 0, 0]);
+  const valuesRef     = useRef([0, 0, 0]);
   const prevTargetRef = useRef([0, 0, 0]);
-  const rafRef     = useRef<number>(0);
-  const timerRef   = useRef<ReturnType<typeof setTimeout>>();
-  const slideIdxRef = useRef(0);
+  const rafRef        = useRef<number>(0);
+  const timerRef      = useRef<ReturnType<typeof setTimeout>>();
+  const slideIdxRef   = useRef(0);
 
-  // Lock body/html scroll while TV screen is active
   useEffect(() => {
     document.documentElement.classList.add('tv-page');
     document.body.classList.add('tv-page');
@@ -147,7 +105,6 @@ export default function ResultsPage() {
     };
   }, []);
 
-  // Datetime clock, Asia/Almaty, every 10s
   useEffect(() => {
     const id = setInterval(() => setDatetime(formatAlmaty(new Date())), 10_000);
     return () => clearInterval(id);
@@ -156,7 +113,6 @@ export default function ResultsPage() {
   function animateCounters(c: TvCounters) {
     const target = [c.cm_lost, c.kg_lost, c.fat_kg_lost];
     const prev   = prevTargetRef.current;
-    // Skip animation if values unchanged
     if (target[0] === prev[0] && target[1] === prev[1] && target[2] === prev[2]) return;
     prevTargetRef.current = target;
     cancelAnimationFrame(rafRef.current);
@@ -187,7 +143,6 @@ export default function ResultsPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // SSE for real-time push
   useEffect(() => {
     if (!tvKey) return;
     const es = new EventSource(`/api/tv/stream?key=${encodeURIComponent(tvKey)}`);
@@ -195,7 +150,6 @@ export default function ResultsPage() {
     return () => es.close();
   }, [tvKey, loadData]);
 
-  // Fallback poll every 60s
   useEffect(() => {
     const id = setInterval(loadData, 60_000);
     return () => clearInterval(id);
@@ -249,72 +203,48 @@ export default function ResultsPage() {
   if (invalid) return <main className="results-invalid">404</main>;
   if (!data) return null;
 
-  const st  = data.settings;
-  const labels  = [st.main_label_cm || 'Сантиметров убрали', st.main_label_kg || 'Килограммов сбросили', st.main_label_fat || 'Жира сожгли'];
-  const icons   = [smIcon, kgIcon, fatIcon];
-  const units   = ['см', 'кг', 'кг'];
   const curSlide = slides.length ? slides[slideIdxRef.current % slides.length] : null;
+  const screenLayout: ScreenLayout = data.screen_layout ?? defaultScreenLayout();
+
+  const carousel = curSlide ? (
+    <div className={`tv-slide${anim === 'exit' ? ' tv-slide--exit' : anim === 'enter' ? ' tv-slide--enter' : ''}`}
+      style={{ position: 'absolute', inset: 0 }}>
+      {curSlide.kind === 'free' && curSlide.layout ? (
+        <div style={{
+          position: 'absolute', inset: 0,
+          borderRadius: 'clamp(14px,1.8vw,28px)',
+          overflow: 'hidden',
+          ...(curSlide.layout.frame ? {
+            border: '2px solid transparent',
+            background: 'linear-gradient(rgba(255,255,255,.58),rgba(255,255,255,.58)) padding-box, linear-gradient(135deg,#02BDB6,#263CD9) border-box',
+            boxShadow: '0 12px 48px rgba(38,60,217,.13)',
+            backdropFilter: 'blur(16px)',
+          } : {}),
+        }}>
+          <FreeSlide layout={curSlide.layout} mediaUrl={p => mediaUrl(p, tvKey)} />
+        </div>
+      ) : (
+        <div className="tv-frame" style={{ position: 'absolute', inset: 0 }}>
+          <SlideContent
+            slide={curSlide}
+            tvKey={tvKey}
+            onFail={() => setFailedIds(s => new Set([...s, curSlide.id]))}
+          />
+        </div>
+      )}
+    </div>
+  ) : null;
 
   return (
     <main className="tv-screen">
       <div className="tv-glow tv-glow-a" />
       <div className="tv-glow tv-glow-b" />
-
-      {/* Header: logo top-center */}
-      <div className="tv-hdr">
-        <img src={logoImg} alt="SlimWay" className="tv-logo"
-          onError={e => { e.currentTarget.style.display = 'none'; }} />
-      </div>
-
-      {/* Body: left 30% counters + right 70% carousel */}
-      <div className="tv-body">
-        <div className="tv-left">
-          <div className="tv-counter-panel">
-            {st.intro_text && <div className="tv-counter-intro">{st.intro_text}</div>}
-            {values.map((v, i) => (
-              <CounterBlock key={i} icon={icons[i]} value={v} unit={units[i]} label={labels[i]} />
-            ))}
-          </div>
-        </div>
-
-        <div className="tv-right">
-          {curSlide && (
-            <div className={`tv-slide${anim === 'exit' ? ' tv-slide--exit' : anim === 'enter' ? ' tv-slide--enter' : ''}`}>
-              {curSlide.kind === 'free' && curSlide.layout ? (
-                <div style={{
-                  flex: 1, position: 'relative', overflow: 'hidden',
-                  borderRadius: 'clamp(14px,1.8vw,28px)',
-                  ...(curSlide.layout.frame ? {
-                    border: '2px solid transparent',
-                    background: 'linear-gradient(rgba(255,255,255,.58),rgba(255,255,255,.58)) padding-box, linear-gradient(135deg,#02BDB6,#263CD9) border-box',
-                    boxShadow: '0 12px 48px rgba(38,60,217,.13)',
-                    backdropFilter: 'blur(16px)',
-                  } : {}),
-                }}>
-                  <FreeSlide
-                    layout={curSlide.layout}
-                    mediaUrl={p => mediaUrl(p, tvKey)}
-                  />
-                </div>
-              ) : (
-                <div className="tv-frame">
-                  <SlideContent
-                    slide={curSlide}
-                    tvKey={tvKey}
-                    onFail={() => setFailedIds(s => new Set([...s, curSlide.id]))}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Footer: mission center, datetime bottom-right */}
-      <div className="tv-ftr">
-        <div className="tv-mission">{data.mission || 'Вместе к лучшей версии себя'}</div>
-        <div className="tv-datetime">{datetime}</div>
-      </div>
+      <TvScreen
+        layout={screenLayout}
+        counters={{ cm: values[0], kg: values[1], fat: values[2] }}
+        carousel={carousel}
+        datetime={datetime}
+      />
     </main>
   );
 }

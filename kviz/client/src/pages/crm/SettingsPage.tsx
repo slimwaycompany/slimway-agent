@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 import FreeSlide, { type FreeEl, type FreeLayout } from '../../components/tv/FreeSlide';
+import TvScreenEditor from '../../components/tv/TvScreenEditor';
+import type { ScreenLayout } from '../../lib/tvScreenLayout';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -2641,7 +2643,7 @@ function ControlSettingsSection() {
 
 // ── TV settings ───────────────────────────────────────────────────────────────
 
-interface TvSettingsLabels { main_label_cm: string; main_label_kg: string; main_label_fat: string; intro_text: string }
+// TvSettingsLabels removed — text content lives in screen_layout (screen editor)
 interface TvResult { id: string; title: string; before_path: string; after_path: string; position: number }
 interface TvSlideRaw {
   id: string; position: number; kind: 'result1' | 'result2' | 'promo' | 'usp' | 'free';
@@ -3102,12 +3104,8 @@ function FreeEditorModal({ slide, onClose, onSaved }: {
 }
 
 function TvSection() {
-  const [labels, setLabels] = useState<TvSettingsLabels>({ main_label_cm: '', main_label_kg: '', main_label_fat: '', intro_text: '' });
   const [slides, setSlides] = useState<TvSlideRaw[]>([]);
   const [results, setResults] = useState<TvResult[]>([]);
-  const [labelsSaving, setLabelsSaving] = useState(false);
-  const [labelsOk, setLabelsOk] = useState(false);
-  const [labelsErr, setLabelsErr] = useState('');
   const [slideErr, setSlideErr] = useState<Record<string, string>>({});
   const [resultErr, setResultErr] = useState<Record<string, string>>({});
   const [confirmDelSlide, setConfirmDelSlide] = useState<string | null>(null);
@@ -3117,21 +3115,25 @@ function TvSection() {
   const [newResultTitle, setNewResultTitle] = useState('');
   const [addingResult, setAddingResult] = useState(false);
   const [freeEditSlide, setFreeEditSlide] = useState<(TvSlideRaw & { layout: FreeLayout }) | null>(null);
+  const [screenEditorOpen, setScreenEditorOpen] = useState(false);
+  const [screenLayout, setScreenLayout] = useState<ScreenLayout | null>(null);
+  const [tvUrl, setTvUrl] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    api('GET', '/kviz/api/tv/settings').then(r => {
-      if (r.ok) setLabels({ main_label_cm: r.data.main_label_cm || '', main_label_kg: r.data.main_label_kg || '', main_label_fat: r.data.main_label_fat || '', intro_text: r.data.intro_text || '' });
-    });
+    api('GET', '/kviz/api/tv/screen').then(r => { if (r.ok) setScreenLayout(r.data); });
     api('GET', '/kviz/api/tv/slides').then(r => { if (r.ok) setSlides(r.data); });
     api('GET', '/kviz/api/tv/results').then(r => { if (r.ok) setResults(r.data); });
+    fetch('/kviz/api/results/mission', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : {})
+      .then(d => { if (d.display_url) setTvUrl(window.location.origin + d.display_url); })
+      .catch(() => {});
   }, []);
 
-  async function saveLabels() {
-    setLabelsSaving(true); setLabelsErr(''); setLabelsOk(false);
-    const r = await api('PUT', '/kviz/api/tv/settings', labels);
-    setLabelsSaving(false);
-    if (r.ok) { setLabelsOk(true); setTimeout(() => setLabelsOk(false), 2000); }
-    else setLabelsErr(r.data?.error || 'Ошибка сохранения');
+  async function saveScreenLayout(layout: ScreenLayout) {
+    const r = await api('PUT', '/kviz/api/tv/screen', layout);
+    if (!r.ok) throw new Error(r.data?.error || 'Ошибка сохранения');
+    setScreenLayout(layout);
   }
 
   async function refreshSlides() {
@@ -3203,24 +3205,15 @@ function TvSection() {
 
   return (
     <div style={S.section}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: '#1a202c', marginBottom: 16 }}>ТВ-экран — настройки</div>
-
-      {/* Счётчики */}
-      <div style={SEC}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Счётчики</div>
-        {labelsErr && <div style={S.errBox}>{labelsErr}</div>}
-        {labelsOk  && <div style={{ background: '#d1fae5', color: '#16a34a', padding: '7px 12px', borderRadius: 8, marginBottom: 10, fontSize: 13 }}>Сохранено</div>}
-        <div style={{ marginBottom: 10 }}>
-          <label style={S.label}>Вступительный текст (вверху панели)</label>
-          <textarea value={labels.intro_text} onChange={e => setLabels(l => ({ ...l, intro_text: e.target.value }))} placeholder="Результаты наших клиенток" maxLength={120} rows={2} style={{ ...INP, resize: 'vertical' as const }} />
-          <div style={{ fontSize: 11, color: labels.intro_text.length > 100 ? '#ef4444' : '#94a3b8', textAlign: 'right', marginTop: 2 }}>{labels.intro_text.length}/120</div>
-        </div>
-        <div style={{ marginBottom: 10 }}><label style={S.label}>Подпись «см»</label><input value={labels.main_label_cm} onChange={e => setLabels(l => ({ ...l, main_label_cm: e.target.value }))} placeholder="Сантиметров убрали" style={INP} /></div>
-        <div style={{ marginBottom: 10 }}><label style={S.label}>Подпись «кг»</label><input value={labels.main_label_kg} onChange={e => setLabels(l => ({ ...l, main_label_kg: e.target.value }))} placeholder="Килограммов сбросили" style={INP} /></div>
-        <div style={{ marginBottom: 10 }}><label style={S.label}>Подпись «жир»</label><input value={labels.main_label_fat} onChange={e => setLabels(l => ({ ...l, main_label_fat: e.target.value }))} placeholder="Жира сожгли" style={INP} /></div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button style={S.saveBtn} onClick={saveLabels} disabled={labelsSaving}>{labelsSaving ? 'Сохранение…' : 'Сохранить'}</button>
-        </div>
+      {/* Header: title + screen editor + TV URL */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1a202c', flex: 1 }}>ТВ-экран — настройки</div>
+        <button style={S.addBtn} onClick={() => setScreenEditorOpen(true)}>✏️ Редактор экрана</button>
+        {tvUrl && (
+          <button style={S.csvBtn} onClick={async () => { await navigator.clipboard.writeText(tvUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+            {copied ? '✓ Скопировано' : 'Ссылка ТВ'}
+          </button>
+        )}
       </div>
 
       {/* Слайды */}
@@ -3321,7 +3314,6 @@ function TvSection() {
 
       <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 8, paddingTop: 8 }}>
         <BulkResultsSection />
-        <MissionSection />
       </div>
 
       {addSlideOpen && <AddSlideModal results={results} onAdd={addSlide} onClose={() => setAddSlideOpen(false)} />}
@@ -3335,6 +3327,13 @@ function TvSection() {
             setSlides(prev => prev.map(s => s.id === updated.id ? { ...s, ...updated } : s));
             setFreeEditSlide(null);
           }}
+        />
+      )}
+      {screenEditorOpen && screenLayout && (
+        <TvScreenEditor
+          initialLayout={screenLayout}
+          onSave={saveScreenLayout}
+          onClose={() => setScreenEditorOpen(false)}
         />
       )}
     </div>

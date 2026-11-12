@@ -6,25 +6,27 @@
 Экран результатов студии для ТВ (`/results?key=…`): счётчики «Сантиметров убрали / Килограммов сбросили / Жира сожгли / клиенток с результатом», миссия студии. Инструменты для сотрудников: ссылка для ТВ (копирование, «открыть на весь экран»), выгрузка всех результатов в общий, отправка результата клиента.
 
 ## Где код
-- `kviz/client/src/pages/ResultsPage.tsx` — ТВ-экран `/results?key=…` (flex 2-кол: счётчики слева 30%, карусель слайдов справа 70%)
-- `src/http/tv.ts` — TV-роутер: SSE (`tvNotify`), прокси медиа, CRUD tv_settings/tv_results/tv_slides, загрузка фото
-- `kviz/client/src/pages/crm/SettingsPage.tsx` → `TvSection` — настройки блоков, карточки «До/После», загрузка фото
+- `kviz/client/src/pages/ResultsPage.tsx` — ТВ-экран `/results?key=…`: загружает `screen_layout` из `/api/tv/data`, анимирует счётчики, рендерит `TvScreen` с carousel-слотом
+- `kviz/client/src/components/tv/TvScreen.tsx` — рендерит `ScreenLayout`: каждый элемент позиционируется абсолютно (x/y/w/h % экрана), `--screen-h` CSS-var для шрифтов
+- `kviz/client/src/components/tv/TvScreenEditor.tsx` — редактор экрана (drag/resize, дерево элементов, свойства, undo/redo 50 шагов), сохраняет через `PUT /kviz/api/tv/screen`
+- `kviz/client/src/lib/tvScreenLayout.ts` — типы `ScreenEl`/`ScreenLayout`, `defaultScreenLayout()`, `SCREEN_EL_LABELS`
+- `kviz/client/src/components/tv/TextBox.tsx` — рендер текстового элемента FreeSlide (font-size через CSS calc(`--screen-h`), без overflow:hidden на себе)
+- `kviz/client/src/components/tv/ImageBox.tsx` — рендер картинки FreeSlide
+- `kviz/client/src/components/tv/FreeSlide.tsx` — общий компонент free-слайда: устанавливает `--screen-h`, использует TextBox/ImageBox
+- `src/http/tv.ts` — TV-роутер: SSE, прокси медиа, CRUD tv_settings/tv_results/tv_slides, `GET/PUT /kviz/api/tv/screen`, `GET /api/tv/data` v3
+- `kviz/client/src/pages/crm/SettingsPage.tsx` → `TvSection` — кнопка «Редактор экрана», карточки «До/После», слайды
 - `kviz/client/src/pages/reports/ReportsPage.tsx` → `StudioSection` — ссылка для ТВ, счётчики, кнопка «Выгрузить все результаты»
 - `kviz/client/src/pages/measure/ClientPage.tsx` — кнопка «Отправить в результаты студии» (внутри карточки клиента)
 - `src/http/measure.ts` — `POST /kviz/api/measure/clients/:id/results` и `bulk-results`; вызывает `tvNotify()` после upsert
-- `kviz/client/public/tv/` — статичные иконки (logo.png, sm.jpg, kg.png, fat.png, bodyr.png)
 
 > Старый `/api/results/summary?key=...` и `/kviz/api/results/summary` (сессия) сохранены для совместимости в `src/http/kviz.ts`.
 
 ## Таблицы
 - `studio_results` — результаты клиентов для ТВ: `client_id`, `cm_lost`, `kg_lost`, `fat_kg_lost`, `from_measure_no`, `to_measure_no` (оба nullable), `sent_by`, `sent_at`
 - `studio_settings` — ключ-значение (миссия студии)
-- `tv_settings` — одна строка (id=1): `main_label_cm`, `main_label_kg`, `main_label_fat`, `intro_text` (добавлена в task 48; вступительный текст в панели счётчиков, max 120 символов)
+- `tv_settings` — одна строка (id=1): `main_label_cm`, `main_label_kg`, `main_label_fat`, `intro_text` (вступительный текст, max 120 симв.), `screen_layout` (jsonb, task 49 — полное описание экрана; если NULL, генерируется `defaultScreenLayoutServer()` с подстановкой текущих значений)
 - `tv_results` — карточки «До/После» (библиотека): `id`, `title`, `before_path`, `after_path`, `position`
 - `tv_slides` — слайды карусели: `id`, `position` (NOT NULL, unique), `kind` (result1|result2|promo|usp|**free**), `result_a` (uuid FK tv_results, nullable), `result_b` (uuid FK tv_results, nullable), `image_path` (nullable), `duration_sec` (default 8), `enabled` (default true), `layout` (jsonb, только для free), `created_at`
-
-## env
-- `RESULTS_DISPLAY_KEY` — ключ защиты публичного ТВ-экрана и медиа-прокси
 
 ## env
 - `RESULTS_DISPLAY_KEY` — ключ защиты `/results?key=…`; URL открывается без входа в систему
@@ -36,8 +38,13 @@ JSON-схема: `{ frame: boolean, elements: [...] }` (до 12 элементо
 Картинка: `path` (free/<uuid>.jpg|png), `fit` (cover/contain/stretch).
 Файлы картинок — в бакете `tv-media/free/`. Удаляются при сохранении нового layout (если убраны из элементов) и при удалении слайда.
 
-## Где код
-- `kviz/client/src/components/tv/FreeSlide.tsx` — общий компонент: позиционирует элементы, ResizeObserver для размеров, overflow-hint в preview-режиме
+## screen_layout (ScreenLayout)
+JSON-схема `{ version: 1, elements: ScreenEl[] }` хранится в `tv_settings.screen_layout`.
+Каждый `ScreenEl`: `{ kind, x, y, w, h (% экрана), z? }` + опциональные поля по виду:
+- Текст (`intro`/`mission`/`datetime`): `font`, `size` (% высоты экрана), `weight`, `color`, `align`, `text`
+- Счётчик (`counter_cm/kg/fat`): `label` (подпись), `unit` (единица)
+- `logo` / `panel` / `carousel` — позиция/размер только
+Виды: `logo | panel | carousel | intro | mission | datetime | counter_cm | counter_kg | counter_fat`
 
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -51,7 +58,7 @@ JSON-схема: `{ frame: boolean, elements: [...] }` (до 12 элементо
 - Слайды хранятся в `tv_slides` (позиции 1..n без пробелов); position swap через temp=9999; DELETE ренумерует оставшиеся.
 - Gradient border у `.tv-frame`: `background: ...padding-box, ...border-box; border: 2px solid transparent` (border-image не работает с border-radius).
 - После task 46 блок «Акция» в настройках удалён — промо теперь добавляется как слайд типа `promo`.
-- `/api/tv/data` возвращает `version: "2"` для различения от старого формата.
+- `/api/tv/data` возвращает `version: "3"` (task 49). `v2` — старый формат со slides без screen_layout. `v3` — `{ screen_layout, counters, slides, serverTime, version: "3" }`.
 - Загрузка фото: клиент сжимает до 1600px JPEG 0.85 через canvas, отправляет base64. Сервер проверяет magic bytes (JPEG/PNG), сохраняет в бакет.
 - Лимит тела для TV-маршрутов: `app.use('/kviz/api/tv', express.json({ limit: '12mb' }))` добавлен в `src/index.ts` до глобального `express.json()`.
 
@@ -59,6 +66,18 @@ JSON-схема: `{ frame: boolean, elements: [...] }` (до 12 элементо
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 12.11.2026 · (текущий) · task 49 — редактор экрана (screen_layout, TvScreen, TvScreenEditor, TextBox/ImageBox)
+- **`kviz/client/src/lib/tvScreenLayout.ts`** (новый): типы `ScreenEl`/`ScreenLayout`, `defaultScreenLayout()`, `SCREEN_EL_LABELS`. 9 видов элементов: logo/panel/carousel/intro/mission/datetime/counter_cm/counter_kg/counter_fat.
+- **`kviz/client/src/components/tv/TextBox.tsx`** (новый): рендер текста FreeSlide (font-size через CSS calc(`--screen-h`)); wrapper имеет `overflow:hidden`, сам TextBox — нет (фикс бага обрезки scaleX).
+- **`kviz/client/src/components/tv/ImageBox.tsx`** (новый): рендер картинки FreeSlide.
+- **`kviz/client/src/components/tv/FreeSlide.tsx`**: устанавливает `--screen-h` CSS-var, использует TextBox/ImageBox.
+- **`kviz/client/src/components/tv/TvScreen.tsx`** (новый): рендерит `ScreenLayout` — каждый элемент position:absolute по %, CounterBlock (Barlow Condensed, ResizeObserver), `--screen-h` var, слот `carousel: ReactNode`.
+- **`kviz/client/src/components/tv/TvScreenEditor.tsx`** (новый): полноэкранный редактор (~450 строк). Drag/resize через pointer capture, snap 0.5%, undo/redo 50 шагов (`preInteractionRef` + история). Три панели: дерево элементов (200px) | 16:9 preview | свойства (260px). Сохраняет через `PUT /kviz/api/tv/screen`.
+- **`src/http/tv.ts`**: `VALID_FONTS` ← Unbounded; `validateScreenLayout()`; `defaultScreenLayoutServer()` (сид из tv_settings+studio_settings); `GET /api/tv/data` v3 — возвращает `screen_layout`; `GET/PUT /kviz/api/tv/screen`; `PUT /kviz/api/tv/settings` блокирует deprecated поля `main_label_*/intro_text`.
+- **`kviz/client/src/pages/ResultsPage.tsx`**: использует `TvScreen` с carousel-слотом; `defaultScreenLayout()` как fallback; CounterBlock перенесён в TvScreen.
+- **`kviz/client/src/pages/crm/SettingsPage.tsx`** TvSection: убраны «Счётчики» и `MissionSection`; добавлена кнопка «Редактор экрана» + `TvScreenEditor`.
+- **`kviz/client/index.html`**: добавлен Unbounded в Google Fonts.
+
 ### 12.11.2026 · (текущий) · task 48 — исправление цикла FreeSlide, счётчики в панели с иконками и вступительным текстом
 - `kviz/client/src/components/tv/FreeSlide.tsx`: исправлен React error #185 (бесконечный цикл) — `useLayoutEffect` получил deps `[layout, dim.h, preview]`; добавлен `prevOverflowRef` для сравнения ключа до вызова `setOverflows`.
 - `src/http/tv.ts`: `GET /api/tv/data` выбирает `intro_text` из `tv_settings`; `PUT /kviz/api/tv/settings` принимает и валидирует `intro_text` (trim, max 120 симв., 400 если длиннее).
@@ -148,7 +167,8 @@ JSON-схема: `{ frame: boolean, elements: [...] }` (до 12 элементо
 
 ## Следующее
 - Добавить SSE heartbeat (25с `comment:` строка) чтобы Render не закрывал idle-соединения.
-- Проверить layout на 1920×1080, 1366×768, 1280×720, 1024×768, 3840×2160 после деплоя.
+- Проверить TvScreen/TvScreenEditor на 1920×1080, 1366×768, 1280×720, 1024×768, 3840×2160 после деплоя.
 - В AddSlideModal нет предпросмотра загруженного изображения для promo/usp — можно добавить по желанию.
 - Для result1/result2 слайдов в настройках нет редактирования после создания (нельзя сменить карточку) — сейчас надо удалить и добавить заново.
 - Перетаскивание элементов мышью в редакторе free-слайда — не реализовано, позиция задаётся числами.
+- **SQL нужен** (добавить колонку): `ALTER TABLE tv_settings ADD COLUMN IF NOT EXISTS screen_layout jsonb;`
