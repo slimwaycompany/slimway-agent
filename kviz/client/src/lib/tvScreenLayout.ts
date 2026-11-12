@@ -203,6 +203,115 @@ export function migrateFreeLayoutToV2(raw: unknown): FreeLayout {
   return { v: 2, frame, elements: els };
 }
 
+// ── Slide templates ──────────────────────────────────────────────────────────
+// синхронизировать с src/http/tv.ts (validateSlideTemplateServer, defaultSlideTemplatesServer)
+
+interface SlotChildBase {
+  id: string;
+  x: number; y: number; w: number; h: number; // 0–100% of slot container
+  z: number;
+  visible?: boolean;
+  locked?: boolean;
+}
+export interface SlotChildText  extends SlotChildBase, TextStyle { type: 'text';  text?: string; bind?: 'name'; }
+export interface SlotChildImage extends SlotChildBase { type: 'image'; bind?: 'before' | 'after'; path?: string; fit?: 'contain' | 'cover' | 'stretch'; opacity?: number; radius?: number; }
+export interface SlotChildShape extends SlotChildBase { type: 'shape'; shape: ScreenElShape['shape']; radius?: number; fill?: ShapeFill; border?: ScreenElShape['border']; shadow?: boolean; blur?: boolean; }
+export type SlotChild = SlotChildText | SlotChildImage | SlotChildShape;
+
+export interface TplElSlotClient extends ElBase { type: 'slot_client'; index: 'a' | 'b'; children: SlotChild[]; }
+export interface TplElSlotImage  extends ElBase { type: 'slot_image';  fit?: 'contain' | 'cover' | 'stretch'; opacity?: number; radius?: number; }
+export interface TplElSlotText   extends ElBase, TextStyle { type: 'slot_text'; }
+
+export type TemplateTopEl = ScreenElText | ScreenElImage | ScreenElShape | TplElSlotClient | TplElSlotImage | TplElSlotText;
+export interface SlideTemplate  { v: 1; elements: TemplateTopEl[] }
+export interface SlideTemplates { result1: SlideTemplate; result2: SlideTemplate; image: SlideTemplate }
+export type TemplateKind = keyof SlideTemplates;
+
+export const TEMPLATE_KIND_LABELS: Record<TemplateKind, string> = {
+  result1: '1 результат',
+  result2: '2 результата',
+  image:   'Акция / USP',
+};
+
+export const TEMPLATE_EL_LABELS: Record<string, string> = {
+  text:        'Текст',
+  image:       'Картинка',
+  shape:       'Фигура',
+  slot_client: 'Слот клиента',
+  slot_image:  'Слот картинки',
+  slot_text:   'Слот текста',
+};
+
+export function defSlotChildren(): SlotChild[] {
+  return [
+    { id: newId(), type: 'text',  bind: 'name',   x: 2,  y: 1,  w: 96, h: 13, z: 2, visible: true, locked: false, font: 'Manrope', size: 3, weight: 700, color: '#1a202c', align: 'center' },
+    { id: newId(), type: 'image', bind: 'before',  x: 0,  y: 15, w: 50, h: 85, z: 1, visible: true, locked: false, fit: 'cover' },
+    { id: newId(), type: 'image', bind: 'after',   x: 50, y: 15, w: 50, h: 85, z: 1, visible: true, locked: false, fit: 'cover' },
+  ];
+}
+
+export function defaultSlideTemplates(): SlideTemplates {
+  return {
+    result1: { v: 1, elements: [
+      { id: newId(), type: 'slot_client', x: 2, y: 2, w: 96, h: 96, z: 1, visible: true, locked: false, index: 'a', children: defSlotChildren() },
+    ]},
+    result2: { v: 1, elements: [
+      { id: newId(), type: 'slot_client', x: 1,  y: 2, w: 48, h: 96, z: 1, visible: true, locked: false, index: 'a', children: defSlotChildren() },
+      { id: newId(), type: 'slot_client', x: 51, y: 2, w: 48, h: 96, z: 1, visible: true, locked: false, index: 'b', children: defSlotChildren() },
+    ]},
+    image: { v: 1, elements: [
+      { id: newId(), type: 'slot_image', x: 0, y: 0,  w: 100, h: 100, z: 0, visible: true, locked: false, fit: 'contain' },
+      { id: newId(), type: 'slot_text',  x: 5, y: 82, w: 90,  h: 14,  z: 1, visible: true, locked: false, font: 'Manrope', size: 4, weight: 700, color: '#ffffff', align: 'center' },
+    ]},
+  };
+}
+
+export function validateSlideTemplate(kind: TemplateKind, raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null) return 'Шаблон должен быть объектом';
+  const t = raw as Record<string, unknown>;
+  if (t.v !== 1) return 'Шаблон: v должно быть 1';
+  if (!Array.isArray(t.elements)) return 'elements должен быть массивом';
+  if ((t.elements as unknown[]).length > 30) return 'Максимум 30 элементов';
+
+  const TPLS_TYPES = new Set(['text','image','shape','slot_client','slot_image','slot_text']);
+  const ids = new Set<string>();
+  let cntA = 0, cntB = 0, cntSlotImg = 0, cntSlotTxt = 0;
+
+  for (const item of t.elements as unknown[]) {
+    if (typeof item !== 'object' || item === null) return 'Элемент не является объектом';
+    const e = item as Record<string, unknown>;
+    if (typeof e.id !== 'string') return 'Поле id элемента обязательно';
+    if (ids.has(e.id)) return `Дублирующийся id: ${e.id}`;
+    ids.add(e.id);
+    if (!TPLS_TYPES.has(String(e.type))) return `Неверный type: ${e.type}`;
+    for (const k of ['x','y','w','h'] as const) {
+      if (typeof e[k] !== 'number' || (e[k] as number) < 0 || (e[k] as number) > 100) return `${k}: 0–100`;
+    }
+    if (typeof e.z !== 'number') return 'z: число';
+    if (e.type === 'slot_client') {
+      if (e.index !== 'a' && e.index !== 'b') return 'slot_client.index: a или b';
+      if (e.index === 'a') cntA++; else cntB++;
+      if (!Array.isArray(e.children)) return 'slot_client.children: массив';
+      if ((e.children as unknown[]).length > 8) return 'Максимум 8 дочерних элементов в слоте';
+    }
+    if (e.type === 'slot_image') cntSlotImg++;
+    if (e.type === 'slot_text')  cntSlotTxt++;
+  }
+
+  if (kind === 'result1') {
+    if (cntA !== 1) return 'result1 требует ровно один slot_client[a]';
+    if (cntB > 0)   return 'result1 не должен содержать slot_client[b]';
+  } else if (kind === 'result2') {
+    if (cntA !== 1) return 'result2 требует slot_client[a]';
+    if (cntB !== 1) return 'result2 требует slot_client[b]';
+  } else if (kind === 'image') {
+    if (cntSlotImg !== 1) return 'image требует ровно один slot_image';
+    if (cntSlotTxt > 1)   return 'image: не более одного slot_text';
+    if (cntA + cntB > 0)  return 'image не должен содержать slot_client';
+  }
+  return null;
+}
+
 export function defaultScreenLayout(): ScreenLayout {
   return {
     v: 2,

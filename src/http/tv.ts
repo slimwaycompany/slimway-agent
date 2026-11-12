@@ -393,6 +393,76 @@ async function fetchResultsByIds(ids: string[]): Promise<Map<string, Record<stri
   return map;
 }
 
+// ── Slide templates ──────────────────────────────────────────────────────────
+// синхронизировать с kviz/client/src/lib/tvScreenLayout.ts (validateSlideTemplate, defaultSlideTemplates)
+
+function validateSlideTemplateServer(kind: string, raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null) return 'Шаблон должен быть объектом';
+  const t = raw as Record<string, unknown>;
+  if (t.v !== 1) return 'Шаблон: v должно быть 1';
+  if (!Array.isArray(t.elements)) return 'elements должен быть массивом';
+  if ((t.elements as unknown[]).length > 30) return 'Максимум 30 элементов';
+  const TPLS_TYPES = new Set(['text','image','shape','slot_client','slot_image','slot_text']);
+  const ids = new Set<string>();
+  let cntA = 0, cntB = 0, cntSlotImg = 0, cntSlotTxt = 0;
+  for (const item of t.elements as unknown[]) {
+    if (typeof item !== 'object' || item === null) return 'Элемент не является объектом';
+    const e = item as Record<string, unknown>;
+    if (typeof e.id !== 'string') return 'Поле id элемента обязательно';
+    if (ids.has(e.id)) return `Дублирующийся id: ${e.id}`;
+    ids.add(e.id);
+    if (!TPLS_TYPES.has(String(e.type))) return `Неверный type: ${e.type}`;
+    for (const k of ['x','y','w','h'] as const) {
+      if (typeof e[k] !== 'number' || (e[k] as number) < 0 || (e[k] as number) > 100) return `${k}: 0–100`;
+    }
+    if (typeof e.z !== 'number') return 'z: число';
+    if (e.type === 'slot_client') {
+      if (e.index !== 'a' && e.index !== 'b') return 'slot_client.index: a или b';
+      if (e.index === 'a') cntA++; else cntB++;
+      if (!Array.isArray(e.children)) return 'slot_client.children: массив';
+      if ((e.children as unknown[]).length > 8) return 'Максимум 8 дочерних элементов в слоте';
+    }
+    if (e.type === 'slot_image') cntSlotImg++;
+    if (e.type === 'slot_text')  cntSlotTxt++;
+  }
+  if (kind === 'result1') {
+    if (cntA !== 1) return 'result1 требует ровно один slot_client[a]';
+    if (cntB > 0)   return 'result1 не должен содержать slot_client[b]';
+  } else if (kind === 'result2') {
+    if (cntA !== 1) return 'result2 требует slot_client[a]';
+    if (cntB !== 1) return 'result2 требует slot_client[b]';
+  } else if (kind === 'image') {
+    if (cntSlotImg !== 1) return 'image требует ровно один slot_image';
+    if (cntSlotTxt > 1)   return 'image: не более одного slot_text';
+    if (cntA + cntB > 0)  return 'image не должен содержать slot_client';
+  }
+  return null;
+}
+
+function defSlotChildrenServer(): Record<string, unknown>[] {
+  return [
+    { id: randomUUID(), type: 'text',  bind: 'name',   x: 2,  y: 1,  w: 96, h: 13, z: 2, visible: true, locked: false, font: 'Manrope', size: 3, weight: 700, color: '#1a202c', align: 'center' },
+    { id: randomUUID(), type: 'image', bind: 'before',  x: 0,  y: 15, w: 50, h: 85, z: 1, visible: true, locked: false, fit: 'cover' },
+    { id: randomUUID(), type: 'image', bind: 'after',   x: 50, y: 15, w: 50, h: 85, z: 1, visible: true, locked: false, fit: 'cover' },
+  ];
+}
+
+function defaultSlideTemplatesServer(): Record<string, unknown> {
+  return {
+    result1: { v: 1, elements: [
+      { id: randomUUID(), type: 'slot_client', x: 2, y: 2, w: 96, h: 96, z: 1, visible: true, locked: false, index: 'a', children: defSlotChildrenServer() },
+    ]},
+    result2: { v: 1, elements: [
+      { id: randomUUID(), type: 'slot_client', x: 1,  y: 2, w: 48, h: 96, z: 1, visible: true, locked: false, index: 'a', children: defSlotChildrenServer() },
+      { id: randomUUID(), type: 'slot_client', x: 51, y: 2, w: 48, h: 96, z: 1, visible: true, locked: false, index: 'b', children: defSlotChildrenServer() },
+    ]},
+    image: { v: 1, elements: [
+      { id: randomUUID(), type: 'slot_image', x: 0, y: 0,  w: 100, h: 100, z: 0, visible: true, locked: false, fit: 'contain' },
+      { id: randomUUID(), type: 'slot_text',  x: 5, y: 82, w: 90,  h: 14,  z: 1, visible: true, locked: false, font: 'Manrope', size: 4, weight: 700, color: '#ffffff', align: 'center' },
+    ]},
+  };
+}
+
 export function buildTvRouter(): Router {
   const r = Router();
 
@@ -402,7 +472,7 @@ export function buildTvRouter(): Router {
     if (!checkKey(req)) { res.status(404).end(); return; }
     try {
       const [settingsRes, countersRes, slidesRes, missionRes] = await Promise.all([
-        supabase.from('tv_settings').select('screen_layout,main_label_cm,main_label_kg,main_label_fat').eq('id', 1).maybeSingle(),
+        supabase.from('tv_settings').select('screen_layout,main_label_cm,main_label_kg,main_label_fat,slide_templates').eq('id', 1).maybeSingle(),
         supabase.from('studio_results').select('cm_lost,kg_lost,fat_kg_lost'),
         supabase.from('tv_slides').select('*').order('position'),
         supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle(),
@@ -450,14 +520,18 @@ export function buildTvRouter(): Router {
         };
       });
 
+      const rawTpls = settings?.slide_templates;
+      const slideTemplates = (rawTpls && typeof rawTpls === 'object') ? rawTpls : defaultSlideTemplatesServer();
+
       res.setHeader('Cache-Control', 'no-store');
       res.json({
         screen_layout: screenLayout,
         counters: totals,
         mission,
         slides: enriched,
+        slide_templates: slideTemplates,
         serverTime: new Date().toISOString(),
-        version: '4',
+        version: '5',
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -576,6 +650,31 @@ export function buildTvRouter(): Router {
     const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });
     if (upErr) { console.error('tv screen img upload:', upErr); res.status(500).json({ error: 'Ошибка загрузки файла' }); return; }
     res.json({ path: sp });
+  });
+
+  // ── Slide templates ────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/tv/templates', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const { data } = await supabase.from('tv_settings').select('slide_templates').eq('id', 1).maybeSingle();
+    const raw = (data as Record<string, unknown> | null)?.slide_templates;
+    res.json((raw && typeof raw === 'object') ? raw : defaultSlideTemplatesServer());
+  });
+
+  r.put('/kviz/api/tv/templates/:kind', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const kind = req.params.kind;
+    if (!['result1','result2','image'].includes(kind)) { res.status(400).json({ error: 'Неверный вид шаблона' }); return; }
+    const err = validateSlideTemplateServer(kind, req.body);
+    if (err) { res.status(400).json({ error: err }); return; }
+    // Load current templates, merge in the updated kind
+    const { data: cur } = await supabase.from('tv_settings').select('slide_templates').eq('id', 1).maybeSingle();
+    const curTpls = (cur as Record<string, unknown> | null)?.slide_templates;
+    const merged = { ...((curTpls && typeof curTpls === 'object') ? curTpls as Record<string, unknown> : defaultSlideTemplatesServer()), [kind]: req.body };
+    const { error } = await supabase.from('tv_settings').upsert({ id: 1, slide_templates: merged, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    tvNotify();
+    res.json(req.body);
   });
 
   // ── Admin tv_results CRUD ──────────────────────────────────────────────────
@@ -716,6 +815,9 @@ export function buildTvRouter(): Router {
     }
 
     const dur = Math.max(2, Math.min(300, Number(b.duration_sec) || 10));
+    const slide_text = (kind === 'promo' || kind === 'usp') && typeof b.slide_text === 'string'
+      ? b.slide_text.slice(0, 300) || null
+      : null;
     const { data: last } = await supabase.from('tv_slides').select('position').order('position', { ascending: false }).limit(1).maybeSingle();
     const position = (Number((last as Record<string, number>)?.position ?? 0) + 1);
 
@@ -725,6 +827,7 @@ export function buildTvRouter(): Router {
       result_a: (kind === 'result1' || kind === 'result2') ? result_a : null,
       result_b: kind === 'result2' ? result_b : null,
       image_path,
+      slide_text,
     }).select().single();
     if (error) { console.error('tv slide insert:', error); res.status(500).json({ error: 'Ошибка создания слайда' }); return; }
     tvNotify();
@@ -777,6 +880,7 @@ export function buildTvRouter(): Router {
     if ('enabled'      in b) upd.enabled      = b.enabled === true || b.enabled === 'true';
     if ('result_a'     in b) upd.result_a     = b.result_a || null;
     if ('result_b'     in b) upd.result_b     = b.result_b || null;
+    if ('slide_text'   in b) upd.slide_text   = typeof b.slide_text === 'string' ? b.slide_text.slice(0, 300) || null : null;
 
     // Position swap: exchange with the slide currently at the target position
     if ('position' in b) {

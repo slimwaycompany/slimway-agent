@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import TvScreen from './TvScreen';
-import type { ScreenEl, ScreenElImage, ScreenElShape, ScreenElType, ScreenLayout } from '../../lib/tvScreenLayout';
-import { ASSET_LABELS, BIND_LABELS, CAROUSEL_ASPECT, SHAPE_LABELS, TYPE_LABELS, VALID_FONTS, defaultScreenLayout, newId } from '../../lib/tvScreenLayout';
+import SlideTemplate from './SlideTemplate';
+import type { ScreenEl, ScreenElImage, ScreenElShape, ScreenElType, ScreenLayout, SlideTemplate as SlideTemplateType, SlideTemplates, SlotChild, SlotChildImage, SlotChildShape, SlotChildText, TemplateKind, TemplateTopEl, TplElSlotClient, TplElSlotImage } from '../../lib/tvScreenLayout';
+import { ASSET_LABELS, BIND_LABELS, CAROUSEL_ASPECT, SHAPE_LABELS, TEMPLATE_EL_LABELS, TEMPLATE_KIND_LABELS, TYPE_LABELS, VALID_FONTS, defaultScreenLayout, defaultSlideTemplates, defSlotChildren, newId, validateSlideTemplate } from '../../lib/tvScreenLayout';
 import { compressForUpload } from '../../lib/tvImage';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -18,14 +19,27 @@ interface DragState {
 }
 
 interface Props {
-  mode?: 'screen' | 'slide';
+  mode?: 'screen' | 'slide' | 'template';
   slideId?: string;
   initialFrame?: boolean;
   initialLayout: ScreenLayout;
   initialMission: string;
   onSave?: (layout: ScreenLayout, mission: string) => Promise<void>;
   onClose: () => void;
+  // template-mode props
+  templateKind?: TemplateKind;
+  initialTemplate?: SlideTemplateType;
+  onTemplateSave?: (kind: TemplateKind, template: SlideTemplateType) => Promise<void>;
 }
+
+// ── Sample data for template preview ─────────────────────────────────────────
+
+const SAMPLE_TPL_DATA = {
+  result_a: { id: 'sa', title: 'Анастасия К.',  before_path: '', after_path: '' },
+  result_b: { id: 'sb', title: 'Мария В.',       before_path: '', after_path: '' },
+  image_path: null as string | null,
+  slide_text: 'Скидка 20% на первый месяц',
+};
 
 // ── Style constants ───────────────────────────────────────────────────────────
 
@@ -46,7 +60,7 @@ const BTN: React.CSSProperties = {
 function snap(v: number): number { return Math.round(v * 2) / 2; }
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
 
-function applyDrag(el: ScreenEl, drag: DragState, cx: number, cy: number, pRect: DOMRect): ScreenEl {
+function applyDrag<T extends { x: number; y: number; w: number; h: number; rotate?: number }>(el: T, drag: DragState, cx: number, cy: number, pRect: DOMRect): T {
   const dxPct = (cx - drag.startX) / drag.pW * 100;
   const dyPct = (cy - drag.startY) / drag.pH * 100;
   const { x, y, w, h } = drag.startEl;
@@ -358,8 +372,9 @@ function ImageProps({ el, onChange, uploadError, onUpload }: {
 
 const MOCK_VALUES = { value_cm: 15847, value_kg: 3241, value_fat: 1256 };
 
-export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame = false, initialLayout, initialMission, onSave, onClose }: Props) {
-  const isSlide = mode === 'slide';
+export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame = false, initialLayout, initialMission, onSave, onClose, templateKind, initialTemplate, onTemplateSave }: Props) {
+  const isSlide    = mode === 'slide';
+  const isTemplate = mode === 'template';
   const [layout, setLayout]         = useState<ScreenLayout>(initialLayout);
   const [missionText, setMission]   = useState(initialMission);
   const [frame, setFrame]           = useState(initialFrame);
@@ -375,8 +390,24 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
   const [layerDragId, setLayerDragId]   = useState<string | null>(null);
   const [layerOverId, setLayerOverId]   = useState<string | null>(null);
 
+  // ── Template-mode state ────────────────────────────────────────────────────
+  const defTpl = defaultSlideTemplates();
+  const [tplElements, setTplElements] = useState<TemplateTopEl[]>(
+    isTemplate ? (initialTemplate?.elements ?? defTpl[templateKind ?? 'result1'].elements) : []
+  );
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+  const [childDrag, setChildDrag] = useState<DragState | null>(null);
+  const [tplHistory, setTplHistory] = useState<TemplateTopEl[][]>([]);
+  const [tplFuture,  setTplFuture]  = useState<TemplateTopEl[][]>([]);
+  const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
+
+  const tplRef      = useRef(tplElements);
+  const childDragRef = useRef<DragState | null>(null);
+  tplRef.current = tplElements;
+
   const previewRef     = useRef<HTMLDivElement>(null);
   const preInterRef    = useRef<[ScreenLayout, string] | null>(null);
+  const tplPreInterRef = useRef<TemplateTopEl[] | null>(null);
   const dragRef        = useRef<DragState | null>(null);
   const layoutRef      = useRef(layout);
   const missionRef     = useRef(missionText);
@@ -384,6 +415,7 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
   missionRef.current = missionText;
 
   useEffect(() => { dragRef.current = drag; }, [drag]);
+  useEffect(() => { childDragRef.current = childDrag; }, [childDrag]);
   useEffect(() => {
     const id = setInterval(() => setNow(formatAlmaty(new Date())), 30_000);
     return () => clearInterval(id);
@@ -392,27 +424,52 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
   // ── History ─────────────────────────────────────────────────────────────────
 
   const pushHistory = useCallback(() => {
-    setHistory(h => [...h.slice(-49), [layoutRef.current, missionRef.current]]);
-    setFuture([]);
-  }, []);
+    if (isTemplate) {
+      setTplHistory(h => [...h.slice(-49), tplRef.current]);
+      setTplFuture([]);
+    } else {
+      setHistory(h => [...h.slice(-49), [layoutRef.current, missionRef.current]]);
+      setFuture([]);
+    }
+  }, [isTemplate]);
 
   function undo() {
-    setHistory(h => {
-      if (!h.length) return h;
-      const prev = h[h.length - 1];
-      setFuture(f => [[layoutRef.current, missionRef.current], ...f.slice(0, 49)]);
-      setLayout(prev[0]); setMission(prev[1]);
-      return h.slice(0, -1);
-    });
+    if (isTemplate) {
+      setTplHistory(h => {
+        if (!h.length) return h;
+        const prev = h[h.length - 1];
+        setTplFuture(f => [tplRef.current, ...f.slice(0, 49)]);
+        setTplElements(prev);
+        return h.slice(0, -1);
+      });
+    } else {
+      setHistory(h => {
+        if (!h.length) return h;
+        const prev = h[h.length - 1];
+        setFuture(f => [[layoutRef.current, missionRef.current], ...f.slice(0, 49)]);
+        setLayout(prev[0]); setMission(prev[1]);
+        return h.slice(0, -1);
+      });
+    }
   }
   function redo() {
-    setFuture(f => {
-      if (!f.length) return f;
-      const next = f[0];
-      setHistory(h => [...h, [layoutRef.current, missionRef.current]]);
-      setLayout(next[0]); setMission(next[1]);
-      return f.slice(1);
-    });
+    if (isTemplate) {
+      setTplFuture(f => {
+        if (!f.length) return f;
+        const next = f[0];
+        setTplHistory(h => [...h, tplRef.current]);
+        setTplElements(next);
+        return f.slice(1);
+      });
+    } else {
+      setFuture(f => {
+        if (!f.length) return f;
+        const next = f[0];
+        setHistory(h => [...h, [layoutRef.current, missionRef.current]]);
+        setLayout(next[0]); setMission(next[1]);
+        return f.slice(1);
+      });
+    }
   }
 
   const undoRef = useRef(undo);
@@ -433,11 +490,13 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
   // ── Layout mutations ─────────────────────────────────────────────────────────
 
   function updateEl(id: string, upd: Record<string, unknown>) {
+    if (isTemplate) { updateTplEl(id, upd); return; }
     pushHistory();
     setLayout(l => ({ ...l, elements: l.elements.map(e => e.id === id ? { ...e, ...upd } as ScreenEl : e) }));
   }
 
   function deleteEl(id: string) {
+    if (isTemplate) { deleteTplEl(id); return; }
     pushHistory();
     setLayout(l => ({ ...l, elements: l.elements.filter(e => e.id !== id) }));
     setSelectedId(null);
@@ -469,6 +528,75 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
     setSelectedId(el.id);
   }
 
+  // ── Template mutations ───────────────────────────────────────────────────────
+
+  function updateTplEl(id: string, upd: Record<string, unknown>) {
+    pushHistory();
+    setTplElements(els => els.map(e => e.id === id ? { ...e, ...upd } as TemplateTopEl : e));
+  }
+  function updateTplChild(parentId: string, childId: string, upd: Record<string, unknown>) {
+    pushHistory();
+    setTplElements(els => els.map(e => {
+      if (e.id !== parentId || e.type !== 'slot_client') return e;
+      const slot = e as TplElSlotClient;
+      return { ...slot, children: slot.children.map(c => c.id === childId ? { ...c, ...upd } as SlotChild : c) };
+    }));
+  }
+  function deleteTplEl(id: string) {
+    pushHistory();
+    setTplElements(els => els.filter(e => e.id !== id));
+    setSelectedId(null); setSelectedChildId(null);
+  }
+  function deleteTplChild(parentId: string, childId: string) {
+    pushHistory();
+    setTplElements(els => els.map(e => {
+      if (e.id !== parentId || e.type !== 'slot_client') return e;
+      return { ...(e as TplElSlotClient), children: (e as TplElSlotClient).children.filter(c => c.id !== childId) };
+    }));
+    setSelectedChildId(null);
+  }
+  function addTplEl(type: string) {
+    const maxZ = tplElements.reduce((m, e) => Math.max(m, e.z), 0);
+    const base = { id: newId(), visible: true as const, locked: false as const };
+    let el: TemplateTopEl;
+    if (type === 'text') {
+      el = { ...base, type: 'text', x: 10, y: 10, w: 80, h: 15, z: maxZ + 1, text: 'Текст', font: 'Manrope', size: 3, weight: 400, color: '#000000', align: 'center' };
+    } else if (type === 'image') {
+      el = { ...base, type: 'image', x: 10, y: 10, w: 20, h: 20, z: maxZ + 1, asset: 'logo', fit: 'contain' };
+    } else if (type === 'shape') {
+      el = { ...base, type: 'shape', x: 10, y: 10, w: 80, h: 80, z: 0, shape: 'rounded', radius: 2, fill: { type: 'solid', color: '#ffffff', opacity: 0.6 } };
+    } else if (type === 'slot_client') {
+      const hasB = tplElements.some(e => e.type === 'slot_client' && (e as TplElSlotClient).index === 'b');
+      const idx: 'a' | 'b' = hasB ? 'a' : (tplElements.some(e => e.type === 'slot_client' && (e as TplElSlotClient).index === 'a') ? 'b' : 'a');
+      el = { ...base, type: 'slot_client', x: 5, y: 5, w: 90, h: 90, z: 1, index: idx, children: defSlotChildren() };
+    } else if (type === 'slot_image') {
+      el = { ...base, type: 'slot_image', x: 0, y: 0, w: 100, h: 100, z: 0, fit: 'contain' };
+    } else if (type === 'slot_text') {
+      el = { ...base, type: 'slot_text', x: 5, y: 80, w: 90, h: 15, z: 1, font: 'Manrope', size: 3, weight: 600, color: '#ffffff', align: 'center' };
+    } else return;
+    pushHistory();
+    setTplElements(els => [...els, el]);
+    setSelectedId(el.id); setSelectedChildId(null);
+  }
+  function addTplChild(parentId: string, type: string) {
+    const maxZ = (tplElements.find(e => e.id === parentId) as TplElSlotClient | undefined)?.children.reduce((m, c) => Math.max(m, c.z), 0) ?? 0;
+    const base = { id: newId(), visible: true as const, locked: false as const, x: 5, y: 5, w: 50, h: 50, z: maxZ + 1 };
+    let child: SlotChild;
+    if (type === 'text') {
+      child = { ...base, type: 'text', text: 'Текст', font: 'Manrope', size: 3, weight: 400, color: '#000000', align: 'center' };
+    } else if (type === 'image') {
+      child = { ...base, type: 'image', fit: 'cover' };
+    } else if (type === 'shape') {
+      child = { ...base, type: 'shape', shape: 'rounded', fill: { type: 'solid', color: '#ffffff', opacity: 0.6 } };
+    } else return;
+    pushHistory();
+    setTplElements(els => els.map(e => {
+      if (e.id !== parentId || e.type !== 'slot_client') return e;
+      return { ...(e as TplElSlotClient), children: [...(e as TplElSlotClient).children, child] };
+    }));
+    setSelectedChildId(child.id);
+  }
+
   // ── Drag/resize ──────────────────────────────────────────────────────────────
 
   function startDrag(e: React.PointerEvent, id: string, mode: DragMode) {
@@ -477,36 +605,98 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
     const preview = previewRef.current;
     if (!preview) return;
     const rect = preview.getBoundingClientRect();
-    const el = layout.elements.find(x => x.id === id);
+    const el = isTemplate
+      ? tplRef.current.find(x => x.id === id)
+      : layout.elements.find(x => x.id === id);
     if (!el) return;
     if (el.locked && mode !== 'rotate') return;
-    preInterRef.current = [layout, missionText];
+    if (isTemplate) tplPreInterRef.current = tplRef.current;
+    else preInterRef.current = [layout, missionText];
     const ds: DragState = {
       id, mode, startX: e.clientX, startY: e.clientY,
-      startEl: { ...el }, pW: rect.width, pH: rect.height, shiftKey: e.shiftKey,
+      startEl: el as unknown as ScreenEl, pW: rect.width, pH: rect.height, shiftKey: e.shiftKey,
     };
     setDrag(ds);
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   }
 
+  function startChildDrag(e: React.PointerEvent, parentId: string, childId: string, mode: DragMode) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const preview = previewRef.current;
+    if (!preview) return;
+    const previewRect = preview.getBoundingClientRect();
+    const slot = tplRef.current.find(x => x.id === parentId) as TplElSlotClient | undefined;
+    if (!slot) return;
+    const child = slot.children.find(c => c.id === childId);
+    if (!child || (child.locked && mode !== 'rotate')) return;
+    tplPreInterRef.current = tplRef.current;
+    const ds: DragState = {
+      id: childId, mode, startX: e.clientX, startY: e.clientY,
+      startEl: child as unknown as ScreenEl,
+      pW: slot.w / 100 * previewRect.width,
+      pH: slot.h / 100 * previewRect.height,
+      shiftKey: e.shiftKey,
+    };
+    setChildDrag(ds);
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  }
+
   function onPreviewPointerMove(e: React.PointerEvent) {
-    const d = dragRef.current;
-    if (!d) return;
     const preview = previewRef.current;
     if (!preview) return;
     const pRect = preview.getBoundingClientRect();
-    const updated = applyDrag(d.startEl, { ...d, shiftKey: e.shiftKey }, e.clientX, e.clientY, pRect);
-    setLayout(l => ({ ...l, elements: l.elements.map(el => el.id === d.id ? updated : el) }));
+
+    const d = dragRef.current;
+    if (d) {
+      if (isTemplate) {
+        const el = tplRef.current.find(x => x.id === d.id);
+        if (el) {
+          const updated = applyDrag(el, d, e.clientX, e.clientY, pRect);
+          setTplElements(els => els.map(x => x.id === d.id ? updated : x));
+        }
+      } else {
+        const updated = applyDrag(d.startEl, { ...d, shiftKey: e.shiftKey }, e.clientX, e.clientY, pRect);
+        setLayout(l => ({ ...l, elements: l.elements.map(el => el.id === d.id ? updated : el) }));
+      }
+    }
+
+    const cd = childDragRef.current;
+    if (cd) {
+      const slot = tplRef.current.find(x => x.type === 'slot_client' && (x as TplElSlotClient).children.some(c => c.id === cd.id)) as TplElSlotClient | undefined;
+      if (slot) {
+        const child = slot.children.find(c => c.id === cd.id);
+        if (child) {
+          const updated = applyDrag(child, cd, e.clientX, e.clientY, pRect);
+          setTplElements(els => els.map(el => {
+            if (el.id !== slot.id || el.type !== 'slot_client') return el;
+            return { ...(el as TplElSlotClient), children: (el as TplElSlotClient).children.map(c => c.id === cd.id ? updated as SlotChild : c) };
+          }));
+        }
+      }
+    }
   }
 
   function endDrag() {
-    if (dragRef.current && preInterRef.current) {
-      const [prevLayout, prevMission] = preInterRef.current;
-      setHistory(h => [...h.slice(-49), [prevLayout, prevMission]]);
-      setFuture([]);
-      preInterRef.current = null;
+    if (dragRef.current) {
+      if (isTemplate && tplPreInterRef.current) {
+        setTplHistory(h => [...h.slice(-49), tplPreInterRef.current!]);
+        setTplFuture([]);
+        tplPreInterRef.current = null;
+      } else if (!isTemplate && preInterRef.current) {
+        const [prevLayout, prevMission] = preInterRef.current;
+        setHistory(h => [...h.slice(-49), [prevLayout, prevMission]]);
+        setFuture([]);
+        preInterRef.current = null;
+      }
+      setDrag(null);
     }
-    setDrag(null);
+    if (childDragRef.current && tplPreInterRef.current) {
+      setTplHistory(h => [...h.slice(-49), tplPreInterRef.current!]);
+      setTplFuture([]);
+      tplPreInterRef.current = null;
+      setChildDrag(null);
+    }
   }
 
   // ── Layer reorder ─────────────────────────────────────────────────────────────
@@ -551,7 +741,13 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
   async function handleSave() {
     setSaving(true); setError('');
     try {
-      if (isSlide) {
+      if (isTemplate) {
+        if (!templateKind || !onTemplateSave) { setError('Не задан вид шаблона'); setSaving(false); return; }
+        const tpl: SlideTemplateType = { v: 1, elements: tplElements };
+        const valErr = validateSlideTemplate(templateKind, tpl);
+        if (valErr) { setError(valErr); setSaving(false); return; }
+        await onTemplateSave(templateKind, tpl);
+      } else if (isSlide) {
         const r = await apiPatch(`/kviz/api/tv/slides/${slideId}`, { layout: { v: 2, frame, elements: layout.elements } });
         if (!r.ok) { setError(r.data?.error || 'Ошибка сохранения'); setSaving(false); return; }
       } else {
@@ -579,26 +775,52 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
 
   const hasCarousel = layout.elements.some(e => e.type === 'carousel' && e.visible !== false);
   const warnings: string[] = [];
-  if (!isSlide && !hasCarousel) warnings.push('Нет элемента «Карусель» — слайды не будут показаны');
+  if (!isSlide && !isTemplate && !hasCarousel) warnings.push('Нет элемента «Карусель» — слайды не будут показаны');
+  if (isTemplate && templateKind) {
+    const err = validateSlideTemplate(templateKind, { v: 1, elements: tplElements });
+    if (err) warnings.push(err);
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
-  const layersTopFirst = [...layout.elements].sort((a, b) => b.z - a.z);
+  const layersTopFirst = isTemplate
+    ? [...tplElements].sort((a, b) => b.z - a.z)
+    : [...layout.elements].sort((a, b) => b.z - a.z);
+
+  // Find selected elements for properties panel
+  const selectedTplEl = isTemplate ? (tplElements.find(e => e.id === selectedId) ?? null) : null;
+  const selectedSlotParent = (isTemplate && selectedId && selectedChildId)
+    ? (tplElements.find(e => e.id === selectedId && e.type === 'slot_client') as TplElSlotClient | undefined ?? null)
+    : null;
+  const selectedChild = selectedSlotParent
+    ? (selectedSlotParent.children.find(c => c.id === selectedChildId) ?? null)
+    : null;
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 9999, display: 'flex', flexDirection: 'column', fontFamily: 'Manrope,system-ui,sans-serif' }}>
 
       {/* Header */}
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 16px', background: '#0f172a', borderBottom: '1px solid #1e293b', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ flex: 1, color: '#e2e8f0', fontWeight: 700, fontSize: 14 }}>{isSlide ? 'Редактор слайда' : 'Редактор экрана ТВ'}</span>
-        <button style={BTN} onClick={undo} disabled={!history.length} title="Ctrl+Z">↩</button>
-        <button style={BTN} onClick={redo} disabled={!future.length} title="Ctrl+Y">↪</button>
-        <button style={{ ...BTN, color: tvMode ? '#02BDB6' : '#94a3b8', borderColor: tvMode ? '#02BDB6' : '#334155' }}
-          onClick={() => setTvMode(m => !m)} title="Режим просмотра ТВ">TV</button>
-        {!isSlide && (
+        <span style={{ flex: 1, color: '#e2e8f0', fontWeight: 700, fontSize: 14 }}>
+          {isTemplate
+            ? `Редактор шаблона: ${TEMPLATE_KIND_LABELS[templateKind ?? 'result1']}`
+            : isSlide ? 'Редактор слайда' : 'Редактор экрана ТВ'}
+        </span>
+        <button style={BTN} onClick={undo} disabled={isTemplate ? !tplHistory.length : !history.length} title="Ctrl+Z">↩</button>
+        <button style={BTN} onClick={redo} disabled={isTemplate ? !tplFuture.length : !future.length} title="Ctrl+Y">↪</button>
+        {!isTemplate && (
+          <button style={{ ...BTN, color: tvMode ? '#02BDB6' : '#94a3b8', borderColor: tvMode ? '#02BDB6' : '#334155' }}
+            onClick={() => setTvMode(m => !m)} title="Режим просмотра ТВ">TV</button>
+        )}
+        {isTemplate ? (
+          <button style={{ ...BTN, color: '#fbbf24', borderColor: '#78350f' }}
+            onClick={() => { setTplElements(defaultSlideTemplates()[templateKind ?? 'result1'].elements); setSelectedId(null); setSelectedChildId(null); }}>
+            Сбросить
+          </button>
+        ) : !isSlide ? (
           <button style={{ ...BTN, color: '#fbbf24', borderColor: '#78350f' }}
             onClick={() => { pushHistory(); setLayout(defaultScreenLayout()); }}>Сброс</button>
-        )}
+        ) : null}
         <button style={{ ...BTN, background: '#02BDB6', color: '#fff', border: 'none' }} onClick={handleSave} disabled={saving}>
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
@@ -616,19 +838,102 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
           {/* Add buttons */}
           <div style={{ padding: '10px 12px 4px', fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.06em' }}>Добавить</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: '0 8px 8px' }}>
-            {(isSlide
-              ? ['text','image','shape'] as ScreenElType[]
-              : ['text','value','mission','datetime','image','shape','carousel'] as ScreenElType[]
-            ).map(t => (
-              <button key={t} style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addEl(t)}>
-                + {TYPE_LABELS[t]}
-              </button>
-            ))}
+            {isTemplate ? (
+              <>
+                {(['text','image','shape'] as const).map(t => (
+                  <button key={t} style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addTplEl(t)}>
+                    + {TEMPLATE_EL_LABELS[t]}
+                  </button>
+                ))}
+                {(templateKind === 'result1' || templateKind === 'result2') && (
+                  <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left', gridColumn: '1/-1' }} onClick={() => addTplEl('slot_client')}>
+                    + {TEMPLATE_EL_LABELS['slot_client']}
+                  </button>
+                )}
+                {templateKind === 'image' && (
+                  <>
+                    <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addTplEl('slot_image')}>
+                      + {TEMPLATE_EL_LABELS['slot_image']}
+                    </button>
+                    <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addTplEl('slot_text')}>
+                      + {TEMPLATE_EL_LABELS['slot_text']}
+                    </button>
+                  </>
+                )}
+              </>
+            ) : (
+              (isSlide
+                ? ['text','image','shape'] as ScreenElType[]
+                : ['text','value','mission','datetime','image','shape','carousel'] as ScreenElType[]
+              ).map(t => (
+                <button key={t} style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addEl(t)}>
+                  + {TYPE_LABELS[t]}
+                </button>
+              ))
+            )}
           </div>
 
           <div style={{ borderTop: '1px solid #1e293b', padding: '10px 12px 4px', fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.06em' }}>Слои</div>
 
-          {layersTopFirst.map(el => (
+          {isTemplate ? layersTopFirst.map(el => {
+            const isSel = selectedId === el.id;
+            const isSlotEl = el.type === 'slot_client';
+            const slotEl = isSlotEl ? (el as TplElSlotClient) : null;
+            const isExp = expandedSlots.has(el.id);
+            return (
+              <div key={el.id}>
+                <div
+                  style={{
+                    padding: '7px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4,
+                    background: isSel && !selectedChildId ? 'rgba(2,189,182,.18)' : 'transparent',
+                    color: isSel && !selectedChildId ? '#02BDB6' : '#94a3b8',
+                    borderLeft: isSel && !selectedChildId ? '2px solid #02BDB6' : '2px solid transparent',
+                    fontWeight: isSel && !selectedChildId ? 700 : 400,
+                    opacity: el.visible === false ? 0.5 : 1,
+                  }}
+                  onClick={() => { setSelectedId(el.id); setSelectedChildId(null); }}
+                >
+                  {isSlotEl && (
+                    <span style={{ cursor: 'pointer', fontSize: 10 }}
+                      onClick={e => { e.stopPropagation(); setExpandedSlots(s => { const n = new Set(s); n.has(el.id) ? n.delete(el.id) : n.add(el.id); return n; }); }}>
+                      {isExp ? '▾' : '▸'}
+                    </span>
+                  )}
+                  <span style={{ cursor: 'pointer', opacity: el.visible === false ? 0.4 : 1, fontSize: 11 }}
+                    title={el.visible === false ? 'Показать' : 'Скрыть'}
+                    onClick={e => { e.stopPropagation(); updateTplEl(el.id, { visible: el.visible === false ? true : false }); }}>👁</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {TEMPLATE_EL_LABELS[el.type] ?? el.type}
+                    {isSlotEl ? ` (${(el as TplElSlotClient).index.toUpperCase()})` : ''}
+                    {'text' in el && el.text ? ` «${(el.text as string).slice(0, 8)}»` : ''}
+                  </span>
+                </div>
+                {slotEl && isExp && [...slotEl.children].sort((a, b) => b.z - a.z).map(child => {
+                  const isChildSel = isSel && selectedChildId === child.id;
+                  return (
+                    <div key={child.id}
+                      style={{
+                        padding: '5px 8px 5px 24px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4,
+                        background: isChildSel ? 'rgba(56,189,248,.18)' : 'transparent',
+                        color: isChildSel ? '#38bdf8' : '#64748b',
+                        borderLeft: isChildSel ? '2px solid #38bdf8' : '2px solid transparent',
+                        opacity: child.visible === false ? 0.5 : 1,
+                      }}
+                      onClick={() => { setSelectedId(el.id); setSelectedChildId(child.id); }}
+                    >
+                      <span style={{ cursor: 'pointer', opacity: child.visible === false ? 0.4 : 1, fontSize: 10 }}
+                        onClick={ev => { ev.stopPropagation(); updateTplChild(el.id, child.id, { visible: child.visible === false ? true : false }); }}>👁</span>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {TEMPLATE_EL_LABELS[child.type] ?? child.type}
+                        {child.type === 'text' && (child as SlotChildText).bind === 'name' ? ' (имя)' : ''}
+                        {child.type === 'image' && (child as SlotChildImage).bind ? ` (${(child as SlotChildImage).bind})` : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }) : layersTopFirst.map(el => (
             <div
               key={el.id}
               draggable
@@ -646,13 +951,11 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
               }}
               onClick={() => setSelectedId(el.id)}
             >
-              {/* Eye icon */}
               <span
                 style={{ cursor: 'pointer', opacity: el.visible === false ? 0.4 : 1, fontSize: 11 }}
                 title={el.visible === false ? 'Показать' : 'Скрыть'}
                 onClick={e => { e.stopPropagation(); updateEl(el.id, { visible: el.visible === false ? true : false }); }}
               >👁</span>
-              {/* Lock icon */}
               <span
                 style={{ cursor: 'pointer', fontSize: 11, opacity: el.locked ? 1 : 0.3 }}
                 title={el.locked ? 'Разблокировать' : 'Заблокировать'}
@@ -669,101 +972,367 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
           <div style={{ flex: 1 }} />
         </div>
 
-        {/* Center: 16:9 preview */}
+        {/* Center: preview */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#020c1b', overflow: 'hidden' }}>
           <div
             ref={previewRef}
             style={{
               position: 'relative',
               width: '100%',
-              maxWidth: isSlide
+              maxWidth: (isSlide || isTemplate)
                 ? `min(100%, calc((100vh - 120px) * ${CAROUSEL_ASPECT}))`
                 : 'min(100%, calc((100vh - 120px) * 16 / 9))',
-              aspectRatio: isSlide ? String(CAROUSEL_ASPECT) : '16/9',
+              aspectRatio: (isSlide || isTemplate) ? String(CAROUSEL_ASPECT) : '16/9',
               background: 'linear-gradient(135deg,#e8fbfa 0%,#f7f8ff 52%,#eef0ff 100%)',
               borderRadius: 8, overflow: 'hidden',
-              cursor: drag ? (drag.mode === 'move' ? 'grabbing' : drag.mode + '-resize') : 'default',
+              cursor: (drag || childDrag) ? ((drag ?? childDrag)!.mode === 'move' ? 'grabbing' : (drag ?? childDrag)!.mode + '-resize') : 'default',
               userSelect: 'none',
             }}
             onPointerMove={onPreviewPointerMove}
             onPointerUp={endDrag}
             onPointerLeave={endDrag}
           >
-            {/* TV glows */}
-            <div className="tv-glow tv-glow-a" style={{ opacity: .18 }} />
-            <div className="tv-glow tv-glow-b" style={{ opacity: .18 }} />
+            {!isTemplate && (
+              <>
+                <div className="tv-glow tv-glow-a" style={{ opacity: .18 }} />
+                <div className="tv-glow tv-glow-b" style={{ opacity: .18 }} />
+                <TvScreen
+                  layout={layout}
+                  values={MOCK_VALUES}
+                  mission={missionText}
+                  mediaUrl={p => `/kviz/api/tv/media?path=${encodeURIComponent(p)}`}
+                  carousel={
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(38,60,217,.12)', borderRadius: 'clamp(14px,1.8vw,28px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ color: '#263CD9', fontSize: 'clamp(10px,1.4vw,20px)', fontWeight: 700, opacity: .6 }}>Карусель слайдов</span>
+                    </div>
+                  }
+                  datetime={now}
+                />
+                {!tvMode && layout.elements.map(el => {
+                  const isSel = selectedId === el.id;
+                  return (
+                    <div
+                      key={el.id}
+                      style={{
+                        position: 'absolute',
+                        left: `${el.x}%`, top: `${el.y}%`,
+                        width: `${el.w}%`, height: `${el.h}%`,
+                        zIndex: 500 + el.z,
+                        boxSizing: 'border-box',
+                        border: isSel ? '1.5px solid #02BDB6' : '1px dashed rgba(2,189,182,.25)',
+                        cursor: el.locked ? 'not-allowed' : (drag?.mode === 'move' && drag.id === el.id ? 'grabbing' : 'move'),
+                        touchAction: 'none',
+                      }}
+                      onPointerDown={e => { startDrag(e, el.id, 'move'); setSelectedId(el.id); }}
+                      onClick={() => setSelectedId(el.id)}
+                    >
+                      {isSel && (
+                        <>
+                          <div
+                            style={{ position: 'absolute', top: -26, left: '50%', transform: 'translateX(-50%)', width: 16, height: 16, background: '#fbbf24', borderRadius: '50%', border: '2px solid #fff', zIndex: 11, cursor: 'alias', touchAction: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9 }}
+                            onPointerDown={e => { e.stopPropagation(); startDrag(e, el.id, 'rotate'); }}
+                          >↻</div>
+                          <div style={{ position: 'absolute', top: -18, left: '50%', transform: 'translateX(-50%)', width: 1, height: 14, background: '#fbbf24', opacity: 0.6 }} />
+                          {(['nw','ne','sw','se','n','s','e','w'] as HandlePos[]).map(pos => (
+                            <Handle key={pos} pos={pos} onDown={(e, m) => startDrag(e, el.id, m)} />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {!tvMode && snapGuides.v.map(v => (
+                  <div key={`v${v}`} style={{ position: 'absolute', left: `${v}%`, top: 0, bottom: 0, width: 1, background: '#02BDB6', opacity: 0.7, zIndex: 600, pointerEvents: 'none' }} />
+                ))}
+                {!tvMode && snapGuides.h.map(v => (
+                  <div key={`h${v}`} style={{ position: 'absolute', top: `${v}%`, left: 0, right: 0, height: 1, background: '#02BDB6', opacity: 0.7, zIndex: 600, pointerEvents: 'none' }} />
+                ))}
+              </>
+            )}
 
-            {/* TV render */}
-            <TvScreen
-              layout={layout}
-              values={MOCK_VALUES}
-              mission={missionText}
-              mediaUrl={p => `/kviz/api/tv/media?path=${encodeURIComponent(p)}`}
-              carousel={
-                <div style={{ position: 'absolute', inset: 0, background: 'rgba(38,60,217,.12)', borderRadius: 'clamp(14px,1.8vw,28px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ color: '#263CD9', fontSize: 'clamp(10px,1.4vw,20px)', fontWeight: 700, opacity: .6 }}>Карусель слайдов</span>
-                </div>
-              }
-              datetime={now}
-            />
-
-            {/* Drag overlays (hidden in TV mode) */}
-            {!tvMode && layout.elements.map(el => {
-              const isSel = selectedId === el.id;
-              return (
-                <div
-                  key={el.id}
-                  style={{
-                    position: 'absolute',
-                    left: `${el.x}%`, top: `${el.y}%`,
-                    width: `${el.w}%`, height: `${el.h}%`,
-                    zIndex: 500 + el.z,
-                    boxSizing: 'border-box',
-                    border: isSel ? '1.5px solid #02BDB6' : '1px dashed rgba(2,189,182,.25)',
-                    cursor: el.locked ? 'not-allowed' : (drag?.mode === 'move' && drag.id === el.id ? 'grabbing' : 'move'),
-                    touchAction: 'none',
-                  }}
-                  onPointerDown={e => { startDrag(e, el.id, 'move'); setSelectedId(el.id); }}
-                  onClick={() => setSelectedId(el.id)}
-                >
-                  {isSel && (
-                    <>
-                      {/* Rotation handle */}
-                      <div
-                        style={{ position: 'absolute', top: -26, left: '50%', transform: 'translateX(-50%)', width: 16, height: 16, background: '#fbbf24', borderRadius: '50%', border: '2px solid #fff', zIndex: 11, cursor: 'alias', touchAction: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9 }}
-                        onPointerDown={e => { e.stopPropagation(); startDrag(e, el.id, 'rotate'); }}
-                      >↻</div>
-                      {/* Rotation line */}
-                      <div style={{ position: 'absolute', top: -18, left: '50%', transform: 'translateX(-50%)', width: 1, height: 14, background: '#fbbf24', opacity: 0.6 }} />
-                      {/* 8 handles */}
-                      {(['nw','ne','sw','se','n','s','e','w'] as HandlePos[]).map(pos => (
-                        <Handle key={pos} pos={pos} onDown={(e, m) => startDrag(e, el.id, m)} />
-                      ))}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Snap guides */}
-            {!tvMode && snapGuides.v.map(v => (
-              <div key={`v${v}`} style={{ position: 'absolute', left: `${v}%`, top: 0, bottom: 0, width: 1, background: '#02BDB6', opacity: 0.7, zIndex: 600, pointerEvents: 'none' }} />
-            ))}
-            {!tvMode && snapGuides.h.map(v => (
-              <div key={`h${v}`} style={{ position: 'absolute', top: `${v}%`, left: 0, right: 0, height: 1, background: '#02BDB6', opacity: 0.7, zIndex: 600, pointerEvents: 'none' }} />
-            ))}
+            {isTemplate && (
+              <>
+                <SlideTemplate
+                  template={{ v: 1, elements: tplElements }}
+                  data={SAMPLE_TPL_DATA}
+                  mediaUrl={p => `/kviz/api/tv/media?path=${encodeURIComponent(p)}`}
+                  sample
+                  selectedId={selectedId}
+                  selectedChildId={selectedChildId}
+                  onElementClick={id => { setSelectedId(id); setSelectedChildId(null); }}
+                  onChildClick={(parentId, childId) => { setSelectedId(parentId); setSelectedChildId(childId); }}
+                />
+                {/* Top-level element overlays */}
+                {tplElements.map(el => {
+                  const isSel = selectedId === el.id;
+                  return (
+                    <div
+                      key={el.id}
+                      style={{
+                        position: 'absolute',
+                        left: `${el.x}%`, top: `${el.y}%`,
+                        width: `${el.w}%`, height: `${el.h}%`,
+                        zIndex: 500 + el.z,
+                        boxSizing: 'border-box',
+                        border: isSel && !selectedChildId ? '1.5px solid #02BDB6' : '1px dashed rgba(2,189,182,.25)',
+                        cursor: el.locked ? 'not-allowed' : (drag?.mode === 'move' && drag.id === el.id ? 'grabbing' : 'move'),
+                        touchAction: 'none',
+                      }}
+                      onPointerDown={e => { startDrag(e, el.id, 'move'); setSelectedId(el.id); setSelectedChildId(null); }}
+                      onClick={() => { setSelectedId(el.id); setSelectedChildId(null); }}
+                    >
+                      {isSel && !selectedChildId && (
+                        <>
+                          <div
+                            style={{ position: 'absolute', top: -26, left: '50%', transform: 'translateX(-50%)', width: 16, height: 16, background: '#fbbf24', borderRadius: '50%', border: '2px solid #fff', zIndex: 11, cursor: 'alias', touchAction: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9 }}
+                            onPointerDown={e => { e.stopPropagation(); startDrag(e, el.id, 'rotate'); }}
+                          >↻</div>
+                          <div style={{ position: 'absolute', top: -18, left: '50%', transform: 'translateX(-50%)', width: 1, height: 14, background: '#fbbf24', opacity: 0.6 }} />
+                          {(['nw','ne','sw','se','n','s','e','w'] as HandlePos[]).map(pos => (
+                            <Handle key={pos} pos={pos} onDown={(e, m) => startDrag(e, el.id, m)} />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {/* Child overlays for selected slot_client */}
+                {selectedId && tplElements
+                  .filter(e => e.id === selectedId && e.type === 'slot_client')
+                  .flatMap(el => {
+                    const slot = el as TplElSlotClient;
+                    return slot.children.map(child => {
+                      const isChildSel = selectedChildId === child.id;
+                      return (
+                        <div
+                          key={child.id}
+                          style={{
+                            position: 'absolute',
+                            left: `${el.x + child.x * el.w / 100}%`,
+                            top: `${el.y + child.y * el.h / 100}%`,
+                            width: `${child.w * el.w / 100}%`,
+                            height: `${child.h * el.h / 100}%`,
+                            zIndex: 600 + child.z,
+                            boxSizing: 'border-box',
+                            border: isChildSel ? '1.5px solid #38bdf8' : '1px dashed rgba(56,189,248,.35)',
+                            cursor: child.locked ? 'not-allowed' : (childDrag?.id === child.id ? 'grabbing' : 'move'),
+                            touchAction: 'none',
+                          }}
+                          onPointerDown={e => { e.stopPropagation(); startChildDrag(e, el.id, child.id, 'move'); setSelectedChildId(child.id); }}
+                          onClick={e => { e.stopPropagation(); setSelectedId(el.id); setSelectedChildId(child.id); }}
+                        >
+                          {isChildSel && (
+                            (['nw','ne','sw','se','n','s','e','w'] as HandlePos[]).map(pos => (
+                              <Handle key={pos} pos={pos} onDown={(ev, m) => { ev.stopPropagation(); startChildDrag(ev, el.id, child.id, m); }} />
+                            ))
+                          )}
+                        </div>
+                      );
+                    });
+                  })
+                }
+              </>
+            )}
           </div>
         </div>
 
         {/* Right: properties */}
         <div style={{ width: 280, flexShrink: 0, background: '#0f172a', borderLeft: '1px solid #1e293b', overflow: 'auto', padding: 14 }}>
-          {selEl ? (
+          {isTemplate ? (
+            <>
+              {selectedChild && selectedSlotParent ? (
+                <>
+                  <div style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+                    {TEMPLATE_EL_LABELS[selectedChild.type] ?? selectedChild.type} (дочерний)
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+                    {(['x','y','w','h'] as const).map(k => (
+                      <div key={k}>
+                        <label style={LBL}>{k === 'x' ? 'X%' : k === 'y' ? 'Y%' : k === 'w' ? 'W%' : 'H%'}</label>
+                        <input type="number" step="0.5" min={k === 'w' || k === 'h' ? 2 : 0} max={100} value={selectedChild[k]} style={INP}
+                          onChange={e => updateTplChild(selectedSlotParent.id, selectedChild.id, { [k]: snap(Number(e.target.value)) })} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+                    <div>
+                      <label style={LBL}>Z-слой</label>
+                      <input type="number" min={0} max={100} step={1} value={selectedChild.z} style={INP}
+                        onChange={e => updateTplChild(selectedSlotParent.id, selectedChild.id, { z: Math.round(Number(e.target.value)) })} />
+                    </div>
+                  </div>
+                  <div style={{ borderTop: '1px solid #1e293b', margin: '10px 0' }} />
+                  {selectedChild.type === 'text' && (
+                    <>
+                      <div style={ROW}>
+                        <label style={LBL}>Привязка</label>
+                        <select value={selectedChild.bind ?? ''} style={INP}
+                          onChange={e => updateTplChild(selectedSlotParent.id, selectedChild.id, { bind: e.target.value || undefined })}>
+                          <option value="">Произвольный текст</option>
+                          <option value="name">Имя клиента</option>
+                        </select>
+                      </div>
+                      {!selectedChild.bind && (
+                        <div style={ROW}>
+                          <label style={LBL}>Текст</label>
+                          <textarea value={selectedChild.text ?? ''} rows={2} style={{ ...INP, resize: 'vertical' }}
+                            onChange={e => updateTplChild(selectedSlotParent.id, selectedChild.id, { text: e.target.value })} />
+                        </div>
+                      )}
+                      <TextStyleProps el={selectedChild as unknown as Record<string, unknown>}
+                        onChange={u => updateTplChild(selectedSlotParent.id, selectedChild.id, u)} />
+                    </>
+                  )}
+                  {selectedChild.type === 'image' && (
+                    <>
+                      <div style={ROW}>
+                        <label style={LBL}>Привязка</label>
+                        <select value={selectedChild.bind ?? ''} style={INP}
+                          onChange={e => updateTplChild(selectedSlotParent.id, selectedChild.id, { bind: e.target.value || undefined })}>
+                          <option value="">Загруженный файл</option>
+                          <option value="before">Фото ДО</option>
+                          <option value="after">Фото ПОСЛЕ</option>
+                        </select>
+                      </div>
+                      <div style={ROW}>
+                        <label style={LBL}>Масштаб</label>
+                        <select value={selectedChild.fit ?? 'cover'} style={INP}
+                          onChange={e => updateTplChild(selectedSlotParent.id, selectedChild.id, { fit: e.target.value })}>
+                          <option value="contain">Вписать</option>
+                          <option value="cover">Заполнить</option>
+                          <option value="stretch">Растянуть</option>
+                        </select>
+                      </div>
+                      <SliderRow label="Прозрачность" value={selectedChild.opacity ?? 1}
+                        onChange={v => updateTplChild(selectedSlotParent.id, selectedChild.id, { opacity: v })} />
+                      <div style={ROW}>
+                        <label style={LBL}>Радиус (%h)</label>
+                        <input type="number" step="0.5" min={0} max={10} value={selectedChild.radius ?? 0} style={INP}
+                          onChange={e => updateTplChild(selectedSlotParent.id, selectedChild.id, { radius: Number(e.target.value) })} />
+                      </div>
+                    </>
+                  )}
+                  {selectedChild.type === 'shape' && (
+                    <ShapeProps
+                      el={{ ...selectedChild, type: 'shape' as const, id: selectedChild.id, x: 0, y: 0, w: 100, h: 100 } as ScreenElShape}
+                      onChange={u => updateTplChild(selectedSlotParent.id, selectedChild.id, u as Record<string, unknown>)} />
+                  )}
+                  <div style={{ borderTop: '1px solid #1e293b', marginTop: 10, paddingTop: 10 }}>
+                    <button style={{ ...BTN, color: '#f87171', borderColor: '#7f1d1d', width: '100%' }}
+                      onClick={() => deleteTplChild(selectedSlotParent.id, selectedChild.id)}>Удалить дочерний</button>
+                  </div>
+                </>
+              ) : selectedTplEl ? (
+                <>
+                  <div style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+                    {TEMPLATE_EL_LABELS[selectedTplEl.type] ?? selectedTplEl.type}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+                    {(['x','y','w','h'] as const).map(k => (
+                      <div key={k}>
+                        <label style={LBL}>{k === 'x' ? 'X%' : k === 'y' ? 'Y%' : k === 'w' ? 'W%' : 'H%'}</label>
+                        <input type="number" step="0.5" min={k === 'w' || k === 'h' ? 2 : 0} max={100} value={selectedTplEl[k]} style={INP}
+                          onChange={e => updateTplEl(selectedTplEl.id, { [k]: snap(Number(e.target.value)) })} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+                    <div>
+                      <label style={LBL}>Поворот°</label>
+                      <input type="number" step="1" min={-180} max={180} value={selectedTplEl.rotate ?? 0} style={INP}
+                        onChange={e => updateTplEl(selectedTplEl.id, { rotate: Number(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label style={LBL}>Z-слой</label>
+                      <input type="number" min={0} max={500} step={1} value={selectedTplEl.z} style={INP}
+                        onChange={e => updateTplEl(selectedTplEl.id, { z: Math.round(Number(e.target.value)) })} />
+                    </div>
+                  </div>
+                  <div style={{ borderTop: '1px solid #1e293b', margin: '10px 0' }} />
+                  {selectedTplEl.type === 'text' && (
+                    <>
+                      <div style={ROW}>
+                        <label style={LBL}>Текст</label>
+                        <textarea value={selectedTplEl.text ?? ''} rows={3} style={{ ...INP, resize: 'vertical' }}
+                          onChange={e => updateTplEl(selectedTplEl.id, { text: e.target.value })} />
+                      </div>
+                      <TextStyleProps el={selectedTplEl as unknown as Record<string, unknown>}
+                        onChange={u => updateTplEl(selectedTplEl.id, u)} />
+                    </>
+                  )}
+                  {selectedTplEl.type === 'image' && (
+                    <ImageProps
+                      el={selectedTplEl as ScreenElImage}
+                      onChange={u => updateTplEl(selectedTplEl.id, u as Record<string, unknown>)}
+                      uploadError={uploadError}
+                      onUpload={f => uploadImage(selectedTplEl.id, f)}
+                    />
+                  )}
+                  {selectedTplEl.type === 'shape' && (
+                    <ShapeProps el={selectedTplEl as ScreenElShape}
+                      onChange={u => updateTplEl(selectedTplEl.id, u as Record<string, unknown>)} />
+                  )}
+                  {selectedTplEl.type === 'slot_client' && (
+                    <>
+                      <div style={ROW}>
+                        <label style={LBL}>Индекс</label>
+                        <select value={selectedTplEl.index} style={INP}
+                          onChange={e => updateTplEl(selectedTplEl.id, { index: e.target.value as 'a' | 'b' })}>
+                          <option value="a">A (первый клиент)</option>
+                          <option value="b">B (второй клиент)</option>
+                        </select>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#475569', marginBottom: 6 }}>Добавить дочерний:</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 10 }}>
+                        {(['text','image','shape'] as const).map(t => (
+                          <button key={t} style={{ ...BTN, padding: '4px 6px', fontSize: 10 }}
+                            onClick={() => addTplChild(selectedTplEl.id, t)}>
+                            + {TEMPLATE_EL_LABELS[t]}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {selectedTplEl.type === 'slot_image' && (
+                    <>
+                      <div style={ROW}>
+                        <label style={LBL}>Масштаб</label>
+                        <select value={(selectedTplEl as TplElSlotImage).fit ?? 'contain'} style={INP}
+                          onChange={e => updateTplEl(selectedTplEl.id, { fit: e.target.value })}>
+                          <option value="contain">Вписать</option>
+                          <option value="cover">Заполнить</option>
+                          <option value="stretch">Растянуть</option>
+                        </select>
+                      </div>
+                      <SliderRow label="Прозрачность" value={(selectedTplEl as TplElSlotImage).opacity ?? 1}
+                        onChange={v => updateTplEl(selectedTplEl.id, { opacity: v })} />
+                      <div style={ROW}>
+                        <label style={LBL}>Радиус (%h)</label>
+                        <input type="number" step="0.5" min={0} max={10} value={(selectedTplEl as TplElSlotImage).radius ?? 0} style={INP}
+                          onChange={e => updateTplEl(selectedTplEl.id, { radius: Number(e.target.value) })} />
+                      </div>
+                    </>
+                  )}
+                  {selectedTplEl.type === 'slot_text' && (
+                    <TextStyleProps el={selectedTplEl as unknown as Record<string, unknown>}
+                      onChange={u => updateTplEl(selectedTplEl.id, u)} />
+                  )}
+                  <div style={{ borderTop: '1px solid #1e293b', marginTop: 10, paddingTop: 10 }}>
+                    <button style={{ ...BTN, color: '#f87171', borderColor: '#7f1d1d', width: '100%' }}
+                      onClick={() => deleteTplEl(selectedTplEl.id)}>Удалить элемент</button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ color: '#475569', fontSize: 12, textAlign: 'center', marginTop: 32 }}>
+                  Выберите элемент<br />в дереве или на экране
+                </div>
+              )}
+            </>
+          ) : selEl ? (
             <>
               <div style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
                 {TYPE_LABELS[selEl.type]}
               </div>
-
-              {/* Common: position/size/rotate/z */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
                 {(['x','y','w','h'] as const).map(k => (
                   <div key={k}>
@@ -785,10 +1354,7 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
                     onChange={e => updateEl(selEl.id, { z: Math.round(Number(e.target.value)) })} />
                 </div>
               </div>
-
               <div style={{ borderTop: '1px solid #1e293b', margin: '10px 0' }} />
-
-              {/* Text types */}
               {selEl.type === 'text' && (
                 <>
                   <div style={ROW}>
@@ -851,7 +1417,6 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
                   </div>
                 </>
               )}
-
               <div style={{ borderTop: '1px solid #1e293b', marginTop: 10, paddingTop: 10 }}>
                 <button style={{ ...BTN, color: '#f87171', borderColor: '#7f1d1d', width: '100%' }}
                   onClick={() => deleteEl(selEl.id)}>Удалить элемент</button>

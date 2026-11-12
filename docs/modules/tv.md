@@ -13,7 +13,8 @@
 - `kviz/client/src/components/tv/TextBox.tsx` — рендер текста: принимает `style: TextStyle; text: string` (используется TvScreen и FreeSlide)
 - `kviz/client/src/components/tv/ImageBox.tsx` — рендер картинки FreeSlide
 - `kviz/client/src/components/tv/FreeSlide.tsx` — общий компонент free-слайда: устанавливает `--screen-h`, использует TextBox/ImageBox
-- `src/http/tv.ts` — TV-роутер: SSE, прокси медиа, CRUD tv_settings/tv_results/tv_slides, `GET/PUT /kviz/api/tv/screen`, `POST /kviz/api/tv/screen/image`, `GET /api/tv/data` v4
+- `kviz/client/src/components/tv/SlideTemplate.tsx` — рендер шаблона слайда: ResizeObserver → `--screen-h`, 6 типов элементов (text/image/shape/slot_client/slot_image/slot_text), sample-плейсхолдеры, клики для редактора
+- `src/http/tv.ts` — TV-роутер: SSE, прокси медиа, CRUD tv_settings/tv_results/tv_slides, `GET/PUT /kviz/api/tv/screen`, `POST /kviz/api/tv/screen/image`, `GET /api/tv/data` v5, `GET/PUT /kviz/api/tv/templates/:kind`
 - `kviz/client/src/pages/crm/SettingsPage.tsx` → `TvSection` — кнопка «Редактор экрана», карточки «До/После», слайды
 - `kviz/client/src/pages/reports/ReportsPage.tsx` → `StudioSection` — ссылка для ТВ, счётчики, кнопка «Выгрузить все результаты»
 - `kviz/client/src/pages/measure/ClientPage.tsx` — кнопка «Отправить в результаты студии» (внутри карточки клиента)
@@ -26,7 +27,8 @@
 - `studio_settings` — ключ-значение (миссия студии)
 - `tv_settings` — одна строка (id=1): `main_label_cm`, `main_label_kg`, `main_label_fat`, `intro_text` (вступительный текст, max 120 симв.), `screen_layout` (jsonb, task 49 — полное описание экрана; если NULL, генерируется `defaultScreenLayoutServer()` с подстановкой текущих значений)
 - `tv_results` — карточки «До/После» (библиотека): `id`, `title`, `before_path`, `after_path`, `position`
-- `tv_slides` — слайды карусели: `id`, `position` (NOT NULL, unique), `kind` (result1|result2|promo|usp|**free**), `result_a` (uuid FK tv_results, nullable), `result_b` (uuid FK tv_results, nullable), `image_path` (nullable), `duration_sec` (default 8), `enabled` (default true), `layout` (jsonb, только для free), `created_at`
+- `tv_slides` — слайды карусели: `id`, `position` (NOT NULL, unique), `kind` (result1|result2|promo|usp|**free**), `result_a` (uuid FK tv_results, nullable), `result_b` (uuid FK tv_results, nullable), `image_path` (nullable), `duration_sec` (default 8), `enabled` (default true), `layout` (jsonb, только для free), `slide_text` (text, до 300 симв., для promo/usp), `created_at`
+- `tv_settings.slide_templates` — jsonb `{ result1: SlideTemplate, result2: SlideTemplate, image: SlideTemplate }` (task 52); NULL → генерируется `defaultSlideTemplatesServer()`
 
 ## env
 - `RESULTS_DISPLAY_KEY` — ключ защиты `/results?key=…`; URL открывается без входа в систему
@@ -73,6 +75,15 @@ JSON-схема **v2**: `{ v: 2, elements: ScreenEl[] }` хранится в `tv
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 12.11.2026 · (текущий) · task 52 — шаблоны слайдов (результат 1 и 2 клиента, картинка) в редакторе, слоты клиента и слот текста
+- **`kviz/client/src/lib/tvScreenLayout.ts`**: новые типы `SlotChildText/Image/Shape`, `TplElSlotClient/Image/Text`, `TemplateTopEl`, `SlideTemplate { v:1, elements }`, `SlideTemplates { result1, result2, image }`, `TemplateKind`. Экспорты: `TEMPLATE_KIND_LABELS`, `TEMPLATE_EL_LABELS`, `defSlotChildren()`, `defaultSlideTemplates()`, `validateSlideTemplate()`.
+- **`kviz/client/src/components/tv/SlideTemplate.tsx`** (новый, ~205 строк): компонент рендера шаблона; ResizeObserver → `--screen-h`; рендерит все 6 типов элементов (text/image/shape/slot_client/slot_image/slot_text); показывает sample-плейсхолдеры (ДО/ПОСЛЕ); принимает `selectedId/selectedChildId/onElementClick/onChildClick` для режима редактора.
+- **`kviz/client/src/components/tv/TvScreenEditor.tsx`** (расширен): добавлен `mode='template'`; отдельный стейт `tplElements/tplHistory/tplFuture/selectedChildId/childDrag/expandedSlots`; `applyDrag` стал generic; `startChildDrag` для дочерних элементов slot_client; вся JSX обновлена — header с кнопкой «Сбросить», левая панель с вложенными слоями slot_client, canvas с `SlideTemplate` вместо TvScreen + child-overlays, правая панель с двухуровневыми свойствами (элемент + дочерний).
+- **`src/http/tv.ts`**: `GET /kviz/api/tv/templates` → возвращает `{ result1, result2, image }`; `PUT /kviz/api/tv/templates/:kind` → валидирует и сохраняет в `tv_settings.slide_templates` jsonb; `POST/PATCH /kviz/api/tv/slides` обрабатывают `slide_text` (до 300 симв.); `GET /api/tv/data` v5 добавляет `slide_templates`.
+- **`kviz/client/src/pages/ResultsPage.tsx`**: удалены `ResultCard` и `SlideContent`; добавлен `SlideTemplate` + маппинг `SLIDE_TPL_KIND`; `TvData` включает `slide_templates`; `TvSlide` добавлено `slide_text`.
+- **`kviz/client/src/pages/crm/SettingsPage.tsx`**: `TvSlideRaw` добавлено `slide_text`; `AddSlideModal` добавлено поле «Подпись» для promo/usp; слайд-строка: inline-редактирование `slide_text` для promo/usp; блок «Шаблоны слайдов» с мини-превью `SlideTemplate` и кнопками «Редактировать»; `TvScreenEditor mode="template"`.
+- **БД**: `tv_settings.slide_templates` (jsonb), `tv_slides.slide_text` (text, max 300) — добавлены заранее Сергеем.
+
 ### 12.11.2026 · (текущий) · task 51 — картинки в предпросмотре редактора, лимит 8 МБ, редактор слайда в том же конструкторе
 - **`kviz/client/src/lib/tvImage.ts`** (новый): `compressForUpload(file)` — сжимает до 2400px длинной стороны (PNG→PNG, JPEG→JPEG q0.9), проверяет 8 МБ после сжатия; заменил `compressImg` везде в SettingsPage.
 - **`kviz/client/src/lib/tvScreenLayout.ts`**: добавлены `CAROUSEL_ASPECT ≈ 1.533`, `FreeLayout { v: 2, frame, elements: ScreenEl[] }`, `migrateFreeLayoutToV2(raw)` (v1→v2 для клиента).

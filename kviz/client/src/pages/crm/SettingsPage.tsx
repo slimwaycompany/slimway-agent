@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 import FreeSlide from '../../components/tv/FreeSlide';
 import TvScreenEditor from '../../components/tv/TvScreenEditor';
-import type { FreeLayout, ScreenLayout } from '../../lib/tvScreenLayout';
-import { migrateFreeLayoutToV2 } from '../../lib/tvScreenLayout';
+import SlideTemplate from '../../components/tv/SlideTemplate';
+import type { FreeLayout, ScreenLayout, SlideTemplate as SlideTemplateType, SlideTemplates, TemplateKind } from '../../lib/tvScreenLayout';
+import { migrateFreeLayoutToV2, TEMPLATE_KIND_LABELS, defaultSlideTemplates, CAROUSEL_ASPECT } from '../../lib/tvScreenLayout';
 import { compressForUpload } from '../../lib/tvImage';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -2652,19 +2653,21 @@ interface TvSlideRaw {
   result_a: string | null; result_b: string | null; image_path: string | null;
   duration_sec: number; enabled: boolean;
   layout?: FreeLayout;
+  slide_text?: string | null;
 }
 
 const KIND_LABELS: Record<string, string> = { result1: '1 результат', result2: '2 результата', promo: 'Акция', usp: 'USP', free: 'Свободный блок' };
 
 function AddSlideModal({ results, onAdd, onClose }: {
   results: TvResult[];
-  onAdd: (d: { kind: string; result_a: string | null; result_b: string | null; file: File | null; duration_sec: number }) => Promise<void>;
+  onAdd: (d: { kind: string; result_a: string | null; result_b: string | null; file: File | null; duration_sec: number; slide_text: string | null }) => Promise<void>;
   onClose: () => void;
 }) {
   const [kind, setKind] = useState<'result1' | 'result2' | 'promo' | 'usp' | 'free'>('result1');
   const [resultA, setResultA] = useState('');
   const [resultB, setResultB] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [slideText, setSlideText] = useState('');
   const [duration, setDuration] = useState(8);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -2672,7 +2675,7 @@ function AddSlideModal({ results, onAdd, onClose }: {
 
   async function submit() {
     setSaving(true); setErr('');
-    try { await onAdd({ kind, result_a: resultA || null, result_b: resultB || null, file, duration_sec: duration }); }
+    try { await onAdd({ kind, result_a: resultA || null, result_b: resultB || null, file, duration_sec: duration, slide_text: (kind === 'promo' || kind === 'usp') ? (slideText || null) : null }); }
     catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); setSaving(false); }
   }
 
@@ -2708,14 +2711,21 @@ function AddSlideModal({ results, onAdd, onClose }: {
         </div>
       )}
       {(kind === 'promo' || kind === 'usp') && (
-        <div style={{ marginBottom: 12 }}>
-          <label style={S.label}>Изображение</label>
-          <label style={{ ...S.saveBtn, display: 'inline-block', cursor: 'pointer' }}>
-            {file ? file.name : '📷 Выбрать файл'}
-            <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
-              onChange={e => setFile(e.target.files?.[0] ?? null)} />
-          </label>
-        </div>
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <label style={S.label}>Изображение</label>
+            <label style={{ ...S.saveBtn, display: 'inline-block', cursor: 'pointer' }}>
+              {file ? file.name : '📷 Выбрать файл'}
+              <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
+                onChange={e => setFile(e.target.files?.[0] ?? null)} />
+            </label>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={S.label}>Подпись (необязательно, до 300 символов)</label>
+            <input style={INP} value={slideText} maxLength={300}
+              onChange={e => setSlideText(e.target.value)} placeholder="Например: Скидка 20% на первый месяц" />
+          </div>
+        </>
       )}
       <div style={{ marginBottom: 12 }}>
         <label style={S.label}>Длительность (сек)</label>
@@ -2749,11 +2759,14 @@ function TvSection() {
   const [screenMission, setScreenMission] = useState('');
   const [tvUrl, setTvUrl] = useState('');
   const [copied, setCopied] = useState(false);
+  const [slideTemplates, setSlideTemplates] = useState<SlideTemplates>(defaultSlideTemplates());
+  const [templateEditor, setTemplateEditor] = useState<{ kind: TemplateKind } | null>(null);
 
   useEffect(() => {
     api('GET', '/kviz/api/tv/screen').then(r => { if (r.ok) { setScreenLayout(r.data.layout); setScreenMission(r.data.mission ?? ''); } });
     api('GET', '/kviz/api/tv/slides').then(r => { if (r.ok) setSlides(r.data); });
     api('GET', '/kviz/api/tv/results').then(r => { if (r.ok) setResults(r.data); });
+    api('GET', '/kviz/api/tv/templates').then(r => { if (r.ok) setSlideTemplates(r.data); });
     fetch('/kviz/api/results/mission', { credentials: 'include' })
       .then(r => r.ok ? r.json() : {})
       .then(d => { if (d.display_url) setTvUrl(window.location.origin + d.display_url); })
@@ -2764,6 +2777,12 @@ function TvSection() {
     const r = await api('PUT', '/kviz/api/tv/screen', { layout, mission });
     if (!r.ok) throw new Error(r.data?.error || 'Ошибка сохранения');
     setScreenLayout(layout); setScreenMission(mission);
+  }
+
+  async function saveTemplate(kind: TemplateKind, template: SlideTemplateType) {
+    const r = await api('PUT', `/kviz/api/tv/templates/${kind}`, template);
+    if (!r.ok) throw new Error(r.data?.error || 'Ошибка сохранения шаблона');
+    setSlideTemplates(prev => ({ ...prev, [kind]: template }));
   }
 
   async function refreshSlides() {
@@ -2785,11 +2804,12 @@ function TvSection() {
     setConfirmDelSlide(null);
   }
 
-  async function addSlide(d: { kind: string; result_a: string | null; result_b: string | null; file: File | null; duration_sec: number }) {
+  async function addSlide(d: { kind: string; result_a: string | null; result_b: string | null; file: File | null; duration_sec: number; slide_text: string | null }) {
     const payload: Record<string, unknown> = { kind: d.kind, duration_sec: d.duration_sec };
     if (d.result_a) payload.result_a = d.result_a;
     if (d.result_b) payload.result_b = d.result_b;
     if (d.file) payload.content_base64 = await compressForUpload(d.file);
+    if (d.slide_text) payload.slide_text = d.slide_text;
     const r = await api('POST', '/kviz/api/tv/slides', payload);
     if (!r.ok) throw new Error(r.data?.error || 'Ошибка добавления слайда');
     await refreshSlides();
@@ -2895,10 +2915,46 @@ function TvSection() {
                   <button style={{ ...S.iconBtn, color: '#ef4444' }} onClick={() => setConfirmDelSlide(sl.id)} title="Удалить">✕</button>
                 </div>
               </div>
+              {(sl.kind === 'promo' || sl.kind === 'usp') && (
+                <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0 }}>Подпись:</span>
+                  <input
+                    value={sl.slide_text ?? ''}
+                    maxLength={300}
+                    placeholder="Текст подписи (необязательно)"
+                    style={{ ...INP, flex: 1, padding: '4px 8px', fontSize: 12 }}
+                    onChange={e => setSlides(prev => prev.map(s => s.id === sl.id ? { ...s, slide_text: e.target.value } : s))}
+                    onBlur={e => patchSlide(sl.id, { slide_text: e.target.value || null })}
+                  />
+                </div>
+              )}
               {slideErr[sl.id] && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{slideErr[sl.id]}</div>}
             </div>
           );
         })}
+      </div>
+
+      {/* Шаблоны слайдов */}
+      <div style={SEC}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Шаблоны слайдов</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
+          {(Object.keys(TEMPLATE_KIND_LABELS) as TemplateKind[]).map(kind => (
+            <div key={kind} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ position: 'relative', aspectRatio: String(CAROUSEL_ASPECT), overflow: 'hidden', background: 'linear-gradient(135deg,#e8fbfa 0%,#f7f8ff 52%,#eef0ff 100%)' }}>
+                <SlideTemplate
+                  template={slideTemplates[kind]}
+                  data={{ slide_text: 'Скидка 20% на первый месяц' }}
+                  mediaUrl={p => `/kviz/api/tv/media?path=${encodeURIComponent(p)}`}
+                  sample
+                />
+              </div>
+              <div style={{ padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{TEMPLATE_KIND_LABELS[kind]}</span>
+                <button style={S.editBtn} onClick={() => setTemplateEditor({ kind })}>Редактировать</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Карточки */}
@@ -2966,6 +3022,17 @@ function TvSection() {
           initialMission={screenMission}
           onSave={saveScreenLayout}
           onClose={() => setScreenEditorOpen(false)}
+        />
+      )}
+      {templateEditor && (
+        <TvScreenEditor
+          mode="template"
+          templateKind={templateEditor.kind}
+          initialTemplate={slideTemplates[templateEditor.kind]}
+          initialLayout={{ v: 2, elements: [] }}
+          initialMission=""
+          onTemplateSave={saveTemplate}
+          onClose={() => setTemplateEditor(null)}
         />
       )}
     </div>

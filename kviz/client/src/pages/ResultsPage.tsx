@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import FreeSlide from '../components/tv/FreeSlide';
 import TvScreen from '../components/tv/TvScreen';
-import type { FreeLayout, ScreenLayout } from '../lib/tvScreenLayout';
-import { defaultScreenLayout } from '../lib/tvScreenLayout';
+import SlideTemplate from '../components/tv/SlideTemplate';
+import type { FreeLayout, ScreenLayout, SlideTemplates } from '../lib/tvScreenLayout';
+import { defaultScreenLayout, defaultSlideTemplates } from '../lib/tvScreenLayout';
 
 interface TvCounters { cm_lost: number; kg_lost: number; fat_kg_lost: number }
 interface TvResult  { id: string; title: string; before_path: string; after_path: string }
@@ -12,12 +13,14 @@ interface TvSlide {
   duration_sec: number; enabled: boolean;
   image_path: string | null; result_a: TvResult | null; result_b: TvResult | null;
   layout?: FreeLayout;
+  slide_text?: string | null;
 }
 interface TvData {
   screen_layout: ScreenLayout;
   counters: TvCounters;
   mission: string;
   slides: TvSlide[];
+  slide_templates?: SlideTemplates;
   serverTime: string;
   version: string;
 }
@@ -34,49 +37,10 @@ function formatAlmaty(d: Date): string {
   }).format(d).replace(',', '');
 }
 
-// ── Result card ──────────────────────────────────────────────────────────────
-function ResultCard({ res, tvKey, small }: { res: TvResult; tvKey: string; small?: boolean }) {
-  return (
-    <div className="tv-res1" style={small ? { padding: 'clamp(6px,1vh,12px) clamp(6px,1vw,12px)' } : undefined}>
-      <div className="tv-res-title">{res.title}</div>
-      <div className="tv-res-photos">
-        <div className="tv-res-side">
-          <img src={mediaUrl(res.before_path, tvKey)} alt="До"
-            onError={e => { (e.currentTarget.closest('.tv-res1, .tv-res2-card') as HTMLElement | null)?.setAttribute('data-failed', '1'); }} />
-          <span className="tv-res-label">До</span>
-        </div>
-        <div className="tv-res-side">
-          <img src={mediaUrl(res.after_path, tvKey)} alt="После"
-            onError={e => { (e.currentTarget.closest('.tv-res1, .tv-res2-card') as HTMLElement | null)?.setAttribute('data-failed', '1'); }} />
-          <span className="tv-res-label tv-res-label--after">После</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Slide content ────────────────────────────────────────────────────────────
-function SlideContent({ slide, tvKey, onFail }: { slide: TvSlide; tvKey: string; onFail: () => void }) {
-  if (slide.kind === 'result1' && slide.result_a) {
-    return <ResultCard res={slide.result_a} tvKey={tvKey} />;
-  }
-  if (slide.kind === 'result2' && slide.result_a && slide.result_b) {
-    return (
-      <div className="tv-res2">
-        <div className="tv-res2-card"><ResultCard res={slide.result_a} tvKey={tvKey} small /></div>
-        <div className="tv-res2-card"><ResultCard res={slide.result_b} tvKey={tvKey} small /></div>
-      </div>
-    );
-  }
-  if ((slide.kind === 'promo' || slide.kind === 'usp') && slide.image_path) {
-    return (
-      <div className="tv-img-slide">
-        <img src={mediaUrl(slide.image_path, tvKey)} alt={slide.kind} onError={onFail} />
-      </div>
-    );
-  }
-  return null;
-}
+// ── Slide template kind mapping ───────────────────────────────────────────────
+const SLIDE_TPL_KIND: Record<string, 'result1' | 'result2' | 'image'> = {
+  result1: 'result1', result2: 'result2', promo: 'image', usp: 'image',
+};
 
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function ResultsPage() {
@@ -206,6 +170,7 @@ export default function ResultsPage() {
 
   const curSlide = slides.length ? slides[slideIdxRef.current % slides.length] : null;
   const screenLayout: ScreenLayout = data.screen_layout ?? defaultScreenLayout();
+  const slideTemplates = data.slide_templates ?? defaultSlideTemplates();
 
   const carousel = curSlide ? (
     <div className={`tv-slide${anim === 'exit' ? ' tv-slide--exit' : anim === 'enter' ? ' tv-slide--enter' : ''}`}
@@ -224,15 +189,20 @@ export default function ResultsPage() {
         }}>
           <FreeSlide layout={curSlide.layout} mediaUrl={p => mediaUrl(p, tvKey)} />
         </div>
-      ) : (
-        <div className="tv-frame" style={{ position: 'absolute', inset: 0 }}>
-          <SlideContent
-            slide={curSlide}
-            tvKey={tvKey}
-            onFail={() => setFailedIds(s => new Set([...s, curSlide.id]))}
+      ) : SLIDE_TPL_KIND[curSlide.kind] ? (
+        <div style={{ position: 'absolute', inset: 0, borderRadius: 'clamp(14px,1.8vw,28px)', overflow: 'hidden' }}>
+          <SlideTemplate
+            template={slideTemplates[SLIDE_TPL_KIND[curSlide.kind]]}
+            data={{
+              result_a: curSlide.result_a,
+              result_b: curSlide.result_b,
+              image_path: curSlide.image_path,
+              slide_text: curSlide.slide_text,
+            }}
+            mediaUrl={p => mediaUrl(p, tvKey)}
           />
         </div>
-      )}
+      ) : null}
     </div>
   ) : null;
 
