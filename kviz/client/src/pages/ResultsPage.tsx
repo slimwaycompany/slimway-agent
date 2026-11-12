@@ -4,14 +4,16 @@ import smIcon  from '../assets/tv/sm.png';
 import kgIcon  from '../assets/tv/kg.png';
 import fatIcon from '../assets/tv/fat.png';
 import logoImg from '../assets/tv/logo.png';
+import FreeSlide, { type FreeLayout } from '../components/tv/FreeSlide';
 
 interface TvSettings { main_label_cm: string; main_label_kg: string; main_label_fat: string }
 interface TvCounters { cm_lost: number; kg_lost: number; fat_kg_lost: number }
 interface TvResult  { id: string; title: string; before_path: string; after_path: string }
 interface TvSlide {
-  id: string; kind: 'result1' | 'result2' | 'promo' | 'usp';
+  id: string; kind: 'result1' | 'result2' | 'promo' | 'usp' | 'free';
   duration_sec: number; enabled: boolean;
   image_path: string | null; result_a: TvResult | null; result_b: TvResult | null;
+  layout?: FreeLayout;
 }
 interface TvData {
   settings: TvSettings; counters: TvCounters; mission: string;
@@ -172,6 +174,11 @@ export default function ResultsPage() {
     if (next.result_b?.before_path) paths.push(next.result_b.before_path);
     if (next.result_b?.after_path)  paths.push(next.result_b.after_path);
     if (next.image_path) paths.push(next.image_path);
+    if (next.kind === 'free' && next.layout) {
+      for (const el of next.layout.elements) {
+        if (el.type === 'image' && el.path) paths.push(el.path);
+      }
+    }
     paths.forEach(p => { const img = new Image(); img.src = mediaUrl(p, tvKey); });
   }, [slideIdx, slides, tvKey]);
 
@@ -238,13 +245,31 @@ export default function ResultsPage() {
         <div className="tv-right">
           {curSlide && (
             <div className={`tv-slide${anim === 'exit' ? ' tv-slide--exit' : anim === 'enter' ? ' tv-slide--enter' : ''}`}>
-              <div className="tv-frame">
-                <SlideContent
-                  slide={curSlide}
-                  tvKey={tvKey}
-                  onFail={() => setFailedIds(s => new Set([...s, curSlide.id]))}
-                />
-              </div>
+              {curSlide.kind === 'free' && curSlide.layout ? (
+                <div style={{
+                  flex: 1, position: 'relative', overflow: 'hidden',
+                  borderRadius: 'clamp(14px,1.8vw,28px)',
+                  ...(curSlide.layout.frame ? {
+                    border: '2px solid transparent',
+                    background: 'linear-gradient(rgba(255,255,255,.58),rgba(255,255,255,.58)) padding-box, linear-gradient(135deg,#02BDB6,#263CD9) border-box',
+                    boxShadow: '0 12px 48px rgba(38,60,217,.13)',
+                    backdropFilter: 'blur(16px)',
+                  } : {}),
+                }}>
+                  <FreeSlide
+                    layout={curSlide.layout}
+                    mediaUrl={p => mediaUrl(p, tvKey)}
+                  />
+                </div>
+              ) : (
+                <div className="tv-frame">
+                  <SlideContent
+                    slide={curSlide}
+                    tvKey={tvKey}
+                    onFail={() => setFailedIds(s => new Set([...s, curSlide.id]))}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

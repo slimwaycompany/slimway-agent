@@ -970,3 +970,10 @@ img, video, svg, iframe { max-width: 100%; }
   .client-form-grid { grid-template-columns: 1fr !important; }
   .client-form-grid > * { grid-column: 1 !important; }
 }
+
+/* FreeEditor — mobile: stack body panels vertically */
+@media (max-width: 640px) {
+  .free-editor-body { flex-direction: column !important; overflow-y: auto !important; }
+  .free-editor-body > *:first-child { width: 100% !important; border-right: none !important; border-bottom: 1px solid #e2e8f0; }
+  .free-editor-body > *:last-child { width: 100% !important; border-left: none !important; border-top: 1px solid #e2e8f0; }
+}

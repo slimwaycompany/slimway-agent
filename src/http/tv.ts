@@ -23,6 +23,47 @@ function isAdmin(req: Request): boolean {
   return getSession(req)?.role === 'admin';
 }
 
+const VALID_FONTS = new Set(['Manrope', 'Montserrat', 'Oswald', 'Barlow Condensed', 'Playfair Display', 'Russo One']);
+const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function validateLayout(raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null) return 'layout должен быть объектом';
+  const l = raw as Record<string, unknown>;
+  if (typeof l.frame !== 'boolean') return 'layout.frame должен быть true или false';
+  if (!Array.isArray(l.elements)) return 'layout.elements должен быть массивом';
+  if ((l.elements as unknown[]).length > 12) return 'Максимум 12 элементов в слайде';
+  const ids = new Set<string>();
+  for (const item of l.elements as unknown[]) {
+    if (typeof item !== 'object' || item === null) return 'Элемент не является объектом';
+    const e = item as Record<string, unknown>;
+    if (typeof e.id !== 'string' || !UUID_RE.test(e.id)) return 'id элемента должен быть UUID';
+    if (ids.has(e.id)) return `Дублирующийся id: ${e.id}`;
+    ids.add(e.id);
+    if (e.type !== 'text' && e.type !== 'image') return 'type элемента: text или image';
+    for (const [k, min, max] of [['x', 0, 100], ['y', 0, 100], ['w', 1, 100], ['h', 1, 100]] as const) {
+      const v = e[k];
+      if (typeof v !== 'number' || v < min || v > max) return `${k}: число ${min}–${max}`;
+    }
+    if (typeof e.z !== 'number' || !Number.isInteger(e.z) || e.z < 0 || e.z > 50) return 'z: целое 0–50';
+    if (e.type === 'text') {
+      if (typeof e.text !== 'string' || e.text.length > 500) return 'text: строка до 500 символов';
+      if (!VALID_FONTS.has(e.font as string)) return `Неверный шрифт: ${e.font}. Допустимые: ${[...VALID_FONTS].join(', ')}`;
+      if (typeof e.size !== 'number' || e.size < 1 || e.size > 60) return 'size: число 1–60';
+      if (e.weight !== 400 && e.weight !== 600 && e.weight !== 800) return 'weight: 400, 600 или 800';
+      if (typeof e.color !== 'string' || !HEX_RE.test(e.color)) return 'color: формат #RRGGBB';
+      if (e.align !== 'left' && e.align !== 'center' && e.align !== 'right') return 'align: left, center или right';
+      if (typeof e.scaleX !== 'number' || e.scaleX < 0.5 || e.scaleX > 2) return 'scaleX: 0.5–2';
+      if (typeof e.scaleY !== 'number' || e.scaleY < 0.5 || e.scaleY > 2) return 'scaleY: 0.5–2';
+    }
+    if (e.type === 'image') {
+      if (typeof e.path !== 'string' || !/^free\/[0-9a-f-]+\.(jpg|png)$/.test(e.path)) return 'path: free/<uuid>.jpg или free/<uuid>.png';
+      if (e.fit !== 'cover' && e.fit !== 'contain' && e.fit !== 'stretch') return 'fit: cover, contain или stretch';
+    }
+  }
+  return null;
+}
+
 // JPEG: FF D8 FF | PNG: 89 50 4E 47
 function validImg(buf: Buffer): boolean {
   if (buf.length < 4) return false;
@@ -226,12 +267,31 @@ export function buildTvRouter(): Router {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
     const b = req.body as Record<string, unknown>;
     const kind = String(b.kind || '');
-    if (!['result1', 'result2', 'promo', 'usp'].includes(kind)) {
+    if (!['result1', 'result2', 'promo', 'usp', 'free'].includes(kind)) {
       res.status(400).json({ error: 'Неверный тип слайда' }); return;
     }
 
     const { count } = await supabase.from('tv_slides').select('*', { count: 'exact', head: true });
     if ((count ?? 0) >= 20) { res.status(400).json({ error: 'Можно добавить не больше 20 слайдов' }); return; }
+
+    if (kind === 'free') {
+      const layout = b.layout ?? { frame: true, elements: [] };
+      if (b.layout) {
+        const validErr = validateLayout(layout);
+        if (validErr) { res.status(400).json({ error: validErr }); return; }
+      }
+      const dur = Math.max(2, Math.min(300, Number(b.duration_sec) || 10));
+      const { data: last } = await supabase.from('tv_slides').select('position').order('position', { ascending: false }).limit(1).maybeSingle();
+      const position = (Number((last as Record<string, number>)?.position ?? 0) + 1);
+      const { data, error } = await supabase.from('tv_slides').insert({
+        kind: 'free', position, duration_sec: dur, enabled: b.enabled !== false,
+        result_a: null, result_b: null, image_path: null, layout,
+      }).select().single();
+      if (error) { console.error('tv free slide insert:', error); res.status(500).json({ error: 'Ошибка создания слайда' }); return; }
+      tvNotify();
+      res.json(data);
+      return;
+    }
 
     const result_a = b.result_a ? String(b.result_a) : null;
     const result_b = b.result_b ? String(b.result_b) : null;
@@ -270,10 +330,46 @@ export function buildTvRouter(): Router {
     res.json(data);
   });
 
+  r.post('/kviz/api/tv/slides/:id/free-image', async (req, res) => {
+    if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
+    const b = req.body as Record<string, unknown>;
+    if (typeof b.content_base64 !== 'string' || !b.content_base64) { res.status(400).json({ error: 'content_base64 обязателен' }); return; }
+    const buf = Buffer.from(b.content_base64, 'base64');
+    if (buf.length > 2 * 1024 * 1024) { res.status(400).json({ error: 'Файл не должен превышать 2 МБ' }); return; }
+    if (!validImg(buf)) { res.status(400).json({ error: 'Только JPEG и PNG' }); return; }
+    const ext = buf[0] === 0x89 ? 'png' : 'jpg';
+    const sp = `free/${randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(sp, buf, { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });
+    if (upErr) { console.error('tv free img upload:', upErr); res.status(500).json({ error: 'Ошибка загрузки файла' }); return; }
+    res.json({ path: sp });
+  });
+
   r.patch('/kviz/api/tv/slides/:id', async (req, res) => {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
     const b = req.body as Record<string, unknown>;
     const upd: Record<string, unknown> = {};
+
+    // Free slide layout update
+    if ('layout' in b) {
+      const { data: curRow } = await supabase.from('tv_slides').select('kind,layout').eq('id', req.params.id).maybeSingle();
+      if ((curRow as Record<string, unknown> | null)?.kind !== 'free') {
+        res.status(400).json({ error: 'layout можно изменить только у слайда типа free' }); return;
+      }
+      const validErr = validateLayout(b.layout);
+      if (validErr) { res.status(400).json({ error: validErr }); return; }
+      type LayoutEl = { type: string; path?: string };
+      type LayoutObj = { elements?: LayoutEl[] };
+      const oldLayout = (curRow as Record<string, unknown> | null)?.layout as LayoutObj | null;
+      const oldPaths = new Set((oldLayout?.elements ?? []).filter(e => e.type === 'image' && e.path).map(e => e.path as string));
+      const newPaths = new Set(((b.layout as LayoutObj).elements ?? []).filter(e => e.type === 'image' && e.path).map(e => (e as LayoutEl).path as string));
+      const toRemove = [...oldPaths].filter(p => !newPaths.has(p));
+      const { data, error } = await supabase.from('tv_slides').update({ layout: b.layout }).eq('id', req.params.id).select().single();
+      if (error) { console.error('tv free layout update:', error); res.status(500).json({ error: 'Ошибка сохранения' }); return; }
+      if (toRemove.length) supabase.storage.from(BUCKET).remove(toRemove).catch(e => console.error('tv free slide remove old imgs:', e));
+      tvNotify();
+      res.json(data);
+      return;
+    }
 
     if ('duration_sec' in b) upd.duration_sec = Math.max(2, Math.min(300, Number(b.duration_sec) || 10));
     if ('enabled'      in b) upd.enabled      = b.enabled === true || b.enabled === 'true';
@@ -330,11 +426,20 @@ export function buildTvRouter(): Router {
 
   r.delete('/kviz/api/tv/slides/:id', async (req, res) => {
     if (!isAdmin(req)) { res.status(403).json({ error: 'Только для администратора' }); return; }
-    const { data: row } = await supabase.from('tv_slides').select('image_path').eq('id', req.params.id).maybeSingle();
+    const { data: row } = await supabase.from('tv_slides').select('image_path,kind,layout').eq('id', req.params.id).maybeSingle();
     const { error } = await supabase.from('tv_slides').delete().eq('id', req.params.id);
     if (error) { console.error('tv slide delete:', error); res.status(500).json({ error: 'Ошибка удаления слайда' }); return; }
-    const imgPath = (row as Record<string, string> | null)?.image_path;
-    if (imgPath) supabase.storage.from(BUCKET).remove([imgPath]).catch(e => console.error('tv slide delete img:', e));
+    const r2 = row as Record<string, unknown> | null;
+    const pathsToRemove: string[] = [];
+    if (r2?.image_path) pathsToRemove.push(r2.image_path as string);
+    if (r2?.kind === 'free' && r2?.layout) {
+      type LayoutEl = { type: string; path?: string };
+      const layout = r2.layout as { elements?: LayoutEl[] };
+      for (const el of (layout.elements ?? [])) {
+        if (el.type === 'image' && el.path) pathsToRemove.push(el.path);
+      }
+    }
+    if (pathsToRemove.length) supabase.storage.from(BUCKET).remove(pathsToRemove).catch(e => console.error('tv slide delete imgs:', e));
     // Renumber remaining slides 1..n so there are no gaps
     const { data: remaining } = await supabase.from('tv_slides').select('id').order('position');
     if (remaining?.length) {

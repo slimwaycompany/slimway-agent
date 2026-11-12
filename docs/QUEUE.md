@@ -16,7 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 47 | tv | ТВ: свободный блок слайда — редактор элементов (текст, картинка, шрифт, размер, растяжение, пропорции) | ТЗ в чате | 🔧 в работе (Claude, 12.11.2026) |
+| 47 | tv | ТВ: свободный блок слайда — редактор элементов (текст, картинка, шрифт, размер, растяжение, пропорции) | ТЗ в чате | ✅ готово (проверка на проде — на стороне Сергея) |
 | 1 | zamery | Замеры: карточка клиента «фигура слева на всю высоту — справа Потеряно / график / все замеры», страница на всю ширину вкладки, печать бланка без нового окна, блок «Потеряно» + «Отправить в результаты студии», экран /results | `docs/tasks/01-measurements-layout.md` | ✅ готово (039631f, 51cd5db + сессия 21.10) |
 | 2 | ovcharka | Векторный «Кабинет агента» (девушка + овчарка) вместо пиксельного | — | ✅ готово (4c67966) |
 | 3 | agent | Флаг `LIFECYCLE_DRY_RUN` для агента жизненного цикла | — | ✅ готово (ниже) |
@@ -98,6 +98,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 12.11.2026 | Claude | 47 tv: FreeSlide.tsx (ResizeObserver, текст/картинка абсолютно, overflow-hint preview), tv.ts (validateLayout, POST free, PATCH layout + удаление старых файлов, POST free-image, DELETE free-файлы), ResultsPage (kind free + frame conditionally), SettingsPage (FreeEditorModal 3-панели + мини-preview в списке + кнопка «Редактировать»), index.html Google Fonts 6 семейств | (текущий) | Barlow Condensed без кириллицы. Проверка на проде — Сергей. |
 | 11.11.2026 | Claude | 46 tv: src/http/tv.ts переписан (tv_slides CRUD, /api/tv/data новая структура с slides, DELETE results 409, SSE event:changed); ResultsPage.tsx переписан (flex 2-кол: 30% счётчики + 70% карусель, result1/result2/promo/usp слайды, fade-transition, preload next); index.css TV-секция переписана (.tv-screen fixed, .tv-body flex, .tv-frame gradient-border, слайд-анимации); SettingsPage.tsx TvSection переписан (Счётчики labels, Слайды CRUD+AddSlideModal, Карточки+409, убрана Акция) | (текущий) | — |
 | 11.11.2026 | Claude | 45 tv: иконки sm/kg/fat/logo перенесены в src/assets/tv/ (Vite хеширует имена); ResultsPage.tsx использует import-переменные, BASE/tv/ удалены; public/tv/ удалена; CSS: .tv-mid padding→96px, gap→40px, .tv-icon-img height clamp(48px,9vh,120px), white-space:nowrap | (текущий) | — |
 | 11.11.2026 | Claude | 44 tv: UUID-имена (promo/<uuid>.ext, results/<uuid>.ext), без upsert, старый файл удаляется после update; tvNotify() после promo-upload и result-upload; proxyMedia: immutable-кэш для /api/tv/media, no-cache для /kviz/api/tv/media; SettingsPage: promoErr под блоком акции, resultErr[id] под карточкой | 2ad02b3 | — |

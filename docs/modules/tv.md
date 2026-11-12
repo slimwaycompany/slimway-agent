@@ -21,13 +21,23 @@
 - `studio_settings` — ключ-значение (миссия студии)
 - `tv_settings` — одна строка (id=1): `main_label_cm`, `main_label_kg`, `main_label_fat` (прочие старые колонки не используются после task 46)
 - `tv_results` — карточки «До/После» (библиотека): `id`, `title`, `before_path`, `after_path`, `position`
-- `tv_slides` — слайды карусели: `id`, `position` (NOT NULL, unique), `kind` (result1|result2|promo|usp), `result_a` (uuid FK tv_results, nullable), `result_b` (uuid FK tv_results, nullable), `image_path` (nullable), `duration_sec` (default 8), `enabled` (default true), `created_at`
+- `tv_slides` — слайды карусели: `id`, `position` (NOT NULL, unique), `kind` (result1|result2|promo|usp|**free**), `result_a` (uuid FK tv_results, nullable), `result_b` (uuid FK tv_results, nullable), `image_path` (nullable), `duration_sec` (default 8), `enabled` (default true), `layout` (jsonb, только для free), `created_at`
 
 ## env
 - `RESULTS_DISPLAY_KEY` — ключ защиты публичного ТВ-экрана и медиа-прокси
 
 ## env
 - `RESULTS_DISPLAY_KEY` — ключ защиты `/results?key=…`; URL открывается без входа в систему
+
+## layout (kind = 'free')
+JSON-схема: `{ frame: boolean, elements: [...] }` (до 12 элементов).
+Элемент: `{ id: uuid, type: 'text'|'image', x, y, w, h (% области), z (0–50) }`.
+Текстовый: `font` (6 вариантов), `size` (% высоты слайда), `weight` (400/600/800), `color` (#RRGGBB), `align`, `scaleX/scaleY` (0.5–2).
+Картинка: `path` (free/<uuid>.jpg|png), `fit` (cover/contain/stretch).
+Файлы картинок — в бакете `tv-media/free/`. Удаляются при сохранении нового layout (если убраны из элементов) и при удалении слайда.
+
+## Где код
+- `kviz/client/src/components/tv/FreeSlide.tsx` — общий компонент: позиционирует элементы, ResizeObserver для размеров, overflow-hint в preview-режиме
 
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -49,6 +59,14 @@
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 12.11.2026 · (текущий) · task 47 — свободный блок слайда
+
+- `src/http/tv.ts`: добавлен тип `free` в POST, валидация layout (validateLayout — шрифт, диапазоны, UUID), эндпоинт `POST .../free-image` (сохраняет `free/<uuid>.ext`), PATCH принимает `layout` целиком + удаляет из бакета картинки которые исчезли из нового layout, DELETE удаляет все файлы из `layout.elements`.
+- `kviz/client/src/components/tv/FreeSlide.tsx` — новый общий компонент: ResizeObserver → `dim`, элементы position:absolute по %, текст с font/size/weight/color/align/scaleX/scaleY, картинка с objectFit, preview-режим: красная рамка + тултип если scrollHeight > clientHeight.
+- `kviz/client/src/pages/ResultsPage.tsx`: TvSlide расширен (kind `free`, layout?: FreeLayout), в карусели free-слайд рендерится через FreeSlide с conditionally рамкой (frame: true → `.tv-frame` стили inline, false → без рамки), preload захватывает пути из layout.elements.
+- `kviz/client/src/pages/crm/SettingsPage.tsx`: TvSlideRaw расширен, KIND_LABELS + 'free', AddSlideModal + опция «Свободный блок», FreeEditorModal (3-панели: слои + frame-toggle | preview с aspect-ratio 1.6:1 | свойства элемента — позиция/размер + замок W/H, текст/картинка все поля, замок scaleX/scaleY), кнопка «Редактировать» в строке слайда, мини-предпросмотр FreeSlide в строке, редактор открывается автоматически при создании free-слайда.
+- `kviz/client/index.html`: Google Fonts для 6 семейств (Manrope, Montserrat, Oswald, Barlow Condensed, Playfair Display, Russo One) — display=swap. Внимание: Barlow Condensed не поддерживает кириллицу, для кирилличного текста выбирать другой шрифт.
+
 ### 11.11.2026 · (текущий) · task 46 — 2-колоночный экран, tv_slides, настройки переписаны
 
 - `src/http/tv.ts` полностью переписан:
@@ -119,10 +137,11 @@
 - `StudioSection` в ReportsPage: ссылка для ТВ, fullscreen.
 
 ## Открытые баги
-- (нет)
+- Barlow Condensed не поддерживает кириллицу — шрифт работает только для латинского текста.
 
 ## Следующее
 - Добавить SSE heartbeat (25с `comment:` строка) чтобы Render не закрывал idle-соединения.
 - Проверить layout на 1920×1080, 1366×768, 1280×720, 1024×768, 3840×2160 после деплоя.
 - В AddSlideModal нет предпросмотра загруженного изображения для promo/usp — можно добавить по желанию.
 - Для result1/result2 слайдов в настройках нет редактирования после создания (нельзя сменить карточку) — сейчас надо удалить и добавить заново.
+- Перетаскивание элементов мышью в редакторе free-слайда — не реализовано, позиция задаётся числами.
