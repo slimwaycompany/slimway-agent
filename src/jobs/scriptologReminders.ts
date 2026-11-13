@@ -152,8 +152,10 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
   }
 
   // ── Fetch Fitbase visits ──────────────────────────────────────────────────
-  const dateFrom = yekDate(nowTs);
-  const dateTo   = yekDate(nowTs + 2 * 86400);
+  // date_from/date_to filter by RECORD CREATION DATE, not visit date.
+  // Use wide creation window so records booked days ago are included.
+  const dateFrom = yekDate(nowTs - 30 * 86400);
+  const dateTo   = yekDate(nowTs + 86400);
   let fitbaseVisits: Record<string, unknown>[] = [];
   try {
     fitbaseVisits = await paginateGet(
@@ -166,13 +168,13 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
       console.error(`[${JOB_NAME}] Fitbase /schedule-registration failed: ${e}`);
       return { status: 'error', reason: String(e) };
     }
-    // 400: split into daily windows (mirrors syncVisits fallback)
+    // 400: split into 7-day windows (mirrors syncVisits fallback)
     const seen = new Set<string>();
-    let cur = nowTs;
-    const end = nowTs + 2 * 86400;
+    let cur = nowTs - 30 * 86400;
+    const end = nowTs + 86400;
     while (cur < end) {
       const wFrom = yekDate(cur);
-      const wTo   = yekDate(Math.min(cur + 86400, end));
+      const wTo   = yekDate(Math.min(cur + 7 * 86400, end));
       try {
         const chunk = await paginateGet('/schedule-registration', { date_from: wFrom, date_to: wTo, page_size: 100 }, JOB_NAME);
         for (const item of chunk) {
@@ -180,16 +182,12 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
           if (!seen.has(id)) { seen.add(id); fitbaseVisits.push(item); }
         }
       } catch (e2) { console.error(`[${JOB_NAME}] window ${wFrom}→${wTo}: ${e2}`); }
-      cur += 86400;
+      cur += 7 * 86400;
       await sleep(400);
     }
   }
 
-  if (fitbaseVisits.length > 0) {
-    const s = fitbaseVisits[0] as Record<string, unknown>;
-    const ev = s.event as Record<string, unknown> | null;
-    console.log(`[${JOB_NAME}] sample: id=${s.id} status=${s.status} client_id=${s.client_id} date=${ev?.date} time=${ev?.time_start} training.id=${(ev?.training as Record<string,unknown>|null)?.id}`);
-  }
+  console.log(`[${JOB_NAME}] fetched ${fitbaseVisits.length} records (created ${dateFrom}…${dateTo})`);
 
   // ── Load script_clients ───────────────────────────────────────────────────
   const { data: scriptClients } = await supabase
@@ -256,18 +254,32 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
   const expectedKeys = new Set<string>();
   let trialCount = 0;
 
+  // decisions only cover visits whose visit date is within [now, now+48h]
+  const visitWindowEnd = nowTs + 48 * 3600;
+
   for (const visit of fitbaseVisits) {
     const v = visit as Record<string, unknown>;
-    const visitId = String(v.id ?? '');
-    const fbStatus = Number(v.status ?? -1);
-    const event    = v.event as Record<string, unknown> | null;
-    const dateStr  = event?.date as string | null;
-    const timeRaw  = event?.time_start as string | null;
-    const timeStr  = timeRaw ? String(timeRaw).slice(0, 5) : '';
-    const clientFbId = v.client_id != null ? Number(v.client_id) : null;
-    const dateTime = `${dateStr ?? '?'} ${timeStr}`.trim();
+    const event   = v.event as Record<string, unknown> | null;
+    const dateStr = event?.date as string | null;
+    const timeRaw = event?.time_start as string | null;
+    const timeStr = timeRaw ? String(timeRaw).slice(0, 5) : '';
 
-    // Part 1: decisions for ALL records (before trial filter)
+    // Pre-filter by visit date — records outside [now, now+48h] are silently skipped.
+    // (Fitbase date_from/date_to filters by creation date, so we may fetch past/far-future visits)
+    if (!dateStr) continue;
+    let visitAt: number;
+    try {
+      const dtStr = timeStr ? `${dateStr}T${timeStr}:00+05:00` : `${dateStr}T09:00:00+05:00`;
+      visitAt = Math.floor(new Date(dtStr).getTime() / 1000);
+    } catch { continue; }
+    if (visitAt < nowTs || visitAt > visitWindowEnd) continue;
+
+    const visitId    = String(v.id ?? '');
+    const fbStatus   = Number(v.status ?? -1);
+    const clientFbId = v.client_id != null ? Number(v.client_id) : null;
+    const dateTime   = `${dateStr} ${timeStr}`.trim();
+
+    // decisions for all in-window records (before trial filter)
     if (!checkTrial(v)) {
       decisions.push({ id: visitId, date_time: dateTime, status: fbStatus, is_trial: false, client_id: clientFbId, has_dialogue: false, decision: 'skip', reason: 'не пробная' });
       continue;
@@ -278,17 +290,8 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
       decisions.push({ id: '?', date_time: dateTime, status: fbStatus, is_trial: true, client_id: clientFbId, has_dialogue: false, decision: 'skip', reason: 'нет id' });
       continue;
     }
-    if (!dateStr || !clientFbId) {
-      decisions.push({ id: visitId, date_time: dateTime, status: fbStatus, is_trial: true, client_id: clientFbId, has_dialogue: false, decision: 'skip', reason: !dateStr ? 'нет даты' : 'нет client_id' });
-      continue;
-    }
-
-    let visitAt: number;
-    try {
-      const dtStr = timeStr ? `${dateStr}T${timeStr}:00+05:00` : `${dateStr}T09:00:00+05:00`;
-      visitAt = Math.floor(new Date(dtStr).getTime() / 1000);
-    } catch {
-      decisions.push({ id: visitId, date_time: dateTime, status: fbStatus, is_trial: true, client_id: clientFbId, has_dialogue: false, decision: 'skip', reason: 'ошибка даты' });
+    if (!clientFbId) {
+      decisions.push({ id: visitId, date_time: dateTime, status: fbStatus, is_trial: true, client_id: null, has_dialogue: false, decision: 'skip', reason: 'нет client_id' });
       continue;
     }
 
