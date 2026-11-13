@@ -102,6 +102,7 @@ Chrome-расширение: боковая панель рядом с чато�
 - `autoProfile` в панели: кнопка работает, но поля `height`/`weight`/`birthday` могут отсутствовать в Fitbase client API — проверить на реальных данных.
 
 ## Следующее
+- ЗАПИСАНО (13.11): токен EasyChat МЕНЯЕТСЯ; расширение шлёт его на сервер только при открытой боковой панели → на сервере устаревает («EasyChat token invalid»). ТЗ `docs/tasks/48-1-scriptolog-easychat-token-refresh.md` (отправка из background) — войдёт в общее ТЗ после проверки напоминаний.
 - **SQL** (если нет колонки): `ALTER TABLE script_reminders ADD COLUMN IF NOT EXISTS error text;`
 - **Добавить в Render env**: `EASYCHAT_DRY_RUN=true` (пока DRY), `SCRIPTOLOG_CONFIRM_DRY_RUN=true`.
 - **Добавить `/run/scriptolog-reminders` в cron-job.org**: каждые 5 мин, 07:00–22:00 Yekaterinburg (если уже стоит 15 мин — изменить на 5).
