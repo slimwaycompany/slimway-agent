@@ -41,6 +41,15 @@ Chrome-расширение: боковая панель рядом с чато�
 
 ## Сделано
 
+### 13.11.2026 · задача 48-2 · Журнал решений, поиск чата 40 стр, без имени, подтверждение один раз
+- **`src/jobs/scriptologReminders.ts`**:
+  - **decisions[]**: в ответ добавлен массив по каждой записи Fitbase (до фильтра пробных) с полями id, date_time, status, is_trial, client_id, has_dialogue, decision, reason. Позволяет увидеть, почему запись пропущена: не пробная / нет client_id / нет чата / 24ч прошло / уже стоит и т. д. Главная петля теперь обходит все `fitbaseVisits`, не только `trialVisits`.
+  - **Диагностика 2543**: «Infrashape» не входит в `TRIAL_SERVICE_NAMES` и `training.id !== 16` → `is_trial: false, reason: 'не пробная'` в decisions[]. Нужно добавить «Infrashape» в TRIAL_SERVICE_NAMES или расширить фильтр. Подтвердить после DRY-прогона.
+  - **Поиск диалога**: с 10 до 40 страниц (2000 диалогов), останавливается если `last_message.created_at` старше 90 дней.
+  - **Без имени (ч.3)**: шаблоны trial_24h только «Здравствуйте!» / «Сәлеметсіз бе!» без {Имя}; named-варианты удалены; `resolveClientName`/`pickFirstName` удалены.
+  - **Подтверждение один раз (ч.4)**: перед `addComment` проверяет существование `SCRIPT_CONFIRM:{visitId}` в watch_alerts — не пишет повторно. Согласие/отказ учитывается только если сообщение пришло ПОСЛЕ `v.created_at` из Fitbase.
+  - **REFUSAL_RE уточнён**: убрано `\bнет\b`; остались «не приду / не смогу / отмен / перенес / заболел / не получится / келе алмаймын».
+
 ### 13.11.2026 · задача 48-1 · /schedule-registration, токен EasyChat из background
 - **`src/jobs/scriptologReminders.ts`**: `/visit` → `/schedule-registration` (тот же fallback на окна при 400 что в syncVisits); добавлено логирование первой записи для отладки полей; текст тревоги токена уточнён.
 - **`extension/background.js`**: `trySendEasyToken(authToken, ecToken)` — отправляет токен на сервер если токен изменился или с последней отправки > 30 мин; обработчик `easychat-token` вызывает `trySendEasyToken` напрямую из background; обработчик `login` отправляет накопленный токен сразу при входе.

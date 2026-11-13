@@ -1,27 +1,21 @@
 import { supabase } from '../db/supabase';
 import { paginateGet } from '../http/fitbase';
 import { TRIAL_TRAINING_ID, isTrialServiceName } from '../config';
-
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 import {
   getEasyChatToken, listDialogues, scheduleMessage, deleteDelayed, addComment,
   DRY, EasyDialogue,
 } from '../core/easychat';
 
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+
 export const JOB_NAME = 'scriptolog-reminders';
 
 // next: add script_settings toggle for TRIAL_1H_ENABLED
-const TRIAL_1H_ENABLED = false;
+const TRIAL_1H_ENABLED = false; void TRIAL_1H_ENABLED;
 
-const YEK = 5 * 3600; // UTC+5 offset in seconds
+const YEK = 5 * 3600;
 
-function yekHour(ts: number): number {
-  return Math.floor((ts + YEK) / 3600) % 24;
-}
-
-function isoToUnix(iso: string): number {
-  return Math.floor(new Date(iso).getTime() / 1000);
-}
+function yekHour(ts: number): number { return Math.floor((ts + YEK) / 3600) % 24; }
 
 function yekDate(ts: number): string {
   const d = new Date((ts + YEK) * 1000);
@@ -29,7 +23,6 @@ function yekDate(ts: number): string {
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
 }
 
-// Format visit time as YYYYMMDDHHmm (YEK) for dedupe_key
 function visitTimeKey(visitAt: number): string {
   const d = new Date((visitAt + YEK) * 1000);
   const p = (n: number) => String(n).padStart(2, '0');
@@ -45,32 +38,28 @@ const KINDS: { kind: ReminderKind; offsetSec: number }[] = [
   { kind: 'trial_3h',  offsetSec: 10800 },
 ];
 
-// All text templates. {Имя} and {Время} are substituted in fillText().
+// Part 3: no-name templates only
 const T = {
   trial_24h: {
-    ru:  'Здравствуйте, {Имя}! 🌸 Напоминаем, завтра в {Время} ждём Вас на пробное посещение в SlimWay 💚 🎁 И не забудьте: замер InBody — Вам в подарок!',
-    kk:  'Сәлеметсіз бе, {Имя}! 🌸 Еске саламыз, ертең {Время} SlimWay-де сынақ сабағына күтеміз 💚 🎁 Ұмытпаңыз: InBody өлшеуі — Сізге сыйлық!',
-    ru0: 'Здравствуйте! 🌸 Напоминаем, завтра в {Время} ждём Вас на пробное посещение в SlimWay 💚 🎁 И не забудьте: замер InBody — Вам в подарок!',
-    kk0: 'Сәлеметсіз бе! 🌸 Еске саламыз, ертең {Время} SlimWay-де сынақ сабағына күтеміз 💚 🎁 Ұмытпаңыз: InBody өлшеуі — Сізге сыйлық!',
+    ru: 'Здравствуйте! 🌸 Напоминаем, завтра в {Время} ждём Вас на пробное посещение в SlimWay 💚 🎁 И не забудьте: замер InBody — Вам в подарок!',
+    kk: 'Сәлеметсіз бе! 🌸 Еске саламыз, ертең {Время} SlimWay-де сынақ сабағына күтеміз 💚 🎁 Ұмытпаңыз: InBody өлшеуі — Сізге сыйлық!',
   },
   trial_3h: {
-    ru:  'Здравствуйте! Через 3 часа начинается Ваше пробное посещение. Для подтверждения отправьте нам «+» 👇🏻🌸',
-    kk:  'Сәлеметсіз бе! 3 сағаттан кейін сынақ сабағыңыз басталады. Растау үшін бізге «+» жіберіңізші 👇🏻🌸',
+    ru: 'Здравствуйте! Через 3 часа начинается Ваше пробное посещение. Для подтверждения отправьте нам «+» 👇🏻🌸',
+    kk: 'Сәлеметсіз бе! 3 сағаттан кейін сынақ сабағыңыз басталады. Растау үшін бізге «+» жіберіңізші 👇🏻🌸',
   },
   trial_3h_eve: {
-    ru:  'Здравствуйте! Завтра в {Время} начинается Ваше пробное посещение. Для подтверждения отправьте нам «+» 👇🏻🌸',
-    kk:  'Сәлеметсіз бе! Ертең {Время} сынақ сабағыңыз басталады. Растау үшін бізге «+» жіберіңізші 👇🏻🌸',
+    ru: 'Здравствуйте! Завтра в {Время} начинается Ваше пробное посещение. Для подтверждения отправьте нам «+» 👇🏻🌸',
+    kk: 'Сәлеметсіз бе! Ертең {Время} сынақ сабағыңыз басталады. Растау үшін бізге «+» жіберіңізші 👇🏻🌸',
   },
 };
 
-// KZ alphabet markers
 const KZ_RE = /[әғқңөұүһі]/i;
 
-function fillText(tmpl: string, vars: { Имя?: string; Время: string }): string {
-  return tmpl.replace(/\{Имя\}/g, vars.Имя ?? '').replace(/\{Время\}/g, vars.Время);
+function fillText(tmpl: string, vars: { Время: string }): string {
+  return tmpl.replace(/\{Время\}/g, vars.Время);
 }
 
-// Detect KZ language from dialogue name + last incoming message
 function detectLang(dialogue: EasyDialogue): Lang {
   const haystack = [
     dialogue.name ?? '',
@@ -79,67 +68,78 @@ function detectLang(dialogue: EasyDialogue): Lang {
   return KZ_RE.test(haystack) ? 'kk' : 'ru';
 }
 
-// Compute trial_3h send_at with evening-shift for night window (22:00–07:00 YEK)
-// Returns { sendAt, isEvening } where isEvening=true means we use trial_3h_eve text
 function compute3hSendAt(visitAt: number, nowTs: number): { sendAt: number; isEvening: boolean } | null {
-  const raw = visitAt - 10800; // visitAt − 3h
+  const raw = visitAt - 10800;
   const h = yekHour(raw);
   if (h >= 7 && h < 22) {
-    // Normal window
-    if (raw <= nowTs) return null; // already past
+    if (raw <= nowTs) return null;
     return { sendAt: raw, isEvening: false };
   }
-  // Falls in night — shift to 21:00 previous evening (YEK)
-  // Find start of the YEK day that contains raw
   const rawYekDay = raw + YEK;
-  const rawYekMidnight = rawYekDay - (rawYekDay % 86400); // midnight UTC that is day-start in YEK
-  // 21:00 YEK = 16:00 UTC of that same day
-  let eve2100 = rawYekMidnight + (21 - 5) * 3600; // 21:00 YEK as UTC
-  if (eve2100 >= raw) {
-    // raw is before 21:00 → use previous day's 21:00
-    eve2100 -= 86400;
-  }
+  const rawYekMidnight = rawYekDay - (rawYekDay % 86400);
+  let eve2100 = rawYekMidnight + (21 - 5) * 3600;
+  if (eve2100 >= raw) eve2100 -= 86400;
   if (eve2100 <= nowTs) {
-    // 21:00 already passed → send ASAP if more than 1h before visit
     if (visitAt - nowTs > 3600) return { sendAt: nowTs + 60, isEvening: true };
     return null;
   }
   return { sendAt: eve2100, isEvening: true };
 }
 
-// Consent keywords for auto-confirm (unchanged from original)
 const CONSENT_RE = /^\s*(\+|да|ок|окей|приду|буду|хорошо|помню|иду|yes|иә|ия|келемін|барамын|жарайды)\s*$/i;
-const REFUSAL_RE = /\bнет\b|не приду|отменить|отмена|жоқ|кела алмаймын/i;
+// Part 4: specific refusal phrases only — loose "нет" excluded
+const REFUSAL_RE = /не приду|не смогу|отмен|перенес|заболел|не получится|келе алмаймын/i;
+
+interface Decision {
+  id: string;
+  date_time: string;
+  status: number;
+  is_trial: boolean;
+  client_id: number | null;
+  has_dialogue: boolean;
+  decision: string;
+  reason: string;
+}
+
+function checkTrial(v: Record<string, unknown>): boolean {
+  const event    = v.event    as Record<string, unknown> | null;
+  const training = event?.training as Record<string, unknown> | null;
+  const csRaw    = v.client_service  as Record<string, unknown> | string | null;
+  const ccRaw    = v.client_contract as Record<string, unknown> | string | null;
+  const nameOf   = (raw: typeof csRaw) => typeof raw === 'string' ? raw : raw != null ? (raw as Record<string, unknown>).name as string : null;
+  const abonement = nameOf(csRaw) ?? nameOf(ccRaw) ?? null;
+  return training?.id === TRIAL_TRAINING_ID || isTrialServiceName(training?.name as string | null) || isTrialServiceName(abonement);
+}
 
 export async function runScriptologReminders(): Promise<Record<string, unknown>> {
   const nowTs = Math.floor(Date.now() / 1000);
-
-  // Work only within 07:00–22:00 YEK
   const h = yekHour(nowTs);
   if (h < 7 || h >= 22) return { status: 'skipped', reason: 'outside 07-22 YEK' };
 
   const dry = DRY();
 
-  // ── Get EasyChat token ──────────────────────────────────────────────────────
   const token = await getEasyChatToken();
   if (!token) return { status: 'skipped', reason: 'no easychat_token in script_settings' };
 
-  // ── One-time cleanup: pending rows created in DRY (no real easychat_delayed_id) ──
+  // Cleanup dangling pending rows (created in DRY, no real delayed_id)
   await supabase.from('script_reminders')
     .delete()
     .eq('status', 'pending')
     .is('easychat_delayed_id', null);
 
-  // ── Load all EasyChat dialogues ─────────────────────────────────────────────
+  // ── Load dialogues: up to 40 pages, stop if last_message older than 90 days ──
   const dialogueMap = new Map<number, EasyDialogue>();
+  const cutoff90 = nowTs - 90 * 86400;
   try {
-    for (let page = 1; page <= 10; page++) {
+    for (let page = 1; page <= 40; page++) {
       const rows = await listDialogues(token, page, 50);
       if (!rows.length) break;
       for (const d of rows) {
         if (d.crm_client_id != null) dialogueMap.set(d.crm_client_id, d);
       }
       if (rows.length < 50) break;
+      const lastMsgAt = rows[rows.length - 1]?.last_message?.created_at;
+      if (lastMsgAt && new Date(lastMsgAt).getTime() / 1000 < cutoff90) break;
     }
   } catch (e) {
     const msg = String(e);
@@ -151,7 +151,7 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
     return { status: 'error', reason: msg };
   }
 
-  // ── Fetch upcoming trial visits from Fitbase /schedule-registration ─────────
+  // ── Fetch Fitbase visits ──────────────────────────────────────────────────
   const dateFrom = yekDate(nowTs);
   const dateTo   = yekDate(nowTs + 2 * 86400);
   let fitbaseVisits: Record<string, unknown>[] = [];
@@ -184,24 +184,14 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
       await sleep(400);
     }
   }
-  // Debug: log first record shape to verify field names
+
   if (fitbaseVisits.length > 0) {
     const s = fitbaseVisits[0] as Record<string, unknown>;
     const ev = s.event as Record<string, unknown> | null;
     console.log(`[${JOB_NAME}] sample: id=${s.id} status=${s.status} client_id=${s.client_id} date=${ev?.date} time=${ev?.time_start} training.id=${(ev?.training as Record<string,unknown>|null)?.id}`);
   }
 
-  const trialVisits = fitbaseVisits.filter(v => {
-    const event    = v.event    as Record<string, unknown> | null;
-    const training = event?.training as Record<string, unknown> | null;
-    const csRaw    = v.client_service  as Record<string, unknown> | string | null;
-    const ccRaw    = v.client_contract as Record<string, unknown> | string | null;
-    const nameOf   = (raw: typeof csRaw) => typeof raw === 'string' ? raw : raw != null ? (raw as Record<string, unknown>).name as string : null;
-    const abonement = nameOf(csRaw) ?? nameOf(ccRaw) ?? null;
-    return training?.id === TRIAL_TRAINING_ID || isTrialServiceName(training?.name as string | null) || isTrialServiceName(abonement);
-  });
-
-  // ── Load script_clients (name + lang from vars) ─────────────────────────────
+  // ── Load script_clients ───────────────────────────────────────────────────
   const { data: scriptClients } = await supabase
     .from('script_clients')
     .select('id, client_key, vars, fitbase_client_id')
@@ -217,22 +207,22 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
     }
   }
 
-  // ── Load fitbase_clients_cache for name fallback ────────────────────────────
-  const fbClientIds = trialVisits
+  // ── Load fitbase_clients_cache for names in alerts ────────────────────────
+  const fbClientIds = fitbaseVisits
     .map(v => (v as Record<string, unknown>).client_id)
     .filter((id): id is number => typeof id === 'number' && id > 0);
   const cacheMap = new Map<number, string>();
   if (fbClientIds.length) {
     const { data: cc } = await supabase
       .from('fitbase_clients_cache')
-      .select('fitbase_client_id,name')
+      .select('fitbase_client_id, name')
       .in('fitbase_client_id', fbClientIds);
     for (const c of (cc ?? [])) {
       if (c.name) cacheMap.set(Number(c.fitbase_client_id), String(c.name));
     }
   }
 
-  // ── Load existing scheduled reminders (future send_at) for dedup + orphan check ──
+  // ── Load existing scheduled reminders ────────────────────────────────────
   const { data: existingRows } = await supabase
     .from('script_reminders')
     .select('id, dedupe_key, status, easychat_delayed_id, easychat_dialogue_id, fitbase_visit_id')
@@ -261,39 +251,53 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
   }
 
   const stats = { scheduled: 0, cancelled: 0, failed: 0, skipped: 0 };
-  const planned: { name: string; kind: string; send_at: string; lang: string; has_dialogue: boolean }[] = [];
-
-  // Build expected dedupe keys for all current visits (to detect orphans)
+  const planned: { kind: string; send_at: string; lang: string }[] = [];
+  const decisions: Decision[] = [];
   const expectedKeys = new Set<string>();
+  let trialCount = 0;
 
-  for (const visit of trialVisits) {
+  for (const visit of fitbaseVisits) {
     const v = visit as Record<string, unknown>;
     const visitId = String(v.id ?? '');
-    if (!visitId) continue;
-
     const fbStatus = Number(v.status ?? -1);
     const event    = v.event as Record<string, unknown> | null;
     const dateStr  = event?.date as string | null;
     const timeRaw  = event?.time_start as string | null;
     const timeStr  = timeRaw ? String(timeRaw).slice(0, 5) : '';
     const clientFbId = v.client_id != null ? Number(v.client_id) : null;
+    const dateTime = `${dateStr ?? '?'} ${timeStr}`.trim();
 
-    if (!dateStr || !clientFbId) continue;
+    // Part 1: decisions for ALL records (before trial filter)
+    if (!checkTrial(v)) {
+      decisions.push({ id: visitId, date_time: dateTime, status: fbStatus, is_trial: false, client_id: clientFbId, has_dialogue: false, decision: 'skip', reason: 'не пробная' });
+      continue;
+    }
+    trialCount++;
+
+    if (!visitId) {
+      decisions.push({ id: '?', date_time: dateTime, status: fbStatus, is_trial: true, client_id: clientFbId, has_dialogue: false, decision: 'skip', reason: 'нет id' });
+      continue;
+    }
+    if (!dateStr || !clientFbId) {
+      decisions.push({ id: visitId, date_time: dateTime, status: fbStatus, is_trial: true, client_id: clientFbId, has_dialogue: false, decision: 'skip', reason: !dateStr ? 'нет даты' : 'нет client_id' });
+      continue;
+    }
 
     let visitAt: number;
     try {
       const dtStr = timeStr ? `${dateStr}T${timeStr}:00+05:00` : `${dateStr}T09:00:00+05:00`;
       visitAt = Math.floor(new Date(dtStr).getTime() / 1000);
-    } catch { continue; }
+    } catch {
+      decisions.push({ id: visitId, date_time: dateTime, status: fbStatus, is_trial: true, client_id: clientFbId, has_dialogue: false, decision: 'skip', reason: 'ошибка даты' });
+      continue;
+    }
 
     const dialogue = dialogueMap.get(clientFbId) ?? null;
 
-    // Build expected keys for this visit (regardless of status, to detect orphans)
     for (const { kind } of KINDS) {
       expectedKeys.add(`${kind}:${visitId}:${visitTimeKey(visitAt)}`);
     }
 
-    // ── Cancel all scheduled reminders for confirmed/refused/completed visits ──
     const terminal = fbStatus === 1 || fbStatus === 2 || fbStatus === 3 || fbStatus === 4;
     if (terminal) {
       const rows = scheduledByVisit.get(visitId) ?? [];
@@ -304,105 +308,123 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
         await supabase.from('script_reminders').update({ status: 'cancelled' }).eq('id', row.id);
         stats.cancelled++;
       }
-      continue; // no new reminders for this visit
+      decisions.push({ id: visitId, date_time: dateTime, status: fbStatus, is_trial: true, client_id: clientFbId, has_dialogue: dialogue !== null, decision: 'cancel', reason: `статус ${fbStatus}` });
+      continue;
     }
 
-    // ── Auto-confirm / auto-refusal check ──────────────────────────────────
+    // ── Auto-confirm / auto-refusal check ────────────────────────────────
     if (dialogue?.last_message?.operator_id === null && dialogue.last_message.message) {
       const msgText = dialogue.last_message.message.trim();
-      const clientName = resolveClientName(clientFbId, clientByFbId, cacheMap, dialogue);
+      const msgAt   = dialogue.last_message.created_at;
+      const visitCreatedAt = v.created_at as string | null;
+      // Part 4: consent/refusal only if message came AFTER the registration was created
+      const msgIsNew = !visitCreatedAt || !msgAt || new Date(msgAt) > new Date(visitCreatedAt);
       const CONFIRM_DRY = (process.env.SCRIPTOLOG_CONFIRM_DRY_RUN ?? 'true') === 'true';
+      const alertName = cacheMap.get(clientFbId) ?? `клиент #${clientFbId}`;
 
-      if (CONSENT_RE.test(msgText)) {
-        if (CONFIRM_DRY) {
-          console.log(`[${JOB_NAME}] CONFIRM DRY: ${clientName} visit=${visitId} replied "${msgText}"`);
-        } else {
-          await supabase.from('watch_alerts').upsert({
-            alert_key: `SCRIPT_CONFIRM:${visitId}`,
-            rule: 'SCRIPT_CONFIRM', level: 'info',
-            short_name: clientName,
-            title: 'Подтвердила пробное',
-            body: `${clientName} ответила «${msgText}» → пробное ${dateStr} ${timeStr}`,
-            meta: { fitbase_visit_id: visitId },
-          }, { onConflict: 'alert_key', ignoreDuplicates: true });
+      if (msgIsNew && CONSENT_RE.test(msgText)) {
+        // Part 4: write confirm alert + comment only once per record
+        const { data: existConfirm } = await supabase
+          .from('watch_alerts').select('id')
+          .eq('alert_key', `SCRIPT_CONFIRM:${visitId}`)
+          .maybeSingle();
+        if (!existConfirm) {
+          if (CONFIRM_DRY) {
+            console.log(`[${JOB_NAME}] CONFIRM DRY: ${alertName} visit=${visitId} replied "${msgText}"`);
+          } else {
+            await supabase.from('watch_alerts').upsert({
+              alert_key: `SCRIPT_CONFIRM:${visitId}`,
+              rule: 'SCRIPT_CONFIRM', level: 'info',
+              short_name: alertName,
+              title: 'Подтвердила пробное',
+              body: `${alertName} ответила «${msgText}» → пробное ${dateStr} ${timeStr}`,
+              meta: { fitbase_visit_id: visitId },
+            }, { onConflict: 'alert_key', ignoreDuplicates: true });
+            await addComment(token, dialogue.dialogue_id, `[СКРИПТОЛОГ] ✅ Подтвердила пробное на ${dateStr} ${timeStr}`)
+              .catch(e => console.error(`[${JOB_NAME}] addComment: ${e}`));
+          }
         }
-        await addComment(token, dialogue.dialogue_id, `[СКРИПТОЛОГ] ✅ Подтвердила пробное на ${dateStr} ${timeStr}`)
-          .catch(e => console.error(`[${JOB_NAME}] addComment: ${e}`));
-      } else if (REFUSAL_RE.test(msgText) && !CONFIRM_DRY) {
+      } else if (msgIsNew && REFUSAL_RE.test(msgText) && !CONFIRM_DRY) {
         await supabase.from('watch_alerts').upsert({
           alert_key: `SCRIPT_CANCEL:${visitId}`,
           rule: 'SCRIPT_CANCEL', level: 'warn',
-          short_name: clientName,
+          short_name: alertName,
           title: 'Отменила пробное',
-          body: `${clientName} ответила «${msgText}» → пробное ${dateStr} ${timeStr}`,
+          body: `${alertName} ответила «${msgText}» → пробное ${dateStr} ${timeStr}`,
           meta: { fitbase_visit_id: visitId },
         }, { onConflict: 'alert_key', ignoreDuplicates: true });
       }
     }
 
-    // ── Schedule reminders ──────────────────────────────────────────────────
+    // ── No dialogue: failed row + alert ──────────────────────────────────
     if (!dialogue) {
-      // Create failed reminder and alert if not already done
-      const hasFailedRow = (scheduledByVisit.get(visitId) ?? []).length === 0;
       const { data: existFailed } = await supabase
-        .from('script_reminders')
-        .select('id')
+        .from('script_reminders').select('id')
         .eq('fitbase_visit_id', visitId)
         .eq('status', 'failed')
         .maybeSingle();
       if (!existFailed) {
-        const clientName = resolveClientName(clientFbId, clientByFbId, cacheMap, null);
-        const dedupeKey = `trial_24h:${visitId}:no_dial`;
+        const alertName = cacheMap.get(clientFbId) ?? `клиент #${clientFbId}`;
         await supabase.from('script_reminders').insert({
           client_key: `fitbase:${clientFbId}`,
           kind: 'trial_24h',
           status: 'failed',
           error: 'нет диалога',
-          dedupe_key: dedupeKey,
+          dedupe_key: `trial_24h:${visitId}:no_dial`,
           fitbase_visit_id: visitId,
-          due_at: new Date(visitAt * 1000).toISOString(),
+          due_at:  new Date(visitAt * 1000).toISOString(),
           send_at: new Date(visitAt * 1000).toISOString(),
           message_text: '',
         });
         await supabase.from('watch_alerts').upsert({
           alert_key: `SCRIPT_NO_DIAL:${visitId}`,
           rule: 'SCRIPT_NO_DIAL', level: 'important',
-          short_name: clientName,
+          short_name: alertName,
           title: 'Нет чата для напоминания',
-          body: `Не нашёл чат ${clientName} — напомните о пробном ${dateStr} ${timeStr} вручную`,
+          body: `Не нашёл чат ${alertName} — напомните о пробном ${dateStr} ${timeStr} вручную`,
           meta: { fitbase_visit_id: visitId },
         }, { onConflict: 'alert_key', ignoreDuplicates: true });
         stats.failed++;
       }
-      void hasFailedRow;
+      decisions.push({ id: visitId, date_time: dateTime, status: fbStatus, is_trial: true, client_id: clientFbId, has_dialogue: false, decision: 'failed', reason: 'нет чата' });
       continue;
     }
 
     const sc = clientByFbId.get(clientFbId);
     const vars = sc?.vars ?? {};
     const lang = (vars['lang'] as Lang | undefined) ?? detectLang(dialogue);
-    const clientName = resolveClientName(clientFbId, clientByFbId, cacheMap, dialogue);
+
+    // ── Schedule reminders ────────────────────────────────────────────────
+    const kindReasons: string[] = [];
 
     for (const { kind, offsetSec } of KINDS) {
       const dedupeKey = `${kind}:${visitId}:${visitTimeKey(visitAt)}`;
 
-      // Dedup: skip if already scheduled or sent
-      if (scheduledMap.has(dedupeKey)) { stats.skipped++; continue; }
+      if (scheduledMap.has(dedupeKey)) {
+        kindReasons.push(`${kind}: уже стоит`);
+        stats.skipped++;
+        continue;
+      }
 
-      // Compute send_at
       let sendAt: number;
       let isEvening = false;
       let msgText: string;
 
       if (kind === 'trial_24h') {
         sendAt = visitAt - offsetSec;
-        if (sendAt <= nowTs) { stats.skipped++; continue; } // 24h window already passed
-        const tmpl = clientName ? T.trial_24h[lang] : T.trial_24h[`${lang}0` as keyof typeof T.trial_24h];
-        msgText = fillText(tmpl, { Имя: clientName ?? undefined, Время: timeStr });
+        if (sendAt <= nowTs) {
+          kindReasons.push(`${kind}: 24ч прошло`);
+          stats.skipped++;
+          continue;
+        }
+        msgText = fillText(T.trial_24h[lang], { Время: timeStr });
       } else {
-        // trial_3h
         const r3h = compute3hSendAt(visitAt, nowTs);
-        if (!r3h) { stats.skipped++; continue; }
+        if (!r3h) {
+          kindReasons.push(`${kind}: 3ч не помещается`);
+          stats.skipped++;
+          continue;
+        }
         sendAt = r3h.sendAt;
         isEvening = r3h.isEvening;
         msgText = fillText(
@@ -411,12 +433,17 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
         );
       }
 
-      // Never send after visit time
-      if (sendAt >= visitAt) { stats.skipped++; continue; }
+      if (sendAt >= visitAt) {
+        kindReasons.push(`${kind}: sendAt >= visitAt`);
+        stats.skipped++;
+        continue;
+      }
 
-      planned.push({ name: clientName ?? '(нет имени)', kind, send_at: new Date(sendAt * 1000).toISOString(), lang, has_dialogue: true });
+      const sendAtIso = new Date(sendAt * 1000).toISOString();
+      kindReasons.push(`${kind}: запланировано на ${sendAtIso}`);
+      planned.push({ kind, send_at: sendAtIso, lang });
 
-      if (dry) continue; // DRY: collect plan, don't write
+      if (dry) continue;
 
       let delayedId = 0;
       try {
@@ -425,7 +452,7 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
         const msg = String(e);
         if (msg.includes('auth error 401') || msg.includes('auth error 403')) {
           await upsertTokenAlert(nowTs);
-          return { status: 'error', reason: 'EasyChat token invalid', ...stats, planned, dry };
+          return { status: 'error', reason: 'EasyChat token invalid', ...stats, planned, dry, decisions };
         }
         console.error(`[${JOB_NAME}] scheduleMessage ${kind} visit=${visitId}: ${msg}`);
         stats.skipped++;
@@ -438,8 +465,8 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
         status: 'scheduled',
         lang,
         dedupe_key: dedupeKey,
-        due_at:  new Date(sendAt * 1000).toISOString(),
-        send_at: new Date(sendAt * 1000).toISOString(),
+        due_at:  sendAtIso,
+        send_at: sendAtIso,
         message_text: msgText,
         fitbase_visit_id: visitId,
         easychat_delayed_id: delayedId || null,
@@ -454,25 +481,29 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
         stats.scheduled++;
       }
     }
+
+    decisions.push({
+      id: visitId, date_time: dateTime, status: fbStatus, is_trial: true,
+      client_id: clientFbId, has_dialogue: true,
+      decision: kindReasons.some(r => r.includes('запланировано')) ? 'schedule' : 'skip',
+      reason: kindReasons.join('; '),
+    });
   }
 
-  // ── Cancel orphan scheduled rows (visit gone or time changed) ───────────────
+  // ── Cancel orphan scheduled rows (visit gone or time changed) ─────────────
   for (const [dedupeKey, row] of scheduledMap) {
     if (expectedKeys.has(dedupeKey)) continue;
-    // This scheduled reminder no longer matches any current trial visit
-    if (row.easychat_delayed_id) {
-      const dial = row.easychat_dialogue_id != null ? { dialogue_id: row.easychat_dialogue_id } : null;
-      if (dial) {
-        try { await deleteDelayed(token, row.easychat_delayed_id); } catch { /* noop */ }
-      }
+    if (row.easychat_delayed_id && row.easychat_dialogue_id != null) {
+      try { await deleteDelayed(token, row.easychat_delayed_id); } catch { /* noop */ }
     }
     await supabase.from('script_reminders').update({ status: 'cancelled' }).eq('id', row.id);
     stats.cancelled++;
   }
 
   return {
-    trialVisits: trialVisits.length,
+    trialVisits: trialCount,
     planned,
+    decisions,
     scheduled: stats.scheduled,
     cancelled: stats.cancelled,
     failed: stats.failed,
@@ -480,39 +511,6 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
     dry,
     dialogues: dialogueMap.size,
   };
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function resolveClientName(
-  clientFbId: number,
-  clientByFbId: Map<number, { vars: Record<string, string> }>,
-  cacheMap: Map<number, string>,
-  dialogue: EasyDialogue | null,
-): string | null {
-  // 1. vars.Имя from scriptolog profile
-  const varsName = clientByFbId.get(clientFbId)?.vars?.['Имя'];
-  if (varsName && varsName.trim()) return varsName.trim();
-  // 2. fitbase_clients_cache name
-  const cacheName = cacheMap.get(clientFbId);
-  if (cacheName) {
-    const name = pickFirstName(cacheName, dialogue?.name);
-    if (name) return name;
-  }
-  return null;
-}
-
-function pickFirstName(fio: string, dialogueName?: string): string | null {
-  const words = fio.split(/\s+/).filter(w => w && !/^\d/.test(w) && !/^[+7]/.test(w));
-  if (!words.length) return null;
-  if (words.length === 1) return words[0];
-  if (dialogueName) {
-    const dLow = dialogueName.toLowerCase();
-    const hit = words.find(w => dLow.includes(w.toLowerCase()));
-    if (hit) return hit;
-  }
-  // Fitbase usually sends "Surname Name" — take second word
-  return words[1];
 }
 
 async function upsertTokenAlert(nowTs: number): Promise<void> {
