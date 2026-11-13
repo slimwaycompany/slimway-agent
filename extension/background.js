@@ -2,6 +2,22 @@
 
 const PANEL_PAGE = 'https://slimway-agent.onrender.com';
 
+// Отправить EasyChat-токен на сервер если он изменился или не отправлялся > 30 мин
+function trySendEasyToken(authToken, ecToken) {
+  if (!authToken || !ecToken) return;
+  chrome.storage.local.get(['easychatTokenSent', 'easychatTokenSentAt'], (data) => {
+    const stale = !data.easychatTokenSentAt || (Date.now() - data.easychatTokenSentAt > 30 * 60 * 1000);
+    if (data.easychatTokenSent === ecToken && !stale) return;
+    fetch(PANEL_PAGE + '/api/scriptolog/easychat-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      body: JSON.stringify({ token: ecToken }),
+    }).then(resp => {
+      if (resp.ok) chrome.storage.local.set({ easychatTokenSent: ecToken, easychatTokenSentAt: Date.now() });
+    }).catch(() => {}); // retry on next token message
+  });
+}
+
 // Открывать боковую панель кликом по иконке
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
@@ -60,18 +76,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
 
-  // От iframe страницы (через sidepanel.js) → сохранить токен
+  // От iframe страницы (через sidepanel.js) → сохранить токен и отправить отложенный EasyChat-токен
   if (msg.type === 'login') {
     chrome.storage.local.set({ authToken: msg.token });
+    // Если EasyChat-токен накопился пока панель была закрыта — отправить сразу
+    chrome.storage.local.get(['easychatToken'], (data) => {
+      if (data.easychatToken) trySendEasyToken(msg.token, data.easychatToken);
+    });
     return;
   }
 
-  // EasyChat token extracted from iframe URL by easychat.js
+  // EasyChat token extracted from iframe URL by easychat.js (on load + every 10 min)
   if (msg.type === 'easychat-token') {
-    chrome.storage.local.get(['easychatToken'], (data) => {
-      if (data.easychatToken !== msg.token) {
-        chrome.storage.local.set({ easychatToken: msg.token });
-      }
+    chrome.storage.local.get(['authToken', 'easychatToken'], (data) => {
+      if (data.easychatToken !== msg.token) chrome.storage.local.set({ easychatToken: msg.token });
+      if (data.authToken) trySendEasyToken(data.authToken, msg.token);
+      // else: no session yet — will send on login
     });
     return;
   }

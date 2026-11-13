@@ -399,14 +399,26 @@ export function buildScriptologRouter(): Router {
       res.status(400).json({ error: 'token required' }); return;
     }
     try {
-      const { error } = await supabase.from('script_settings').upsert(
-        { key: 'easychat_token', value: token, updated_at: new Date().toISOString(), updated_by: sess.display_name },
-        { onConflict: 'key' },
-      );
-      if (error) { res.status(500).json({ error: error.message }); return; }
-      const updatedAt = new Date().toISOString();
-      console.log(`[scriptolog] easychat_token updated by ${sess.display_name} at ${updatedAt}`);
-      res.json({ ok: true, updated_at: updatedAt });
+      const now = new Date().toISOString();
+      const { data: existing } = await supabase.from('script_settings').select('value').eq('key', 'easychat_token').maybeSingle();
+      let dbError: { message: string } | null = null;
+      if (existing?.value === token) {
+        // Same token — only refresh updated_at, don't overwrite value
+        const { error } = await supabase.from('script_settings')
+          .update({ updated_at: now, updated_by: sess.display_name })
+          .eq('key', 'easychat_token');
+        dbError = error;
+        console.log(`[scriptolog] easychat_token refreshed (unchanged) by ${sess.display_name}`);
+      } else {
+        const { error } = await supabase.from('script_settings').upsert(
+          { key: 'easychat_token', value: token, updated_at: now, updated_by: sess.display_name },
+          { onConflict: 'key' },
+        );
+        dbError = error;
+        console.log(`[scriptolog] easychat_token updated by ${sess.display_name}`);
+      }
+      if (dbError) { res.status(500).json({ error: (dbError as { message: string }).message }); return; }
+      res.json({ ok: true, updated_at: now });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

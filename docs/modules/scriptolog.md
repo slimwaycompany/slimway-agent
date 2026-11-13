@@ -41,6 +41,15 @@ Chrome-расширение: боковая панель рядом с чато�
 
 ## Сделано
 
+### 13.11.2026 · задача 48-1 · /schedule-registration, токен EasyChat из background
+- **`src/jobs/scriptologReminders.ts`**: `/visit` → `/schedule-registration` (тот же fallback на окна при 400 что в syncVisits); добавлено логирование первой записи для отладки полей; текст тревоги токена уточнён.
+- **`extension/background.js`**: `trySendEasyToken(authToken, ecToken)` — отправляет токен на сервер если токен изменился или с последней отправки > 30 мин; обработчик `easychat-token` вызывает `trySendEasyToken` напрямую из background; обработчик `login` отправляет накопленный токен сразу при входе.
+- **`extension/easychat.js`**: `setInterval(extractAndSendToken, 10 мин)` — периодическое обновление.
+- **`extension/sidepanel.js`**: убраны `sendEasyTokenToServer` и ветка `changes.easychatToken` — токен теперь идёт через background, не через sidepanel.
+- **`src/http/scriptolog.ts`**: POST easychat-token: если тот же токен — только `updated_at`, не перезаписывать value; лог без самого токена.
+- **`extension/manifest.json`**: version 1.0.1.
+- **`extension/README.md`**: обновлён раздел EasyChat-токен.
+
 ### 13.11.2026 · задача 48 · Напоминания пробных: фикс DRY, статусы, имя, ночной перенос
 - **`src/jobs/scriptologReminders.ts`** полный рерайт:
   - **DRY**: не пишем строки в `script_reminders`; возвращаем `planned[]` в ответе (имя, вид, send_at, язык, есть ли диалог).
@@ -54,6 +63,8 @@ Chrome-расширение: боковая панель рядом с чато�
   - **Нет диалога**: `failed` строка + `watch_alert SCRIPT_NO_DIAL` (один раз на запись).
   - **Токен 401/403**: `watch_alert SCRIPT_TOKEN_ERR` один раз в сутки → job стоп.
   - **Ответ**: `{ trialVisits, planned, scheduled, cancelled, failed, skipped, dry, dialogues }`.
+  - **Эндпоинт Fitbase**: `/schedule-registration` (не `/visit`, которого нет).
+  - **Токен EasyChat**: обновляется из background при каждом открытии чата и раз в 10 мин; не зависит от открытой боковой панели.
 
 ### 06.11.2026 · задача 41 · EasyChat-интеграция, автопрофиль, умные напоминания
 

@@ -1,6 +1,8 @@
 import { supabase } from '../db/supabase';
 import { paginateGet } from '../http/fitbase';
 import { TRIAL_TRAINING_ID, isTrialServiceName } from '../config';
+
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 import {
   getEasyChatToken, listDialogues, scheduleMessage, deleteDelayed, addComment,
   DRY, EasyDialogue,
@@ -149,15 +151,44 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
     return { status: 'error', reason: msg };
   }
 
-  // ── Fetch upcoming trial visits from Fitbase ────────────────────────────────
+  // ── Fetch upcoming trial visits from Fitbase /schedule-registration ─────────
+  const dateFrom = yekDate(nowTs);
+  const dateTo   = yekDate(nowTs + 2 * 86400);
   let fitbaseVisits: Record<string, unknown>[] = [];
   try {
-    const dateFrom = yekDate(nowTs);
-    const dateTo   = yekDate(nowTs + 2 * 86400);
-    fitbaseVisits = await paginateGet('/visit', { date_from: dateFrom, date_to: dateTo, page_size: 100 }, JOB_NAME);
+    fitbaseVisits = await paginateGet(
+      '/schedule-registration',
+      { date_from: dateFrom, date_to: dateTo, page_size: 100 },
+      JOB_NAME,
+    );
   } catch (e) {
-    console.error(`[${JOB_NAME}] Fitbase /visit fetch failed: ${e}`);
-    return { status: 'error', reason: String(e) };
+    if (!/→ 400 /.test((e as Error).message)) {
+      console.error(`[${JOB_NAME}] Fitbase /schedule-registration failed: ${e}`);
+      return { status: 'error', reason: String(e) };
+    }
+    // 400: split into daily windows (mirrors syncVisits fallback)
+    const seen = new Set<string>();
+    let cur = nowTs;
+    const end = nowTs + 2 * 86400;
+    while (cur < end) {
+      const wFrom = yekDate(cur);
+      const wTo   = yekDate(Math.min(cur + 86400, end));
+      try {
+        const chunk = await paginateGet('/schedule-registration', { date_from: wFrom, date_to: wTo, page_size: 100 }, JOB_NAME);
+        for (const item of chunk) {
+          const id = String((item as Record<string, unknown>).id);
+          if (!seen.has(id)) { seen.add(id); fitbaseVisits.push(item); }
+        }
+      } catch (e2) { console.error(`[${JOB_NAME}] window ${wFrom}→${wTo}: ${e2}`); }
+      cur += 86400;
+      await sleep(400);
+    }
+  }
+  // Debug: log first record shape to verify field names
+  if (fitbaseVisits.length > 0) {
+    const s = fitbaseVisits[0] as Record<string, unknown>;
+    const ev = s.event as Record<string, unknown> | null;
+    console.log(`[${JOB_NAME}] sample: id=${s.id} status=${s.status} client_id=${s.client_id} date=${ev?.date} time=${ev?.time_start} training.id=${(ev?.training as Record<string,unknown>|null)?.id}`);
   }
 
   const trialVisits = fitbaseVisits.filter(v => {
@@ -490,7 +521,7 @@ async function upsertTokenAlert(nowTs: number): Promise<void> {
     alert_key: `SCRIPT_TOKEN_ERR:${today}`,
     rule: 'SCRIPT_TOKEN', level: 'urgent',
     title: 'Токен EasyChat устарел',
-    body: 'Токен EasyChat устарел — откройте ФитБейс Чат',
+    body: 'Токен EasyChat устарел. Откройте ФитБейс Чат в браузере с расширением Скриптолог',
     meta: { date: today },
   }, { onConflict: 'alert_key', ignoreDuplicates: true });
 }

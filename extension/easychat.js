@@ -145,6 +145,8 @@
     checkClientChange();
     checkChatReady();
     watchMessages();
+    // Resend token every 10 min so server stays up to date if token rotates
+    setInterval(extractAndSendToken, 10 * 60 * 1000);
     const observer = new MutationObserver(onMutation);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
   }
