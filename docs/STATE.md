@@ -14,7 +14,7 @@
 | Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 04.11.2026 | task 35: camera fix, barcode-detector, ClientPage mobile (numbered points, zone list, mini-nav) |
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 04.11.2026 | task 35: аккордеон групп на мобиле (openGroups, localStorage) |
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 12.11.2026 | task 52: шаблоны слайдов (result1/result2/image), слоты клиента/текста, редактор шаблонов |
-| Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 06.11.2026 | Задача 41: EasyChat-клиент, автопрофиль, умные напоминания из Fitbase, парсер ответов, материалы, анкета |
+| Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 13.11.2026 | Задача 48: напоминания пробных — DRY без записи, только неподтверждённым, имя, ночной перенос 3ч |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | ⚪ | 28.10.2026 | Требования собраны, следующий этап после кассы |

@@ -17,7 +17,7 @@ Chrome-расширение: боковая панель рядом с чато�
 - `script_promo` — текущая акция (name, valid_from/to, is_active, rule_text, credit_text)
 - `script_promo_packages` — пакеты (kind: `vacu|cross`; main_phase: `vacu_fixed|choice`; payment_methods jsonb; goals jsonb; is_archived)
 - `script_materials` — ресурсы (key: 7 фиксированных значений; kind: `video|file|link`; url; label); bucket `scriptolog-materials`
-- `script_reminders` — напоминания (kind: 9 значений; status: `pending|sent|skipped|cancelled`; scheduled_at; sent_at)
+- `script_reminders` — напоминания; status: `pending|scheduled|sent|skipped|cancelled|failed`; kind: 9 значений (trial_24h/trial_3h/trial_1h/after_trial_*/silent_*/material); dedupe_key: `kind:visit_id:YYYYMMDDHHmm`; колонки: client_key, kind, status, lang, dedupe_key, due_at, send_at, message_text, fitbase_visit_id, easychat_delayed_id, easychat_dialogue_id, error
 
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -40,6 +40,20 @@ Chrome-расширение: боковая панель рядом с чато�
 Задача 34 (04.11.2026): Скриптолог открывается в iframe расширения Chrome. Вёрстка `/scriptolog` не затрагивалась. Расширение использует фиксированную ширину боковой панели браузера — адаптив здесь не актуален.
 
 ## Сделано
+
+### 13.11.2026 · задача 48 · Напоминания пробных: фикс DRY, статусы, имя, ночной перенос
+- **`src/jobs/scriptologReminders.ts`** полный рерайт:
+  - **DRY**: не пишем строки в `script_reminders`; возвращаем `planned[]` в ответе (имя, вид, send_at, язык, есть ли диалог).
+  - **Статусы**: реально созданное в EasyChat → `scheduled`; дедуп только по `scheduled|sent`; одноразовая чистка `pending` без `easychat_delayed_id` при старте.
+  - **Только неподтверждённым**: `status 1/2/3/4` → отменить все `scheduled` → cancelled → `continue`.
+  - **Пропавшие/изменённые визиты**: `dedupe_key = kind:visit_id:YYYYMMDDHHmm` (включает время визита); orphan scheduled-строки (не в expected set текущих визитов) → cancel in EasyChat → cancelled.
+  - **trial_1h выключен**: константа `TRIAL_1H_ENABLED = false`.
+  - **trial_3h ночной перенос**: `visitAt − 3h` попадает в 22:00–07:00 YEK → отправить в 21:00 вечером предыдущего дня с вечерним текстом; если 21:00 уже прошло → немедленно если до визита > 1ч.
+  - **Имя**: 1) `script_clients.vars.Имя`; 2) `fitbase_clients_cache.name` → первое слово совпадающее с именем диалога, иначе второе слово; 3) без имени — «Здравствуйте!» вариант.
+  - **Язык**: `vars.lang`; если нет — KZ-детект по буквам әғқңөұүһі в имени диалога + последнем входящем.
+  - **Нет диалога**: `failed` строка + `watch_alert SCRIPT_NO_DIAL` (один раз на запись).
+  - **Токен 401/403**: `watch_alert SCRIPT_TOKEN_ERR` один раз в сутки → job стоп.
+  - **Ответ**: `{ trialVisits, planned, scheduled, cancelled, failed, skipped, dry, dialogues }`.
 
 ### 06.11.2026 · задача 41 · EasyChat-интеграция, автопрофиль, умные напоминания
 
@@ -80,14 +94,19 @@ Chrome-расширение: боковая панель рядом с чато�
 - Расширение MV3 (manifest, sidepanel, easychat.js, fitbase.js, selectors.js), страница `/scriptolog`, Bearer-вход, история клиенток, привязка телефона, определение канала.
 
 ## Открытые баги
+- (13.11, задача 48) Колонка `error` в `script_reminders` предполагается существующей (нужна для `failed`-строк); если её нет — insert при отсутствии диалога упадёт в лог. SQL: `ALTER TABLE script_reminders ADD COLUMN IF NOT EXISTS error text;`
 - (06.11, после 41) Панель почти не изменилась: добавлены только кнопки «Автопрофиль», «Анкета → EasyChat», «Напоминания». Причины: (1) `setVar` сохраняет поле событием `fact` → в `facts`, а при открытии чата панель читает `vars` → имя и остальное «забываются»; (2) `onChatMessage` не вызывает `/api/scriptolog/parse` — входящие не разбираются; (3) автопрофиль только по кнопке, не при открытии чата; (4) подтверждение в панели ловит только «+/да/ок» целиком.
-- (06.11) В логах Render: `[crm-sync] visits error: GET /schedule-registration … date_from=2026-10-30 → 400 «Необходимо заполнить Date To»` — синк `fitbase_visits` сломан (после задачи 40-2, `syncVisits date_from 7д`, модуль Контроль/Отчёты). От него зависят свободные окна, автоподстановка записи и анкета.
 - EasyChat-токен: расширение извлекает первый 18–24 симв. параметр из URL фрейма; если токен в другом формате — нужна корректировка регулярки в `easychat.js`.
 - Fitbase booking confirm API не верифицирован — `SCRIPTOLOG_CONFIRM_DRY_RUN=true` пока не менять (см. `docs/reports/fitbase-registration-confirm-probe.md`).
 - Парсер `/api/scriptolog/parse` реализован, но не вызывается автоматически — нужна интеграция в панель (кнопка «Разобрать ответ» или автовызов при получении входящего сообщения).
 - `autoProfile` в панели: кнопка работает, но поля `height`/`weight`/`birthday` могут отсутствовать в Fitbase client API — проверить на реальных данных.
 
 ## Следующее
+- **SQL** (если нет колонки): `ALTER TABLE script_reminders ADD COLUMN IF NOT EXISTS error text;`
+- **Добавить в Render env**: `EASYCHAT_DRY_RUN=true` (пока DRY), `SCRIPTOLOG_CONFIRM_DRY_RUN=true`.
+- **Добавить `/run/scriptolog-reminders` в cron-job.org**: каждые 5 мин, 07:00–22:00 Yekaterinburg (если уже стоит 15 мин — изменить на 5).
+- После проверки DRY-прогона на проде — переключить `EASYCHAT_DRY_RUN=false`.
+- `TRIAL_1H_ENABLED = false` вынести в `script_settings` (добавить key/value).
 - Добавить `/run/scriptolog-reminders` в cron-job.org (каждые **5 мин**, 07:00–22:00 Yekaterinburg); изменить если уже стоит 15 мин.
 - Добавить в Render env: `EASYCHAT_DRY_RUN=true`, `SCRIPTOLOG_CONFIRM_DRY_RUN=true`.
 - Проверить на живом расширении: EasyChat-токен извлекается и попадает в настройки, `EASYCHAT_DRY_RUN=true` → ожидать лог в `job_runs`.
