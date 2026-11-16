@@ -6,20 +6,20 @@
 Вход сотрудников, личные логины, роли и права, данные сотрудников. Сейчас — вход в рабочее окно; дальше — окно сотрудников для CRM (консультанты в расписании, кассиры, менеджеры).
 
 ## Где код
-- `src/http/auth.ts` — `makeToken`, `getSession`, `requireAuth`, `requireAdmin`; `getSessionWithPerms` (кэш 30 с); `checkLoginRate`/`writeLoginLog` (DB-based rate limiter); cookie `swtoken`; Bearer для iframe расширения
-- `src/http/staff.ts` — CRUD сотрудников + логи входов; все маршруты `/api/staff/*`
-- `src/core/permissions.ts` — `PERM_CATALOG` (справочник блоков и вкладок); `DEFAULT_MANAGER_PERMISSIONS`
-- `src/http/shell.ts` — страница `/login`; вход с `checkLoginRate`/`writeLoginLog`; `/kviz/api/me` возвращает `perms`; инъекция `window.SW_PERMS` в оболочку
-- `src/http/kviz.ts` — `/kviz/api/me` возвращает `perms`
-- `src/http/scriptolog.ts` — Bearer-токен (вход в панели расширения, cookie в iframe ненадёжны)
-- `public/shell-app.js` — фильтрация вкладок по `window.SW_PERMS` (canTab, applyPermissions)
+- `src/http/auth.ts` — `makeToken`, `getSession`, `requireAuth`, `requireAdmin`; `getSessionWithPerms` (кэш 30 с); `requirePerm` (type predicate); `can`, `seeAll`; `invalidatePositionCache`; cookie `swtoken`; Bearer для iframe
+- `src/http/staff.ts` — CRUD сотрудников + должностей + логи входов; `/api/staff/*` и `/api/positions/*`; `requireStaffAccess` (settings.staff для не-админа); `permsNotWider`, `auditLog`
+- `src/core/permissions.ts` — `PERM_CATALOG` (10 блоков, формат `block.row`); `POSITION_PRESETS` (7 должностей); `TAB_BLOCK`; хелперы `e()`/`v()`
+- `src/index.ts` — `seedPositionPresets()` при старте; `cleanLegacyPermKeys()` убирает старые `tab:*`/`cashier:*`
+- `src/http/shell.ts` — `/login`; вход→`app_login_log`/`last_login_at`; `window.SW_PERMS`; вкладка «Настройки» видна если есть `settings.*`
+- `public/shell-app.js` — `TAB_BLOCK`, `canTab()` (префиксный поиск по блоку), `applyPermissions()`
 - `kviz/client/src/lib/permContext.tsx` — React `PermContext`, `usePerm()`, `useSeeAll()`
-- `kviz/client/src/pages/crm/StaffPage.tsx` — UI управления сотрудниками (список, профиль, пароль, права, журнал)
-- `kviz/client/src/pages/crm/SettingsPage.tsx` — раздел «Сотрудники» добавлен первым в NAV
+- `kviz/client/src/pages/crm/StaffPage.tsx` — 2 вкладки: Сотрудники | Должности; `PermTree` (3-сегментный switcher Нет/Просмотр/Изменение); `PositionDetail`; custom_permissions toggle
 
 ## Таблицы
-- `app_users` — id, login, display_name, role, password_hash, is_active, fired_at, auth_version, last_login_at, phone, created_at, updated_at; функции `app_check_login` (возвращает auth_version), `app_create_user`, `app_set_password` (+1 к auth_version)
-- `app_user_permissions` — user_id, perm_key (напр. `tab:cashier`), level (`view`/`edit`), see_all
+- `app_users` — добавлены: `position_id` (FK→app_positions), `custom_permissions` bool, `branch_id` uuid, `all_branches` bool
+- `app_user_permissions` — user_id, perm_key (формат `block.row`), level (`view`/`edit`), see_all
+- `app_positions` — id, code (unique nullable), name (unique), description, sort, is_archived
+- `app_position_permissions` — (position_id, perm_key) PK, level, see_all, updated_at
 - `app_login_log` — id, user_id (nullable), login, success, reason, ip, user_agent, created_at
 
 ## Ключевые решения
@@ -44,7 +44,20 @@
   - Удаление: физически — только если за сотрудником нет записей, иначе «Уволен» (вход закрыт, история остаётся). Нельзя выключить себя и последнего админа.
   - Смена пароля или увольнение сразу закрывают все входы сотрудника (версия входа в токене), включая скриптолог.
 
+- **Пerm-ключи формата `block.row` (task 56):** `manager.tasks`, `clients.phone`, `kassa.sale` и т.д. Для новой вкладки/отчёта/действия — ОБЯЗАТЕЛЬНО добавить в `PERM_CATALOG` (src/core/permissions.ts) и в пресеты нужных должностей. Серверные проверки: `const session = await getSessionWithPerms(req); if (!requirePerm(req, res, 'block.row', 'edit', session)) return;` (тип `session` автоматически сужается до `ExtendedSession` после проверки).
+
 ## Сделано
+### 16.11.2026 · (task 56) · должности, права по каждой вкладке и отчёту, особые действия
+- **permissions.ts** переписан: `PERM_CATALOG` — 10 блоков (manager/agent/schedule/clients/funnel/kassa/kviz/measure/reports/settings), ключи формата `block.row`, строки-действия (kind='action'), `hasSeeAll`. `POSITION_PRESETS` — 7 должностей с полными наборами прав.
+- **auth.ts**: `ExtendedSession` добавлены `branch_id`/`all_branches`. `getSessionWithPerms` разрешает права: admin→всё, custom_permissions=false→из app_position_permissions, true→из app_user_permissions. `requirePerm` теперь type predicate (`session is ExtendedSession`). `invalidatePositionCache` — сброс кэша всех пользователей должности.
+- **index.ts**: `seedPositionPresets()` — при старте заполняет права должностей если пусто; `cleanLegacyPermKeys()` — удаляет старые ключи `tab:*`/`cashier:*`.
+- **shell.ts**: вкладка «Настройки» видна не только admin, но и всем со `settings.*` правами.
+- **shell-app.js**: `TAB_BLOCK`, `canTab()` — префиксный поиск по блоку вместо точного ключа.
+- **staff.ts** переписан: CRUD должностей (`/api/positions/*`, admin-only), CRUD сотрудников с `requireStaffAccess` (settings.staff для не-админа, но с ограничениями: только свой филиал, не трогает админов, не шире своих прав). `fire` и `logout-all` бампят auth_version.
+- **StaffPage.tsx** переписан: 2 вкладки Сотрудники|Должности, `PermTree` со 3-сегментным switcher (Нет/Просмотр/Изменение) и галочками-действиями, `PositionDetail` с preset-сбросом.
+- **crm.ts** (Part 7): `clients.phone` — маска телефона в GET /clients для без-прав; `clients.documents` — маска ИИН в GET /clients/:id; `clients.delete` — DELETE /clients/:id (было requireAdmin); `kassa.sale` — POST /checkout; `kassa.shift` — POST+PATCH /shifts; `kassa.refunds` — POST /refund (было requireAdmin).
+- **measure.ts** (Part 7): `measure.delete` — DELETE /measurements/:id (было без auth).
+
 ### 16.11.2026 · (task 55) · окно Сотрудники, права по блокам, версия входа, журнал
 - **auth.ts**: `TokenPayload.v` (auth_version в токене); старые токены без `v` невалидны → все входы сбрасываются при деплое. `getSessionWithPerms` — 30 с кэш, проверяет auth_version в БД. `checkLoginRate`/`writeLoginLog` — DB-based rate limiter вместо in-memory Map. `requireAdmin` и `requireAuth` централизованы (убраны дубликаты из 9 файлов). `invalidateUserCache` — сброс кэша при смене пароля/увольнении.
 - **permissions.ts**: `PERM_CATALOG` — справочник блоков и вкладок (единственный источник истины). `DEFAULT_MANAGER_PERMISSIONS` — дефолтные права для новых менеджеров.
@@ -61,10 +74,12 @@
 - Bearer-токен для iframe расширения (cookie в iframe расширения Chrome ненадёжны).
 
 ## Открытые баги
-- Деплой task 55 сбрасывает все активные сессии (токены без `v` невалидны) — ожидаемое поведение, предупредить сотрудников.
+- Деплой task 55 сбрасывает все активные сессии (токены без `v` невалидны) — ожидаемое поведение, предупредить сотрудников при деплое task 56.
+- `clients.export` (выгрузка в Excel) и `kassa.discounts`/`kassa.bonus`/`schedule.attend`/`schedule.book` — ключи в PERM_CATALOG есть, но серверных endpoint-проверок ещё нет (нет или ещё не реализованы endpoint-ы для этих действий).
 
 ## Следующее
-- Пересечения: `fin_staff` (Финансы → сотрудники для зарплаты), «Сопоставление FB» и `staff_name_map` в Контроле — сейчас отдельные списки имён. Потом связать с `app_users`.
-- Более детальные роли под CRM (кто может продавать, кто вести расписание) — решить.
-- Привязка к филиалам при мультифилиальности (сотрудник видит свой филиал, админ — все).
-- Учитывать решения модуля «Протект» (сложность паролей, блокировка, журнал входов).
+- Переназначить существующих сотрудников (Вера, Назерке, Ангелина) на должность «Администратор зала» (hall_admin) через UI должностей.
+- Проверить, что для hall_admin права propagate корректно (position_presets засеяны при деплое).
+- Пересечения: `fin_staff` (Финансы → сотрудники для зарплаты), «Сопоставление FB» и `staff_name_map` в Контроле — потом связать с `app_users`.
+- Привязка к филиалам при мультифилиальности (branch_id/all_branches уже в схеме, нужно проверять в запросах).
+- Добавить Excel-экспорт клиентов и повесить на него `clients.export`.

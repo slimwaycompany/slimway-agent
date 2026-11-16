@@ -95,18 +95,19 @@
     cashier:  'cashier-iframe',
     settings: 'settings-iframe',
   };
-  var TAB_PERM = {
-    manager: 'tab:manager', agent: 'tab:agent', kviz: 'tab:kviz',
-    measure: 'tab:measure', reports: 'tab:reports', schedule: 'tab:schedule',
-    clients: 'tab:clients', funnel: 'tab:funnel', cashier: 'tab:cashier',
-    settings: null,
+  // tab name → catalog block key (cashier → kassa)
+  var TAB_BLOCK = {
+    manager:'manager', agent:'agent', schedule:'schedule', clients:'clients',
+    funnel:'funnel', cashier:'kassa', kviz:'kviz', measure:'measure',
+    reports:'reports', settings:'settings',
   };
   function canTab(name) {
     var perms = window.SW_PERMS;
     if (!perms) return true;
-    var key = TAB_PERM[name];
-    if (!key) return true; // settings is DOM-controlled
-    return Object.prototype.hasOwnProperty.call(perms, key);
+    var block = TAB_BLOCK[name];
+    if (!block) return false;
+    var prefix = block + '.';
+    return Object.keys(perms).some(function(k) { return k.indexOf(prefix) === 0; });
   }
 
   function lazyIframe(paneId, iframeId, src, beforeId) {

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, getSessionWithPerms, requirePerm } from './auth';
 import { tvNotify } from './tv';
 import { addClientNote, paginateGet, rawGet, FITBASE_PAGE_SIZE } from './fitbase';
 import { fetchAll } from './metrics';
@@ -470,6 +470,8 @@ export function buildMeasureRouter(): Router {
   });
 
   r.delete('/kviz/api/measure/measurements/:id', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'measure.delete', 'edit', session)) return;
     try {
       const { data: existing } = await supabase.from('body_measurements').select('created_at').eq('id', req.params.id).single();
       if (!existing) { res.status(404).json({ error: 'Замер не найден' }); return; }

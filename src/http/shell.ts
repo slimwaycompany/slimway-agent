@@ -476,27 +476,26 @@ export function mountShellRoutes(app: Application): void {
     if (!session) { res.redirect(302, '/login'); return; }
     const isAdmin = session.role === 'admin';
 
-    // Build SW_PERMS: for admin — special value, for manager — their perm map
+    // Build SW_PERMS: for admin — all keys edit/see_all; for others — their resolved perm map
     let swPerms: string;
     if (isAdmin) {
-      // Build all-access perms from catalog + settings
       const all: Record<string, { level: string; see_all: boolean }> = {};
       for (const block of PERM_CATALOG) {
-        for (const tab of block.tabs) all[tab.key] = { level: 'edit', see_all: true };
+        for (const row of block.rows) all[row.key] = { level: 'edit', see_all: Boolean(row.hasSeeAll) };
       }
-      all['settings'] = { level: 'edit', see_all: false };
       swPerms = JSON.stringify(all);
     } else {
       const out: Record<string, { level: string; see_all: boolean }> = {};
-      for (const [k, v] of Object.entries(session.perms)) out[k] = { level: v.level, see_all: v.see_all };
+      for (const [k, pv] of Object.entries(session.perms)) out[k] = { level: pv.level, see_all: pv.see_all };
       swPerms = JSON.stringify(out);
     }
 
-    const reportsSettingsBtn = isAdmin ? '<button class="side-btn" id="side-to-settings"><span class="side-text">Настройки</span></button>' : '';
+    const hasSettings = isAdmin || Object.keys(session.perms).some(k => k.startsWith('settings.'));
+    const reportsSettingsBtn = hasSettings ? '<button class="side-btn" id="side-to-settings"><span class="side-text">Настройки</span></button>' : '';
     const reportsPane = `<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button>${reportsSettingsBtn}</div>`;
-    const settingsBtn  = isAdmin ? '<button class="tab-btn" id="tab-btn-settings">⚙️ Настройки</button>' : '';
-    const settingsPane = isAdmin ? '<div class="pane hidden" id="settings-pane"><button class="side-btn left" id="side-set-to-reports"><span class="side-text">Отчёты</span></button></div>' : '';
-    const settingsCh   = isAdmin ? '<button class="choice-btn" id="choice-settings"><span class="choice-icon">⚙️</span><span class="choice-label">Настройки</span></button>' : '';
+    const settingsBtn  = hasSettings ? '<button class="tab-btn" id="tab-btn-settings">⚙️ Настройки</button>' : '';
+    const settingsPane = hasSettings ? '<div class="pane hidden" id="settings-pane"><button class="side-btn left" id="side-set-to-reports"><span class="side-text">Отчёты</span></button></div>' : '';
+    const settingsCh   = hasSettings ? '<button class="choice-btn" id="choice-settings"><span class="choice-icon">⚙️</span><span class="choice-label">Настройки</span></button>' : '';
     const permsScript  = `<script>window.SW_PERMS=${swPerms};</script>`;
     const html = SHELL_HTML
       .replace('<!--DNAME-->', escapeHtml(session.display_name))

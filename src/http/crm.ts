@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession, requireAuth, requireAdmin } from './auth';
+import { getSession, requireAuth, requireAdmin, getSessionWithPerms, can, requirePerm } from './auth';
 
 const BRANCH_ID         = '00000000-0000-0000-0000-000000000001';
 const GENERIC_CRM_ERROR = 'Ошибка кассы, сообщите администратору';
@@ -25,6 +25,9 @@ function iinToDob(iin: string): string | null {
 }
 async function writeAudit(entity_type: string, entity_id: string, action: string, actor: string) {
   try { await supabase.from('crm_audit_log').insert({ entity_type, entity_id, action, actor, details: {} }); } catch {}
+}
+function maskPhone(p: string): string {
+  return `+7 7•• ••• •• ${p.slice(-2)}`;
 }
 function n0(v: unknown): number { const x = Number(v); return isNaN(x) ? 0 : x; }
 function nNull(v: unknown): number | null { if (v === '' || v == null) return null; const x = Number(v); return isNaN(x) ? null : x; }
@@ -923,7 +926,9 @@ export function buildCrmRouter(): Router {
 
   // ── Clients ───────────────────────────────────────────────────────────────────
   r.get('/kviz/api/crm/clients', async (req, res) => {
-    if (!requireAuth(req, res)) return;
+    const session = await getSessionWithPerms(req);
+    if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const showPhone = can(session, 'clients.phone', 'view');
     try {
       let q = supabase.from('crm_clients')
         .select('id,full_name,phone,birth_date,ad_source_id,profile_complete,status,fitbase_client_id,created_at,is_deleted', { count: 'exact' })
@@ -943,7 +948,8 @@ export function buildCrmRouter(): Router {
       q = q.range(offset, offset + limit - 1);
       const { data, count, error } = await q;
       if (error) { res.status(500).json({ error: error.message }); return; }
-      res.json({ items: data, total: count ?? 0 });
+      const items = showPhone ? data : (data || []).map(c => ({ ...c, phone: c.phone ? maskPhone(c.phone as string) : null }));
+      res.json({ items, total: count ?? 0 });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -1002,12 +1008,12 @@ export function buildCrmRouter(): Router {
   });
 
   r.get('/kviz/api/crm/clients/:id', async (req, res) => {
-    if (!requireAuth(req, res)) return;
-    const session = getSession(req)!;
+    const session = await getSessionWithPerms(req);
+    if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
     try {
       const { data, error } = await supabase.from('crm_clients').select('*').eq('id', req.params.id).single();
       if (error) { res.status(404).json({ error: 'Клиент не найден' }); return; }
-      if (data.iin && session.role !== 'admin') data.iin = data.iin.slice(0, 6) + '******';
+      if (data.iin && !can(session, 'clients.documents', 'view')) data.iin = data.iin.slice(0, 6) + '******';
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -1052,8 +1058,8 @@ export function buildCrmRouter(): Router {
   });
 
   r.delete('/kviz/api/crm/clients/:id', async (req, res) => {
-    if (!requireAdmin(req, res)) return;
-    const session = getSession(req)!;
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'clients.delete', 'edit', session)) return;
     try {
       const { data: client } = await supabase.from('crm_clients').select('photo_path').eq('id', req.params.id).single();
       if (client?.photo_path) {
@@ -1139,8 +1145,8 @@ export function buildCrmRouter(): Router {
   });
 
   r.post('/kviz/api/crm/shifts', async (req, res) => {
-    if (!requireAuth(req, res)) return;
-    const session = getSession(req)!;
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'kassa.shift', 'edit', session)) return;
     try {
       // Only one open shift allowed
       const { data: existing } = await supabase.from('crm_cash_shifts')
@@ -1175,8 +1181,8 @@ export function buildCrmRouter(): Router {
   });
 
   r.patch('/kviz/api/crm/shifts/:id/close', async (req, res) => {
-    if (!requireAuth(req, res)) return;
-    const session = getSession(req)!;
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'kassa.shift', 'edit', session)) return;
     try {
       const { data: shift } = await supabase.from('crm_cash_shifts').select('*').eq('id', req.params.id).single();
       if (!shift) { res.status(404).json({ error: 'Смена не найдена' }); return; }
@@ -1294,8 +1300,8 @@ export function buildCrmRouter(): Router {
   // ── Checkout ──────────────────────────────────────────────────────────────────
 
   r.post('/kviz/api/crm/checkout', async (req, res) => {
-    if (!requireAuth(req, res)) return;
-    const session = getSession(req)!;
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'kassa.sale', 'edit', session)) return;
     try {
       const b = req.body as Record<string, unknown>;
       if (b.discount_kind === 'admin' && session.role !== 'admin') {
@@ -1368,8 +1374,8 @@ export function buildCrmRouter(): Router {
   // ── Refund ────────────────────────────────────────────────────────────────────
 
   r.post('/kviz/api/crm/refund', async (req, res) => {
-    if (!requireAdmin(req, res)) return;
-    const session = getSession(req)!;
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'kassa.refunds', 'edit', session)) return;
     try {
       const b = req.body as Record<string, unknown>;
       const { data: openShift } = await supabase.from('crm_cash_shifts')

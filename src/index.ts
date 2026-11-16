@@ -34,7 +34,7 @@ import { runScriptologReminders, JOB_NAME as REMINDERS_JOB } from './jobs/script
 import { runControl, runControlRange } from './jobs/control';
 import { syncControlSheet, shouldSyncSheet } from './jobs/controlSheetSync';
 import { runProbeControl } from './jobs/probeControl';
-import { DEFAULT_MANAGER_PERMISSIONS } from './core/permissions';
+import { POSITION_PRESETS } from './core/permissions';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -477,29 +477,49 @@ mountWindowRoutes(app);
 
 // ── Startup: seed default permissions for managers without any ────────────────
 
-async function seedDefaultPermissions(): Promise<void> {
+// Seed app_position_permissions from POSITION_PRESETS if a position has no rows yet
+async function seedPositionPresets(): Promise<void> {
   try {
-    const { data: managers } = await supabase
-      .from('app_users')
-      .select('id')
-      .eq('role', 'manager')
-      .eq('is_active', true);
-    for (const m of managers || []) {
+    const { data: positions } = await supabase
+      .from('app_positions')
+      .select('id, code')
+      .not('code', 'is', null);
+    for (const pos of positions || []) {
+      const code = pos.code as string;
+      if (!POSITION_PRESETS[code]) continue;
       const { count } = await supabase
-        .from('app_user_permissions')
+        .from('app_position_permissions')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', m.id);
-      if (!count) {
-        await supabase.from('app_user_permissions')
-          .upsert(
-            DEFAULT_MANAGER_PERMISSIONS.map(p => ({ user_id: m.id, ...p })),
-            { onConflict: 'user_id,perm_key' },
-          );
-        console.log(`[startup] seeded default permissions for manager ${m.id as string}`);
-      }
+        .eq('position_id', pos.id);
+      if (count) continue; // already seeded
+      const rows = POSITION_PRESETS[code].map(p => ({ position_id: pos.id, ...p }));
+      await supabase.from('app_position_permissions').insert(rows);
+      console.log(`[startup] seeded ${rows.length} perms for position ${code}`);
     }
   } catch (e) {
-    console.error('[startup] seedDefaultPermissions error:', (e as Error).message);
+    console.error('[startup] seedPositionPresets error:', (e as Error).message);
+  }
+}
+
+// Remove legacy tab:* and cashier:* perm keys from app_user_permissions (one-time migration)
+async function cleanLegacyPermKeys(): Promise<void> {
+  try {
+    const { count, error } = await supabase
+      .from('app_user_permissions')
+      .delete({ count: 'exact' })
+      .or('perm_key.like.tab:%,perm_key.like.cashier:%');
+    if (error) throw error;
+    if (count) {
+      console.log(`[startup] removed ${count} legacy perm keys (tab:*/cashier:*)`);
+      await supabase.from('crm_audit_log').insert({
+        entity: 'app_user_permissions',
+        action: 'migrate',
+        actor: 'system',
+        note: `removed ${count} legacy perm keys (tab:*/cashier:*) — task-56 migration`,
+      });
+    }
+  } catch (e) {
+    console.error('[startup] cleanLegacyPermKeys error:', (e as Error).message);
   }
 }
 
@@ -530,5 +550,6 @@ async function clearStaleLocks(): Promise<void> {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 clearStaleLocks().catch(() => {/* already logged inside */});
-seedDefaultPermissions().catch(() => {/* already logged inside */});
+cleanLegacyPermKeys().catch(() => {/* already logged inside */});
+seedPositionPresets().catch(() => {/* already logged inside */});
 app.listen(env.PORT, () => console.log(`[server] port ${env.PORT}`));

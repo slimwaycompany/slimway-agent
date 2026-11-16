@@ -19,6 +19,8 @@ export interface PermEntry { level: 'view' | 'edit'; see_all: boolean }
 
 export interface ExtendedSession extends TokenPayload {
   perms: Record<string, PermEntry>; // empty for admin (can() handles admin shortcut)
+  branch_id: string | null;
+  all_branches: boolean;
 }
 
 function windowSecret(): string {
@@ -77,7 +79,7 @@ export async function getSessionWithPerms(req: express.Request): Promise<Extende
 
   const { data: user } = await supabase
     .from('app_users')
-    .select('auth_version, is_active, fired_at')
+    .select('auth_version, is_active, fired_at, position_id, custom_permissions, branch_id, all_branches')
     .eq('id', base.id)
     .maybeSingle();
 
@@ -85,22 +87,66 @@ export async function getSessionWithPerms(req: express.Request): Promise<Extende
 
   let perms: Record<string, PermEntry> = {};
   if (base.role !== 'admin') {
-    const { data: rows } = await supabase
-      .from('app_user_permissions')
-      .select('perm_key, level, see_all')
-      .eq('user_id', base.id);
+    let rows: Array<{ perm_key: string; level: string; see_all: boolean }> | null = null;
+    if (user.custom_permissions && user.position_id == null) {
+      // custom perms only, no position
+      const { data } = await supabase
+        .from('app_user_permissions')
+        .select('perm_key, level, see_all')
+        .eq('user_id', base.id);
+      rows = data;
+    } else if (user.custom_permissions) {
+      // custom perms (copied from position + edited)
+      const { data } = await supabase
+        .from('app_user_permissions')
+        .select('perm_key, level, see_all')
+        .eq('user_id', base.id);
+      rows = data;
+    } else if (user.position_id) {
+      // use position perms
+      const { data } = await supabase
+        .from('app_position_permissions')
+        .select('perm_key, level, see_all')
+        .eq('position_id', user.position_id);
+      rows = data;
+    }
     for (const r of rows || []) {
-      perms[r.perm_key as string] = { level: r.level as 'view' | 'edit', see_all: Boolean(r.see_all) };
+      perms[r.perm_key] = { level: r.level as 'view' | 'edit', see_all: Boolean(r.see_all) };
     }
   }
 
-  const extended: ExtendedSession = { ...base, perms };
+  const extended: ExtendedSession = {
+    ...base,
+    perms,
+    branch_id: (user.branch_id as string | null) ?? null,
+    all_branches: Boolean(user.all_branches),
+  };
   permCache.set(base.id, { session: extended, exp: Date.now() + 30_000 });
   return extended;
 }
 
 export function invalidateUserCache(userId: string): void {
   permCache.delete(userId);
+}
+
+export async function invalidatePositionCache(positionId: string): Promise<void> {
+  const { data } = await supabase
+    .from('app_users')
+    .select('id')
+    .eq('position_id', positionId)
+    .eq('custom_permissions', false);
+  for (const u of data || []) permCache.delete(u.id as string);
+}
+
+export function requirePerm(
+  req: express.Request, res: express.Response,
+  key: string, level: 'view' | 'edit' = 'view',
+  session: ExtendedSession | null,
+): session is ExtendedSession {
+  if (!session) { res.status(401).json({ error: 'Unauthorized' }); return false; }
+  if (can(session, key, level)) return true;
+  res.status(403).json({ error: 'Нет доступа' });
+  return false;
 }
 
 export function can(session: ExtendedSession | null, permKey: string, level: 'view' | 'edit' = 'view'): boolean {
