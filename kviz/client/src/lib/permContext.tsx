@@ -22,3 +22,7 @@ export function useSeeAll(key: string): boolean {
   if (role === 'admin') return true;
   return Boolean(perms[key]?.see_all);
 }
+
+export function useRole(): string {
+  return useContext(PermContext).role;
+}

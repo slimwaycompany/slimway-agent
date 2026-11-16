@@ -47,6 +47,10 @@
 - **Пerm-ключи формата `block.row` (task 56):** `manager.tasks`, `clients.phone`, `kassa.sale` и т.д. Для новой вкладки/отчёта/действия — ОБЯЗАТЕЛЬНО добавить в `PERM_CATALOG` (src/core/permissions.ts) и в пресеты нужных должностей. Серверные проверки: `const session = await getSessionWithPerms(req); if (!requirePerm(req, res, 'block.row', 'edit', session)) return;` (тип `session` автоматически сужается до `ExtendedSession` после проверки).
 
 ## Сделано
+### 16.11.2026 · (task 56-1) · фикс роли админа в Сотрудниках, защита position_id
+- **permContext.tsx**: добавлен хук `useRole(): string` — возвращает `role` из `PermContext`; отделяет получение роли от проверки прав.
+- **StaffPage.tsx**: `const { role } = usePerm()` → `const role = useRole()` — `isAdmin` теперь корректен; добавлен стейт `positionsLoaded`; `loadPositions` вызывается всегда при маунте (сервер сам 403 для не-adminов); убрана `isAdmin`-зависимость useEffect; загрузка guard (`role === '' → Загрузка…`); `saveProfile` не шлёт `position_id` пока должности не загружены; красное предупреждение «Должность не задана» показывается только когда `positionsLoaded` или `!form.position_id` — иначе «Загрузка…».
+
 ### 16.11.2026 · 0dd46e9 · должности, права по каждой вкладке и отчёту, особые действия
 - **permissions.ts** переписан: `PERM_CATALOG` — 10 блоков (manager/agent/schedule/clients/funnel/kassa/kviz/measure/reports/settings), ключи формата `block.row`, строки-действия (kind='action'), `hasSeeAll`. `POSITION_PRESETS` — 7 должностей с полными наборами прав.
 - **auth.ts**: `ExtendedSession` добавлены `branch_id`/`all_branches`. `getSessionWithPerms` разрешает права: admin→всё, custom_permissions=false→из app_position_permissions, true→из app_user_permissions. `requirePerm` теперь type predicate (`session is ExtendedSession`). `invalidatePositionCache` — сброс кэша всех пользователей должности.

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { usePerm } from '../../lib/permContext';
+import { useRole } from '../../lib/permContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -377,9 +377,9 @@ function PositionDetail({ pos, catalog, allPositions, onRefresh, onClose }: {
 
 // ── Staff detail ───────────────────────────────────────────────────────────────
 
-function StaffDetail({ member, catalog, allStaff, positions, onRefresh, isAdmin }: {
+function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, onRefresh, isAdmin }: {
   member: StaffMember; catalog: PermBlock[]; allStaff: StaffMember[];
-  positions: Position[]; onRefresh: () => void; isAdmin: boolean;
+  positions: Position[]; positionsLoaded: boolean; onRefresh: () => void; isAdmin: boolean;
 }) {
   const isAdminMember = member.role === 'admin';
   const isFired = !member.is_active;
@@ -422,7 +422,7 @@ function StaffDetail({ member, catalog, allStaff, positions, onRefresh, isAdmin 
     setEditErr('');
     const body: Record<string, unknown> = { display_name: form.display_name, phone: form.phone || null, login: form.login };
     if (isAdmin) body.role = form.role;
-    if (form.role !== 'admin') body.position_id = form.position_id || null;
+    if (form.role !== 'admin' && positionsLoaded) body.position_id = form.position_id || null;
     const r = await api('PATCH', `/api/staff/${member.id}`, body);
     if (!r.ok) { setEditErr(r.data.error || 'Ошибка'); return; }
     onRefresh();
@@ -647,8 +647,11 @@ function StaffDetail({ member, catalog, allStaff, positions, onRefresh, isAdmin 
               Права должности «{posObj.name}». Изменить — в Должностях или включите «Свои права».
             </div>
           )}
-          {!customPerms && !posObj && (
+          {!customPerms && !posObj && (!form.position_id || positionsLoaded) && (
             <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>Должность не задана — нет доступа ни к чему.</div>
+          )}
+          {!customPerms && !posObj && form.position_id && !positionsLoaded && (
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Загрузка…</div>
           )}
           <input style={{ ...S.search, marginBottom: 8 }} placeholder="Поиск…" value={permSearch} onChange={e => setPermSearch(e.target.value)} />
           <PermTree catalog={catalog} perms={displayPerms} onChange={customPerms ? setPerms : () => {}} disabled={permsDisabled} search={permSearch} />
@@ -671,11 +674,12 @@ function StaffDetail({ member, catalog, allStaff, positions, onRefresh, isAdmin 
 // ── Main StaffPage ─────────────────────────────────────────────────────────────
 
 export default function StaffPage() {
-  const { role } = usePerm();
+  const role = useRole();
   const isAdmin = role === 'admin';
   const [activeTab, setActiveTab] = useState<'staff' | 'positions'>('staff');
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [positionsLoaded, setPositionsLoaded] = useState(false);
   const [catalog, setCatalog] = useState<PermBlock[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedPos, setSelectedPos] = useState<string | 'new' | null>(null);
@@ -694,17 +698,14 @@ export default function StaffPage() {
   const loadPositions = useCallback(async () => {
     const r = await api('GET', '/api/positions');
     if (r.ok) setPositions(r.data as Position[]);
+    setPositionsLoaded(true);
   }, []);
 
   useEffect(() => {
     loadStaff();
-    if (isAdmin) {
-      loadPositions();
-      api('GET', '/api/permissions/catalog').then(r => { if (r.ok) setCatalog(r.data as PermBlock[]); });
-    } else {
-      api('GET', '/api/permissions/catalog').then(r => { if (r.ok) setCatalog(r.data as PermBlock[]); });
-    }
-  }, [loadStaff, loadPositions, isAdmin]);
+    loadPositions(); // server enforces admin-only; non-admins get 403, positions stay []
+    api('GET', '/api/permissions/catalog').then(r => { if (r.ok) setCatalog(r.data as PermBlock[]); });
+  }, [loadStaff, loadPositions]);
 
   const visibleStaff = useMemo(() => {
     let list = staff.filter(s => showFired ? true : s.is_active);
@@ -731,6 +732,8 @@ export default function StaffPage() {
   }
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 640;
+
+  if (role === '') return <div style={{ padding: 24, color: '#64748b', fontSize: 14 }}>Загрузка…</div>;
 
   return (
     <div style={{ ...S.root, flexDirection: isMobile ? 'column' : 'row' }}>
@@ -792,7 +795,7 @@ export default function StaffPage() {
       {/* Right panel */}
       {activeTab === 'staff' && selectedMember && (
         <StaffDetail key={selectedMember.id} member={selectedMember} catalog={catalog} allStaff={staff}
-          positions={positions} onRefresh={loadStaff} isAdmin={isAdmin} />
+          positions={positions} positionsLoaded={positionsLoaded} onRefresh={loadStaff} isAdmin={isAdmin} />
       )}
       {activeTab === 'staff' && !selectedMember && (
         <div style={S.empty}>Выберите сотрудника</div>
