@@ -2,67 +2,102 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 const CIRC_KEYS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
+type CircKey = typeof CIRC_KEYS[number];
 
-interface Measurement {
-  measure_no: number; measured_at: string;
-  weight: number | null; total_cm: number;
-  neck?: number; chest?: number; arm_l?: number; arm_r?: number;
-  waist?: number; belly?: number; glutes?: number;
-  thigh_l?: number; thigh_r?: number; shin_l?: number; shin_r?: number;
-  [key: string]: unknown;
-}
-interface IBTest {
-  tested_at: string; weight: number | null; bfm: number | null; pbf: number | null;
-  smm: number | null; bmi: number | null; inbody_score: number | null;
-}
-interface ShareData {
-  name: string;
-  measurements: Measurement[];
-  inbody_tests?: IBTest[];
-  result: { cm_lost: number; kg_lost: number; fat_kg_lost: number | null } | null;
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
-}
-function fmtDiff(d: number) { return (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1); }
-function diffColor(d: number) { return d < 0 ? '#16a34a' : d > 0 ? '#f59e0b' : '#9ca3af'; }
-
-const ZONE_COLORS: Record<string, string> = {
-  neck: '#f59e0b', chest: '#ec4899', arm_l: '#8b5cf6', arm_r: '#06b6d4',
-  waist: '#ef4444', belly: '#f97316', glutes: '#84cc16',
-  thigh_l: '#14b8a6', thigh_r: '#a855f7', shin_l: '#64748b', shin_r: '#78716c',
-};
-const ZONE_LABELS: Record<string, string> = {
+const ZONE_LABELS: Record<CircKey, string> = {
   neck: 'Шея', chest: 'Грудь', arm_l: 'Л.рука', arm_r: 'П.рука',
   waist: 'Талия', belly: 'Живот', glutes: 'Ягодицы',
   thigh_l: 'Л.бедро', thigh_r: 'П.бедро', shin_l: 'Л.голень', shin_r: 'П.голень',
 };
 
-function MiniChart({ ms }: { ms: Measurement[] }) {
-  if (ms.length < 2) return null;
-  const W = 360, H = 120, PL = 32, PR = 8, PT = 8, PB = 24;
+const BODY_PTS: { key: CircKey; x: number; y: number }[] = [
+  { key: 'neck',    x: 50,   y: 18 },
+  { key: 'chest',   x: 50,   y: 28 },
+  { key: 'arm_r',   x: 36,   y: 30 },
+  { key: 'arm_l',   x: 64,   y: 30 },
+  { key: 'waist',   x: 50,   y: 38 },
+  { key: 'belly',   x: 50,   y: 44 },
+  { key: 'glutes',  x: 50,   y: 50 },
+  { key: 'thigh_r', x: 45,   y: 60 },
+  { key: 'thigh_l', x: 56,   y: 60 },
+  { key: 'shin_r',  x: 46,   y: 78 },
+  { key: 'shin_l',  x: 54.5, y: 78 },
+];
+
+interface IBTest {
+  tested_at: string; weight: number|null; bfm: number|null; pbf: number|null;
+  smm: number|null; bmi: number|null; vfl: number|null;
+}
+type IBNumField = 'weight' | 'pbf' | 'smm' | 'vfl';
+const IB_METRICS: { label: string; field: IBNumField; unit: string; goodDown: boolean }[] = [
+  { label: 'Вес',         field: 'weight', unit: ' кг', goodDown: true },
+  { label: '% жира',      field: 'pbf',    unit: '%',   goodDown: true },
+  { label: 'Мышцы (SMM)', field: 'smm',    unit: ' кг', goodDown: false },
+  { label: 'Висц.жир',    field: 'vfl',    unit: '',    goodDown: true },
+];
+
+interface Msr {
+  measure_no: number; measured_at: string; total_cm: number;
+  [k: string]: unknown;
+}
+interface ShareData {
+  name: string; measurements: Msr[]; inbody_tests?: IBTest[];
+  result: { cm_lost: number; kg_lost: number; fat_kg_lost: number|null } | null;
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function BodyPanel({ m, prev }: { m: Msr | null | undefined; prev: Msr | null | undefined }) {
+  const [tapped, setTapped] = useState<CircKey | null>(null);
+  if (!m) return null;
+  return (
+    <div style={{ position: 'relative', height: 300, userSelect: 'none' }}>
+      <img src="/kviz/img/body.png" alt="" style={{ position: 'absolute', left: '15%', top: 0, width: '70%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+      {BODY_PTS.map(pt => {
+        const val = m[pt.key] != null ? Number(m[pt.key]) : null;
+        if (val == null) return null;
+        const pval = prev?.[pt.key] != null ? Number(prev[pt.key]) : null;
+        const delta = pval != null ? val - pval : null;
+        const isLoss = delta != null && delta < 0;
+        const bg = tapped === pt.key ? '#263CD9' : isLoss ? '#16a34a' : '#94a3b8';
+        return (
+          <button key={pt.key}
+            onClick={() => setTapped(tapped === pt.key ? null : pt.key)}
+            style={{ position: 'absolute', left: `${pt.x}%`, top: `${pt.y}%`,
+              transform: 'translate(-50%, -50%)', background: bg, color: '#fff',
+              border: 'none', borderRadius: 6, fontSize: 9, padding: '2px 4px', cursor: 'pointer',
+              whiteSpace: 'nowrap', fontWeight: 700, lineHeight: 1.3,
+              boxShadow: '0 1px 4px rgba(0,0,0,0.25)', zIndex: 2 }}
+          >
+            {tapped === pt.key ? val.toFixed(1) : ZONE_LABELS[pt.key].slice(0, 4)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function IBChart({ ibs }: { ibs: IBTest[] }) {
+  const pts = ibs.filter(ib => ib.weight != null);
+  if (pts.length < 3) return null;
+  const vals = pts.map(ib => Number(ib.weight));
+  const min = Math.min(...vals), max = Math.max(...vals), range = max - min || 1;
+  const W = 320, H = 90, PL = 32, PR = 8, PT = 8, PB = 20;
   const iW = W - PL - PR, iH = H - PT - PB;
-  const vals = ms.map(m => Number(m.total_cm));
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const range = max - min || 1;
-  const tx = (i: number) => PL + (i / (ms.length - 1)) * iW;
+  const tx = (i: number) => PL + (i / (pts.length - 1)) * iW;
   const ty = (v: number) => PT + iH - ((v - min + range * 0.1) / (range * 1.2)) * iH;
-  const d = ms.map((m, i) => `${i === 0 ? 'M' : 'L'}${tx(i).toFixed(1)},${ty(Number(m.total_cm)).toFixed(1)}`).join(' ');
+  const d = pts.map((_, i) => `${i === 0 ? 'M' : 'L'}${tx(i).toFixed(1)},${ty(vals[i]).toFixed(1)}`).join(' ');
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }}>
-      <path d={d} fill="none" stroke="#02BDB6" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-      {ms.map((m, i) => (
+      <path d={d} fill="none" stroke="#263CD9" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      {pts.map((ib, i) => (
         <g key={i}>
-          <circle cx={tx(i)} cy={ty(Number(m.total_cm))} r={i === ms.length - 1 ? 5 : 3.5} fill="#02BDB6" stroke="#fff" strokeWidth={1.5} />
-          <text x={tx(i)} y={H - 4} textAnchor="middle" fontSize={8} fill="#9ca3af">
-            {`№${m.measure_no}`}
-          </text>
+          <circle cx={tx(i)} cy={ty(vals[i])} r={i === pts.length - 1 ? 5 : 3} fill="#263CD9" stroke="#fff" strokeWidth={1.5} />
+          <text x={tx(i)} y={H - 2} textAnchor="middle" fontSize={7} fill="#9ca3af">{fmtDate(ib.tested_at).slice(0, 5)}</text>
         </g>
       ))}
-      <text x={tx(ms.length - 1)} y={ty(vals[ms.length - 1]) - 8} textAnchor="middle" fontSize={9} fontWeight="700" fill="#02BDB6">
-        {vals[vals.length - 1].toFixed(1)}
-      </text>
     </svg>
   );
 }
@@ -71,6 +106,8 @@ export default function SharePage() {
   const { token } = useParams<{ token: string }>();
   const [data, setData] = useState<ShareData | null>(null);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState<'figure' | 'zones' | 'inbody'>('figure');
+  const [mView, setMView] = useState<'before' | 'after'>('after');
 
   useEffect(() => {
     if (!token) return;
@@ -83,13 +120,12 @@ export default function SharePage() {
   if (error) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,sans-serif', background: '#f8fafc' }}>
       <div style={{ textAlign: 'center', padding: 32 }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🔗</div>
-        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Ссылка недействительна</div>
+        <div style={{ fontSize: 48 }}>🔗</div>
+        <div style={{ fontWeight: 700, fontSize: 18, margin: '12px 0 8px' }}>Ссылка недействительна</div>
         <div style={{ color: '#6b7280', fontSize: 14 }}>{error}</div>
       </div>
     </div>
   );
-
   if (!data) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,sans-serif' }}>
       <div style={{ color: '#9ca3af' }}>Загрузка…</div>
@@ -97,109 +133,230 @@ export default function SharePage() {
   );
 
   const ms = data.measurements;
-  const first = ms[0], last = ms[ms.length - 1];
-  const cmLost = data.result?.cm_lost ?? (first && last ? Math.max(0, Number(first.total_cm) - Number(last.total_cm)) : 0);
-  const kgLost = data.result?.kg_lost ?? (first?.weight != null && last?.weight != null ? Math.max(0, Number(first.weight) - Number(last.weight)) : 0);
-  const fatLost = data.result?.fat_kg_lost ?? null;
-
   const ibs = data.inbody_tests ?? [];
-  const ib = ibs.length > 0 ? ibs[ibs.length - 1] : null;
+  const first = ms.length > 0 ? ms[0] : null;
+  const last = ms.length > 0 ? ms[ms.length - 1] : null;
+  const ibFirst = ibs.length > 0 ? ibs[0] : null;
+  const ibLast = ibs.length > 0 ? ibs[ibs.length - 1] : null;
+
+  const cmLost = data.result?.cm_lost
+    ?? (ms.length >= 2 && first && last ? Number(first.total_cm) - Number(last.total_cm) : 0);
+  const kgLost = data.result?.kg_lost
+    ?? (ibs.length >= 2 && ibFirst?.weight != null && ibLast?.weight != null
+      ? Number(ibFirst.weight) - Number(ibLast.weight) : 0);
+  const fatLost = data.result?.fat_kg_lost
+    ?? (ibs.length >= 2 && ibFirst?.bfm != null && ibLast?.bfm != null
+      ? Number(ibFirst.bfm) - Number(ibLast.bfm) : null);
+
+  const dateBefore = first?.measured_at ?? ibFirst?.tested_at ?? null;
+  const dateAfter  = last?.measured_at  ?? ibLast?.tested_at  ?? null;
+
+  const CS = {
+    background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0',
+    boxShadow: '0 2px 8px rgba(2,189,182,0.06)', marginBottom: 12, overflow: 'hidden',
+  };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'Inter,sans-serif', color: '#1e293b' }}>
+    <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: 'Inter,sans-serif', color: '#1e293b', paddingBottom: 32 }}>
+      <style>{`
+        * { box-sizing: border-box; }
+        .sp-figure-desktop { display: flex !important; }
+        .sp-figure-mobile  { display: none  !important; }
+        .sp-tbl { display: block !important; }
+        .sp-cds { display: none  !important; }
+        @media (max-width: 640px) {
+          .sp-figure-desktop { display: none  !important; }
+          .sp-figure-mobile  { display: block !important; }
+          .sp-tbl { display: none  !important; }
+          .sp-cds { display: block !important; }
+          input, select, textarea { font-size: 16px !important; }
+        }
+      `}</style>
+
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#02BDB6,#263CD9)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <img src="/img/logo.png" alt="SlimWay" style={{ height: 36, borderRadius: 8 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-        <div>
-          <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>SlimWay — результаты</div>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: 18 }}>{data.name}</div>
-        </div>
+      <div style={{ background: 'linear-gradient(135deg,#02BDB6,#263CD9)', padding: '20px 20px 24px' }}>
+        <img src="/img/logo.png" alt="SlimWay" style={{ height: 28, borderRadius: 6, marginBottom: 10, display: 'block' }}
+          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        <div style={{ color: '#fff', fontWeight: 700, fontSize: 22 }}>{data.name}</div>
+        {dateBefore && dateAfter && dateBefore !== dateAfter && (
+          <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 4 }}>
+            {fmtDate(dateBefore)} → {fmtDate(dateAfter)}
+          </div>
+        )}
       </div>
 
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '20px 16px' }}>
-
-        {/* Потеряно */}
-        {(cmLost > 0 || kgLost > 0) && (
-          <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px', marginBottom: 16, border: '1px solid #e2e6ea', boxShadow: '0 2px 8px rgba(2,189,182,0.08)' }}>
-            <div style={{ fontWeight: 700, color: '#263CD9', fontSize: 16, marginBottom: 12 }}>Потеряно со старта</div>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              <div style={{ textAlign: 'center', flex: 1, minWidth: 80 }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: '#02BDB6' }}>{cmLost.toFixed(1)}</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>сантиметров</div>
+      <div style={{ maxWidth: 600, margin: '0 auto', padding: '0 16px' }}>
+        {/* Hero */}
+        <div style={{ background: '#fff', borderRadius: '0 0 20px 20px', padding: '20px 12px', marginBottom: 16,
+          boxShadow: '0 4px 20px rgba(2,189,182,0.12)', display: 'flex' }}>
+          {[
+            { val: cmLost  > 0 ? cmLost  : null, unit: 'сантиметров', color: '#02BDB6' },
+            { val: kgLost  > 0 ? kgLost  : null, unit: 'килограммов', color: '#263CD9' },
+            { val: fatLost != null && fatLost > 0 ? fatLost : null, unit: 'кг жира', color: '#ef4444' },
+          ].map(({ val, unit, color }, i) => (
+            <div key={i} style={{ flex: 1, textAlign: 'center', padding: '0 4px' }}>
+              <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: val != null ? color : '#cbd5e1' }}>
+                {val != null ? `−${val.toFixed(1)}` : '—'}
               </div>
-              <div style={{ textAlign: 'center', flex: 1, minWidth: 80 }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: '#263CD9' }}>{kgLost.toFixed(1)}</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>килограммов</div>
-              </div>
-              {fatLost != null && (
-                <div style={{ textAlign: 'center', flex: 1, minWidth: 80 }}>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: '#ef4444' }}>{fatLost.toFixed(1)}</div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>кг жира</div>
-                </div>
-              )}
+              <div style={{ fontSize: 11, marginTop: 4, color: val != null ? '#6b7280' : '#cbd5e1' }}>{unit}</div>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
 
-        {/* InBody summary */}
-        {ib && (
-          <div style={{ background: '#fff', borderRadius: 16, padding: '16px 20px', marginBottom: 16, border: '1px solid #e2e6ea' }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: '#374151' }}>InBody-оценка</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px', fontSize: 13 }}>
-              {ib.weight != null && <span>Вес: <b>{ib.weight} кг</b></span>}
-              {ib.pbf != null && <span>% жира: <b>{ib.pbf}%</b></span>}
-              {ib.bfm != null && <span>Жировая масса: <b>{ib.bfm} кг</b></span>}
-              {ib.smm != null && <span>Мышцы: <b>{ib.smm} кг</b></span>}
-              {ib.bmi != null && <span>ИМТ: <b>{ib.bmi}</b></span>}
-              {ib.inbody_score != null && <span>Оценка: <b>{ib.inbody_score}</b></span>}
-            </div>
-            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>
-              Тест {fmtDate(ib.tested_at)}
-            </div>
+        {/* Tabs — sticky on mobile */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f1f5f9', paddingBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 4, background: '#e2e8f0', borderRadius: 14, padding: 4 }}>
+            {(['figure','zones','inbody'] as const).map((id, i) => (
+              <button key={id} onClick={() => setTab(id)} style={{
+                flex: 1, padding: '10px 4px', border: 'none', cursor: 'pointer',
+                fontWeight: 600, fontSize: 14, borderRadius: 10, transition: 'all 0.15s',
+                background: tab === id ? '#02BDB6' : 'transparent',
+                color: tab === id ? '#fff' : '#374151',
+              }}>
+                {(['Фигура','Замеры','InBody'] as const)[i]}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
 
-        {/* Chart */}
-        {ms.length >= 2 && (
-          <div style={{ background: '#fff', borderRadius: 16, padding: '16px 20px', marginBottom: 16, border: '1px solid #e2e6ea' }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: '#374151' }}>График — сумма обхватов</div>
-            <MiniChart ms={ms} />
-          </div>
-        )}
-
-        {/* Zones from last measurement */}
-        {last && (
-          <div style={{ background: '#fff', borderRadius: 16, padding: '16px 20px', marginBottom: 16, border: '1px solid #e2e6ea' }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: '#374151' }}>
-              Последний замер — №{last.measure_no} · {fmtDate(last.measured_at)}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {last.weight != null && (
-                <div style={{ padding: '6px 12px', borderRadius: 8, background: '#263CD9' + '15', border: '1px solid #263CD9' + '40', fontSize: 12, fontWeight: 600 }}>
-                  Вес: {Number(last.weight).toFixed(1)} кг
-                  {first?.weight != null && <span style={{ color: diffColor(Number(last.weight) - Number(first.weight)), marginLeft: 6, fontWeight: 700 }}>
-                    {fmtDiff(Number(last.weight) - Number(first.weight))}
-                  </span>}
-                </div>
-              )}
-              {CIRC_KEYS.map(k => {
-                const v = last[k] != null ? Number(last[k]) : null;
-                if (v == null) return null;
-                const fv = first[k] != null ? Number(first[k]) : null;
-                const d = fv != null ? v - fv : null;
-                const color = ZONE_COLORS[k] ?? '#02BDB6';
-                return (
-                  <div key={k} style={{ padding: '6px 12px', borderRadius: 8, background: color + '15', border: `1px solid ${color}40`, fontSize: 12, fontWeight: 600 }}>
-                    {ZONE_LABELS[k]}: {v.toFixed(1)}
-                    {d != null && <span style={{ color: diffColor(d), marginLeft: 6, fontWeight: 700 }}>{fmtDiff(d)}</span>}
+        {/* ── Фигура ── */}
+        {tab === 'figure' && (
+          ms.length < 2
+            ? <div style={CS}><div style={{ padding: '32px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>Пока недостаточно данных</div></div>
+            : <div style={CS}>
+                <div style={{ padding: '12px 8px' }}>
+                  <div className="sp-figure-desktop" style={{ gap: 8, justifyContent: 'center' }}>
+                    {[{ m: first, prev: null, label: 'До' }, { m: last, prev: first, label: 'После' }].map(({ m, prev, label }) => (
+                      <div key={label} style={{ flex: 1 }}>
+                        <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#6b7280',
+                          textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{label}</div>
+                        <BodyPanel m={m} prev={prev} />
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                  <div className="sp-figure-mobile">
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 8 }}>
+                      {(['before','after'] as const).map(mode => (
+                        <button key={mode} onClick={() => setMView(mode)} style={{
+                          padding: '6px 24px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                          background: mView === mode ? '#02BDB6' : '#f1f5f9',
+                          color: mView === mode ? '#fff' : '#374151', fontWeight: 600, fontSize: 13,
+                        }}>
+                          {mode === 'before' ? 'До' : 'После'}
+                        </button>
+                      ))}
+                    </div>
+                    <BodyPanel m={mView === 'before' ? first : last} prev={mView === 'after' ? first : null} />
+                  </div>
+                </div>
+              </div>
         )}
 
-        <div style={{ textAlign: 'center', fontSize: 11, color: '#cbd5e1', paddingBottom: 24 }}>
+        {/* ── Замеры ── */}
+        {tab === 'zones' && (
+          <>
+            <div className="sp-tbl">
+              <div style={CS}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
+                      {['Зона','Было','Стало','Разница'].map((h, i) => (
+                        <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '10px 16px', color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {CIRC_KEYS.map(k => {
+                      const bv = first?.[k] != null ? Number(first[k]) : null;
+                      const av = last?.[k] != null  ? Number(last[k])  : null;
+                      if (bv == null && av == null) return null;
+                      const d = bv != null && av != null && ms.length >= 2 ? av - bv : null;
+                      const dc = d == null ? '#9ca3af' : d < 0 ? '#16a34a' : d > 0 ? '#f59e0b' : '#9ca3af';
+                      return (
+                        <tr key={k} style={{ borderTop: '1px solid #f8fafc', background: d != null && d < 0 ? 'rgba(22,163,74,0.03)' : 'transparent' }}>
+                          <td style={{ padding: '8px 16px', fontWeight: 600 }}>{ZONE_LABELS[k]}</td>
+                          <td style={{ textAlign: 'right', padding: '8px 16px', color: '#6b7280' }}>{bv != null ? bv.toFixed(1) : '—'}</td>
+                          <td style={{ textAlign: 'right', padding: '8px 16px' }}>{av != null ? av.toFixed(1) : '—'}</td>
+                          <td style={{ textAlign: 'right', padding: '8px 16px', color: dc, fontWeight: 700 }}>
+                            {d == null ? '—' : (d < 0 ? '−' : '+') + Math.abs(d).toFixed(1)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="sp-cds">
+              <div style={CS}>
+                {CIRC_KEYS.map((k, idx) => {
+                  const bv = first?.[k] != null ? Number(first[k]) : null;
+                  const av = last?.[k] != null  ? Number(last[k])  : null;
+                  if (bv == null && av == null) return null;
+                  const d = bv != null && av != null && ms.length >= 2 ? av - bv : null;
+                  const dc = d == null ? '#9ca3af' : d < 0 ? '#16a34a' : d > 0 ? '#f59e0b' : '#9ca3af';
+                  return (
+                    <div key={k} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px',
+                      borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none',
+                      background: d != null && d < 0 ? 'rgba(22,163,74,0.03)' : 'transparent' }}>
+                      <div style={{ flex: 1, fontWeight: 600, fontSize: 15 }}>{ZONE_LABELS[k]}</div>
+                      <div style={{ color: '#6b7280', fontSize: 13, marginRight: 10 }}>
+                        {bv != null ? bv.toFixed(1) : '—'} → {av != null ? av.toFixed(1) : '—'}
+                      </div>
+                      <div style={{ color: dc, fontWeight: 700, fontSize: 15, minWidth: 44, textAlign: 'right' }}>
+                        {d == null ? '—' : (d < 0 ? '−' : '+') + Math.abs(d).toFixed(1)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── InBody ── */}
+        {tab === 'inbody' && (
+          ibs.length === 0
+            ? <div style={CS}><div style={{ padding: '32px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>Нет данных InBody</div></div>
+            : <>
+                <div style={{ display: 'grid', gridTemplateColumns: ibs.length >= 2 ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 12 }}>
+                  {(ibs.length >= 2 ? [{ ib: ibFirst!, comp: ibFirst }, { ib: ibLast!, comp: ibFirst }] : [{ ib: ibLast!, comp: null }]).map(({ ib, comp }, i) => (
+                    <div key={i} style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: '14px 16px',
+                      boxShadow: i > 0 ? '0 2px 10px rgba(2,189,182,0.1)' : 'none' }}>
+                      <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+                        {ibs.length === 1 ? 'Тест' : (i === 0 ? 'Первый' : 'Последний')} · {fmtDate(ib.tested_at)}
+                      </div>
+                      {IB_METRICS.map(({ label, field, unit, goodDown }) => {
+                        const val = ib[field];
+                        if (val == null) return null;
+                        const prevVal = i > 0 && comp ? comp[field] : null;
+                        const delta = prevVal != null ? val - prevVal : null;
+                        const arrow = delta == null ? '' : delta < 0 ? ' ↓' : delta > 0 ? ' ↑' : '';
+                        const arrowColor = delta == null ? '' : (goodDown ? delta < 0 : delta > 0) ? '#16a34a' : '#f59e0b';
+                        return (
+                          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <span style={{ fontSize: 12, color: '#6b7280' }}>{label}</span>
+                            <span style={{ fontWeight: 700, fontSize: 14 }}>
+                              {val}{unit}{arrow && <span style={{ color: arrowColor, fontSize: 12 }}>{arrow}</span>}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+                {ibs.length >= 3 && (
+                  <div style={CS}>
+                    <div style={{ padding: '12px 12px 8px' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 6 }}>Вес — динамика</div>
+                      <IBChart ibs={ibs} />
+                    </div>
+                  </div>
+                )}
+              </>
+        )}
+
+        <div style={{ textAlign: 'center', fontSize: 12, color: '#94a3b8', paddingTop: 8 }}>
           SlimWay — студия коррекции фигуры
         </div>
       </div>

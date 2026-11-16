@@ -4,16 +4,17 @@ import { apiGet } from '../../api';
 
 // Print blank coordinates (x%, y% from blank dimensions)
 const PRINT_ROWS: { key: string; y: number }[] = [
-  { key: 'neck',    y: 37.7 },
-  { key: 'chest',   y: 41.8 },
-  { key: 'arm_l',   y: 45.9 },
-  { key: 'arm_r',   y: 50.0 },
-  { key: 'waist',   y: 54.2 },
-  { key: 'glutes',  y: 58.3 },
-  { key: 'thigh_l', y: 62.4 },
-  { key: 'thigh_r', y: 66.5 },
-  { key: 'shin_l',  y: 70.6 },
-  { key: 'shin_r',  y: 74.8 },
+  { key: 'neck'     , y: 34.0 },
+  { key: 'chest'    , y: 38.12 },
+  { key: 'arm_l'    , y: 42.25 },
+  { key: 'arm_r'    , y: 46.38 },
+  { key: 'waist'    , y: 50.5 },
+  { key: 'belly'    , y: 54.62 },
+  { key: 'glutes'   , y: 58.75 },
+  { key: 'thigh_l'  , y: 62.88 },
+  { key: 'thigh_r'  , y: 67.0 },
+  { key: 'shin_l'   , y: 71.12 },
+  { key: 'shin_r'   , y: 75.25 },
 ];
 const X_DO   = 29.7;
 const X_AFTER = 88.5;
