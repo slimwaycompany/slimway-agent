@@ -47,7 +47,7 @@
 - **Пerm-ключи формата `block.row` (task 56):** `manager.tasks`, `clients.phone`, `kassa.sale` и т.д. Для новой вкладки/отчёта/действия — ОБЯЗАТЕЛЬНО добавить в `PERM_CATALOG` (src/core/permissions.ts) и в пресеты нужных должностей. Серверные проверки: `const session = await getSessionWithPerms(req); if (!requirePerm(req, res, 'block.row', 'edit', session)) return;` (тип `session` автоматически сужается до `ExtendedSession` после проверки).
 
 ## Сделано
-### 16.11.2026 · (task 56) · должности, права по каждой вкладке и отчёту, особые действия
+### 16.11.2026 · 0dd46e9 · должности, права по каждой вкладке и отчёту, особые действия
 - **permissions.ts** переписан: `PERM_CATALOG` — 10 блоков (manager/agent/schedule/clients/funnel/kassa/kviz/measure/reports/settings), ключи формата `block.row`, строки-действия (kind='action'), `hasSeeAll`. `POSITION_PRESETS` — 7 должностей с полными наборами прав.
 - **auth.ts**: `ExtendedSession` добавлены `branch_id`/`all_branches`. `getSessionWithPerms` разрешает права: admin→всё, custom_permissions=false→из app_position_permissions, true→из app_user_permissions. `requirePerm` теперь type predicate (`session is ExtendedSession`). `invalidatePositionCache` — сброс кэша всех пользователей должности.
 - **index.ts**: `seedPositionPresets()` — при старте заполняет права должностей если пусто; `cleanLegacyPermKeys()` — удаляет старые ключи `tab:*`/`cashier:*`.
