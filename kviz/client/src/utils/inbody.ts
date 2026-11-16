@@ -68,7 +68,7 @@ export function parseInBody(raw: string): InBodyData | null {
       return '';
     });
     // More precise: find where digits-only run starts after the device prefix
-    const deviceMatch = raw.match(/^(270-[A-Z0-9]+?)(\d{9,12})(!+)/);
+    const deviceMatch = raw.match(/^(270-[A-Z0-9]+?)([78]\d{10})(!+)/); // 11-значный телефон 8/7XXXXXXXXXX
     if (!deviceMatch) return null;
     const device_id_clean = deviceMatch[1];
     const rawPhone = deviceMatch[2];
@@ -79,8 +79,6 @@ export function parseInBody(raw: string): InBodyData | null {
     phone = '+' + phone;
 
     // ── After header: find position after all !
-    const afterHeader = raw.indexOf('!', excl) + 1;
-    while (raw[afterHeader - 1] === '!') {}
     // Find where ! block ends
     let pos = excl + deviceMatch[2].length;
     while (raw[pos] === '!') pos++;

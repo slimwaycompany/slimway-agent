@@ -11,7 +11,7 @@
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 28.10.2026 | Работает, кабинет агента |
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟡 | 30.10.2026 | Закрытие смены из Fitbase — тестовый режим; GET /cash/sync-time теперь admin-only |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 04.11.2026 | task 35: QuizPage tabs на мобиле (Вопрос/Ответы/Резюме) |
-| Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 16.11.2026 | task 54: печать с животом (11 строк), фикс InBody на /r/:token (phone_digits), новая SharePage (3 вкладки: Фигура/Замеры/InBody) |
+| Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 16.11.2026 | task 55: useQrCamera хук, вкладка InBody в MeasureLayout, InBodyScanPage, client_id в POST /qr |
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 04.11.2026 | task 35: аккордеон групп на мобиле (openGroups, localStorage) |
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 12.11.2026 | task 52: шаблоны слайдов (result1/result2/image), слоты клиента/текста, редактор шаблонов |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 13.11.2026 | Задача 48-3: date_from/date_to по дате создания, фильтр занятий [now,now+48h] в коде |

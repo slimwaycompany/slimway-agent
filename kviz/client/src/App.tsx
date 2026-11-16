@@ -14,6 +14,7 @@ import AdminReportsPage from './pages/reports/ReportsPage';
 import ResultsPage from './pages/ResultsPage';
 import SharePage from './pages/measure/SharePage';
 import InBodyImportPage from './pages/measure/InBodyImportPage';
+import InBodyScanPage from './pages/measure/InBodyScanPage';
 import PlaceholderPage from './pages/crm/PlaceholderPage';
 import SettingsPage from './pages/crm/SettingsPage';
 import ClientsPage from './pages/crm/ClientsPage';
@@ -61,6 +62,7 @@ export default function App() {
       <Route path="/measure/reports" element={<Navigate to="/reports" replace />} />
       <Route path="/measure/client/:id" element={<RequireAuth><ClientPage /></RequireAuth>} />
       <Route path="/measure/print" element={<RequireAuth><PrintPage /></RequireAuth>} />
+      <Route path="/measure/inbody" element={<RequireAuth><InBodyScanPage /></RequireAuth>} />
       <Route path="/measure/inbody-import" element={<RequireAuth><InBodyImportPage /></RequireAuth>} />
       <Route path="/manager" element={<RequireAuth><ManagerPage /></RequireAuth>} />
       <Route path="/manager/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />

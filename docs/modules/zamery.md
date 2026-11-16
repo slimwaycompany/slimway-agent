@@ -7,11 +7,13 @@
 
 ## Где код
 - `kviz/client/src/pages/measure/NewMeasurePage.tsx` — новый замер тела
-- `kviz/client/src/pages/measure/MeasureLayout.tsx` — обёртка страниц замеров (выбор клиента, навигация)
-- `kviz/client/src/pages/measure/InBodyImportPage.tsx` — импорт InBody CSV; QR-сканирование
+- `kviz/client/src/pages/measure/MeasureLayout.tsx` — обёртка страниц замеров (вкладки: Новый замер / InBody)
+- `kviz/client/src/pages/measure/InBodyScanPage.tsx` — быстрое сканирование InBody без контекста клиента; после сохранения ищет клиента по phone_digits и навигирует
+- `kviz/client/src/pages/measure/InBodyImportPage.tsx` — импорт InBody CSV (admin)
 - `kviz/client/src/pages/measure/ClientPage.tsx` — страница результатов клиента: фигура, зоны, «потеряно со старта»
 - `kviz/client/src/pages/measure/SharePage.tsx` — публичная страница результатов (без входа, по внутреннему ID)
 - `kviz/client/src/pages/measure/PrintPage.tsx` — печать бланка замера
+- `kviz/client/src/lib/useQrCamera.ts` — React-хук: камера + jsQR-скан (5 fps, 200 мс таймер), колбэк `onQr(ibData)` при попадании InBody QR
 - `src/http/measure.ts` — API `/kviz/api/measure/*`: замеры, расчёт изменений, сводка «потеряно со старта»
 - `src/http/inbody.ts` — API `/kviz/api/inbody/*`: импорт CSV, тесты, расчёт параметров, результаты студии
 
@@ -41,7 +43,19 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
-### 16.11.2026 · (текущий) · task 54 — печать с животом, фикс InBody на публичной ссылке, новая страница результатов
+### 16.11.2026 · (текущий) · task 55 — парсер InBody v2, хук камеры, кнопка InBody в замерах
+
+- **inbody.ts (парсер)**: regex телефона `([78]\d{10})` (11 цифр), убран мёртвый код `afterHeader`; позиция после `!` вычисляется правильно.
+- **qrFromImage.ts**: `extractIBData` через regex вместо URLSearchParams ('+' в данных QR не теряется).
+- **useQrCamera.ts** (новый, `kviz/client/src/lib/`): хук с `cameraActive`, `videoRef`, `canvasRef`, `startCamera`, `stopCamera`, `cameraErr`; вызывает `onQr(ibData)` при успешном QR; cleanup при unmount.
+- **ClientPage.tsx / InBodyDialog**: камерная логика заменена на `useQrCamera(tryParse)`; ошибки камеры через `cameraErr`; убраны `streamRef`, `scanTimerRef`, `rafRef`, `scheduleScan`, `scanFrame` — 60 строк минус.
+- **MeasureLayout.tsx**: добавлена вкладка «InBody» → `/measure/inbody`; активная вкладка подсвечивается по pathname.
+- **InBodyScanPage.tsx** (новый): страница `/measure/inbody`; использует `useQrCamera`; после сохранения ищет `body_clients` по digits телефона из QR и навигирует на страницу клиента.
+- **App.tsx**: добавлен маршрут `/measure/inbody`.
+- **src/http/inbody.ts**: POST `/kviz/api/inbody/qr` принимает `client_id`; если передан — берёт `phone` из `body_clients` и использует его вместо телефона из QR, обеспечивая правильную привязку.
+- **Проверка колонок**: `body_clients.{phone,phone_digits}`, `inbody_tests.{phone,phone_digits,inbody_id,source}` — все есть; `inbody_tests.client_id` — нет (ожидаемо).
+
+### 16.11.2026 · afd8e36 · task 54 — печать с животом, фикс InBody на публичной ссылке, новая страница результатов
 
 - **PrintPage + bodyr.png**: новый бланк 11 пунктов (добавлен «Живот» строка 6), координаты y пересчитаны: neck 34.0 → shin_r 75.25, шаг 4.12.
 - **Фикс InBody на /r/:token** (`src/http/kviz.ts`): `body_clients` теперь выбирается вместе с `phone_digits`; `inbody_tests` выбираются по `.eq('phone_digits', client.phone_digits)` вместо несуществующего `client_id`; ошибки логируются через `console.error`; из select убраны `id`, `data`, `inbody_score` (не должны утекать наружу).
@@ -76,10 +90,11 @@
 - Импорт InBody CSV, расчёт параметров, полный лист замера, попап зоны с зумом.
 
 ## Открытые баги
-- (баг InBody на /r/:token исправлен в task 54)
+- (нет на 16.11.2026)
 
 ## Следующее
 - **ClientPage mobile дополнения (записано 04.11):** zone-detail как bottom-sheet на мобиле; попап зоны по нажатию на строку списка — проверить на реальном телефоне.
 - Проверить SharePage на реальном устройстве 375 px и клиенте с InBody.
 - Прогноз по зонам (примерный, проверить).
 - Решить, нужен ли InBody пятым «аппаратом» в расписании CRM.
+- InBodyScanPage: протестировать на реальном листе InBody.

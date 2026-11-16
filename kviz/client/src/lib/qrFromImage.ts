@@ -13,11 +13,9 @@ prepareZXingModule({
 
 export function extractIBData(input: string): string | null {
   const trimmed = input.trim();
-  try {
-    const u = new URL(trimmed);
-    const v = u.searchParams.get('IBData');
-    if (v) return v;
-  } catch {}
+  // Не через URLSearchParams: он превращает '+' в пробел, а в данных QR '+' значащий
+  const m = trimmed.match(/[?&]IBData=([^&#\s]+)/);
+  if (m) return m[1];
   if (/^270-/.test(trimmed)) return trimmed;
   return null;
 }

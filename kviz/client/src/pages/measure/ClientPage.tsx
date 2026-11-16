@@ -5,7 +5,7 @@ import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
 import { parseInBody } from '../../utils/inbody';
 import { extractIBData, qrFromImage } from '../../lib/qrFromImage';
-import jsQR from 'jsqr';
+import { useQrCamera } from '../../lib/useQrCamera';
 
 const CIRC_KEYS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 type CircKey = typeof CIRC_KEYS[number];
@@ -628,14 +628,8 @@ function InBodyDialog({ clientId, onDone, onClose, isAdmin }: {
   const [parseErr, setParseErr] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
-  const [cameraActive, setCameraActive] = useState(false);
   const [photoStatus, setPhotoStatus] = useState<null | 'searching' | 'notfound'>(null);
   const [diagInfo, setDiagInfo] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number>(0);
-  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captureRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
@@ -648,56 +642,7 @@ function InBodyDialog({ clientId, onDone, onClose, isAdmin }: {
     setParsed(d);
   }
 
-  function scheduleScan() {
-    if (!streamRef.current) return;
-    scanTimerRef.current = setTimeout(scanFrame, 200);
-  }
-
-  function scanFrame() {
-    const video = videoRef.current, canvas = canvasRef.current;
-    if (!video || !canvas || !streamRef.current) return;
-    if (video.readyState < 2 || video.videoWidth === 0) { scheduleScan(); return; }
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
-    if (code?.data) {
-      const hit = extractIBData(code.data);
-      if (hit) { stopCamera(); tryParse(hit); return; }
-    }
-    scheduleScan();
-  }
-
-  async function startCamera() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-      });
-      streamRef.current = stream;
-      const video = videoRef.current;
-      if (!video) { stream.getTracks().forEach(t => t.stop()); return; }
-      video.srcObject = stream;
-      setCameraActive(true);
-      video.addEventListener('loadedmetadata', () => scheduleScan(), { once: true });
-      await video.play().catch(() => {});
-    } catch (e: unknown) {
-      const name = (e as Error)?.name;
-      if (name === 'NotAllowedError') setParseErr('Разрешите доступ к камере в настройках браузера');
-      else if (name === 'NotFoundError') setParseErr('Камера не найдена');
-      else setParseErr('Камера недоступна, сфотографируйте лист кнопкой ниже');
-    }
-  }
-
-  function stopCamera() {
-    if (scanTimerRef.current) { clearTimeout(scanTimerRef.current); scanTimerRef.current = null; }
-    cancelAnimationFrame(rafRef.current);
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-    setCameraActive(false);
-  }
+  const { cameraActive, cameraErr, videoRef, canvasRef, startCamera, stopCamera } = useQrCamera(tryParse);
 
   async function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -745,8 +690,6 @@ function InBodyDialog({ clientId, onDone, onClose, isAdmin }: {
       setPhotoStatus(s => s === 'searching' ? null : s);
     }
   }
-
-  useEffect(() => () => { stopCamera(); }, []);
 
   async function save() {
     if (!parsed) return;
@@ -808,7 +751,7 @@ function InBodyDialog({ clientId, onDone, onClose, isAdmin }: {
             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Или вставьте ссылку / строку из QR:</div>
             <input style={inputS} placeholder="https://qrcode.inbody.com?IBData=..." value={pasteVal}
               onChange={e => { setPasteVal(e.target.value); if (e.target.value.length > 20) tryParse(e.target.value); }} />
-            {parseErr && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 6 }}>{parseErr}</div>}
+            {(parseErr || cameraErr) && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 6 }}>{parseErr || cameraErr}</div>}
           </>
         )}
 

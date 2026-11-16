@@ -77,7 +77,7 @@ export function buildInbodyRouter(): Router {
     const session = getSession(req);
     if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
     try {
-      const { inbody } = req.body as Record<string, unknown>;
+      const { inbody, client_id } = req.body as Record<string, unknown>;
       const ib = inbody as Record<string, unknown>;
       if (!ib || !ib.measured_at) { res.status(400).json({ error: 'inbody.measured_at обязателен' }); return; }
 
@@ -87,7 +87,13 @@ export function buildInbodyRouter(): Router {
 
       // Check inbody_id_links for an explicit phone override
       const overrides = await phoneOverrides([inbody_id]);
-      const phone = overrides.get(inbody_id) ?? normalizePhone(String(ib.phone || ''));
+      let phone = overrides.get(inbody_id) ?? normalizePhone(String(ib.phone || ''));
+      // If client_id provided, use the client's stored phone so the test links to the right client
+      if (client_id) {
+        const { data: clientRow } = await supabase.from('body_clients')
+          .select('phone').eq('id', String(client_id)).maybeSingle();
+        if (clientRow?.phone) phone = clientRow.phone;
+      }
 
       const lean_seg = ib.lean_by_segment as Record<string, number> | null;
       const fat_seg  = ib.fat_by_segment  as Record<string, number> | null;
