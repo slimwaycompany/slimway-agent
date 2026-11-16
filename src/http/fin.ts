@@ -1,15 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, requireAdmin } from './auth';
 import { fetchAll } from './metrics';
 
 const BRANCH = '00000000-0000-0000-0000-000000000001';
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-
-function isAdmin(req: Request, res: Response): boolean {
-  if (getSession(req)?.role === 'admin') return true;
-  res.status(403).json({ error: 'Только для администратора' }); return false;
-}
 
 // ── Staff map (cached 60 s) ────────────────────────────────────────────────────
 
@@ -427,7 +422,7 @@ export function buildFinRouter(): Router {
   // ── Staff ──────────────────────────────────────────────────────────────────
 
   router.get('/kviz/api/fin/staff', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const { data, error } = await supabase.from('fin_staff').select('*').eq('branch_id', BRANCH).order('sort').order('display_name');
       if (error) { console.error('[fin/staff]', error.message); res.status(500).json({ error: 'Ошибка загрузки' }); return; }
@@ -436,7 +431,7 @@ export function buildFinRouter(): Router {
   });
 
   router.post('/kviz/api/fin/staff', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const { display_name, fitbase_name, monthly_salary, hidden_in_reports, in_payroll, is_active, note } = req.body as Record<string, unknown>;
@@ -464,7 +459,7 @@ export function buildFinRouter(): Router {
   });
 
   router.put('/kviz/api/fin/staff/:id', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const b = req.body as Record<string, unknown>;
@@ -486,7 +481,7 @@ export function buildFinRouter(): Router {
   });
 
   router.delete('/kviz/api/fin/staff/:id', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const { data: staff } = await supabase.from('fin_staff').select('display_name,fitbase_name').eq('id', req.params.id).maybeSingle();
@@ -515,7 +510,7 @@ export function buildFinRouter(): Router {
   });
 
   router.get('/kviz/api/fin/fitbase-names', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const since = addDaysStr(new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10), -90);
       const [{ data: ops }, { data: leads }, { data: linked }] = await Promise.all([
@@ -535,7 +530,7 @@ export function buildFinRouter(): Router {
   // ── Expense groups ─────────────────────────────────────────────────────────
 
   router.get('/kviz/api/fin/expense-groups', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const [{ data: groups, error: ge }, { data: items, error: ie }, salaryRes] = await Promise.all([
         supabase.from('fin_expense_groups').select('*').eq('branch_id', BRANCH).order('sort').order('name'),
@@ -556,7 +551,7 @@ export function buildFinRouter(): Router {
   });
 
   router.post('/kviz/api/fin/expense-groups', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const { name, level } = req.body as Record<string, unknown>;
@@ -574,7 +569,7 @@ export function buildFinRouter(): Router {
   });
 
   router.put('/kviz/api/fin/expense-groups/:id', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const b = req.body as Record<string, unknown>;
@@ -591,7 +586,7 @@ export function buildFinRouter(): Router {
   });
 
   router.delete('/kviz/api/fin/expense-groups/:id', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const { data: grp } = await supabase.from('fin_expense_groups').select('system_key').eq('id', req.params.id).maybeSingle();
@@ -611,7 +606,7 @@ export function buildFinRouter(): Router {
   // ── Expense items ──────────────────────────────────────────────────────────
 
   router.post('/kviz/api/fin/expense-items', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const b = req.body as Record<string, unknown>;
@@ -637,7 +632,7 @@ export function buildFinRouter(): Router {
   });
 
   router.put('/kviz/api/fin/expense-items/:id', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const b = req.body as Record<string, unknown>;
@@ -659,7 +654,7 @@ export function buildFinRouter(): Router {
   });
 
   router.delete('/kviz/api/fin/expense-items/:id', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const { data: wi } = await supabase.from('fin_week_input').select('week_start').eq('item_id', req.params.id).limit(1);
@@ -676,7 +671,7 @@ export function buildFinRouter(): Router {
   // ── Week input ─────────────────────────────────────────────────────────────
 
   router.put('/kviz/api/fin/week-input', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const sess = getSession(req)!;
       const { week_start, item_id, amount } = req.body as Record<string, unknown>;
@@ -699,13 +694,13 @@ export function buildFinRouter(): Router {
   // ── TBU ────────────────────────────────────────────────────────────────────
 
   router.get('/kviz/api/fin/tbu-summary', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try { res.json(await computeTbuSummary()); }
     catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
   router.get('/kviz/api/fin/tbu', async (req, res) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const mode   = req.query.mode   === 'month' ? 'month' : 'week' as 'week' | 'month';
       const salary = req.query.salary === 'current' ? 'current' : 'max' as 'max' | 'current';

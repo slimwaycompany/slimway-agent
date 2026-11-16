@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, requireAdmin } from './auth';
 import { runFitbaseOps } from '../jobs/fitbaseOps';
 import { acquireLock, releaseLock } from '../core/lock';
 import path from 'path';
@@ -26,8 +26,7 @@ export function buildCashRouter(): Router {
 
   // POST /kviz/api/cash/sync — trigger Fitbase ops sync (admin only)
   r.post('/kviz/api/cash/sync', async (_req, res) => {
-    const session = getSession(_req);
-    if (!session || session.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
+    if (!requireAdmin(_req, res)) return;
     try {
       const locked = await acquireLock('fitbase-ops', 10 * 60);
       if (!locked) { res.json({ status: 'already_running' }); return; }
@@ -44,8 +43,7 @@ export function buildCashRouter(): Router {
 
   // GET /kviz/api/cash/sync-time — last sync time (admin only)
   r.get('/kviz/api/cash/sync-time', async (_req, res) => {
-    const session = getSession(_req);
-    if (!session || session.role !== 'admin') { res.status(403).json({ error: 'Доступно только администратору' }); return; }
+    if (!requireAdmin(_req, res)) return;
     try {
       const { data } = await supabase.from('sync_state').select('value').eq('key', 'fitbase_ops_synced_at').maybeSingle();
       res.json({ synced_at: data?.value ?? null });

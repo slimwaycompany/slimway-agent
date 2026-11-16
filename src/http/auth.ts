@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import express from 'express';
+import { supabase } from '../db/supabase';
 import { env } from '../config';
 
 export const COOKIE_NAME  = 'swtoken';
@@ -11,6 +12,13 @@ export interface TokenPayload {
   login: string;
   display_name: string;
   role: string;
+  v: number; // auth_version — tokens without v are invalid
+}
+
+export interface PermEntry { level: 'view' | 'edit'; see_all: boolean }
+
+export interface ExtendedSession extends TokenPayload {
+  perms: Record<string, PermEntry>; // empty for admin (can() handles admin shortcut)
 }
 
 function windowSecret(): string {
@@ -37,24 +45,141 @@ function parseToken(token: string): TokenPayload | null {
     if (!crypto.timingSafeEqual(eSig, gSig)) return null;
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString()) as TokenPayload;
     if (data.exp <= Math.floor(Date.now() / 1000)) return null;
-    if (!data.id || !data.login) return null; // reject old-format tokens (shared-password era)
+    if (!data.id || !data.login) return null;
+    if (data.v === undefined || data.v === null) return null; // reject old tokens without auth_version
     return data;
   } catch { return null; }
 }
 
 export function getSession(req: express.Request): TokenPayload | null {
-  // Cookie first
   const header = req.headers.cookie || '';
   const part   = header.split(';').map(s => s.trim()).find(s => s.startsWith(COOKIE_NAME + '='));
   const cookieToken = part ? part.slice(COOKIE_NAME.length + 1) : null;
   if (cookieToken) { const s = parseToken(cookieToken); if (s) return s; }
-  // Bearer (for extension iframe that cannot send cookies)
   const auth = req.headers.authorization;
   if (auth?.startsWith('Bearer ')) return parseToken(auth.slice(7));
   return null;
 }
 
-// Legacy helpers — kept for callers not yet updated to getSession
+// ── Permission cache (30 s TTL) ───────────────────────────────────────────────
+
+interface CacheEntry { session: ExtendedSession; exp: number }
+const permCache = new Map<string, CacheEntry>();
+
+export async function getSessionWithPerms(req: express.Request): Promise<ExtendedSession | null> {
+  const base = getSession(req);
+  if (!base) return null;
+
+  const cached = permCache.get(base.id);
+  if (cached && Date.now() < cached.exp && cached.session.v === base.v) {
+    return cached.session;
+  }
+
+  const { data: user } = await supabase
+    .from('app_users')
+    .select('auth_version, is_active, fired_at')
+    .eq('id', base.id)
+    .maybeSingle();
+
+  if (!user || !user.is_active || user.fired_at || user.auth_version !== base.v) return null;
+
+  let perms: Record<string, PermEntry> = {};
+  if (base.role !== 'admin') {
+    const { data: rows } = await supabase
+      .from('app_user_permissions')
+      .select('perm_key, level, see_all')
+      .eq('user_id', base.id);
+    for (const r of rows || []) {
+      perms[r.perm_key as string] = { level: r.level as 'view' | 'edit', see_all: Boolean(r.see_all) };
+    }
+  }
+
+  const extended: ExtendedSession = { ...base, perms };
+  permCache.set(base.id, { session: extended, exp: Date.now() + 30_000 });
+  return extended;
+}
+
+export function invalidateUserCache(userId: string): void {
+  permCache.delete(userId);
+}
+
+export function can(session: ExtendedSession | null, permKey: string, level: 'view' | 'edit' = 'view'): boolean {
+  if (!session) return false;
+  if (session.role === 'admin') return true;
+  const p = session.perms[permKey];
+  if (!p) return false;
+  return level === 'view' ? true : p.level === 'edit';
+}
+
+export function seeAll(session: ExtendedSession | null, permKey: string): boolean {
+  if (!session) return false;
+  if (session.role === 'admin') return true;
+  return Boolean(session.perms[permKey]?.see_all);
+}
+
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+
+export function requireAuth(req: express.Request, res: express.Response): boolean {
+  if (getSession(req)) return true;
+  res.status(401).json({ error: 'Unauthorized' });
+  return false;
+}
+
+export function requireAdmin(req: express.Request, res: express.Response): boolean {
+  const session = getSession(req);
+  if (!session) { res.status(401).json({ error: 'Unauthorized' }); return false; }
+  if (session.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return false; }
+  return true;
+}
+
+// ── Login log ─────────────────────────────────────────────────────────────────
+
+export async function writeLoginLog(
+  userId: string | null,
+  login: string,
+  ok: boolean,
+  reason: string | null,
+  ip: string,
+  ua: string,
+): Promise<void> {
+  try {
+    await supabase.from('app_login_log').insert({
+      user_id: userId,
+      login,
+      ok,
+      reason,
+      ip,
+      user_agent: ua,
+    });
+  } catch (e) {
+    console.error('[writeLoginLog]', e);
+  }
+}
+
+// ── DB-based rate limiter (replaces in-memory failMap) ────────────────────────
+
+const RATE_WINDOW_MS = 15 * 60 * 1000;
+const RATE_MAX       = 10;
+
+export async function checkLoginRate(login: string, ip: string): Promise<{ ok: boolean; waitMin: number }> {
+  try {
+    const since = new Date(Date.now() - RATE_WINDOW_MS).toISOString();
+    const { count } = await supabase
+      .from('app_login_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('login', login)
+      .eq('ip', ip)
+      .eq('ok', false)
+      .gte('created_at', since);
+    if ((count ?? 0) >= RATE_MAX) return { ok: false, waitMin: 15 };
+    return { ok: true, waitMin: 0 };
+  } catch {
+    return { ok: true, waitMin: 0 }; // fail open if DB is unavailable
+  }
+}
+
+// ── Legacy helpers — kept for callers not yet updated ─────────────────────────
+
 export function getToken(req: express.Request): string | null {
   const header = req.headers.cookie || '';
   const part   = header.split(';').map(s => s.trim()).find(s => s.startsWith(COOKIE_NAME + '='));
@@ -63,34 +188,4 @@ export function getToken(req: express.Request): string | null {
 
 export function verifyToken(token: string): boolean {
   return parseToken(token) !== null;
-}
-
-export function requireAuth(req: express.Request, res: express.Response): boolean {
-  if (getSession(req)) return true;
-  res.status(401).json({ error: 'Unauthorized' });
-  return false;
-}
-
-// In-memory rate limiter: max 10 failures per key per 15 minutes
-const failMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_WINDOW_MS = 15 * 60 * 1000;
-const RATE_MAX       = 10;
-
-export function checkRate(key: string): { ok: boolean; waitMin: number } {
-  const now = Date.now();
-  const rec = failMap.get(key);
-  if (!rec || now > rec.resetAt) return { ok: true, waitMin: 0 };
-  if (rec.count >= RATE_MAX) return { ok: false, waitMin: Math.ceil((rec.resetAt - now) / 60000) };
-  return { ok: true, waitMin: 0 };
-}
-
-export function recordFail(key: string): void {
-  const now = Date.now();
-  const rec = failMap.get(key);
-  if (!rec || now > rec.resetAt) { failMap.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS }); }
-  else rec.count++;
-}
-
-export function clearFails(key: string): void {
-  failMap.delete(key);
 }

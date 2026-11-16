@@ -1,14 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, requireAdmin } from './auth';
 import { fetchAll, groupOrders, classifyPurchase, opCid, OrderRow, ContractRecord } from './metrics';
 
 const BRANCH = '00000000-0000-0000-0000-000000000001';
-
-function isAdmin(req: Request, res: Response): boolean {
-  if (getSession(req)?.role === 'admin') return true;
-  res.status(403).json({ error: 'Только для администратора' }); return false;
-}
 
 interface EmployeeSettings {
   shift_rate: number; shifts_count: number | null; new_sales_pct: number; renewal_pct: number;
@@ -276,7 +271,7 @@ export function buildPayrollRouter(): Router {
   const router = Router();
 
   router.get('/kviz/api/payroll', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const yekNow = new Date(Date.now() + 5 * 3600_000);
       const month = /^\d{4}-\d{2}$/.test(String(req.query.month)) ? String(req.query.month) : yekNow.toISOString().slice(0, 7);
@@ -295,7 +290,7 @@ export function buildPayrollRouter(): Router {
   });
 
   router.put('/kviz/api/payroll/employee', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const { month, employee, ...fields } = req.body as { month?: string; employee?: string; [k: string]: unknown };
       if (!month || !/^\d{4}-\d{2}$/.test(month)) { res.status(400).json({ error: 'Неверный month' }); return; }
@@ -336,7 +331,7 @@ export function buildPayrollRouter(): Router {
   });
 
   router.post('/kviz/api/payroll/close', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const { month } = req.body as { month?: string };
       if (!month || !/^\d{4}-\d{2}$/.test(month)) { res.status(400).json({ error: 'Неверный month' }); return; }
@@ -358,7 +353,7 @@ export function buildPayrollRouter(): Router {
   });
 
   router.post('/kviz/api/payroll/reopen', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const { month } = req.body as { month?: string };
       if (!month || !/^\d{4}-\d{2}$/.test(month)) { res.status(400).json({ error: 'Неверный month' }); return; }

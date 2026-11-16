@@ -2,7 +2,8 @@ import path from 'path';
 import fs from 'fs';
 import express, { Router, Application, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, getSessionWithPerms, requireAdmin } from './auth';
+import { PERM_CATALOG as permCatalog } from '../core/permissions';
 import { buildMeasureRouter } from './measure';
 import { buildManagerRouter } from './manager';
 import { buildShiftsRouter } from './shifts';
@@ -86,11 +87,16 @@ function buildRouter(): Router {
     res.sendFile(logo);
   });
 
-  // Public: auth status check
-  router.get('/kviz/api/me', (req, res) => {
-    const session = getSession(req);
+  // Public: auth status check with permissions
+  router.get('/kviz/api/me', async (req, res) => {
+    const session = await getSessionWithPerms(req);
     if (!session) { res.json({ authed: false }); return; }
-    res.json({ authed: true, login: session.login, display_name: session.display_name, role: session.role });
+    res.json({ authed: true, login: session.login, display_name: session.display_name, role: session.role, perms: session.perms });
+  });
+
+  // Public: permissions catalog
+  router.get('/kviz/api/permissions/catalog', (_req, res) => {
+    res.json(permCatalog);
   });
 
   // Protect all other /kviz/api/* routes
@@ -117,7 +123,7 @@ function buildRouter(): Router {
   });
 
   router.get('/kviz/api/results/mission', async (req, res) => {
-    if (getSession(req)?.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return; }
+    if (!requireAdmin(req, res)) return;
     const { data, error } = await supabase.from('studio_settings').select('value').eq('key', 'mission').maybeSingle();
     if (error) { res.status(500).json({ error: error.message }); return; }
     const key = process.env.RESULTS_DISPLAY_KEY;
@@ -125,7 +131,7 @@ function buildRouter(): Router {
   });
 
   router.put('/kviz/api/results/mission', async (req, res) => {
-    if (getSession(req)?.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return; }
+    if (!requireAdmin(req, res)) return;
     const mission = String((req.body as Record<string, unknown>).mission ?? '').trim();
     if (mission.length > 500) { res.status(400).json({ error: 'Текст миссии: не более 500 символов' }); return; }
     const { data, error } = await supabase.from('studio_settings').upsert({ key: 'mission', value: mission }, { onConflict: 'key' }).select('key,value').single();

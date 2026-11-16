@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
+import StaffPage from './StaffPage';
 import FreeSlide from '../../components/tv/FreeSlide';
 import TvScreenEditor from '../../components/tv/TvScreenEditor';
 import SlideTemplate from '../../components/tv/SlideTemplate';
@@ -20,7 +21,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'tv';
+type Section = 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'tv';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -3042,6 +3043,7 @@ function TvSection() {
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
 const NAV: { id: Section; label: string; icon: string }[] = [
+  { id: 'staff',      label: 'Сотрудники',          icon: '👤' },
   { id: 'devices',    label: 'Аппараты',           icon: '⚙️' },
   { id: 'abonements', label: 'Абонементы',          icon: '📋' },
   { id: 'services',   label: 'Услуги',              icon: '🛎️' },
@@ -3091,6 +3093,7 @@ export default function SettingsPage() {
             onClick={() => setMobileContent(false)}>← Назад</button>
           {NAV.find(n => n.id === section)?.label}
         </div>
+        {section === 'staff'      && <StaffPage />}
         {section === 'devices'    && <DevicesSection />}
         {section === 'abonements' && <PlansSection kind="abonement" />}
         {section === 'services'   && <PlansSection kind="service" />}

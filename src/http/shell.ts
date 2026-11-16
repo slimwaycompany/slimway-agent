@@ -2,7 +2,8 @@ import fs   from 'fs';
 import path  from 'path';
 import express, { Application } from 'express';
 import { supabase } from '../db/supabase';
-import { makeToken, getSession, COOKIE_NAME, COOKIE_MAX_S, checkRate, recordFail, clearFails } from './auth';
+import { makeToken, getSession, getSessionWithPerms, COOKIE_NAME, COOKIE_MAX_S, checkLoginRate, writeLoginLog } from './auth';
+import { PERM_CATALOG } from '../core/permissions';
 
 const SHELL_APP_JS = fs.readFileSync(
   path.join(__dirname, '../../public/shell-app.js'),
@@ -469,16 +470,34 @@ export function mountShellRoutes(app: Application): void {
     res.send(LOGIN_HTML);
   });
 
-  // Shell page: redirect to /login if not authed; inject display_name + admin-only Reports tab
-  app.get('/', (req, res) => {
-    const session = getSession(req);
+  // Shell page: redirect to /login if not authed; inject display_name + permissions (SW_PERMS)
+  app.get('/', async (req, res) => {
+    const session = await getSessionWithPerms(req);
     if (!session) { res.redirect(302, '/login'); return; }
     const isAdmin = session.role === 'admin';
+
+    // Build SW_PERMS: for admin — special value, for manager — their perm map
+    let swPerms: string;
+    if (isAdmin) {
+      // Build all-access perms from catalog + settings
+      const all: Record<string, { level: string; see_all: boolean }> = {};
+      for (const block of PERM_CATALOG) {
+        for (const tab of block.tabs) all[tab.key] = { level: 'edit', see_all: true };
+      }
+      all['settings'] = { level: 'edit', see_all: false };
+      swPerms = JSON.stringify(all);
+    } else {
+      const out: Record<string, { level: string; see_all: boolean }> = {};
+      for (const [k, v] of Object.entries(session.perms)) out[k] = { level: v.level, see_all: v.see_all };
+      swPerms = JSON.stringify(out);
+    }
+
     const reportsSettingsBtn = isAdmin ? '<button class="side-btn" id="side-to-settings"><span class="side-text">Настройки</span></button>' : '';
     const reportsPane = `<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button>${reportsSettingsBtn}</div>`;
     const settingsBtn  = isAdmin ? '<button class="tab-btn" id="tab-btn-settings">⚙️ Настройки</button>' : '';
     const settingsPane = isAdmin ? '<div class="pane hidden" id="settings-pane"><button class="side-btn left" id="side-set-to-reports"><span class="side-text">Отчёты</span></button></div>' : '';
     const settingsCh   = isAdmin ? '<button class="choice-btn" id="choice-settings"><span class="choice-icon">⚙️</span><span class="choice-label">Настройки</span></button>' : '';
+    const permsScript  = `<script>window.SW_PERMS=${swPerms};</script>`;
     const html = SHELL_HTML
       .replace('<!--DNAME-->', escapeHtml(session.display_name))
       .replace('<!--REPORTS_TAB_BTN-->', '<button class="tab-btn" id="tab-btn-reports">📊 Отчёты</button>')
@@ -490,50 +509,64 @@ export function mountShellRoutes(app: Application): void {
       .replace('<!--METRICS_CHOICE_BTN-->', '')
       .replace('<!--SETTINGS_TAB_BTN-->', settingsBtn)
       .replace('<!--SETTINGS_PANE-->', settingsPane)
-      .replace('<!--SETTINGS_CHOICE_BTN-->', settingsCh);
+      .replace('<!--SETTINGS_CHOICE_BTN-->', settingsCh)
+      .replace('<script src="/shell-app.js"></script>', `${permsScript}<script src="/shell-app.js"></script>`);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   });
 
   // GET /api/me
-  app.get('/api/me', (req, res) => {
-    const session = getSession(req);
+  app.get('/api/me', async (req, res) => {
+    const session = await getSessionWithPerms(req);
     if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    res.json({ login: session.login, display_name: session.display_name, role: session.role });
+    res.json({ login: session.login, display_name: session.display_name, role: session.role, perms: session.perms });
   });
 
   // POST /api/login
   app.post('/api/login', async (req, res) => {
     const ip    = String(req.ip || req.socket.remoteAddress || '');
+    const ua    = String(req.headers['user-agent'] || '');
     const login = String((req.body as Record<string, unknown>)?.login || '').trim().toLowerCase();
     const pw    = String((req.body as Record<string, unknown>)?.password || '');
 
     if (!login) { res.status(400).json({ error: 'Login required' }); return; }
 
-    const rateKey = `${login}:${ip}`;
-    const rate = checkRate(rateKey);
+    const rate = await checkLoginRate(login, ip);
     if (!rate.ok) { res.status(429).json({ error: 'Too many attempts', wait_min: rate.waitMin }); return; }
 
     try {
       const { data, error } = await supabase.rpc('app_check_login', { p_login: login, p_password: pw });
       const user = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
       if (error || !user?.id) {
-        recordFail(rateKey);
+        await writeLoginLog(null, login, false, error?.message || 'invalid credentials', ip, ua);
         res.status(401).json({ error: 'Invalid credentials' }); return;
       }
-      clearFails(rateKey);
+      const userId = String(user.id);
+      // Check if user is active
+      const { data: profile } = await supabase
+        .from('app_users')
+        .select('is_active, fired_at')
+        .eq('id', userId)
+        .maybeSingle();
+      if (!profile?.is_active || profile?.fired_at) {
+        await writeLoginLog(userId, login, false, 'account inactive', ip, ua);
+        res.status(401).json({ error: 'Invalid credentials' }); return;
+      }
+      await writeLoginLog(userId, login, true, null, ip, ua);
+      await supabase.from('app_users').update({ last_login_at: new Date().toISOString() }).eq('id', userId);
       const token = makeToken({
-        id:           String(user.id),
+        id:           userId,
         login:        String(user.login),
         display_name: String(user.display_name),
         role:         String(user.role),
+        v:            Number(user.auth_version ?? 1),
       });
       res.setHeader('Set-Cookie',
         `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_S}; Path=/`,
       );
       res.json({ ok: true, display_name: String(user.display_name) });
     } catch (e) {
-      recordFail(rateKey);
+      await writeLoginLog(null, login, false, String(e), ip, ua);
       res.status(500).json({ error: String(e) });
     }
   });

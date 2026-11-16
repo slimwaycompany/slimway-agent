@@ -26,6 +26,7 @@ import { buildShiftsAutocloseRoute }                  from './http/shifts';
 import { runFitbaseOps, JOB_NAME as FITBASE_OPS_JOB } from './jobs/fitbaseOps';
 import { runFitbaseCrmSync } from './jobs/fitbaseCrmSync';
 import { mountScriptologRoutes } from './http/scriptolog';
+import { mountStaffRoutes } from './http/staff';
 import { buildTvRouter } from './http/tv';
 import { runCrmLifecycle } from './http/crm';
 import { runCrmLeadsSync } from './jobs/crmLeadsSync';
@@ -33,6 +34,7 @@ import { runScriptologReminders, JOB_NAME as REMINDERS_JOB } from './jobs/script
 import { runControl, runControlRange } from './jobs/control';
 import { syncControlSheet, shouldSyncSheet } from './jobs/controlSheetSync';
 import { runProbeControl } from './jobs/probeControl';
+import { DEFAULT_MANAGER_PERMISSIONS } from './core/permissions';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -468,9 +470,38 @@ app.use(express.json());
 // Serve PWA manifest, icons and other public root assets
 app.use(express.static(path.join(__dirname, '../public'), { index: false, maxAge: '1d' }));
 mountShellRoutes(app);
+mountStaffRoutes(app);
 mountScriptologRoutes(app);
 mountKvizRoutes(app);
 mountWindowRoutes(app);
+
+// ── Startup: seed default permissions for managers without any ────────────────
+
+async function seedDefaultPermissions(): Promise<void> {
+  try {
+    const { data: managers } = await supabase
+      .from('app_users')
+      .select('id')
+      .eq('role', 'manager')
+      .eq('is_active', true);
+    for (const m of managers || []) {
+      const { count } = await supabase
+        .from('app_user_permissions')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', m.id);
+      if (!count) {
+        await supabase.from('app_user_permissions')
+          .upsert(
+            DEFAULT_MANAGER_PERMISSIONS.map(p => ({ user_id: m.id, ...p })),
+            { onConflict: 'user_id,perm_key' },
+          );
+        console.log(`[startup] seeded default permissions for manager ${m.id as string}`);
+      }
+    }
+  } catch (e) {
+    console.error('[startup] seedDefaultPermissions error:', (e as Error).message);
+  }
+}
 
 // ── Startup: clear stale locks and orphaned running job_runs ──────────────────
 
@@ -499,4 +530,5 @@ async function clearStaleLocks(): Promise<void> {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 clearStaleLocks().catch(() => {/* already logged inside */});
+seedDefaultPermissions().catch(() => {/* already logged inside */});
 app.listen(env.PORT, () => console.log(`[server] port ${env.PORT}`));

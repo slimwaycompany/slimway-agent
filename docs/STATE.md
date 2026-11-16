@@ -6,7 +6,8 @@
 
 | Модуль | Файл | Чат в claude.ai | Статус | Обновлено | Последнее изменение |
 |---|---|---|---|---|---|
-| Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 04.11.2026 | task 35: гамбургер-drawer (≤1024px), 2-кол меню выбора, PWA manifest+icons |
+| Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 16.11.2026 | task 55: SW_PERMS в оболочке, canTab/applyPermissions в shell-app.js |
+| Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 16.11.2026 | task 55: окно Сотрудники, права по блокам, auth_version, журнал входов, PermContext |
 | Агент воронки Fitbase | `modules/agent.md` | Агент и овчарка | 🟢 | 12.11.2026 | task 48: syncVisits date_to fix (Fitbase требует date_to для /schedule-registration) |
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 28.10.2026 | Работает, кабинет агента |
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟡 | 30.10.2026 | Закрытие смены из Fitbase — тестовый режим; GET /cash/sync-time теперь admin-only |

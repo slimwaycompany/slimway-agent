@@ -95,6 +95,19 @@
     cashier:  'cashier-iframe',
     settings: 'settings-iframe',
   };
+  var TAB_PERM = {
+    manager: 'tab:manager', agent: 'tab:agent', kviz: 'tab:kviz',
+    measure: 'tab:measure', reports: 'tab:reports', schedule: 'tab:schedule',
+    clients: 'tab:clients', funnel: 'tab:funnel', cashier: 'tab:cashier',
+    settings: null,
+  };
+  function canTab(name) {
+    var perms = window.SW_PERMS;
+    if (!perms) return true;
+    var key = TAB_PERM[name];
+    if (!key) return true; // settings is DOM-controlled
+    return Object.prototype.hasOwnProperty.call(perms, key);
+  }
 
   function lazyIframe(paneId, iframeId, src, beforeId) {
     var f = document.createElement('iframe');
@@ -113,6 +126,7 @@
   }
 
   function showTab(name) {
+    if (!canTab(name)) return;
     if (currentTab === name) {
       var fr = $(TAB_FRAME[name]);
       if (fr) fr.src = TAB_HOME[name];
@@ -313,6 +327,36 @@
   // settings-pane: left=Отчёты
   if ($('side-set-to-reports')) $('side-set-to-reports').onclick = function () { showTab('reports'); };
 
+  // ── Permission filtering (SW_PERMS) ─────────────────────────────────────────
+  var SIDE_TARGETS = {
+    'side-to-agent': 'agent', 'side-to-manager': 'manager', 'side-to-schedule': 'schedule',
+    'side-sched-to-agent': 'agent', 'side-sched-to-clients': 'clients',
+    'side-cl-to-schedule': 'schedule', 'side-cl-to-funnel': 'funnel',
+    'side-fn-to-clients': 'clients', 'side-fn-to-cashier': 'cashier',
+    'side-cash-to-funnel': 'funnel', 'side-cash-to-kviz': 'kviz',
+    'side-kviz-to-cashier': 'cashier', 'side-to-measure': 'measure',
+    'side-to-kviz2': 'kviz', 'side-to-reports': 'reports',
+    'side-to-measure2': 'measure', 'side-to-settings': 'settings',
+    'side-set-to-reports': 'reports',
+  };
+  function applyPermissions() {
+    var tabNames2 = ['manager','agent','schedule','clients','funnel','cashier','kviz','measure','reports'];
+    for (var ti = 0; ti < tabNames2.length; ti++) {
+      var tn = tabNames2[ti];
+      if (!canTab(tn)) {
+        var tb = $('tab-btn-' + tn);
+        if (tb) tb.style.display = 'none';
+        var cb = $('choice-' + tn);
+        if (cb) cb.style.display = 'none';
+      }
+    }
+    for (var sid in SIDE_TARGETS) {
+      var sel = $(sid);
+      if (sel && !canTab(SIDE_TARGETS[sid])) sel.style.display = 'none';
+    }
+  }
+  applyPermissions();
+
   // ── Logout ──────────────────────────────────────────────────────────────────
   $('logout-btn').onclick = function () {
     try { sessionStorage.removeItem('sw-session'); } catch (e) {}
@@ -343,7 +387,7 @@
     var h = location.hash.slice(1);
     var valid = ['manager','agent','kviz','measure','reports','schedule','clients','funnel','cashier','settings'];
     for (var i = 0; i < valid.length; i++) {
-      if (h === valid[i] && currentTab !== valid[i]) { showTab(valid[i]); return; }
+      if (h === valid[i] && currentTab !== valid[i] && canTab(valid[i])) { showTab(valid[i]); return; }
     }
   });
 
@@ -463,6 +507,7 @@
     for (var i = 0; i < tabNames.length; i++) {
       var n = tabNames[i];
       if (!$(n + '-pane')) continue;
+      if (!canTab(n)) continue;
       var item = document.createElement('button');
       item.className = 'drawer-item'; item.id = 'di-' + n; item.dataset.tab = n;
       var badge = document.createElement('span');
@@ -564,7 +609,14 @@
     var lastTab   = localStorage.getItem('sw-last-tab');
     var valid     = ['manager', 'agent', 'kviz', 'measure', 'reports', 'schedule', 'clients', 'funnel', 'cashier', 'settings'];
     if (inSession && lastTab && valid.indexOf(lastTab) >= 0) {
-      showTab(lastTab);
+      if (canTab(lastTab)) {
+        showTab(lastTab);
+      } else {
+        // saved tab now inaccessible — go to first accessible
+        for (var ri = 0; ri < valid.length; ri++) {
+          if (canTab(valid[ri]) && $(valid[ri] + '-pane')) { showTab(valid[ri]); break; }
+        }
+      }
     }
   } catch (e) {}
 })();

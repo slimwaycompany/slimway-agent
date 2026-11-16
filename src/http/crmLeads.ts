@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, requireAuth, requireAdmin } from './auth';
 import { runCrmLeadsSync } from '../jobs/crmLeadsSync';
 import { acquireLock, releaseLock } from '../core/lock';
 import { rawGet, paginateGet } from './fitbase';
@@ -8,17 +8,6 @@ import type { Request, Response } from 'express';
 
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
 const JOB = 'crm-leads-sync';
-
-function requireAuth(req: Request, res: Response): boolean {
-  if (getSession(req)) return true;
-  res.status(401).json({ error: 'Unauthorized' }); return false;
-}
-function requireAdmin(req: Request, res: Response): boolean {
-  const s = getSession(req);
-  if (!s) { res.status(401).json({ error: 'Unauthorized' }); return false; }
-  if (s.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return false; }
-  return true;
-}
 
 function todayUtc5(): string {
   return new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);

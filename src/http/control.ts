@@ -1,17 +1,10 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, requireAdmin } from './auth';
 import { loadSettings, saveSettings, DEFAULT_SETTINGS, runControl } from '../jobs/control';
 
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
-
-function requireAdmin(req: Request, res: Response): boolean {
-  const s = getSession(req);
-  if (!s) { res.status(401).json({ error: 'Unauthorized' }); return false; }
-  if (s.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return false; }
-  return true;
-}
 
 function n(v: unknown, def = 0): number {
   const x = Number(v);

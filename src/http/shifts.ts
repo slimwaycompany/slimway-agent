@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, requireAdmin } from './auth';
 import { env } from '../config';
 
 // YEK = UTC+5
@@ -288,7 +288,7 @@ export function buildShiftsRouter(): Router {
 
   // GET /shifts?from=&to= — admin only
   r.get('/kviz/api/shifts', async (req, res) => {
-    if (getSession(req)!.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
+    if (!requireAdmin(req, res)) return;
     try {
       let q = supabase.from('staff_shifts').select('*').order('started_at', { ascending: false }).limit(1000);
       if (req.query.from) q = q.gte('shift_date', String(req.query.from));
@@ -301,7 +301,7 @@ export function buildShiftsRouter(): Router {
 
   // PATCH /shifts/:id — admin only
   r.patch('/kviz/api/shifts/:id', async (req, res) => {
-    if (getSession(req)!.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
+    if (!requireAdmin(req, res)) return;
     try {
       const b = req.body as Record<string, unknown>;
       const allowed: Record<string, unknown> = {};

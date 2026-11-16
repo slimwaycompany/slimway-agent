@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, requireAdmin } from './auth';
 import { fetchAll } from './metrics';
 
 const YEK_MS = 5 * 3600_000;
@@ -23,13 +23,6 @@ function taskStatus(sm: number, now: number, done: boolean): 'done' | 'current' 
 function weekdayOk(weekdays: unknown, dow: number): boolean {
   if (!weekdays) return true;
   return (weekdays as number[]).includes(dow);
-}
-
-function requireAdmin(req: Request, res: Response): boolean {
-  const s = getSession(req);
-  if (!s) { res.status(401).json({ error: 'Unauthorized' }); return false; }
-  if (s.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return false; }
-  return true;
 }
 
 // Exported for watch.ts: returns today's overdue undone template IDs + titles

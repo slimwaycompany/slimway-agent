@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, requireAdmin } from './auth';
 import { acquireLock, releaseLock } from '../core/lock';
 import { runFitbaseCrmSync } from '../jobs/fitbaseCrmSync';
 import { TRIAL_SERVICE_NAMES, VISIT_STATUS_VISITED, VISIT_CANCELLED_STATUSES } from '../config';
@@ -8,11 +8,6 @@ import { getStaffMap } from './fin';
 
 interface Lead { fitbase_id: string; source: string | null; stage: string | null; funnel: string | null; status: string | null; manager: string | null; client_fitbase_id: number | null; client_phone: string | null; client_name: string | null; created_date: string | null }
 interface Visit { client_fitbase_id: number | null; status: number | null; is_trial: boolean; client_phone: string | null }
-
-function isAdmin(req: Request, res: Response): boolean {
-  if (getSession(req)?.role === 'admin') return true;
-  res.status(403).json({ error: 'Только для администратора' }); return false;
-}
 
 function digitsOnly(p: string | null): string | null {
   if (!p) return null;
@@ -153,7 +148,7 @@ export function buildMetricsRouter(): Router {
   const router = Router();
 
   router.get('/kviz/api/metrics/funnel', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const fromDate = String(req.query.from || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10));
       const toDate   = String(req.query.to   || new Date().toISOString().slice(0, 10));
@@ -218,7 +213,7 @@ export function buildMetricsRouter(): Router {
 
   // Fact-day: what happened in the selected period
   router.get('/kviz/api/metrics/fact-day', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const from = String(req.query.from || new Date(Date.now() - 86400_000).toISOString().slice(0, 10));
       const to   = String(req.query.to   || new Date().toISOString().slice(0, 10));
@@ -486,7 +481,7 @@ export function buildMetricsRouter(): Router {
 
   // Day-rhythm: cohort fate of leads created in period
   router.get('/kviz/api/metrics/day-rhythm', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const from = String(req.query.from || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10));
       const to   = String(req.query.to   || new Date().toISOString().slice(0, 10));
@@ -583,7 +578,7 @@ export function buildMetricsRouter(): Router {
 
   // Renewals: classify contract purchases in period
   router.get('/kviz/api/metrics/renewals', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const from = String(req.query.from || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10));
       const to   = String(req.query.to   || new Date().toISOString().slice(0, 10));
@@ -696,7 +691,7 @@ export function buildMetricsRouter(): Router {
   let syncJob: { status: 'running' | 'done' | 'error'; leads?: number; visits?: number; contracts?: number; error?: string; synced_at?: string } | null = null;
 
   router.post('/kviz/api/metrics/sync', (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     if (syncJob?.status === 'running') { res.json({ status: 'running' }); return; }
     syncJob = { status: 'running' };
     res.json({ status: 'started' });
@@ -726,14 +721,14 @@ export function buildMetricsRouter(): Router {
   });
 
   router.get('/kviz/api/metrics/sync', (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     res.json(syncJob ?? { status: 'idle' });
   });
 
   // ── Daily metrics by day ────────────────────────────────────────────────────
 
   router.get('/kviz/api/metrics/daily', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const yekNow   = new Date(Date.now() + 5 * 3600_000);
       const month    = /^\d{4}-\d{2}$/.test(String(req.query.month)) ? String(req.query.month) : yekNow.toISOString().slice(0, 7);
@@ -933,7 +928,7 @@ export function buildMetricsRouter(): Router {
   });
 
   router.put('/kviz/api/metrics/month-plan', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const { month, leads_plan, sales_plan } = req.body as { month?: string; leads_plan?: number | null; sales_plan?: number | null };
       if (!month || !/^\d{4}-\d{2}$/.test(month)) { res.status(400).json({ error: 'Неверный month' }); return; }
@@ -952,7 +947,7 @@ export function buildMetricsRouter(): Router {
   // ── Seller plan ────────────────────────────────────────────────────────────────
 
   router.get('/kviz/api/metrics/seller-plan', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const month = /^\d{4}-\d{2}$/.test(String(req.query.month)) ? String(req.query.month) : new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 7);
       const BRANCH_SP = '00000000-0000-0000-0000-000000000001';
@@ -964,7 +959,7 @@ export function buildMetricsRouter(): Router {
   });
 
   router.put('/kviz/api/metrics/seller-plan', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const { month, seller, sales_plan } = req.body as { month?: string; seller?: string; sales_plan?: number | null };
       if (!month || !/^\d{4}-\d{2}$/.test(month)) { res.status(400).json({ error: 'Неверный month' }); return; }
@@ -982,7 +977,7 @@ export function buildMetricsRouter(): Router {
   });
 
   router.put('/kviz/api/metrics/day-input', async (req: Request, res: Response) => {
-    if (!isAdmin(req, res)) return;
+    if (!requireAdmin(req, res)) return;
     try {
       const { date, is_day_off, budget, on_shift, leads_plan, sales_plan } = req.body as { date?: string; is_day_off?: boolean; budget?: number | null; on_shift?: string[]; leads_plan?: number | null; sales_plan?: number | null };
       if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ error: 'Неверный date' }); return; }

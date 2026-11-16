@@ -2,7 +2,7 @@ import path from 'path';
 import fs   from 'fs';
 import { Router, Application } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession, makeToken, checkRate, recordFail, clearFails } from './auth';
+import { getSession, makeToken, checkLoginRate, writeLoginLog } from './auth';
 import { getEasyChatToken, listDelayed, deleteDelayed, safeDeleteDelayed, addComment, listComments, deleteComment, findDialogueByFitbaseClient, scheduleMessage, uploadFile, DRY as ecDry } from '../core/easychat';
 import { parseClientReply } from '../core/scriptologParse';
 import { getClient } from './fitbase';
@@ -62,23 +62,23 @@ export function buildScriptologRouter(): Router {
     const password = String(body.password ?? '');
     if (!login || !password) { res.status(400).json({ error: 'login and password required' }); return; }
 
-    const ip      = String(req.ip || '');
-    const rateKey = `sl:${login}:${ip}`;
-    const rate    = checkRate(rateKey);
+    const ip   = String(req.ip || '');
+    const ua   = String(req.headers['user-agent'] || '');
+    const rate = await checkLoginRate(login, ip);
     if (!rate.ok) { res.status(429).json({ error: 'Слишком много попыток', wait_min: rate.waitMin }); return; }
 
     try {
       const { data, error } = await supabase.rpc('app_check_login', { p_login: login, p_password: password });
       const user = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
       if (error || !user?.id) {
-        recordFail(rateKey);
+        await writeLoginLog(null, login, false, 'bad_password', ip, ua);
         res.status(401).json({ error: 'Неверный логин или пароль' }); return;
       }
-      clearFails(rateKey);
-      const token = makeToken({ id: String(user.id), login: String(user.login), display_name: String(user.display_name), role: String(user.role) });
+      await writeLoginLog(String(user.id), login, true, null, ip, ua);
+      const token = makeToken({ id: String(user.id), login: String(user.login), display_name: String(user.display_name), role: String(user.role), v: Number(user.auth_version ?? 1) });
       res.json({ token, display_name: String(user.display_name) });
     } catch (e) {
-      recordFail(rateKey);
+      await writeLoginLog(null, login, false, 'server_error', ip, ua).catch(() => {});
       res.status(500).json({ error: String(e) });
     }
   });

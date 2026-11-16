@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession } from './auth';
+import { getSession, requireAuth, requireAdmin } from './auth';
 
 const BRANCH_ID         = '00000000-0000-0000-0000-000000000001';
 const GENERIC_CRM_ERROR = 'Ошибка кассы, сообщите администратору';
@@ -8,16 +8,6 @@ const VALID_PHASES   = new Set(['active', 'finishing']);
 const VALID_STATUSES = new Set(['working', 'repair', 'disabled', 'broken']);
 const VALID_PM_KIND  = new Set(['cash', 'cashless']);
 
-function requireAuth(req: Request, res: Response): boolean {
-  if (getSession(req)) return true;
-  res.status(401).json({ error: 'Unauthorized' }); return false;
-}
-function requireAdmin(req: Request, res: Response): boolean {
-  const s = getSession(req);
-  if (!s) { res.status(401).json({ error: 'Unauthorized' }); return false; }
-  if (s.role !== 'admin') { res.status(403).json({ error: 'Только для администратора' }); return false; }
-  return true;
-}
 // crm_* tables store phone as 7XXXXXXXXXX (no + prefix)
 function normalizePhone(raw: string): string | null {
   let d = raw.replace(/\D/g, '');

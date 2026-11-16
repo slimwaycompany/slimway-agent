@@ -21,30 +21,49 @@ import ClientsPage from './pages/crm/ClientsPage';
 import KassaPage from './pages/crm/KassaPage';
 import FunnelPage from './pages/crm/FunnelPage';
 import { isEmbedded } from './utils/iframe';
+import { PermContext } from './lib/permContext';
+import type { PermEntry } from './lib/permContext';
 import './index.css';
+
+interface MeResponse {
+  authed: boolean;
+  login?: string;
+  display_name?: string;
+  role?: string;
+  perms?: Record<string, PermEntry>;
+}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
-  const [ok, setOk] = useState<boolean | null>(null);
+  const [state, setState] = useState<{ ok: boolean | null; role: string; perms: Record<string, PermEntry> }>({
+    ok: null, role: '', perms: {},
+  });
 
   useEffect(() => {
     const onFail = () => {
-      if (isEmbedded) { setOk(false); }
+      if (isEmbedded) { setState({ ok: false, role: '', perms: {} }); }
       else { window.location.href = '/window?returnTo=' + encodeURIComponent('/kviz/'); }
     };
     fetch('/kviz/api/me', { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => { if (d.authed) setOk(true); else onFail(); })
+      .then(r => r.json() as Promise<MeResponse>)
+      .then(d => {
+        if (d.authed) setState({ ok: true, role: d.role ?? '', perms: d.perms ?? {} });
+        else onFail();
+      })
       .catch(onFail);
   }, [navigate]);
 
-  if (ok === null) return null;
-  if (ok === false) return (
+  if (state.ok === null) return null;
+  if (state.ok === false) return (
     <div style={{ padding: '2rem', textAlign: 'center', color: '#666', fontFamily: 'sans-serif' }}>
       Войдите во вкладке Овчарка и обновите страницу
     </div>
   );
-  return <>{children}</>;
+  return (
+    <PermContext.Provider value={{ role: state.role, perms: state.perms }}>
+      {children}
+    </PermContext.Provider>
+  );
 }
 
 export default function App() {
