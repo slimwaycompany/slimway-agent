@@ -2,7 +2,7 @@ import { supabase } from '../db/supabase';
 import { paginateGet } from '../http/fitbase';
 import { TRIAL_TRAINING_ID, isTrialServiceName } from '../config';
 import {
-  getEasyChatToken, listDialogues, scheduleMessage, deleteDelayed, addComment,
+  getEasyChatToken, listDialogues, scheduleMessage, deleteDelayed, safeDeleteDelayed, addComment,
   DRY, EasyDialogue,
 } from '../core/easychat';
 
@@ -41,8 +41,8 @@ const KINDS: { kind: ReminderKind; offsetSec: number }[] = [
 // Part 3: no-name templates only
 const T = {
   trial_24h: {
-    ru: 'Здравствуйте! 🌸 Напоминаем, завтра в {Время} ждём Вас на пробное посещение в SlimWay 💚 🎁 И не забудьте: замер InBody — Вам в подарок!',
-    kk: 'Сәлеметсіз бе! 🌸 Еске саламыз, ертең {Время} SlimWay-де сынақ сабағына күтеміз 💚 🎁 Ұмытпаңыз: InBody өлшеуі — Сізге сыйлық!',
+    ru: 'Здравствуйте! 🌸 Напоминаем, завтра в {Время} ждём Вас на пробное посещение в SlimWay 💚',
+    kk: 'Сәлеметсіз бе! 🌸 Еске саламыз, ертең {Время} SlimWay-де сынақ сабағына күтеміз 💚',
   },
   trial_3h: {
     ru: 'Здравствуйте! Через 3 часа начинается Ваше пробное посещение. Для подтверждения отправьте нам «+» 👇🏻🌸',
@@ -305,8 +305,13 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
     if (terminal) {
       const rows = scheduledByVisit.get(visitId) ?? [];
       for (const row of rows) {
-        if (row.easychat_delayed_id && dialogue) {
-          try { await deleteDelayed(token, row.easychat_delayed_id); } catch { /* noop */ }
+        if (row.easychat_delayed_id) {
+          const result = await safeDeleteDelayed(token, row.easychat_delayed_id);
+          if (result === 'auth') {
+            await upsertTokenAlert(nowTs);
+            return { status: 'error', reason: 'EasyChat token invalid', ...stats, planned, dry, decisions };
+          }
+          if (result === 'error') continue; // row stays scheduled; error already logged
         }
         await supabase.from('script_reminders').update({ status: 'cancelled' }).eq('id', row.id);
         stats.cancelled++;
@@ -496,8 +501,13 @@ export async function runScriptologReminders(): Promise<Record<string, unknown>>
   // ── Cancel orphan scheduled rows (visit gone or time changed) ─────────────
   for (const [dedupeKey, row] of scheduledMap) {
     if (expectedKeys.has(dedupeKey)) continue;
-    if (row.easychat_delayed_id && row.easychat_dialogue_id != null) {
-      try { await deleteDelayed(token, row.easychat_delayed_id); } catch { /* noop */ }
+    if (row.easychat_delayed_id) {
+      const result = await safeDeleteDelayed(token, row.easychat_delayed_id);
+      if (result === 'auth') {
+        await upsertTokenAlert(nowTs);
+        return { status: 'error', reason: 'EasyChat token invalid', ...stats, planned, dry, decisions };
+      }
+      if (result === 'error') continue; // row stays scheduled; error already logged
     }
     await supabase.from('script_reminders').update({ status: 'cancelled' }).eq('id', row.id);
     stats.cancelled++;

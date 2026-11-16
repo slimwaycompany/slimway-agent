@@ -3,7 +3,7 @@ import fs   from 'fs';
 import { Router, Application } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession, makeToken, checkRate, recordFail, clearFails } from './auth';
-import { getEasyChatToken, listDelayed, deleteDelayed, addComment, listComments, deleteComment, findDialogueByFitbaseClient, scheduleMessage, uploadFile, DRY as ecDry } from '../core/easychat';
+import { getEasyChatToken, listDelayed, deleteDelayed, safeDeleteDelayed, addComment, listComments, deleteComment, findDialogueByFitbaseClient, scheduleMessage, uploadFile, DRY as ecDry } from '../core/easychat';
 import { parseClientReply } from '../core/scriptologParse';
 import { getClient } from './fitbase';
 
@@ -672,13 +672,16 @@ export function buildScriptologRouter(): Router {
     try {
       const { data: rem } = await supabase.from('script_reminders').select('easychat_delayed_id, easychat_dialogue_id, status').eq('id', id).maybeSingle();
       if (!rem) { res.status(404).json({ error: 'not found' }); return; }
-      if (rem.status !== 'pending') { res.status(400).json({ error: 'only pending reminders can be cancelled' }); return; }
+      if (rem.status !== 'pending' && rem.status !== 'scheduled') { res.status(400).json({ error: 'только scheduled/pending можно отменить' }); return; }
 
       // Delete EasyChat delayed message
       if (rem.easychat_delayed_id) {
         const token = await getEasyChatToken();
         if (token) {
-          await deleteDelayed(token, Number(rem.easychat_delayed_id)).catch(e => console.error(`[scriptolog] deleteDelayed: ${e}`));
+          const result = await safeDeleteDelayed(token, Number(rem.easychat_delayed_id));
+          if (result === 'auth') { res.status(502).json({ error: 'токен EasyChat устарел' }); return; }
+          if (result === 'error') { res.status(502).json({ error: 'ошибка удаления из EasyChat' }); return; }
+          // 'ok' or 'gone' — proceed to cancel
         }
       }
 

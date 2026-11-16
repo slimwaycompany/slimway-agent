@@ -103,6 +103,19 @@ export async function deleteDelayed(token: string, delayedId: number): Promise<v
   await req(token, 'DELETE', `/delayed_message/${delayedId}`);
 }
 
+export async function safeDeleteDelayed(token: string, delayedId: number): Promise<'ok' | 'gone' | 'auth' | 'error'> {
+  try {
+    await deleteDelayed(token, delayedId);
+    return 'ok';
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes('auth error')) return 'auth';
+    if (/→ 404/.test(msg)) return 'gone';
+    console.error(`[EasyChat] safeDeleteDelayed id=${delayedId}: ${msg}`);
+    return 'error';
+  }
+}
+
 // ── Comments ───────────────────────────────────────────────────────────────
 
 export async function addComment(token: string, dialogueId: number, text: string, isPinned = false): Promise<number> {

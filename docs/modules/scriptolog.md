@@ -42,6 +42,12 @@ Chrome-расширение: боковая панель рядом с чато�
 
 ## Сделано
 
+### 16.11.2026 · задача 48-4 · напоминание 24ч без подарка; отмена только после подтверждённого удаления
+
+- **`src/core/easychat.ts`**: добавлен `safeDeleteDelayed(token, delayedId)` → `'ok' | 'gone' | 'auth' | 'error'`; перехватывает ошибки `deleteDelayed`, логирует `error`-случай; DRY → `deleteDelayed` возвращает без броска → `'ok'`.
+- **`src/jobs/scriptologReminders.ts`**: шаблон `trial_24h` — удалена строка про подарок `🎁`; в обоих местах отмены (terminal-block и orphan-block) `cancelled` ставится только если `safeDeleteDelayed` вернул `'ok'` или `'gone'`; при `'auth'` → `upsertTokenAlert` + ранний выход; при `'error'` → `continue` (строка остаётся `scheduled`).
+- **`src/http/scriptolog.ts`**: `DELETE /api/scriptolog/reminders/:id` — статус-проверка расширена с `pending` на `pending|scheduled`; удаление через `safeDeleteDelayed`; при `'auth'` / `'error'` → 502 с русским сообщением; `'ok'` / `'gone'` → `cancelled`.
+
 ### 13.11.2026 · задача 48-3 · Fitbase date_from/date_to — по дате создания, фильтр по дате занятия в коде
 - **`src/jobs/scriptologReminders.ts`**: корень молчаливого пропуска записи 2543.
   - Fitbase `/schedule-registration?date_from=…&date_to=…` фильтрует по дате **создания** записи, а не занятия. Запись 2543 создана 12.11, занятие 14.11 — запрос на 13–15.11 её не возвращал.
@@ -131,8 +137,9 @@ Chrome-расширение: боковая панель рядом с чато�
 - `autoProfile` в панели: кнопка работает, но поля `height`/`weight`/`birthday` могут отсутствовать в Fitbase client API — проверить на реальных данных.
 
 ## Следующее
-- ЗАПИСАНО (13.11): проверка напоминаний — запись 2543 («12.11 Зарина», 14.11 18:00, не подтверждено) агент молча пропустил; ТЗ `docs/tasks/48-2-scriptolog-reminders-debug.md` (журнал решений, поиск чата глубже 500, имя из Fitbase с очисткой «12.11», «заявка», комментарий «Подтвердила» один раз, отказ только по явным словам).
-- ЗАПИСАНО (13.11): токен EasyChat МЕНЯЕТСЯ; расширение шлёт его на сервер только при открытой боковой панели → на сервере устаревает («EasyChat token invalid»). ТЗ `docs/tasks/48-1-scriptolog-easychat-token-refresh.md` (отправка из background) — войдёт в общее ТЗ после проверки напоминаний.
+- Автоподтверждение пробных в Fitbase (`SCRIPTOLOG_CONFIRM_DRY_RUN=true` пока не менять до верификации Fitbase API).
+- Отдельный оператор EasyChat для автоматических напоминаний.
+- Агент: syncVisits — проверить `date_to` в fitbaseCrmSync.
 - **SQL** (если нет колонки): `ALTER TABLE script_reminders ADD COLUMN IF NOT EXISTS error text;`
 - **Добавить в Render env**: `EASYCHAT_DRY_RUN=true` (пока DRY), `SCRIPTOLOG_CONFIRM_DRY_RUN=true`.
 - **Добавить `/run/scriptolog-reminders` в cron-job.org**: каждые 5 мин, 07:00–22:00 Yekaterinburg (если уже стоит 15 мин — изменить на 5).
