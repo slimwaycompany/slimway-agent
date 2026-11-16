@@ -16,7 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 55 | logins | Окно «Сотрудники» и права по блокам и вкладкам | `docs/tasks/55-logins-staff-permissions.md` | ✅ готово (см. журнал) |
+| 55 | logins | Окно «Сотрудники» и права по блокам и вкладкам | `docs/tasks/55-logins-staff-permissions.md` | ✅ готово (6384e2f) |
 | 48-4 | scriptolog | Напоминание 24ч без подарка; safeDeleteDelayed — cancelled только после подтверждённого удаления | `docs/tasks/48-4-scriptolog-reminder-text-and-delete.md` | ✅ готово (текущий) |
 | 55 | zamery | InBody: фикс парсера (regex телефона, `+` в QR), useQrCamera хук, кнопка InBody в замерах, InBodyScanPage, client_id в POST /qr | ТЗ в чате | ✅ готово (317d02d) |
 | 54 | zamery | Печать: новый бланк+Живот; фикс InBody на /r/:token; новая SharePage (Фигура/Замеры/InBody) | ТЗ в чате | ✅ готово (afd8e36) |
