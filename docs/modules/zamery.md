@@ -43,6 +43,10 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
+### 16.11.2026 · (task 57) · фикс доступа к отчёту по InBody для сотрудников
+- **manager.ts**: убран `role !== 'admin'` из префикс-guard `/kviz/api/reports` (остался только 401); `/kviz/api/reports/tasks` и `/kviz/api/reports/studio` получили явный `requireAdmin`; `/kviz/api/reports/inbody` теперь проверяет `requirePerm(..., 'reports.inbody', 'view', session)` через `getSessionWithPerms`.
+- **ReportsPage.tsx**: `InBodySection` — добавлен стейт `fetchError`; при 403 → «Нет доступа», при других ошибках → «Ошибка загрузки»; «Пока нет тестов InBody» — только при 200 с пустым списком.
+
 ### 16.11.2026 · (текущий) · task 55 — парсер InBody v2, хук камеры, кнопка InBody в замерах
 
 - **inbody.ts (парсер)**: regex телефона `([78]\d{10})` (11 цифр), убран мёртвый код `afterHeader`; позиция после `!` вычисляется правильно.

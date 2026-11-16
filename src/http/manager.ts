@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../db/supabase';
-import { getSession, requireAdmin } from './auth';
+import { getSession, requireAdmin, getSessionWithPerms, requirePerm } from './auth';
 import { fetchAll } from './metrics';
 
 const YEK_MS = 5 * 3600_000;
@@ -62,9 +62,7 @@ export function buildManagerRouter(): Router {
   });
 
   r.use('/kviz/api/reports', (req: Request, res: Response, next: NextFunction) => {
-    const s = getSession(req);
-    if (!s) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    if (s.role !== 'admin') { res.status(403).json({ error: 'Только admin' }); return; }
+    if (!getSession(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
     next();
   });
 
@@ -317,6 +315,7 @@ export function buildManagerRouter(): Router {
   // ── Reports (admin only) ──────────────────────────────────────────────────────
 
   r.get('/kviz/api/reports/tasks', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
     try {
       const session = getSession(req);
       let q = supabase.from('manager_task_done')
@@ -338,7 +337,8 @@ export function buildManagerRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  r.get('/kviz/api/reports/studio', async (_req, res) => {
+  r.get('/kviz/api/reports/studio', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
     try {
       const { data, error } = await supabase
         .from('studio_results')
@@ -351,6 +351,8 @@ export function buildManagerRouter(): Router {
 
   // InBody report: clients with tests, aggregated (groups by phone_digits)
   r.get('/kviz/api/reports/inbody', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'reports.inbody', 'view', session)) return;
     try {
       type IbTest = { id: string; inbody_id: string; tested_at: string; phone: string | null; phone_digits: string | null; weight: number | null; bfm: number | null; smm: number | null; pbf: number | null; inbody_score: number | null };
       const allTests = (await fetchAll((off, lim) => {

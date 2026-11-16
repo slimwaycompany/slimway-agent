@@ -1222,21 +1222,25 @@ function InBodySection() {
   const [rows, setRows]     = useState<IbRow[]>([]);
   const [totals, setTotals] = useState<{ tests: number; clients: number; bfm_lost: number; smm_gained: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [period, setPeriod]  = useState<ReportPeriod>('all');
   const [customFrom, setCustomFrom] = useState(monthStart);
   const [customTo, setCustomTo]     = useState(today);
   const [q, setQ]           = useState('');
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setFetchError(null);
     try {
       const { from, to } = periodDates(period, customFrom, customTo);
       const params = new URLSearchParams();
       if (from) params.set('from', from);
       if (to) params.set('to', to);
       const r = await fetch(`/kviz/api/reports/inbody?${params}`, { credentials: 'include' });
-      if (r.ok) { const d = await r.json(); setRows(d.rows ?? []); setTotals(d.totals ?? null); }
-    } catch {} finally { setLoading(false); }
+      if (r.status === 403) { setFetchError('Нет доступа'); return; }
+      if (!r.ok) { setFetchError('Ошибка загрузки'); return; }
+      const d = await r.json();
+      setRows(d.rows ?? []); setTotals(d.totals ?? null);
+    } catch { setFetchError('Ошибка загрузки'); } finally { setLoading(false); }
   }, [period, customFrom, customTo]);
 
   useEffect(() => { load(); }, [load]);
@@ -1261,7 +1265,8 @@ function InBodySection() {
       </div>
 
       {loading && <div style={s.empty}>Загрузка…</div>}
-      {!loading && rows.length === 0 && <div style={s.empty}>Пока нет тестов InBody</div>}
+      {!loading && fetchError && <div style={s.empty}>{fetchError}</div>}
+      {!loading && !fetchError && rows.length === 0 && <div style={s.empty}>Пока нет тестов InBody</div>}
 
       {totals && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
