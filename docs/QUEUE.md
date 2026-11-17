@@ -16,7 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 62 | manager | «Мой месяц»: личный отчёт менеджера — план, заработок, продажи, смены, задачи, клиенты, мотивация | ТЗ в чате | ✅ готово |
+| 62 | manager | «Мой месяц»: личный отчёт менеджера — план, заработок, продажи, смены, задачи, клиенты, мотивация | ТЗ в чате | ✅ готово (a234da8) |
 | 61 | zamery | Вкладка «Замеры»: две кнопки-карточки вместо подвкладок; авто-отправка результатов студии после замера/InBody | ТЗ в чате | ✅ готово (c99b29c) |
 | 60 | telegram-bot | InBody: блоки рекомендаций, сравнение с прошлым тестом, навигация ‹/›, ideal_weight | ТЗ в чате | 🟡 частично (7182dce; вебхук 401✅; проверка тестовых данных — на стороне Сергея) |
 | 59 | telegram-bot | Сверка номера по 11 цифрам, замеры и InBody кнопками с датами и детальным просмотром | ТЗ в чате | ✅ готово (b8cbf1f) |
@@ -119,7 +119,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
-| 17.11.2026 | Claude | 62 manager: MyMonthPage.tsx + motivation.ts (новые); ManagerPage subTab; /mapped-staff + /my-month в manager.ts; export computePayroll, buildClientLeadMap, clMgr | (коммит ниже) | SQL не нужен. Проверка на проде: заработок → сверить с Отчёты→Зарплата; переключение подвкладок. |
+| 17.11.2026 | Claude | 62 manager: MyMonthPage.tsx + motivation.ts (новые); ManagerPage subTab; /mapped-staff + /my-month в manager.ts; export computePayroll, buildClientLeadMap, clMgr | a234da8 | SQL не нужен. Проверка на проде: заработок → сверить с Отчёты→Зарплата; переключение подвкладок. |
 | 17.11.2026 | Claude | 61 zamery: MeasureLayout — landing с двумя карточками; MeasureLandingPage в App.tsx (?section param); recalcStudioResultForClient в measure.ts; calcLosses (7 тестов); auto-trigger в POST measurements + QR + link-to-client + fire-and-forget csv-import/recalculate; studioWarning в NewMeasurePage и InBodyScanPage; shell-app.js /kviz/measure | c99b29c | check:mobile требует E2E_LOGIN — проверка на проде. |
 | 17.11.2026 | Claude | 60 telegram-bot: inbodyView.ts (extractDataFields, beforeTarget, delta, formatValue, 6 тестов); screenInBodyDetail — 4 блока + навигация ‹/›/К списку дат/Меню; ideal_weight standalone когда beforeTarget null; 11 тестов npm test | 7182dce | Вебхук 401✅. Тестовые данные по клиентам из части 5 — на стороне Сергея. |
 | 17.11.2026 | Claude | 59 telegram-bot: normalizePhone (11 цифр, закрыт баг «Номер не найден»); screenBody (кнопки по датам, пагинация mp:, детали m:); screenInBody (кнопки ip:, детали i:); убраны getOrCreateShareToken и «🔗 Полный отчёт»; 5 тестов обновлены | b8cbf1f | Вебхук 401✅. Сценарий привязки и проверка замеров/InBody — на стороне Сергея. |
