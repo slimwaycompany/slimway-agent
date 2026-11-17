@@ -218,7 +218,7 @@ export interface SlotChildImage extends SlotChildBase { type: 'image'; bind?: 'b
 export interface SlotChildShape extends SlotChildBase { type: 'shape'; shape: ScreenElShape['shape']; radius?: number; fill?: ShapeFill; border?: ScreenElShape['border']; shadow?: boolean; blur?: boolean; }
 export type SlotChild = SlotChildText | SlotChildImage | SlotChildShape;
 
-export interface TplElSlotClient extends ElBase { type: 'slot_client'; index: 'a' | 'b'; children: SlotChild[]; }
+export interface TplElSlotClient extends ElBase { type: 'slot_client'; index: 'a' | 'b'; children: SlotChild[]; radius?: number; /* 0–50, % of slot height — синхронизировать с src/http/tv.ts (validateSlideTemplateServer) */ }
 export interface TplElSlotImage  extends ElBase { type: 'slot_image';  fit?: 'contain' | 'cover' | 'stretch'; opacity?: number; radius?: number; }
 export interface TplElSlotText   extends ElBase, TextStyle { type: 'slot_text'; }
 
@@ -293,6 +293,7 @@ export function validateSlideTemplate(kind: TemplateKind, raw: unknown): string 
       if (e.index === 'a') cntA++; else cntB++;
       if (!Array.isArray(e.children)) return 'slot_client.children: массив';
       if ((e.children as unknown[]).length > 8) return 'Максимум 8 дочерних элементов в слоте';
+      if ('radius' in e && e.radius !== undefined && (typeof e.radius !== 'number' || (e.radius as number) < 0 || (e.radius as number) > 50)) return 'slot_client.radius: 0–50';
     }
     if (e.type === 'slot_image') cntSlotImg++;
     if (e.type === 'slot_text')  cntSlotTxt++;

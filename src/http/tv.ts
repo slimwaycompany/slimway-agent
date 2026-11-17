@@ -421,6 +421,8 @@ function validateSlideTemplateServer(kind: string, raw: unknown): string | null 
       if (e.index === 'a') cntA++; else cntB++;
       if (!Array.isArray(e.children)) return 'slot_client.children: массив';
       if ((e.children as unknown[]).length > 8) return 'Максимум 8 дочерних элементов в слоте';
+      // синхронизировать с kviz/client/src/lib/tvScreenLayout.ts (validateSlideTemplate)
+      if ('radius' in e && e.radius !== undefined && (typeof e.radius !== 'number' || (e.radius as number) < 0 || (e.radius as number) > 50)) return 'slot_client.radius: 0–50';
     }
     if (e.type === 'slot_image') cntSlotImg++;
     if (e.type === 'slot_text')  cntSlotTxt++;

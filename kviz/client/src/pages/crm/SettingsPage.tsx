@@ -4,8 +4,9 @@ import StaffPage from './StaffPage';
 import FreeSlide from '../../components/tv/FreeSlide';
 import TvScreenEditor from '../../components/tv/TvScreenEditor';
 import SlideTemplate from '../../components/tv/SlideTemplate';
+import type { SlideTemplateData } from '../../components/tv/SlideTemplate';
 import type { FreeLayout, ScreenLayout, SlideTemplate as SlideTemplateType, SlideTemplates, TemplateKind } from '../../lib/tvScreenLayout';
-import { migrateFreeLayoutToV2, TEMPLATE_KIND_LABELS, defaultSlideTemplates, CAROUSEL_ASPECT } from '../../lib/tvScreenLayout';
+import { migrateFreeLayoutToV2, TEMPLATE_KIND_LABELS, defaultSlideTemplates, defaultScreenLayout, CAROUSEL_ASPECT } from '../../lib/tvScreenLayout';
 import { compressForUpload } from '../../lib/tvImage';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -2939,14 +2940,22 @@ function TvSection() {
       <div style={SEC}>
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Шаблоны слайдов</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
-          {(Object.keys(TEMPLATE_KIND_LABELS) as TemplateKind[]).map(kind => (
+          {(Object.keys(TEMPLATE_KIND_LABELS) as TemplateKind[]).map(kind => {
+            const firstSlide = slides.find(s => kind === 'image' ? (s.kind === 'promo' || s.kind === 'usp') : s.kind === kind);
+            const realData: SlideTemplateData | null = firstSlide ? {
+              result_a: firstSlide.result_a ? (results.find(r => r.id === firstSlide.result_a) ?? null) : null,
+              result_b: firstSlide.result_b ? (results.find(r => r.id === firstSlide.result_b) ?? null) : null,
+              image_path: firstSlide.image_path,
+              slide_text: firstSlide.slide_text,
+            } : null;
+            return (
             <div key={kind} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ position: 'relative', aspectRatio: String(CAROUSEL_ASPECT), overflow: 'hidden', background: 'linear-gradient(135deg,#e8fbfa 0%,#f7f8ff 52%,#eef0ff 100%)' }}>
                 <SlideTemplate
                   template={slideTemplates[kind]}
-                  data={{ slide_text: 'Скидка 20% на первый месяц' }}
+                  data={realData ?? { slide_text: kind === 'image' ? 'Акция / USP' : null }}
                   mediaUrl={p => `/kviz/api/tv/media?path=${encodeURIComponent(p)}`}
-                  sample
+                  sample={!realData}
                 />
               </div>
               <div style={{ padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2954,7 +2963,8 @@ function TvSection() {
                 <button style={S.editBtn} onClick={() => setTemplateEditor({ kind })}>Редактировать</button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -3030,8 +3040,8 @@ function TvSection() {
           mode="template"
           templateKind={templateEditor.kind}
           initialTemplate={slideTemplates[templateEditor.kind]}
-          initialLayout={{ v: 2, elements: [] }}
-          initialMission=""
+          initialLayout={screenLayout ?? defaultScreenLayout()}
+          initialMission={screenMission}
           onTemplateSave={saveTemplate}
           onClose={() => setTemplateEditor(null)}
         />

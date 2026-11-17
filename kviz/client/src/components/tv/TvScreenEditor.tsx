@@ -389,6 +389,8 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
   const [now, setNow]               = useState(() => formatAlmaty(new Date()));
   const [layerDragId, setLayerDragId]   = useState<string | null>(null);
   const [layerOverId, setLayerOverId]   = useState<string | null>(null);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [showScreenLayers, setShowScreenLayers] = useState(false);
 
   // ── Template-mode state ────────────────────────────────────────────────────
   const defTpl = defaultSlideTemplates();
@@ -406,6 +408,7 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
   tplRef.current = tplElements;
 
   const previewRef     = useRef<HTMLDivElement>(null);
+  const carouselRef    = useRef<HTMLDivElement>(null);
   const preInterRef    = useRef<[ScreenLayout, string] | null>(null);
   const tplPreInterRef = useRef<TemplateTopEl[] | null>(null);
   const dragRef        = useRef<DragState | null>(null);
@@ -565,9 +568,10 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
       el = { ...base, type: 'image', x: 10, y: 10, w: 20, h: 20, z: maxZ + 1, asset: 'logo', fit: 'contain' };
     } else if (type === 'shape') {
       el = { ...base, type: 'shape', x: 10, y: 10, w: 80, h: 80, z: 0, shape: 'rounded', radius: 2, fill: { type: 'solid', color: '#ffffff', opacity: 0.6 } };
-    } else if (type === 'slot_client') {
-      const hasB = tplElements.some(e => e.type === 'slot_client' && (e as TplElSlotClient).index === 'b');
-      const idx: 'a' | 'b' = hasB ? 'a' : (tplElements.some(e => e.type === 'slot_client' && (e as TplElSlotClient).index === 'a') ? 'b' : 'a');
+    } else if (type === 'slot_client' || type === 'slot_client_a' || type === 'slot_client_b') {
+      const idx: 'a' | 'b' = type === 'slot_client_b' ? 'b' : (type === 'slot_client_a' ? 'a' : (
+        tplElements.some(e => e.type === 'slot_client' && (e as TplElSlotClient).index === 'a') ? 'b' : 'a'
+      ));
       el = { ...base, type: 'slot_client', x: 5, y: 5, w: 90, h: 90, z: 1, index: idx, children: defSlotChildren() };
     } else if (type === 'slot_image') {
       el = { ...base, type: 'slot_image', x: 0, y: 0, w: 100, h: 100, z: 0, fit: 'contain' };
@@ -604,7 +608,9 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
     e.preventDefault();
     const preview = previewRef.current;
     if (!preview) return;
-    const rect = preview.getBoundingClientRect();
+    const rect = isTemplate && carouselRef.current
+      ? carouselRef.current.getBoundingClientRect()
+      : preview.getBoundingClientRect();
     const el = isTemplate
       ? tplRef.current.find(x => x.id === id)
       : layout.elements.find(x => x.id === id);
@@ -625,7 +631,9 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
     e.preventDefault();
     const preview = previewRef.current;
     if (!preview) return;
-    const previewRect = preview.getBoundingClientRect();
+    const baseRect = carouselRef.current
+      ? carouselRef.current.getBoundingClientRect()
+      : preview.getBoundingClientRect();
     const slot = tplRef.current.find(x => x.id === parentId) as TplElSlotClient | undefined;
     if (!slot) return;
     const child = slot.children.find(c => c.id === childId);
@@ -634,8 +642,8 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
     const ds: DragState = {
       id: childId, mode, startX: e.clientX, startY: e.clientY,
       startEl: child as unknown as ScreenEl,
-      pW: slot.w / 100 * previewRect.width,
-      pH: slot.h / 100 * previewRect.height,
+      pW: slot.w / 100 * baseRect.width,
+      pH: slot.h / 100 * baseRect.height,
       shiftKey: e.shiftKey,
     };
     setChildDrag(ds);
@@ -645,7 +653,9 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
   function onPreviewPointerMove(e: React.PointerEvent) {
     const preview = previewRef.current;
     if (!preview) return;
-    const pRect = preview.getBoundingClientRect();
+    const pRect = isTemplate && carouselRef.current
+      ? carouselRef.current.getBoundingClientRect()
+      : preview.getBoundingClientRect();
 
     const d = dragRef.current;
     if (d) {
@@ -774,12 +784,25 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
   // ── Warnings ──────────────────────────────────────────────────────────────────
 
   const hasCarousel = layout.elements.some(e => e.type === 'carousel' && e.visible !== false);
+  const carouselEl  = isTemplate ? layout.elements.find(e => e.type === 'carousel' && e.visible !== false) : undefined;
+  const isDirty     = isTemplate && JSON.stringify(tplElements) !== JSON.stringify(initialTemplate?.elements ?? defTpl[templateKind ?? 'result1'].elements);
   const warnings: string[] = [];
   if (!isSlide && !isTemplate && !hasCarousel) warnings.push('Нет элемента «Карусель» — слайды не будут показаны');
+  if (isTemplate && !carouselEl) warnings.push('На экране нет карусели — добавьте её в редакторе экрана');
   if (isTemplate && templateKind) {
     const err = validateSlideTemplate(templateKind, { v: 1, elements: tplElements });
     if (err) warnings.push(err);
   }
+
+  function handleClose() {
+    if (isDirty) { setConfirmClose(true); return; }
+    onClose();
+  }
+
+  const hasSlotA   = tplElements.some(e => e.type === 'slot_client' && (e as TplElSlotClient).index === 'a');
+  const hasSlotB   = tplElements.some(e => e.type === 'slot_client' && (e as TplElSlotClient).index === 'b');
+  const hasSlotImg = tplElements.some(e => e.type === 'slot_image');
+  const hasSlotTxt = tplElements.some(e => e.type === 'slot_text');
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -821,10 +844,10 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
           <button style={{ ...BTN, color: '#fbbf24', borderColor: '#78350f' }}
             onClick={() => { pushHistory(); setLayout(defaultScreenLayout()); }}>Сброс</button>
         ) : null}
-        <button style={{ ...BTN, background: '#02BDB6', color: '#fff', border: 'none' }} onClick={handleSave} disabled={saving}>
+        <button style={{ ...BTN, background: '#02BDB6', color: '#fff', border: 'none' }} onClick={handleSave} disabled={saving || (isTemplate && !carouselEl)}>
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
-        <button style={{ ...BTN, marginLeft: 4 }} onClick={onClose}>Отмена</button>
+        <button style={{ ...BTN, marginLeft: 4 }} onClick={handleClose}>Отмена</button>
       </div>
 
       {error && <div style={{ padding: '6px 16px', background: '#7f1d1d', color: '#fca5a5', fontSize: 12, flexShrink: 0 }}>{error}</div>}
@@ -845,20 +868,30 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
                     + {TEMPLATE_EL_LABELS[t]}
                   </button>
                 ))}
-                {(templateKind === 'result1' || templateKind === 'result2') && (
-                  <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left', gridColumn: '1/-1' }} onClick={() => addTplEl('slot_client')}>
-                    + {TEMPLATE_EL_LABELS['slot_client']}
+                {templateKind === 'result1' && !hasSlotA && (
+                  <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left', gridColumn: '1/-1' }} onClick={() => addTplEl('slot_client_a')}>
+                    + Слот клиента A
                   </button>
                 )}
-                {templateKind === 'image' && (
-                  <>
-                    <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addTplEl('slot_image')}>
-                      + {TEMPLATE_EL_LABELS['slot_image']}
-                    </button>
-                    <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addTplEl('slot_text')}>
-                      + {TEMPLATE_EL_LABELS['slot_text']}
-                    </button>
-                  </>
+                {templateKind === 'result2' && !hasSlotA && (
+                  <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addTplEl('slot_client_a')}>
+                    + Слот A
+                  </button>
+                )}
+                {templateKind === 'result2' && !hasSlotB && (
+                  <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addTplEl('slot_client_b')}>
+                    + Слот B
+                  </button>
+                )}
+                {templateKind === 'image' && !hasSlotImg && (
+                  <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addTplEl('slot_image')}>
+                    + {TEMPLATE_EL_LABELS['slot_image']}
+                  </button>
+                )}
+                {templateKind === 'image' && !hasSlotTxt && (
+                  <button style={{ ...BTN, padding: '5px 6px', fontSize: 11, textAlign: 'left' }} onClick={() => addTplEl('slot_text')}>
+                    + {TEMPLATE_EL_LABELS['slot_text']}
+                  </button>
                 )}
               </>
             ) : (
@@ -873,9 +906,11 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
             )}
           </div>
 
-          <div style={{ borderTop: '1px solid #1e293b', padding: '10px 12px 4px', fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.06em' }}>Слои</div>
+          <div style={{ borderTop: '1px solid #1e293b', padding: '10px 12px 4px', fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            {isTemplate ? 'Шаблон — слои' : 'Слои'}
+          </div>
 
-          {isTemplate ? layersTopFirst.map(el => {
+          {isTemplate && layersTopFirst.map(el => {
             const isSel = selectedId === el.id;
             const isSlotEl = el.type === 'slot_client';
             const slotEl = isSlotEl ? (el as TplElSlotClient) : null;
@@ -933,7 +968,27 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
                 })}
               </div>
             );
-          }) : layersTopFirst.map(el => (
+          })}
+          {isTemplate && (
+            <>
+              <div
+                style={{ borderTop: '1px solid #1e293b', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.06em', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                onClick={() => setShowScreenLayers(s => !s)}
+              >
+                <span>{showScreenLayers ? '▾' : '▸'}</span> Экран (только просмотр)
+              </div>
+              {showScreenLayers && [...layout.elements].sort((a, b) => b.z - a.z).map(el => (
+                <div key={el.id} style={{ padding: '5px 8px 5px 16px', fontSize: 11, color: '#475569', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ opacity: el.visible === false ? 0.4 : 1 }}>
+                    {TYPE_LABELS[el.type]}
+                    {'text' in el && el.text ? ` «${(el.text as string).slice(0, 10)}»` : ''}
+                  </span>
+                  {el.type === 'carousel' && <span style={{ fontSize: 9, color: '#02BDB6' }}>← здесь</span>}
+                </div>
+              ))}
+            </>
+          )}
+          {!isTemplate && layersTopFirst.map(el => (
             <div
               key={el.id}
               draggable
@@ -979,10 +1034,10 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
             style={{
               position: 'relative',
               width: '100%',
-              maxWidth: (isSlide || isTemplate)
+              maxWidth: isSlide
                 ? `min(100%, calc((100vh - 120px) * ${CAROUSEL_ASPECT}))`
                 : 'min(100%, calc((100vh - 120px) * 16 / 9))',
-              aspectRatio: (isSlide || isTemplate) ? String(CAROUSEL_ASPECT) : '16/9',
+              aspectRatio: isSlide ? String(CAROUSEL_ASPECT) : '16/9',
               background: 'linear-gradient(135deg,#e8fbfa 0%,#f7f8ff 52%,#eef0ff 100%)',
               borderRadius: 8, overflow: 'hidden',
               cursor: (drag || childDrag) ? ((drag ?? childDrag)!.mode === 'move' ? 'grabbing' : (drag ?? childDrag)!.mode + '-resize') : 'default',
@@ -1052,26 +1107,61 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
 
             {isTemplate && (
               <>
-                <SlideTemplate
-                  template={{ v: 1, elements: tplElements }}
-                  data={SAMPLE_TPL_DATA}
+                {/* Full screen TV background */}
+                <TvScreen
+                  layout={layout}
+                  values={MOCK_VALUES}
+                  mission={missionText}
                   mediaUrl={p => `/kviz/api/tv/media?path=${encodeURIComponent(p)}`}
-                  sample
-                  selectedId={selectedId}
-                  selectedChildId={selectedChildId}
-                  onElementClick={id => { setSelectedId(id); setSelectedChildId(null); }}
-                  onChildClick={(parentId, childId) => { setSelectedId(parentId); setSelectedChildId(childId); }}
+                  carousel={
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(38,60,217,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ color: '#263CD9', fontSize: 'clamp(8px,1.2vw,16px)', fontWeight: 700, opacity: .6 }}>Шаблон слайда</span>
+                    </div>
+                  }
+                  datetime={now}
                 />
-                {/* Top-level element overlays */}
-                {tplElements.map(el => {
+                {/* Dim overlay over entire screen */}
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.38)', zIndex: 10, pointerEvents: 'none' }} />
+                {/* Carousel area: highlights the editable zone */}
+                {carouselEl && (
+                  <div
+                    ref={carouselRef}
+                    style={{
+                      position: 'absolute',
+                      left: `${carouselEl.x}%`, top: `${carouselEl.y}%`,
+                      width: `${carouselEl.w}%`, height: `${carouselEl.h}%`,
+                      zIndex: 11,
+                      outline: '1.5px solid #02BDB6',
+                      boxSizing: 'border-box',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <SlideTemplate
+                      template={{ v: 1, elements: tplElements }}
+                      data={SAMPLE_TPL_DATA}
+                      mediaUrl={p => `/kviz/api/tv/media?path=${encodeURIComponent(p)}`}
+                      sample
+                      selectedId={selectedId}
+                      selectedChildId={selectedChildId}
+                      onElementClick={id => { setSelectedId(id); setSelectedChildId(null); }}
+                      onChildClick={(parentId, childId) => { setSelectedId(parentId); setSelectedChildId(childId); }}
+                    />
+                  </div>
+                )}
+                {/* Top-level element overlays — positioned in full preview % using carousel transform */}
+                {carouselEl && tplElements.map(el => {
                   const isSel = selectedId === el.id;
+                  const ox = carouselEl.x + el.x * carouselEl.w / 100;
+                  const oy = carouselEl.y + el.y * carouselEl.h / 100;
+                  const ow = el.w * carouselEl.w / 100;
+                  const oh = el.h * carouselEl.h / 100;
                   return (
                     <div
                       key={el.id}
                       style={{
                         position: 'absolute',
-                        left: `${el.x}%`, top: `${el.y}%`,
-                        width: `${el.w}%`, height: `${el.h}%`,
+                        left: `${ox}%`, top: `${oy}%`,
+                        width: `${ow}%`, height: `${oh}%`,
                         zIndex: 500 + el.z,
                         boxSizing: 'border-box',
                         border: isSel && !selectedChildId ? '1.5px solid #02BDB6' : '1px dashed rgba(2,189,182,.25)',
@@ -1097,21 +1187,23 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
                   );
                 })}
                 {/* Child overlays for selected slot_client */}
-                {selectedId && tplElements
+                {carouselEl && selectedId && tplElements
                   .filter(e => e.id === selectedId && e.type === 'slot_client')
                   .flatMap(el => {
                     const slot = el as TplElSlotClient;
                     return slot.children.map(child => {
                       const isChildSel = selectedChildId === child.id;
+                      const cx = carouselEl.x + (el.x + child.x * el.w / 100) * carouselEl.w / 100;
+                      const cy = carouselEl.y + (el.y + child.y * el.h / 100) * carouselEl.h / 100;
+                      const cw = child.w * el.w / 100 * carouselEl.w / 100;
+                      const ch = child.h * el.h / 100 * carouselEl.h / 100;
                       return (
                         <div
                           key={child.id}
                           style={{
                             position: 'absolute',
-                            left: `${el.x + child.x * el.w / 100}%`,
-                            top: `${el.y + child.y * el.h / 100}%`,
-                            width: `${child.w * el.w / 100}%`,
-                            height: `${child.h * el.h / 100}%`,
+                            left: `${cx}%`, top: `${cy}%`,
+                            width: `${cw}%`, height: `${ch}%`,
                             zIndex: 600 + child.z,
                             boxSizing: 'border-box',
                             border: isChildSel ? '1.5px solid #38bdf8' : '1px dashed rgba(56,189,248,.35)',
@@ -1282,6 +1374,11 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
                           <option value="b">B (второй клиент)</option>
                         </select>
                       </div>
+                      <div style={ROW}>
+                        <label style={LBL}>Радиус (% высоты, 0–50)</label>
+                        <input type="number" step="1" min={0} max={50} value={(selectedTplEl as TplElSlotClient).radius ?? 0} style={INP}
+                          onChange={e => updateTplEl(selectedTplEl.id, { radius: Number(e.target.value) })} />
+                      </div>
                       <div style={{ fontSize: 11, color: '#475569', marginBottom: 6 }}>Добавить дочерний:</div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 10 }}>
                         {(['text','image','shape'] as const).map(t => (
@@ -1442,11 +1539,28 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
       </div>
 
       {/* Bottom bar */}
-      {warnings.length > 0 && (
-        <div style={{ flexShrink: 0, padding: '6px 16px', background: '#422006', borderTop: '1px solid #78350f', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+      {(warnings.length > 0 || isTemplate) && (
+        <div style={{ flexShrink: 0, padding: '6px 16px', background: '#422006', borderTop: '1px solid #78350f', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           {warnings.map((w, i) => (
             <span key={i} style={{ fontSize: 12, color: '#fbbf24' }}>⚠ {w}</span>
           ))}
+          {isTemplate && (
+            <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 'auto' }}>Положение карусели меняется в редакторе экрана</span>
+          )}
+        </div>
+      )}
+
+      {/* Confirm close dialog */}
+      {confirmClose && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1e293b', borderRadius: 10, padding: 24, maxWidth: 340, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
+            <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Несохранённые изменения</div>
+            <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 20 }}>Вы изменили шаблон. Закрыть без сохранения?</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button style={BTN} onClick={() => setConfirmClose(false)}>Остаться</button>
+              <button style={{ ...BTN, color: '#f87171', borderColor: '#7f1d1d' }} onClick={() => { setConfirmClose(false); onClose(); }}>Закрыть</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

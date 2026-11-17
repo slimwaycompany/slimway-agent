@@ -79,6 +79,9 @@ function TopEl({
   onChildClick?: (parentId: string, childId: string) => void;
 }) {
   const hidden = el.visible === false;
+  const slotRadius = el.type === 'slot_client' && (el as TplElSlotClient).radius
+    ? `calc(var(--screen-h,400px) * ${(el as TplElSlotClient).h * ((el as TplElSlotClient).radius ?? 0)} / 10000)`
+    : undefined;
   const wrap: React.CSSProperties = {
     position: 'absolute',
     left: `${el.x}%`, top: `${el.y}%`,
@@ -86,6 +89,7 @@ function TopEl({
     zIndex: el.z,
     transform: el.rotate ? `rotate(${el.rotate}deg)` : undefined,
     overflow: el.type === 'text' ? undefined : 'hidden',
+    borderRadius: slotRadius,
     opacity: isEditor && hidden ? 0.25 : undefined,
     cursor: onElementClick ? 'pointer' : undefined,
     outline: isEditor && isSelected ? '2px solid #02BDB6' : undefined,
