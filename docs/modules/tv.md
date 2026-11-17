@@ -72,11 +72,28 @@ JSON-схема **v2**: `{ v: 2, elements: ScreenEl[] }` хранится в `tv
 - TvScreenEditor: поворот элемента — atan2(dx,dy)+90° с привязкой к 5° (Shift: 15°). Ручка поворота позиционируется `top: -26px, left: 50%` над выделенным элементом. История хранит `[ScreenLayout, string][]` (layout+mission) — undo/redo восстанавливает оба состояния.
 - В template-режиме координаты drag/resize измеряются относительно `carouselRef` (div карусели внутри 16:9 превью) — элементы хранятся в % карусели. Оверлеи на preview пересчитываются: `ox = carousel.x + el.x * carousel.w / 100`. Радиус slot_client: `calc(var(--screen-h,400px) * slot.h * slot.radius / 10000)` — получается % от высоты слота.
 - `radius` в `TplElSlotClient` (0–50): хранится в `tv_settings.slide_templates` jsonb, валидируется одинаково на клиенте (`tvScreenLayout.ts`) и сервере (`tv.ts`). Комментарий в коде напоминает о синхронизации.
+- **ScreenFx** хранится в `tv_settings.screen_layout` jsonb как поле `fx?: ScreenFx` на верхнем уровне. `resolveScreenFx(layout)` мержит с `DEFAULT_FX`. Eco-режим: `?quality=eco` в URL ResultsPage переопределяет `fx.quality` (только для тестирования, в редакторе нет).
+- **TvBackground**: анимация blob-градиентов — только `transform: rotate/scale` (нет `filter:blur` — дорого на ТВ). Зерно — SVG `feTurbulence` в data-URI (работает без внешнего файла). `staticOnly=true` в SettingsPage превью — без анимации.
+- **Stagger**: slot B карусели и `bind='after'` изображения в slot A показываются с задержкой `stagger_ms`. Реализовано через inline `animationDelay` + keyframe `tv-stagger-in` (opacity+scale). В eco-режиме stagger не отключается (это данные, не эффект).
+- **Eco-режим**: `quality='eco'` → отключает `backdrop-filter` (glass), `animation` (float, sheen), blur-фильтры, анимацию фона. Flash счётчиков отключается через `fx.counters.flash=false`.
+- **validateFx** на сервере (`src/http/tv.ts`): вызывается из `validateScreenLayoutV2`; проверяет только вложенные поля fx, не мешает старым layout без fx.
 
 ## Мобильная версия
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 17.11.2026 · 8251bc5 · task 64 — живой фон, тени/стекло/покачивание, переходы слайдов, эффекты в конструкторе
+- **`kviz/client/src/lib/tvScreenLayout.ts`**: добавлены `ElFx` (shadow/blur/glass/float/textShadow на элемент), `ScreenFx` (bg/slide/counters/quality), `DEFAULT_FX`, `resolveScreenFx(layout)`, `resolveElFx()`; `ElFx` добавлен в `ElBase` и `SlotChildBase`; `ScreenLayout` расширен полем `fx?: ScreenFx`.
+- **`kviz/client/src/components/tv/TvBackground.tsx`** (новый): 3 радиальных blob-градиента с анимацией через transform (не filter:blur), SVG-зерно через data-URI. `staticOnly` — статичный вариант для превью. Eco-режим и `prefers-reduced-motion` → статика.
+- **`kviz/client/src/components/tv/TvScreen.tsx`**: `ShapeBox`/`ImageEl` получили `fx?/idx?/quality?`; применяют shadow (box-shadow), glass (backdrop-filter), float-анимацию, blur (filter). Счётчики: `flashKeys` → `flashClasses` → класс `tv-counter-num--flash` на 0.9 сек. `floatStyle()` helper.
+- **`kviz/client/src/components/tv/TextBox.tsx`**: добавлены `flashClass?` и `extraStyle?` (для textShadow).
+- **`kviz/client/src/components/tv/SlideTemplate.tsx`**: `staggerMs` prop → slot B получает `animationDelay: ${slotStagger}ms`; дочерние `bind='after'` получают `animation: tv-stagger-in 0.5s ${staggerMs}ms both`.
+- **`kviz/client/src/pages/ResultsPage.tsx`**: переход через `data-t` + `--enter-blur`; блики `.tv-sheen-wrap`; точки `.tv-dots`; прогресс-бар `tv-progress-bar` (key сбрасывает); вспышки счётчиков; `<TvBackground fx={fxEff} />`; `qualityOverride` из `?quality=eco`.
+- **`kviz/client/src/index.css`**: CSS для TvBackground (blob/grain/keyframes), `tv-el-float`, `tv-stagger-in`, `tv-sheen`, `tv-flash`, переходы слайдов (`data-t`), точки, прогресс-бар.
+- **`kviz/client/src/components/tv/TvScreenEditor.tsx`**: `ScreenFxPanel` (когда ничего не выбрано в screen-режиме) и `ElFxPanel` (после свойств элемента); `resolveScreenFx`/`DEFAULT_FX` импортированы.
+- **`kviz/client/src/pages/crm/SettingsPage.tsx`**: `<TvBackground staticOnly />` в мини-превью шаблонов слайдов.
+- **`src/http/tv.ts`**: `validateFx()` + вызов из `validateScreenLayoutV2`.
+
 ### 17.11.2026 · 98c342b · task 63 — редактор шаблона внутри макета экрана ТВ, радиус slot_client, мини-превью с реальными данными
 - **`TvScreenEditor.tsx`** (расширен): режим `template` теперь показывает полный 16:9 экран (TvScreen) с затемнением `rgba(0,0,0,0.38)` поверх и подсвеченным слотом карусели (`#02BDB6`). `carouselRef` указывает на div карусели → drag/resize элементов работает в координатах карусели (% карусели, а не % экрана). Оверлеи выбранных элементов пересчитываются в пространство полного превью: `ox = carouselEl.x + el.x * carouselEl.w / 100`. Дочерние элементы slot_client аналогично. Аспект preview: `'16/9'` в template-режиме (было CAROUSEL_ASPECT). `isDirty` = JSON.stringify сравнение → подтверждение при отмене. Кнопка «Сохранить» заблокирована если нет карусели; подсказка «Положение карусели меняется в редакторе экрана». Раздел «Экран (только просмотр)» — коллапсируемый под слоями шаблона. Кнопки добавления элементов фильтруются (нет лишних slot_a/b если уже есть).
 - **`SlideTemplate.tsx`**: `borderRadius` на slot_client wrap: `calc(var(--screen-h,400px) * ${slot.h * slot.radius} / 10000)`.

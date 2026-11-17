@@ -16,7 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 64 | tv | ТВ: живой фон, тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка счётчиков, настройки эффектов в редакторе | ТЗ в чате | 🔧 в работе (Claude, 17.11.2026) |
+| 64 | tv | ТВ: живой фон, тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка счётчиков, настройки эффектов в редакторе | ТЗ в чате | ✅ готово (8251bc5) |
 | 63 | tv | ТВ: редактор шаблона внутри макета экрана (16/9), радиус slot_client, мини-превью с реальными данными, валидация сервера | ТЗ в чате | ✅ готово (98c342b) |
 | 62 | manager | «Мой месяц»: личный отчёт менеджера — план, заработок, продажи, смены, задачи, клиенты, мотивация | ТЗ в чате | ✅ готово (a234da8) |
 | 61 | zamery | Вкладка «Замеры»: две кнопки-карточки вместо подвкладок; авто-отправка результатов студии после замера/InBody | ТЗ в чате | ✅ готово (c99b29c) |
@@ -121,6 +121,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 17.11.2026 | Claude | 64 tv: ElFx/ScreenFx/DEFAULT_FX/resolveScreenFx в tvScreenLayout.ts; TvBackground.tsx (blob-градиенты, SVG-зерно, staticOnly); TvScreen — float/glass/shadow/blur/counter-flash; TextBox flashClass/extraStyle; SlideTemplate staggerMs; ResultsPage — data-t переходы, enterBlur, sheen, dots, progressKey, TvBackground; TvScreenEditor — ScreenFxPanel + ElFxPanel; SettingsPage — TvBackground staticOnly в превью; src/http/tv.ts validateFx | 8251bc5 | SQL не нужен. Проверка на проде: /results?key=… — проверить анимацию фона, переходы слайдов, точки, прогресс; Настройки → Шаблоны слайдов → фон в превью; Редактор экрана → Эффекты экрана/элемента. |
 | 17.11.2026 | Claude | 63 tv: TvScreenEditor template-режим — 16:9 превью (TvScreen + затемнение + выделение карусели + carouselRef для drag); isDirty+confirmClose; заблокированный Save без карусели; слои «Экран (только просмотр)»; слой радиуса slot_client (0–50). SlideTemplate borderRadius. tvScreenLayout.ts и tv.ts radius-валидация. SettingsPage мини-превью с реальными данными. | 98c342b | Проверка на проде — ручная (Настройки → Шаблоны слайдов → Редактировать). |
 | 17.11.2026 | Claude | 62 manager: MyMonthPage.tsx + motivation.ts (новые); ManagerPage subTab; /mapped-staff + /my-month в manager.ts; export computePayroll, buildClientLeadMap, clMgr | a234da8 | SQL не нужен. Проверка на проде: заработок → сверить с Отчёты→Зарплата; переключение подвкладок. |
 | 17.11.2026 | Claude | 61 zamery: MeasureLayout — landing с двумя карточками; MeasureLandingPage в App.tsx (?section param); recalcStudioResultForClient в measure.ts; calcLosses (7 тестов); auto-trigger в POST measurements + QR + link-to-client + fire-and-forget csv-import/recalculate; studioWarning в NewMeasurePage и InBodyScanPage; shell-app.js /kviz/measure | c99b29c | check:mobile требует E2E_LOGIN — проверка на проде. |
