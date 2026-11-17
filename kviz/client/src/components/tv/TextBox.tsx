@@ -6,12 +6,14 @@ interface Props {
   overflowing?: boolean;
   preview?: boolean;
   onRef?: (r: HTMLDivElement | null) => void;
+  flashClass?: string;
+  extraStyle?: React.CSSProperties;
 }
 
 // Renders text inside a positioned wrapper. Does NOT set overflow:hidden so
 // scaleX/scaleY transform is not clipped by its own container.
 // Parent wrapper is responsible for overflow clipping.
-export default function TextBox({ style: el, text, overflowing, preview, onRef }: Props) {
+export default function TextBox({ style: el, text, overflowing, preview, onRef, flashClass, extraStyle }: Props) {
   const origin =
     el.align === 'right'  ? 'right center' :
     el.align === 'center' ? 'center center' : 'left center';
@@ -19,6 +21,7 @@ export default function TextBox({ style: el, text, overflowing, preview, onRef }
   return (
     <div
       ref={onRef}
+      className={flashClass || undefined}
       style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -34,6 +37,7 @@ export default function TextBox({ style: el, text, overflowing, preview, onRef }
         wordBreak: 'break-word',
         lineHeight: 1.2,
         outline: preview && overflowing ? '2px solid #ef4444' : undefined,
+        ...extraStyle,
       }}
     >
       {text}

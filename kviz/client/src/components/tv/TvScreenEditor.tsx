@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import TvScreen from './TvScreen';
 import SlideTemplate from './SlideTemplate';
 import type { ScreenEl, ScreenElImage, ScreenElShape, ScreenElType, ScreenLayout, SlideTemplate as SlideTemplateType, SlideTemplates, SlotChild, SlotChildImage, SlotChildShape, SlotChildText, TemplateKind, TemplateTopEl, TplElSlotClient, TplElSlotImage } from '../../lib/tvScreenLayout';
-import { ASSET_LABELS, BIND_LABELS, CAROUSEL_ASPECT, SHAPE_LABELS, TEMPLATE_EL_LABELS, TEMPLATE_KIND_LABELS, TYPE_LABELS, VALID_FONTS, defaultScreenLayout, defaultSlideTemplates, defSlotChildren, newId, validateSlideTemplate } from '../../lib/tvScreenLayout';
+import { ASSET_LABELS, BIND_LABELS, CAROUSEL_ASPECT, SHAPE_LABELS, TEMPLATE_EL_LABELS, TEMPLATE_KIND_LABELS, TYPE_LABELS, VALID_FONTS, DEFAULT_FX, defaultScreenLayout, defaultSlideTemplates, defSlotChildren, newId, resolveScreenFx, validateSlideTemplate } from '../../lib/tvScreenLayout';
+import type { ElFx, ScreenFx } from '../../lib/tvScreenLayout';
 import { compressForUpload } from '../../lib/tvImage';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -363,6 +364,179 @@ function ImageProps({ el, onChange, uploadError, onUpload }: {
         <label style={LBL}>Радиус (%h, 0–10)</label>
         <input type="number" step="0.5" min={0} max={10} value={el.radius ?? 0} style={INP}
           onChange={e => onChange({ radius: Number(e.target.value) })} />
+      </div>
+    </>
+  );
+}
+
+// ── Screen FX panel ───────────────────────────────────────────────────────────
+
+function ScreenFxPanel({ fx, onChange }: { fx: ReturnType<typeof resolveScreenFx>; onChange: (patch: ScreenFx) => void }) {
+  const D = DEFAULT_FX;
+  return (
+    <>
+      <div style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>Эффекты экрана</div>
+
+      <div style={{ fontSize: 10, color: '#475569', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '.05em' }}>Фон</div>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 6 }}>
+        <label style={{ ...LBL, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={fx.bg.anim} onChange={e => onChange({ bg: { ...fx.bg, anim: e.target.checked } })} /> Анимация
+        </label>
+      </div>
+      <div style={ROW}>
+        <label style={LBL}>Интенсивность</label>
+        <select value={fx.bg.intensity} style={INP} onChange={e => onChange({ bg: { ...fx.bg, intensity: e.target.value as 'soft' | 'medium' } })}>
+          <option value="soft">Мягкая</option>
+          <option value="medium">Средняя</option>
+        </select>
+      </div>
+      <div style={{ ...ROW }}>
+        <label style={LBL}>Зерно (0–10): {fx.bg.grain}</label>
+        <input type="range" min={0} max={10} step={1} value={fx.bg.grain} style={{ width: '100%' }}
+          onChange={e => onChange({ bg: { ...fx.bg, grain: Number(e.target.value) } })} />
+      </div>
+
+      <div style={{ borderTop: '1px solid #1e293b', margin: '10px 0' }} />
+      <div style={{ fontSize: 10, color: '#475569', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '.05em' }}>Слайды</div>
+      <div style={ROW}>
+        <label style={LBL}>Переход</label>
+        <select value={fx.slide.transition} style={INP} onChange={e => onChange({ slide: { ...fx.slide, transition: e.target.value as typeof D.slide.transition } })}>
+          <option value="fade-scale">Fade-scale</option>
+          <option value="slide">Сдвиг</option>
+          <option value="iris">Ирис</option>
+          <option value="none">Без анимации</option>
+        </select>
+      </div>
+      <div style={{ ...ROW }}>
+        <label style={LBL}>Размытие при входе (px): {fx.slide.enterBlur}</label>
+        <input type="range" min={0} max={30} step={1} value={fx.slide.enterBlur ?? 0} style={{ width: '100%' }}
+          onChange={e => onChange({ slide: { ...fx.slide, enterBlur: Number(e.target.value) } })} />
+      </div>
+      <div style={{ ...ROW }}>
+        <label style={LBL}>Задержка «После»/слот B (мс): {fx.slide.stagger_ms}</label>
+        <input type="range" min={0} max={1500} step={100} value={fx.slide.stagger_ms} style={{ width: '100%' }}
+          onChange={e => onChange({ slide: { ...fx.slide, stagger_ms: Number(e.target.value) } })} />
+      </div>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
+        <label style={{ ...LBL, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={fx.slide.dots} onChange={e => onChange({ slide: { ...fx.slide, dots: e.target.checked } })} /> Точки
+        </label>
+        <label style={{ ...LBL, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={fx.slide.sheen.on} onChange={e => onChange({ slide: { ...fx.slide, sheen: { ...fx.slide.sheen, on: e.target.checked } } })} /> Блик
+        </label>
+      </div>
+      <div style={ROW}>
+        <label style={LBL}>Прогресс-бар</label>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <label style={{ ...LBL, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <input type="checkbox" checked={fx.slide.progress.on} onChange={e => onChange({ slide: { ...fx.slide, progress: { ...fx.slide.progress, on: e.target.checked } } })} /> Включён
+          </label>
+          <select value={fx.slide.progress.color} style={{ ...INP, flex: 1 }} onChange={e => onChange({ slide: { ...fx.slide, progress: { ...fx.slide.progress, color: e.target.value as 'teal' | 'blue' } } })}>
+            <option value="teal">Бирюзовый</option>
+            <option value="blue">Синий</option>
+          </select>
+        </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid #1e293b', margin: '10px 0' }} />
+      <div style={{ fontSize: 10, color: '#475569', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '.05em' }}>Счётчики и качество</div>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
+        <label style={{ ...LBL, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={fx.counters.flash ?? true} onChange={e => onChange({ counters: { flash: e.target.checked } })} /> Вспышка счётчиков
+        </label>
+      </div>
+      <div style={ROW}>
+        <label style={LBL}>Режим качества</label>
+        <select value={fx.quality} style={INP} onChange={e => onChange({ quality: e.target.value as 'high' | 'eco' })}>
+          <option value="high">High (полный)</option>
+          <option value="eco">Eco (без эффектов)</option>
+        </select>
+      </div>
+    </>
+  );
+}
+
+// ── Element FX panel ──────────────────────────────────────────────────────────
+
+function ElFxPanel({ fx, onChange }: { fx: ElFx | undefined; onChange: (patch: ElFx) => void }) {
+  const ef = fx ?? {};
+  const shadow = ef.shadow ?? { on: false, blur: 20, offsetY: 8, opacity: 40, color: 'dark' as const };
+  const glass  = ef.glass  ?? { on: false, opacity: 40 };
+  const float  = ef.float  ?? { on: false, amp: 1.5, period_sec: 8 };
+  return (
+    <>
+      <div style={{ borderTop: '1px solid #1e293b', margin: '10px 0' }} />
+      <div style={{ fontSize: 10, color: '#475569', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '.05em' }}>Эффекты элемента</div>
+      {/* Shadow */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+        <label style={{ ...LBL, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginBottom: 0 }}>
+          <input type="checkbox" checked={shadow.on} onChange={e => onChange({ ...ef, shadow: { ...shadow, on: e.target.checked } })} /> Тень
+        </label>
+        {shadow.on && (
+          <select value={shadow.color} style={{ ...INP, flex: 1 }} onChange={e => onChange({ ...ef, shadow: { ...shadow, color: e.target.value as typeof shadow.color } })}>
+            <option value="dark">Тёмная</option>
+            <option value="teal">Бирюзовая</option>
+            <option value="blue">Синяя</option>
+          </select>
+        )}
+      </div>
+      {shadow.on && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 8 }}>
+          <div>
+            <label style={LBL}>Blur</label>
+            <input type="number" min={0} max={60} step={2} value={shadow.blur} style={INP}
+              onChange={e => onChange({ ...ef, shadow: { ...shadow, blur: Number(e.target.value) } })} />
+          </div>
+          <div>
+            <label style={LBL}>OffsetY</label>
+            <input type="number" min={0} max={40} step={1} value={shadow.offsetY} style={INP}
+              onChange={e => onChange({ ...ef, shadow: { ...shadow, offsetY: Number(e.target.value) } })} />
+          </div>
+          <div>
+            <label style={LBL}>Opacity%</label>
+            <input type="number" min={0} max={100} step={5} value={shadow.opacity} style={INP}
+              onChange={e => onChange({ ...ef, shadow: { ...shadow, opacity: Number(e.target.value) } })} />
+          </div>
+        </div>
+      )}
+      {/* Glass */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+        <label style={{ ...LBL, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginBottom: 0 }}>
+          <input type="checkbox" checked={glass.on} onChange={e => onChange({ ...ef, glass: { ...glass, on: e.target.checked } })} /> Стекло
+        </label>
+        {glass.on && (
+          <>
+            <label style={{ ...LBL, marginBottom: 0, fontSize: 10, color: '#64748b' }}>Непрозр.%:</label>
+            <input type="number" min={20} max={90} step={5} value={glass.opacity} style={{ ...INP, width: 56 }}
+              onChange={e => onChange({ ...ef, glass: { ...glass, opacity: Number(e.target.value) } })} />
+          </>
+        )}
+      </div>
+      {/* Float */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+        <label style={{ ...LBL, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginBottom: 0 }}>
+          <input type="checkbox" checked={float.on} onChange={e => onChange({ ...ef, float: { ...float, on: e.target.checked } })} /> Покачивание
+        </label>
+      </div>
+      {float.on && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+          <div>
+            <label style={LBL}>Амплитуда (%h)</label>
+            <input type="number" min={0} max={4} step={0.5} value={float.amp} style={INP}
+              onChange={e => onChange({ ...ef, float: { ...float, amp: Number(e.target.value) } })} />
+          </div>
+          <div>
+            <label style={LBL}>Период (сек)</label>
+            <input type="number" min={4} max={20} step={1} value={float.period_sec} style={INP}
+              onChange={e => onChange({ ...ef, float: { ...float, period_sec: Number(e.target.value) } })} />
+          </div>
+        </div>
+      )}
+      {/* textShadow (text types only) */}
+      <div>
+        <label style={{ ...LBL, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={!!ef.textShadow} onChange={e => onChange({ ...ef, textShadow: e.target.checked || undefined })} /> Тень текста
+        </label>
       </div>
     </>
   );
@@ -1514,6 +1688,12 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
                   </div>
                 </>
               )}
+              {selEl.type !== 'carousel' && (
+                <ElFxPanel
+                  fx={selEl.fx}
+                  onChange={fx => updateEl(selEl.id, { fx })}
+                />
+              )}
               <div style={{ borderTop: '1px solid #1e293b', marginTop: 10, paddingTop: 10 }}>
                 <button style={{ ...BTN, color: '#f87171', borderColor: '#7f1d1d', width: '100%' }}
                   onClick={() => deleteEl(selEl.id)}>Удалить элемент</button>
@@ -1531,9 +1711,13 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
               </button>
             </div>
           ) : (
-            <div style={{ color: '#475569', fontSize: 12, textAlign: 'center', marginTop: 32 }}>
-              Выберите элемент<br />в дереве или на экране
-            </div>
+            <ScreenFxPanel
+              fx={resolveScreenFx(layout)}
+              onChange={patch => {
+                pushHistory();
+                setLayout(l => ({ ...l, fx: { ...l.fx, ...patch } as typeof DEFAULT_FX }));
+              }}
+            />
           )}
         </div>
       </div>

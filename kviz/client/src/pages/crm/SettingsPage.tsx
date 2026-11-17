@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 import StaffPage from './StaffPage';
 import FreeSlide from '../../components/tv/FreeSlide';
+import TvBackground from '../../components/tv/TvBackground';
 import TvScreenEditor from '../../components/tv/TvScreenEditor';
 import SlideTemplate from '../../components/tv/SlideTemplate';
 import type { SlideTemplateData } from '../../components/tv/SlideTemplate';
 import type { FreeLayout, ScreenLayout, SlideTemplate as SlideTemplateType, SlideTemplates, TemplateKind } from '../../lib/tvScreenLayout';
-import { migrateFreeLayoutToV2, TEMPLATE_KIND_LABELS, defaultSlideTemplates, defaultScreenLayout, CAROUSEL_ASPECT } from '../../lib/tvScreenLayout';
+import { migrateFreeLayoutToV2, TEMPLATE_KIND_LABELS, defaultSlideTemplates, defaultScreenLayout, resolveScreenFx, CAROUSEL_ASPECT } from '../../lib/tvScreenLayout';
 import { compressForUpload } from '../../lib/tvImage';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -2950,7 +2951,8 @@ function TvSection() {
             } : null;
             return (
             <div key={kind} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ position: 'relative', aspectRatio: String(CAROUSEL_ASPECT), overflow: 'hidden', background: 'linear-gradient(135deg,#e8fbfa 0%,#f7f8ff 52%,#eef0ff 100%)' }}>
+              <div style={{ position: 'relative', aspectRatio: String(CAROUSEL_ASPECT), overflow: 'hidden' }}>
+                <TvBackground fx={resolveScreenFx(screenLayout ?? defaultScreenLayout())} staticOnly />
                 <SlideTemplate
                   template={slideTemplates[kind]}
                   data={realData ?? { slide_text: kind === 'image' ? 'Акция / USP' : null }}

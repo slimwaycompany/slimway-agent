@@ -23,11 +23,13 @@ interface Props {
   selectedChildId?: string | null;
   onElementClick?: (id: string) => void;
   onChildClick?: (parentId: string, childId: string) => void;
+  /** Stagger delay in ms for "after" images and slot B (default 0) */
+  staggerMs?: number;
 }
 
 export default function SlideTemplate({
   template, data, mediaUrl, sample,
-  selectedId, selectedChildId, onElementClick, onChildClick,
+  selectedId, selectedChildId, onElementClick, onChildClick, staggerMs = 0,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [slideH, setSlideH] = useState(0);
@@ -47,7 +49,7 @@ export default function SlideTemplate({
 
   return (
     <div ref={ref} style={{ position: 'absolute', inset: 0, ...cssVars }}>
-      {sorted.map(el => (
+      {sorted.map((el, idx) => (
         <TopEl
           key={el.id}
           el={el}
@@ -59,6 +61,8 @@ export default function SlideTemplate({
           selectedChildId={selectedChildId}
           onElementClick={onElementClick}
           onChildClick={onChildClick}
+          staggerMs={staggerMs}
+          slotIndex={idx}
         />
       ))}
     </div>
@@ -66,7 +70,7 @@ export default function SlideTemplate({
 }
 
 function TopEl({
-  el, data, mediaUrl, sample, isEditor, isSelected, selectedChildId, onElementClick, onChildClick,
+  el, data, mediaUrl, sample, isEditor, isSelected, selectedChildId, onElementClick, onChildClick, staggerMs, slotIndex,
 }: {
   el: TemplateTopEl;
   data: SlideTemplateData;
@@ -77,6 +81,8 @@ function TopEl({
   selectedChildId?: string | null;
   onElementClick?: (id: string) => void;
   onChildClick?: (parentId: string, childId: string) => void;
+  staggerMs?: number;
+  slotIndex?: number;
 }) {
   const hidden = el.visible === false;
   const slotRadius = el.type === 'slot_client' && (el as TplElSlotClient).radius
@@ -104,6 +110,8 @@ function TopEl({
     content = <ShapeBox el={el as ScreenElShape} />;
   } else if (el.type === 'slot_client') {
     const client = el.index === 'a' ? (data.result_a ?? null) : (data.result_b ?? null);
+    // stagger: slot B appears with delay; "after" images in slot A also stagger
+    const slotStagger = (staggerMs ?? 0) > 0 && el.index === 'b' && !isEditor ? staggerMs : 0;
     content = (
       <SlotClientContent
         slot={el as TplElSlotClient}
@@ -113,6 +121,8 @@ function TopEl({
         isEditor={isEditor}
         selectedChildId={selectedChildId}
         onChildClick={onChildClick ? (cid) => onChildClick(el.id, cid) : undefined}
+        staggerMs={staggerMs ?? 0}
+        slotStagger={slotStagger ?? 0}
       />
     );
   } else if (el.type === 'slot_image') {
@@ -139,7 +149,7 @@ function TopEl({
 }
 
 function SlotClientContent({
-  slot, client, mediaUrl, sample, isEditor, selectedChildId, onChildClick,
+  slot, client, mediaUrl, sample, isEditor, selectedChildId, onChildClick, staggerMs = 0, slotStagger = 0,
 }: {
   slot: TplElSlotClient;
   client: { title: string; before_path: string; after_path: string } | null;
@@ -148,14 +158,20 @@ function SlotClientContent({
   isEditor: boolean;
   selectedChildId?: string | null;
   onChildClick?: (childId: string) => void;
+  staggerMs?: number;
+  slotStagger?: number;
 }) {
   const sorted = [...slot.children]
     .filter(c => isEditor || c.visible !== false)
     .sort((a, b) => a.z - b.z);
 
+  const slotDelay = !isEditor && slotStagger > 0 ? `${slotStagger}ms` : undefined;
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', animationDelay: slotDelay }}>
       {sorted.map(child => {
+        const isAfter = child.type === 'image' && (child as SlotChildImage).bind === 'after';
+        const childDelay = !isEditor && staggerMs > 0 && isAfter ? `${staggerMs}ms` : undefined;
         const childStyle: React.CSSProperties = {
           position: 'absolute',
           left: `${child.x}%`, top: `${child.y}%`,
@@ -165,6 +181,7 @@ function SlotClientContent({
           opacity: isEditor && child.visible === false ? 0.25 : undefined,
           cursor: onChildClick ? 'pointer' : undefined,
           outline: isEditor && selectedChildId === child.id ? '1.5px solid #38bdf8' : undefined,
+          ...(childDelay ? { animation: `tv-stagger-in 0.5s ${childDelay} both` } : {}),
         };
 
         let content: React.ReactNode = null;

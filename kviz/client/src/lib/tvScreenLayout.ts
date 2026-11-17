@@ -1,4 +1,4 @@
-// синхронизировать с src/http/tv.ts (validateScreenLayoutV2, defaultScreenLayoutV2Server, migrateToV2Server)
+// синхронизировать с src/http/tv.ts (validateScreenLayoutV2, defaultScreenLayoutV2Server, migrateToV2Server, validateFx)
 
 export type TextAlignV2  = 'left' | 'center' | 'right';
 export type FontNameV2   = 'Manrope' | 'Montserrat' | 'Oswald' | 'Barlow Condensed' | 'Playfair Display' | 'Russo One' | 'Unbounded';
@@ -16,6 +16,68 @@ export interface TextStyle {
   scaleY?:  number;        // 0.5–2
 }
 
+// ── Effects model (синхронизировать с src/http/tv.ts validateFx) ─────────────
+
+export interface ElFx {
+  shadow?:     { on: boolean; blur: number; offsetY: number; opacity: number; color: 'dark' | 'teal' | 'blue' };
+  blur?:       number;       // 0–12 px — image/shape only
+  glass?:      { on: boolean; opacity: number }; // 20–90
+  float?:      { on: boolean; amp: number; period_sec: number }; // amp 0–4 (%h), period 6–14
+  textShadow?: boolean;      // text only
+}
+
+export interface ScreenFx {
+  bg?: {
+    anim?:      boolean;             // default true
+    intensity?: 'soft' | 'medium';  // default 'soft'
+    grain?:     number;              // 0–6 (%), default 3
+    paused?:    boolean;             // editor-only: pause animation
+  };
+  slide?: {
+    transition?: 'fade-scale' | 'slide' | 'iris' | 'none'; // default 'fade-scale'
+    enterBlur?:  number;   // 0–16 px, default 10
+    enterScale?: boolean;  // default true
+    stagger_ms?: number;   // 0–600, default 300
+    dots?:       boolean;  // default true
+    progress?:   { on: boolean; color: 'teal' | 'blue' };
+    sheen?:      { on: boolean; period_sec: number }; // 6–20
+  };
+  counters?: { flash?: boolean };   // default true
+  quality?:  'high' | 'eco';        // default 'high'
+  shadowAll?: {
+    on: boolean; blur: number; offsetY: number; opacity: number;
+    color: 'dark' | 'teal' | 'blue';
+  };
+}
+
+export const DEFAULT_FX = {
+  bg:        { anim: true, intensity: 'soft' as const, grain: 3, paused: false },
+  slide:     { transition: 'fade-scale' as const, enterBlur: 10, enterScale: true, stagger_ms: 300, dots: true, progress: { on: true, color: 'teal' as const }, sheen: { on: true, period_sec: 9 } },
+  counters:  { flash: true },
+  quality:   'high' as const,
+  shadowAll: { on: false, blur: 20, offsetY: 10, opacity: 30, color: 'dark' as const },
+};
+
+/** Merge partial ScreenFx with defaults */
+export function resolveScreenFx(layout: ScreenLayout): typeof DEFAULT_FX {
+  const fx = (layout as { fx?: ScreenFx }).fx ?? {};
+  return {
+    bg:        { ...DEFAULT_FX.bg,        ...fx.bg },
+    slide:     { ...DEFAULT_FX.slide,     ...fx.slide, progress: { ...DEFAULT_FX.slide.progress, ...fx.slide?.progress }, sheen: { ...DEFAULT_FX.slide.sheen, ...fx.slide?.sheen } },
+    counters:  { ...DEFAULT_FX.counters,  ...fx.counters },
+    quality:   fx.quality ?? DEFAULT_FX.quality,
+    shadowAll: { ...DEFAULT_FX.shadowAll, ...fx.shadowAll },
+  };
+}
+
+/** Merge per-element fx with screen-level shadowAll default */
+export function resolveElFx(elFx: ElFx | undefined, screenFx: typeof DEFAULT_FX): ElFx {
+  const shadow = elFx?.shadow !== undefined
+    ? elFx.shadow
+    : (screenFx.shadowAll.on ? screenFx.shadowAll : undefined);
+  return { ...elFx, shadow };
+}
+
 interface ElBase {
   id:       string;
   x: number; y: number; w: number; h: number; // 0–100% of screen
@@ -23,6 +85,7 @@ interface ElBase {
   z:        number;   // 0–500 layer order
   visible?: boolean;  // default true
   locked?:  boolean;  // default false — locked can't be moved/resized by mouse
+  fx?:      ElFx;
 }
 
 export interface ScreenElText     extends ElBase, TextStyle { type: 'text';     text: string; }
@@ -64,7 +127,7 @@ export type ScreenEl =
   | ScreenElText | ScreenElValue | ScreenElMission | ScreenElDatetime
   | ScreenElImage | ScreenElShape | ScreenElCarousel;
 
-export interface ScreenLayout { v: 2; elements: ScreenEl[] }
+export interface ScreenLayout { v: 2; elements: ScreenEl[]; fx?: ScreenFx }
 
 // ── Labels / metadata ─────────────────────────────────────────────────────────
 
@@ -212,6 +275,7 @@ interface SlotChildBase {
   z: number;
   visible?: boolean;
   locked?: boolean;
+  fx?: ElFx;
 }
 export interface SlotChildText  extends SlotChildBase, TextStyle { type: 'text';  text?: string; bind?: 'name'; }
 export interface SlotChildImage extends SlotChildBase { type: 'image'; bind?: 'before' | 'after'; path?: string; fit?: 'contain' | 'cover' | 'stretch'; opacity?: number; radius?: number; }

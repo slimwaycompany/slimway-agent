@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import FreeSlide from '../components/tv/FreeSlide';
 import TvScreen from '../components/tv/TvScreen';
+import TvBackground from '../components/tv/TvBackground';
 import SlideTemplate from '../components/tv/SlideTemplate';
 import type { FreeLayout, ScreenLayout, SlideTemplates } from '../lib/tvScreenLayout';
-import { defaultScreenLayout, defaultSlideTemplates } from '../lib/tvScreenLayout';
+import { defaultScreenLayout, defaultSlideTemplates, resolveScreenFx } from '../lib/tvScreenLayout';
 
 interface TvCounters { cm_lost: number; kg_lost: number; fat_kg_lost: number }
 interface TvResult  { id: string; title: string; before_path: string; after_path: string }
@@ -45,7 +46,9 @@ const SLIDE_TPL_KIND: Record<string, 'result1' | 'result2' | 'image'> = {
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function ResultsPage() {
   const { search } = useLocation();
-  const tvKey = new URLSearchParams(search).get('key') || '';
+  const params = new URLSearchParams(search);
+  const tvKey = params.get('key') || '';
+  const qualityOverride = params.get('quality') as 'high' | 'eco' | null;
 
   const [data, setData]       = useState<TvData | null>(null);
   const [invalid, setInvalid] = useState(false);
@@ -54,12 +57,15 @@ export default function ResultsPage() {
   const [values, setValues]   = useState([0, 0, 0]);
   const [datetime, setDatetime] = useState(() => formatAlmaty(new Date()));
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  const [flashKeys, setFlashKeys] = useState([0, 0, 0]);
 
   const valuesRef     = useRef([0, 0, 0]);
   const prevTargetRef = useRef([0, 0, 0]);
   const rafRef        = useRef<number>(0);
   const timerRef      = useRef<ReturnType<typeof setTimeout>>();
   const slideIdxRef   = useRef(0);
+  const progressKeyRef = useRef(0);
+  const [progressKey, setProgressKey] = useState(0);
 
   useEffect(() => {
     document.documentElement.classList.add('tv-page');
@@ -75,11 +81,16 @@ export default function ResultsPage() {
     return () => clearInterval(id);
   }, []);
 
-  function animateCounters(c: TvCounters) {
+  function animateCounters(c: TvCounters, flash: boolean) {
     const target = [c.cm_lost, c.kg_lost, c.fat_kg_lost];
     const prev   = prevTargetRef.current;
-    if (target[0] === prev[0] && target[1] === prev[1] && target[2] === prev[2]) return;
+    const changed = target.some((t, i) => t !== prev[i]);
+    if (!changed) return;
     prevTargetRef.current = target;
+    if (flash && changed) {
+      const keys = target.map((t, i) => t !== prev[i] ? prevTargetRef.current[i] + 1 : flashKeys[i]);
+      setFlashKeys(keys);
+    }
     cancelAnimationFrame(rafRef.current);
     const from    = [...valuesRef.current];
     const started = performance.now();
@@ -102,7 +113,8 @@ export default function ResultsPage() {
       const d: TvData = await r.json();
       setData(d);
       setInvalid(false);
-      animateCounters(d.counters);
+      const fx = resolveScreenFx(d.screen_layout ?? defaultScreenLayout());
+      animateCounters(d.counters, fx.counters.flash ?? true);
     } catch { /* retry on next SSE / poll */ }
   }, [tvKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -153,8 +165,10 @@ export default function ResultsPage() {
         const nextIdx = slideIdxRef.current + 1;
         slideIdxRef.current = nextIdx;
         setSlideIdx(nextIdx);
+        progressKeyRef.current++;
+        setProgressKey(progressKeyRef.current);
         setAnim('enter');
-        setTimeout(() => setAnim('idle'), 600);
+        setTimeout(() => setAnim('idle'), 800);
       }, 400);
     }, secs * 1000);
     return () => clearTimeout(timerRef.current);
@@ -169,12 +183,31 @@ export default function ResultsPage() {
   if (!data) return null;
 
   const curSlide = slides.length ? slides[slideIdxRef.current % slides.length] : null;
+  const curSlideIdx = slideIdxRef.current % Math.max(slides.length, 1);
   const screenLayout: ScreenLayout = data.screen_layout ?? defaultScreenLayout();
   const slideTemplates = data.slide_templates ?? defaultSlideTemplates();
+  const fx = resolveScreenFx(screenLayout);
+  const quality = qualityOverride ?? fx.quality;
+  const fxEff = { ...fx, quality };
+  const transition = fx.slide.transition;
+  const enterBlurPx = quality !== 'eco' ? (fx.slide.enterBlur ?? 0) : 0;
+  const staggerMs = fx.slide.stagger_ms;
+  const showDots = fx.slide.dots && slides.length > 1;
+  const showProgress = fx.slide.progress.on && slides.length > 1;
+  const sheenOn = fx.slide.sheen.on && quality !== 'eco';
+  const sheenPeriod = fx.slide.sheen.period_sec;
+
+  // enterBlur/enterScale as CSS vars on the slide div
+  const enterStyle: React.CSSProperties = {
+    '--enter-blur': `${enterBlurPx}px`,
+  } as React.CSSProperties;
 
   const carousel = curSlide ? (
-    <div className={`tv-slide${anim === 'exit' ? ' tv-slide--exit' : anim === 'enter' ? ' tv-slide--enter' : ''}`}
-      style={{ position: 'absolute', inset: 0 }}>
+    <div
+      className={`tv-slide${anim === 'exit' ? ' tv-slide--exit' : anim === 'enter' ? ' tv-slide--enter' : ''}`}
+      data-t={transition}
+      style={{ position: 'absolute', inset: 0, ...enterStyle }}
+    >
       {curSlide.kind === 'free' && curSlide.layout ? (
         <div style={{
           position: 'absolute', inset: 0,
@@ -184,13 +217,16 @@ export default function ResultsPage() {
             border: '2px solid transparent',
             background: 'linear-gradient(rgba(255,255,255,.58),rgba(255,255,255,.58)) padding-box, linear-gradient(135deg,#02BDB6,#263CD9) border-box',
             boxShadow: '0 12px 48px rgba(38,60,217,.13)',
-            backdropFilter: 'blur(16px)',
+            backdropFilter: quality !== 'eco' ? 'blur(16px)' : undefined,
           } : {}),
         }}>
           <FreeSlide layout={curSlide.layout} mediaUrl={p => mediaUrl(p, tvKey)} />
         </div>
       ) : SLIDE_TPL_KIND[curSlide.kind] ? (
-        <div style={{ position: 'absolute', inset: 0, borderRadius: 'clamp(14px,1.8vw,28px)', overflow: 'hidden' }}>
+        <div
+          style={{ position: 'absolute', inset: 0, borderRadius: 'clamp(14px,1.8vw,28px)', overflow: 'hidden' }}
+          className={sheenOn ? 'tv-sheen-wrap' : undefined}
+        >
           <SlideTemplate
             template={slideTemplates[SLIDE_TPL_KIND[curSlide.kind]]}
             data={{
@@ -200,23 +236,58 @@ export default function ResultsPage() {
               slide_text: curSlide.slide_text,
             }}
             mediaUrl={p => mediaUrl(p, tvKey)}
+            staggerMs={staggerMs}
           />
         </div>
       ) : null}
     </div>
   ) : null;
 
+  const carouselWithChrome = (
+    <div className="tv-carousel-wrap">
+      {carousel}
+      {/* Dots + progress bar */}
+      {(showDots || showProgress) && (
+        <div className="tv-carousel-chrome">
+          {showProgress && (
+            <div className={`tv-progress tv-progress--${fx.slide.progress.color}`}>
+              <div
+                key={progressKey}
+                className="tv-progress-bar"
+                style={{
+                  animation: `tv-progress-fill ${curSlide?.duration_sec ?? 10}s linear forwards`,
+                }}
+              />
+            </div>
+          )}
+          {showDots && (
+            <div className="tv-dots">
+              {slides.map((_, i) => (
+                <div
+                  key={i}
+                  className={`tv-dot${i === curSlideIdx ? ` tv-dot--active tv-dot--${fx.slide.progress.color}` : ''}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <main className="tv-screen">
-      <div className="tv-glow tv-glow-a" />
-      <div className="tv-glow tv-glow-b" />
+      <TvBackground fx={fxEff} />
       <TvScreen
         layout={screenLayout}
         values={{ value_cm: values[0], value_kg: values[1], value_fat: values[2] }}
         mission={data.mission ?? ''}
-        carousel={carousel}
+        carousel={carouselWithChrome}
         datetime={datetime}
         mediaUrl={p => mediaUrl(p, tvKey)}
+        flashKeys={flashKeys}
+        quality={quality}
+        sheenPeriod={sheenOn ? sheenPeriod : 0}
       />
     </main>
   );

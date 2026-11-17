@@ -201,6 +201,8 @@ function validateScreenLayoutV2(raw: unknown): string | null {
   if (l.v !== 2) return 'layout.v должно быть 2';
   if (!Array.isArray(l.elements)) return 'elements должен быть массивом';
   if ((l.elements as unknown[]).length > 50) return 'Максимум 50 элементов';
+  const fxErr = validateFx(l.fx);
+  if (fxErr) return fxErr;
   const VALID_TYPES  = new Set(['text','value','mission','datetime','image','shape','carousel']);
   const VALID_BINDS  = new Set(['value_cm','value_kg','value_fat']);
   const VALID_ASSETS = new Set(['logo','icon_cm','icon_kg','icon_fat']);
@@ -273,6 +275,42 @@ function validateScreenLayoutV2(raw: unknown): string | null {
     if (e.type === 'carousel') {
       if ('radius' in e && e.radius !== undefined && (typeof e.radius !== 'number' || (e.radius as number) < 0 || (e.radius as number) > 10)) return 'carousel.radius: 0–10';
     }
+  }
+  return null;
+}
+
+function validateFx(fx: unknown): string | null {
+  if (fx === undefined || fx === null) return null;
+  if (typeof fx !== 'object') return 'fx должен быть объектом';
+  const f = fx as Record<string, unknown>;
+  if ('quality' in f && f.quality !== undefined && f.quality !== 'high' && f.quality !== 'eco') return 'fx.quality: high или eco';
+  if ('bg' in f && f.bg !== undefined) {
+    const bg = f.bg as Record<string, unknown>;
+    if ('anim' in bg && bg.anim !== undefined && typeof bg.anim !== 'boolean') return 'fx.bg.anim: boolean';
+    if ('intensity' in bg && bg.intensity !== undefined && bg.intensity !== 'soft' && bg.intensity !== 'medium') return 'fx.bg.intensity: soft или medium';
+    if ('grain' in bg && bg.grain !== undefined && (typeof bg.grain !== 'number' || (bg.grain as number) < 0 || (bg.grain as number) > 10)) return 'fx.bg.grain: 0–10';
+  }
+  if ('slide' in f && f.slide !== undefined) {
+    const s = f.slide as Record<string, unknown>;
+    const TRANS = new Set(['fade-scale','slide','iris','none']);
+    if ('transition' in s && s.transition !== undefined && !TRANS.has(s.transition as string)) return 'fx.slide.transition: fade-scale, slide, iris или none';
+    if ('enterBlur' in s && s.enterBlur !== undefined && (typeof s.enterBlur !== 'number' || (s.enterBlur as number) < 0 || (s.enterBlur as number) > 40)) return 'fx.slide.enterBlur: 0–40';
+    if ('stagger_ms' in s && s.stagger_ms !== undefined && (typeof s.stagger_ms !== 'number' || (s.stagger_ms as number) < 0 || (s.stagger_ms as number) > 2000)) return 'fx.slide.stagger_ms: 0–2000';
+    if ('dots' in s && s.dots !== undefined && typeof s.dots !== 'boolean') return 'fx.slide.dots: boolean';
+    if ('progress' in s && s.progress !== undefined) {
+      const p = s.progress as Record<string, unknown>;
+      if (typeof p.on !== 'boolean') return 'fx.slide.progress.on: boolean';
+      if (p.color !== 'teal' && p.color !== 'blue') return 'fx.slide.progress.color: teal или blue';
+    }
+    if ('sheen' in s && s.sheen !== undefined) {
+      const sh = s.sheen as Record<string, unknown>;
+      if (typeof sh.on !== 'boolean') return 'fx.slide.sheen.on: boolean';
+      if (typeof sh.period_sec !== 'number' || (sh.period_sec as number) < 3 || (sh.period_sec as number) > 30) return 'fx.slide.sheen.period_sec: 3–30';
+    }
+  }
+  if ('counters' in f && f.counters !== undefined) {
+    const c = f.counters as Record<string, unknown>;
+    if ('flash' in c && c.flash !== undefined && typeof c.flash !== 'boolean') return 'fx.counters.flash: boolean';
   }
   return null;
 }
