@@ -10,7 +10,7 @@
 | Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 16.11.2026 | task 56-1: useRole() хук, isAdmin фикс, positionsLoaded guard в StaffPage |
 | Агент воронки Fitbase | `modules/agent.md` | Агент и овчарка | 🟢 | 12.11.2026 | task 48: syncVisits date_to fix (Fitbase требует date_to для /schedule-registration) |
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 28.10.2026 | Работает, кабинет агента |
-| Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟡 | 30.10.2026 | Закрытие смены из Fitbase — тестовый режим; GET /cash/sync-time теперь admin-only |
+| Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟢 | 17.11.2026 | task 62: подвкладка «Мой месяц» — план, заработок, продажи, смены, задачи, клиенты, мотивация |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 04.11.2026 | task 35: QuizPage tabs на мобиле (Вопрос/Ответы/Резюме) |
 | Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 17.11.2026 | task 61: карточки-кнопки в landing, ?section=measure|inbody, recalcStudioResultForClient, auto-trigger studio после замеров и InBody |
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 04.11.2026 | task 35: аккордеон групп на мобиле (openGroups, localStorage) |

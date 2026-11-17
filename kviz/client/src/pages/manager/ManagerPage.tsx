@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import CashClosing from './CashClosing';
 import LeadDrawer from '../crm/LeadDrawer';
+import MyMonthPage from './MyMonthPage';
 
 interface DoneInfo {
   done_id: string;
@@ -81,6 +82,17 @@ function fmtDuration(startIso: string): string {
 }
 
 export default function ManagerPage() {
+  const [subTab, setSubTab] = useState<'checklist' | 'mymonth'>('checklist');
+  const [meRole, setMeRole] = useState('');
+  const [meId, setMeId]     = useState('');
+
+  useEffect(() => {
+    fetch('/kviz/api/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : {})
+      .then(d => { setMeRole(d?.role ?? ''); setMeId(d?.id ?? ''); })
+      .catch(() => {});
+  }, []);
+
   const [data, setData] = useState<DayData | null>(null);
   const [err, setErr]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -204,7 +216,39 @@ export default function ManagerPage() {
     } finally { setBusy(b => ({ ...b, [taskId]: false })); }
   };
 
-  if (loading) return <div style={s.center}>Загрузка...</div>;
+  // Sub-tab strip
+  const tabStrip = (
+    <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+      {(['checklist', 'mymonth'] as const).map(tab => (
+        <button
+          key={tab}
+          onClick={() => setSubTab(tab)}
+          style={{
+            padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: subTab === tab ? 700 : 500,
+            color: subTab === tab ? '#02BDB6' : '#64748b',
+            borderBottom: subTab === tab ? '2px solid #02BDB6' : '2px solid transparent',
+            fontFamily: 'inherit', transition: 'all .15s',
+          }}
+        >
+          {tab === 'checklist' ? 'Чек-лист' : 'Мой месяц'}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (subTab === 'mymonth') {
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: "'Manrope',system-ui,sans-serif" }}>
+        {tabStrip}
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          {meId ? <MyMonthPage role={meRole} sessionUserId={meId} /> : <div style={s.center}>Загрузка...</div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) return <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif" }}>{tabStrip}<div style={s.center}>Загрузка...</div></div>;
   if (err && !data) return <div style={s.center}>Ошибка: {err}</div>;
   if (!data) return null;
 
@@ -213,6 +257,7 @@ export default function ManagerPage() {
 
   return (
     <div style={s.root}>
+      {tabStrip}
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1e293b', color: '#fff', padding: '10px 20px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, pointerEvents: 'none', boxShadow: '0 4px 16px rgba(0,0,0,.25)' }}>
           {toast}

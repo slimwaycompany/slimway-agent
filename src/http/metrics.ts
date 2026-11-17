@@ -37,7 +37,7 @@ function notCancelled(status: number | null): boolean {
 }
 
 // Returns latest lead (by created_at) per client_fitbase_id; phone fallback via fitbase_clients_cache
-async function buildClientLeadMap(): Promise<Map<number, { source: string | null; manager: string | null }>> {
+export async function buildClientLeadMap(): Promise<Map<number, { source: string | null; manager: string | null }>> {
   const leads = await fetchAll((off, lim) =>
     supabase.from('fitbase_leads').select('client_fitbase_id,source,manager,created_at,client_phone')
       .not('client_fitbase_id', 'is', null).order('created_at', { ascending: true }).range(off, off + lim - 1)
@@ -71,7 +71,7 @@ function clSrc(id: number | null | undefined, clm: Map<number, { source: string 
   return (id != null ? clm.get(Number(id))?.source : null) ?? '(без источника)';
 }
 
-function clMgr(id: number | null | undefined, clm: Map<number, { source: string | null; manager: string | null }>): string {
+export function clMgr(id: number | null | undefined, clm: Map<number, { source: string | null; manager: string | null }>): string {
   return (id != null ? clm.get(Number(id))?.manager : null) ?? '(без менеджера)';
 }
 

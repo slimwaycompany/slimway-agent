@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS: EmployeeSettings = {
 
 interface DrillItem { name: string|null; amount: number; date: string|null; is_refund: boolean; orig_date?: string|null }
 
-async function computePayroll(month: string) {
+export async function computePayroll(month: string) {
   const [yr, mo] = month.split('-').map(Number);
   const from = `${month}-01`;
   const daysInMonth = new Date(yr, mo, 0).getDate();

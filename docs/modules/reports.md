@@ -9,8 +9,8 @@
 - `kviz/client/src/pages/reports/ReportsPage.tsx` — главная страница отчётов (колонки: Менеджер, Продажи, Клиенты, Маркетинг)
 - `kviz/client/src/pages/reports/OccupancySection.tsx` — секция «Занятия и загруженность»
 - `kviz/client/src/pages/MetricsPage.tsx` — вкладка «Воронка»: метрики лидов/визитов/продаж из `fitbase_leads`/`fitbase_visits`
-- `src/http/metrics.ts` — API `/kviz/api/metrics/*`: факт дня, дневной такт, данные по воронке; экспортирует `fetchAll`, `groupOrders`, `classifyPurchase`, `opCid`, `OrderRow`, `ContractRecord`
-- `src/http/payroll.ts` — API `/kviz/api/payroll/*`: расчёт зарплат, настройки сотрудника, закрытие/открытие месяца
+- `src/http/metrics.ts` — API `/kviz/api/metrics/*`: факт дня, дневной такт, данные по воронке; экспортирует `fetchAll`, `groupOrders`, `classifyPurchase`, `opCid`, `OrderRow`, `ContractRecord`, `buildClientLeadMap`, `clMgr` (последние два используются и в модуле Менеджер — «Мой месяц»)
+- `src/http/payroll.ts` — API `/kviz/api/payroll/*`: расчёт зарплат, настройки сотрудника, закрытие/открытие месяца; экспортирует `computePayroll(month)` — используется в модуле Менеджер («Мой месяц»)
 - `src/http/fin.ts` — API `/kviz/api/fin/*`: CRUD fin_staff, fin_expense_groups, fin_expense_items, week-input, tbu-summary, tbu; экспортирует `getStaffMap()` (кэш 60 с)
 
 ## Таблицы
