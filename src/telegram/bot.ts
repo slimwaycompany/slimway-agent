@@ -1,6 +1,7 @@
 import https from 'https';
 import { supabase } from '../db/supabase';
 import { normalizePhone } from './phone';
+import { extractDataFields, beforeTarget, delta, formatValue } from './inbodyView';
 
 type JsonObject = Record<string, unknown>;
 
@@ -100,6 +101,12 @@ function mkBtn(text: string, cbData: string): JsonObject {
   }
   return { text, callback_data: cbData };
 }
+// sign arrow: ▼ for negative, ▲ for non-negative
+function arrow(val: number, unit: string): string {
+  const s = val < 0 ? val.toFixed(1) : `+${val.toFixed(1)}`;
+  const icon = val < 0 ? '▼' : '▲';
+  return unit ? `${icon} ${s} ${unit}` : `${icon} ${s}`;
+}
 
 // ── Menu screens ──────────────────────────────────────────────────────────────
 
@@ -193,7 +200,7 @@ async function screenInBody(chatId: number, msgId: number, link: { client_id: st
 async function screenInBodyDetail(chatId: number, msgId: number, link: { phone_digits: string | null }, id: string): Promise<void> {
   const { data: t } = await supabase
     .from('inbody_tests')
-    .select('phone_digits, tested_at, weight, pbf, smm, ffm, bmi, vfl, inbody_score, bmr, whr')
+    .select('id, phone_digits, tested_at, weight, pbf, smm, ffm, bmi, vfl, inbody_score, bmr, whr, data')
     .eq('id', id)
     .maybeSingle();
 
@@ -203,26 +210,90 @@ async function screenInBodyDetail(chatId: number, msgId: number, link: { phone_d
   }
 
   const r = t as JsonObject;
-  const fields: [string, string, string][] = [
-    ['⚖️ Вес', 'weight', 'кг'],
-    ['🩸 Жир (PBF)', 'pbf', '%'],
-    ['💪 Мышцы (SMM)', 'smm', 'кг'],
-    ['Безжировая масса (FFM)', 'ffm', 'кг'],
-    ['ИМТ (BMI)', 'bmi', ''],
-    ['Висцеральный жир (VFL)', 'vfl', ''],
-    ['InBody Score', 'inbody_score', ''],
-    ['Обмен веществ (BMR)', 'bmr', 'ккал'],
-    ['ОТ/ОБ (WHR)', 'whr', ''],
+  const pd = link.phone_digits as string;
+  const testedAt = r.tested_at as string;
+
+  const [prevRes, nextRes, firstRes] = await Promise.all([
+    supabase.from('inbody_tests').select('id, tested_at, weight, pbf, smm')
+      .eq('phone_digits', pd).lt('tested_at', testedAt)
+      .order('tested_at', { ascending: false }).limit(1),
+    supabase.from('inbody_tests').select('id')
+      .eq('phone_digits', pd).gt('tested_at', testedAt)
+      .order('tested_at', { ascending: true }).limit(1),
+    supabase.from('inbody_tests').select('id, tested_at, weight, pbf')
+      .eq('phone_digits', pd)
+      .order('tested_at', { ascending: true }).limit(1),
+  ]);
+
+  const prev    = prevRes.data?.[0]  as JsonObject | undefined;
+  const next    = nextRes.data?.[0]  as JsonObject | undefined;
+  const first   = firstRes.data?.[0] as JsonObject | undefined;
+  const isFirst = first?.id === r.id;
+
+  const df = extractDataFields(r.data as Record<string, unknown> | null);
+  const fv = formatValue;
+
+  const lines: string[] = [
+    '<b>Замеры InBody</b>',
+    `📅 <b>${fmtDate(testedAt)}</b>`,
+    '',
+    '<b>🧍 Состав тела</b>',
+    `⚖️ Вес: ${fv(r.weight as number | null, 'кг')}`,
+    `🔥 Жир (PBF): ${fv(r.pbf as number | null, '%')}`,
+    `💪 Мышцы (SMM): ${fv(r.smm as number | null, 'кг')}`,
+    `🦴 Безжировая масса (FFM): ${fv(r.ffm as number | null, 'кг')}`,
+    `📐 ИМТ (BMI): ${fv(r.bmi as number | null, '')}`,
+    `🫁 Висцеральный жир (VFL): ${fv(r.vfl as number | null, '')}`,
+    `🏅 InBody Score: ${fv(r.inbody_score as number | null, '')}`,
+    `⚡ Обмен веществ (BMR): ${fv(r.bmr as number | null, 'ккал')}`,
+    `📏 ОТ/ОБ (WHR): ${fv(r.whr as number | null, '')}`,
   ];
 
-  const lines: string[] = [`📅 ${fmtDate(r.tested_at as string)}`, ''];
-  for (const [label, key, unit] of fields) {
-    if (r[key] !== null && r[key] !== undefined) {
-      lines.push(`${label}: ${r[key]}${unit ? ' ' + unit : ''}`);
+  // «До цели» — only when weight+weightControl ≈ targetWeight
+  if (beforeTarget(r.weight as number | null, df.weight_control, df.target_weight) !== null) {
+    lines.push('', '<b>🎯 До цели</b>');
+    lines.push(`Вес: ${arrow(df.weight_control!, 'кг')} (цель ${df.target_weight!.toFixed(1)} кг)`);
+    if (df.bfm_control !== null)  lines.push(`Жир: ${arrow(df.bfm_control, 'кг')}`);
+    if (df.ffm_control !== null)  lines.push(`Мышцы: ${arrow(df.ffm_control, 'кг')}`);
+    if (df.ideal_weight !== null) lines.push(`Идеальный вес: ${df.ideal_weight.toFixed(1)} кг`);
+  } else if (df.ideal_weight !== null) {
+    lines.push('', `🎯 Идеальный вес: ${df.ideal_weight.toFixed(1)} кг`);
+  }
+
+  // «С прошлого теста»
+  if (prev) {
+    const dw = delta(r.weight as number | null, prev.weight as number | null);
+    const dp = delta(r.pbf as number | null,    prev.pbf as number | null);
+    const ds = delta(r.smm as number | null,    prev.smm as number | null);
+    if (dw !== null || dp !== null || ds !== null) {
+      lines.push('', '<b>📈 С прошлого теста</b>');
+      if (dw !== null) lines.push(`Вес: ${arrow(dw, 'кг')}`);
+      if (dp !== null) lines.push(`Жир: ${arrow(dp, '%')}`);
+      if (ds !== null) lines.push(`Мышцы: ${arrow(ds, 'кг')}`);
     }
   }
 
-  await editMsg(chatId, msgId, `<b>Замеры InBody</b>\n\n${lines.join('\n')}`, { reply_markup: backKb() });
+  // «Со старта» — only when this is not the earliest test
+  if (first && !isFirst) {
+    const dw = delta(r.weight as number | null, first.weight as number | null);
+    const dp = delta(r.pbf as number | null,    first.pbf as number | null);
+    if (dw !== null || dp !== null) {
+      lines.push('', '<b>🏁 Со старта</b>');
+      if (dw !== null) lines.push(`Вес: ${arrow(dw, 'кг')} (с ${fmtDate(first.tested_at as string)})`);
+      if (dp !== null) lines.push(`Жир: ${arrow(dp, '%')}`);
+    }
+  }
+
+  const navRow: JsonObject[] = [];
+  if (prev) navRow.push(mkBtn('‹ Предыдущий', `i:${prev.id}`));
+  if (next) navRow.push(mkBtn('Следующий ›',  `i:${next.id}`));
+
+  const kb: unknown[][] = [];
+  if (navRow.length) kb.push(navRow);
+  kb.push([mkBtn('← К списку дат', 'ip:0')]);
+  kb.push([{ text: '← Меню', callback_data: 'm_menu' }]);
+
+  await editMsg(chatId, msgId, lines.join('\n'), { reply_markup: { inline_keyboard: kb } });
 }
 
 async function screenVisits(chatId: number, msgId: number, link: { client_id: string }): Promise<void> {
