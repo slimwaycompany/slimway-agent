@@ -23,7 +23,7 @@
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | ⚪ | 05.11.2026 | Модуль создан: собраны решения по визуалу, аудит интерфейса (18 проблем) |
 | Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 06.11.2026 | task 40-2 ч.6: фикс fitbase_visits.id→fitbase_id (S5/S3 теперь работают), 53 error checks, staff_name_map editor, bottom sheet, control-schema.md |
-| Telegram-бот клиентов | `modules/telegram-bot.md` | Telegram-бот клиентов | 🟡 | 17.11.2026 | task 58: привязка по контакту, phoneTail, /start /stop, меню замеры/InBody/посещения/абонемент, POST /tg/webhook |
+| Telegram-бот клиентов | `modules/telegram-bot.md` | Telegram-бот клиентов | 🟡 | 17.11.2026 | task 59: normalizePhone (11 цифр), замеры кнопками с датами + детали, InBody кнопками + детали, пагинация |
 
 Вкладка «Воронка» — модуль `modules/crm-leads.md` (пока заглушка, собираем требования).
 

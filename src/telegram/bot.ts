@@ -1,12 +1,10 @@
 import https from 'https';
 import { supabase } from '../db/supabase';
-import { phoneTail } from './phone';
-import { getOrCreateShareToken } from '../http/measure';
-
-const TOKEN = process.env.TG_BOT_TOKEN ?? '';
-const PUBLIC_URL = (process.env.TG_PUBLIC_URL ?? '').replace(/\/$/, '');
+import { normalizePhone } from './phone';
 
 type JsonObject = Record<string, unknown>;
+
+const TOKEN = process.env.TG_BOT_TOKEN ?? '';
 
 // ── Telegram API ─────────────────────────────────────────────────────────────
 
@@ -86,76 +84,145 @@ async function getLink(chatId: number): Promise<{ client_id: string; phone_digit
   return (data ?? null) as { client_id: string; phone_digits: string | null } | null;
 }
 
-// ── Menu screens ──────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const d = iso.split('T')[0];
+  const [y, m, day] = d.split('-');
+  return `${day}.${m}.${y}`;
 }
 
-async function screenBody(chatId: number, msgId: number, link: { client_id: string }): Promise<void> {
-  const [{ data: ms }, { data: cl }] = await Promise.all([
-    supabase.from('body_measurements')
-      .select('measured_at, total_cm')
-      .eq('client_id', link.client_id)
-      .order('measured_at', { ascending: false })
-      .limit(2),
-    supabase.from('body_clients').select('share_token').eq('id', link.client_id).single(),
-  ]);
+// wraps inline button; falls back to m_menu if cbData exceeds 64 bytes
+function mkBtn(text: string, cbData: string): JsonObject {
+  if (Buffer.byteLength(cbData) > 64) {
+    console.error(`[tg] callback_data exceeds 64 bytes: "${cbData}"`);
+    return { text, callback_data: 'm_menu' };
+  }
+  return { text, callback_data: cbData };
+}
 
-  const token = (cl?.share_token as string | null) ?? await getOrCreateShareToken(link.client_id);
-  const shareUrl = token ? `${PUBLIC_URL}/r/${token}` : null;
-  const shareRow = shareUrl ? [[{ text: '🔗 Полный отчёт', url: shareUrl }]] : [];
+// ── Menu screens ──────────────────────────────────────────────────────────────
+
+async function screenBody(chatId: number, msgId: number, link: { client_id: string }, offset = 0): Promise<void> {
+  const { data: ms } = await supabase
+    .from('body_measurements')
+    .select('id, measured_at')
+    .eq('client_id', link.client_id)
+    .order('measured_at', { ascending: false })
+    .range(offset, offset + 10); // fetch 11 to detect next page
 
   if (!ms?.length) {
-    await editMsg(chatId, msgId, 'Замеров тела пока нет.', { reply_markup: backKb(shareRow) });
+    await editMsg(chatId, msgId, 'Замеров тела пока нет.', { reply_markup: backKb() });
     return;
   }
 
-  const lines = ms.map((m, i) => {
-    const delta = i === 0 && ms.length > 1
-      ? ` (${((m.total_cm as number) - (ms[1].total_cm as number) >= 0 ? '+' : '')}${((m.total_cm as number) - (ms[1].total_cm as number)).toFixed(1)} см)`
-      : '';
-    return `📅 ${fmtDate(m.measured_at as string)}: ${m.total_cm} см${delta}`;
-  });
+  const page = ms.slice(0, 10);
+  const hasMore = ms.length > 10;
 
-  await editMsg(chatId, msgId, `<b>Замеры тела</b>\n\n${lines.join('\n')}`, {
-    reply_markup: backKb(shareRow),
+  const rows = page.map(m => [mkBtn(fmtDate(m.measured_at as string), `m:${m.id}`)]);
+  const nav: unknown[][] = hasMore ? [[mkBtn('Ещё →', `mp:${offset + 10}`)]] : [];
+
+  await editMsg(chatId, msgId, '<b>Замеры тела</b>\n\nВыберите дату:', {
+    reply_markup: { inline_keyboard: [...rows, ...nav, [{ text: '← Меню', callback_data: 'm_menu' }]] },
   });
 }
 
-async function screenInBody(chatId: number, msgId: number, link: { client_id: string; phone_digits: string | null }): Promise<void> {
-  const shareUrl = await getOrCreateShareToken(link.client_id).then(t => t ? `${PUBLIC_URL}/r/${t}` : null);
-  const shareRow = shareUrl ? [[{ text: '🔗 Полный отчёт', url: shareUrl }]] : [];
+async function screenBodyDetail(chatId: number, msgId: number, link: { client_id: string }, id: string): Promise<void> {
+  const { data: m } = await supabase
+    .from('body_measurements')
+    .select('client_id, measured_at, total_cm, neck, chest, arm_l, arm_r, waist, belly, glutes, thigh_l, thigh_r, shin_l, shin_r, note')
+    .eq('id', id)
+    .maybeSingle();
 
+  if (!m || (m as JsonObject).client_id !== link.client_id) {
+    await editMsg(chatId, msgId, 'Замер не найден.', { reply_markup: backKb() });
+    return;
+  }
+
+  const r = m as JsonObject;
+  const zones: [string, string][] = [
+    ['Шея', 'neck'], ['Грудь', 'chest'], ['Рука (л)', 'arm_l'], ['Рука (п)', 'arm_r'],
+    ['Талия', 'waist'], ['Живот', 'belly'], ['Ягодицы', 'glutes'],
+    ['Бедро (л)', 'thigh_l'], ['Бедро (п)', 'thigh_r'], ['Голень (л)', 'shin_l'], ['Голень (п)', 'shin_r'],
+  ];
+
+  const lines: string[] = [
+    `📅 ${fmtDate(r.measured_at as string)}`,
+    `📏 Итого: ${r.total_cm} см`,
+    '',
+  ];
+
+  for (const [label, key] of zones) {
+    if (r[key] !== null && r[key] !== undefined) lines.push(`${label}: ${r[key]} см`);
+  }
+
+  if (r.note) lines.push(`\n📝 ${r.note}`);
+
+  await editMsg(chatId, msgId, `<b>Замер тела</b>\n\n${lines.join('\n')}`, { reply_markup: backKb() });
+}
+
+async function screenInBody(chatId: number, msgId: number, link: { client_id: string; phone_digits: string | null }, offset = 0): Promise<void> {
   if (!link.phone_digits) {
-    await editMsg(chatId, msgId, 'Тестов InBody пока нет.', { reply_markup: backKb(shareRow) });
+    await editMsg(chatId, msgId, 'Тестов InBody пока нет.', { reply_markup: backKb() });
     return;
   }
 
   const { data: tests } = await supabase
     .from('inbody_tests')
-    .select('tested_at, weight, pbf, smm, vfl')
+    .select('id, tested_at')
     .eq('phone_digits', link.phone_digits)
     .order('tested_at', { ascending: false })
-    .limit(1);
+    .range(offset, offset + 10);
 
   if (!tests?.length) {
-    await editMsg(chatId, msgId, 'Тестов InBody пока нет.', { reply_markup: backKb(shareRow) });
+    await editMsg(chatId, msgId, 'Тестов InBody пока нет.', { reply_markup: backKb() });
     return;
   }
 
-  const t = tests[0];
-  const lines = [
-    `📅 Дата: ${fmtDate(t.tested_at as string)}`,
-    `⚖️ Вес: ${t.weight} кг`,
-    `🩸 Жир: ${t.pbf}%`,
-    `💪 Мышцы (SMM): ${t.smm} кг`,
-    `🫁 Висцеральный жир: ${t.vfl}`,
+  const page = tests.slice(0, 10);
+  const hasMore = tests.length > 10;
+
+  const rows = page.map(t => [mkBtn(fmtDate(t.tested_at as string), `i:${t.id}`)]);
+  const nav: unknown[][] = hasMore ? [[mkBtn('Ещё →', `ip:${offset + 10}`)]] : [];
+
+  await editMsg(chatId, msgId, '<b>Замеры InBody</b>\n\nВыберите дату:', {
+    reply_markup: { inline_keyboard: [...rows, ...nav, [{ text: '← Меню', callback_data: 'm_menu' }]] },
+  });
+}
+
+async function screenInBodyDetail(chatId: number, msgId: number, link: { phone_digits: string | null }, id: string): Promise<void> {
+  const { data: t } = await supabase
+    .from('inbody_tests')
+    .select('phone_digits, tested_at, weight, pbf, smm, ffm, bmi, vfl, inbody_score, bmr, whr')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (!t || (t as JsonObject).phone_digits !== link.phone_digits) {
+    await editMsg(chatId, msgId, 'Тест не найден.', { reply_markup: backKb() });
+    return;
+  }
+
+  const r = t as JsonObject;
+  const fields: [string, string, string][] = [
+    ['⚖️ Вес', 'weight', 'кг'],
+    ['🩸 Жир (PBF)', 'pbf', '%'],
+    ['💪 Мышцы (SMM)', 'smm', 'кг'],
+    ['Безжировая масса (FFM)', 'ffm', 'кг'],
+    ['ИМТ (BMI)', 'bmi', ''],
+    ['Висцеральный жир (VFL)', 'vfl', ''],
+    ['InBody Score', 'inbody_score', ''],
+    ['Обмен веществ (BMR)', 'bmr', 'ккал'],
+    ['ОТ/ОБ (WHR)', 'whr', ''],
   ];
 
-  await editMsg(chatId, msgId, `<b>Замеры InBody</b>\n\n${lines.join('\n')}`, {
-    reply_markup: backKb(shareRow),
-  });
+  const lines: string[] = [`📅 ${fmtDate(r.tested_at as string)}`, ''];
+  for (const [label, key, unit] of fields) {
+    if (r[key] !== null && r[key] !== undefined) {
+      lines.push(`${label}: ${r[key]}${unit ? ' ' + unit : ''}`);
+    }
+  }
+
+  await editMsg(chatId, msgId, `<b>Замеры InBody</b>\n\n${lines.join('\n')}`, { reply_markup: backKb() });
 }
 
 async function screenVisits(chatId: number, msgId: number, link: { client_id: string }): Promise<void> {
@@ -219,7 +286,7 @@ async function screenSub(chatId: number, msgId: number, link: { client_id: strin
     return;
   }
 
-  const c = contracts[0];
+  const c = contracts[0] as JsonObject;
   const statusLabel: Record<string, string> = { active: '🟢 Активный', closed: '🔴 Закрытый', deleted: '⚫ Удалён' };
   const lines = [
     `📋 ${c.name || '—'}`,
@@ -278,15 +345,15 @@ export async function handleUpdate(update: JsonObject): Promise<void> {
 
     // contact sharing
     if (contact) {
-      const contactUserId = (contact.user_id as number | undefined);
+      const contactUserId = contact.user_id as number | undefined;
       if (!contactUserId || contactUserId !== (from.id as number)) {
         await sendMsg(chatId, 'Нажмите кнопку «📱 Поделиться контактом» — пересланные контакты не принимаются.');
         return;
       }
 
       const rawPhone = contact.phone_number as string;
-      const tail = phoneTail(rawPhone);
-      if (!tail) {
+      const normalized = normalizePhone(rawPhone);
+      if (!normalized) {
         await sendMsg(chatId, 'Номер не найден в базе. Обратитесь к консультанту.');
         return;
       }
@@ -294,7 +361,7 @@ export async function handleUpdate(update: JsonObject): Promise<void> {
       const { data: clients } = await supabase
         .from('body_clients')
         .select('id')
-        .eq('phone_digits', tail)
+        .eq('phone_digits', normalized)
         .limit(1);
 
       if (!clients?.length) {
@@ -308,7 +375,7 @@ export async function handleUpdate(update: JsonObject): Promise<void> {
         chat_id: chatId,
         tg_user_id: from.id as number,
         client_id: clientId,
-        phone_digits: tail,
+        phone_digits: normalized,
         linked_at: new Date().toISOString(),
         unlinked_at: null,
       }, { onConflict: 'chat_id' });
@@ -353,10 +420,14 @@ export async function handleUpdate(update: JsonObject): Promise<void> {
     }
 
     try {
-      if (data === 'm_body')   await screenBody(chatId, msgId, link);
-      if (data === 'm_ib')     await screenInBody(chatId, msgId, link);
-      if (data === 'm_visits') await screenVisits(chatId, msgId, link);
-      if (data === 'm_sub')    await screenSub(chatId, msgId, link);
+      if (data === 'm_body')           await screenBody(chatId, msgId, link, 0);
+      else if (data === 'm_ib')        await screenInBody(chatId, msgId, link, 0);
+      else if (data === 'm_visits')    await screenVisits(chatId, msgId, link);
+      else if (data === 'm_sub')       await screenSub(chatId, msgId, link);
+      else if (data.startsWith('mp:')) await screenBody(chatId, msgId, link, parseInt(data.slice(3), 10));
+      else if (data.startsWith('ip:')) await screenInBody(chatId, msgId, link, parseInt(data.slice(3), 10));
+      else if (data.startsWith('m:'))  await screenBodyDetail(chatId, msgId, link, data.slice(2));
+      else if (data.startsWith('i:'))  await screenInBodyDetail(chatId, msgId, link, data.slice(2));
     } catch (e) {
       console.error(`[tg] screen ${data} error chat=${chatId}:`, (e as Error).message);
       await editMsg(chatId, msgId, 'Что-то пошло не так, попробуйте позже.', { reply_markup: backKb() });
