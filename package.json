@@ -10,7 +10,8 @@
     "dev": "tsx watch src/index.ts",
     "import:trial-state": "tsx scripts/importTrialState.ts",
     "check-tree": "node scripts/check-tree.js",
-    "check:mobile": "node scripts/check-mobile.js"
+    "check:mobile": "node scripts/check-mobile.js",
+    "test": "tsx src/telegram/phone.test.ts"
   },
   "engines": {
     "node": ">=22"

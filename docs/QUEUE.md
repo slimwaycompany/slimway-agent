@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 58 | telegram-bot | Telegram-бот клиентов: привязка по контакту, phoneTail, /start /stop, меню замеры/InBody/посещения/абонемент | ТЗ в чате | 🔧 в работе (Claude, 17.11.2026) |
 | 57 | zamery | Отчёт по InBody доступен сотрудникам с правом reports.inbody | — | ✅ готово (pending) |
 | 56-1 | logins | Роль админа в Сотрудниках, должности грузятся, защита position_id | `docs/tasks/56-1-staff-role-fix.md` | ✅ готово (pending) |
 | 56 | logins | Должности, права по каждой вкладке и отчёту, особые действия | `docs/tasks/56-logins-positions.md` | ✅ готово (0dd46e9) |
@@ -114,6 +115,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 17.11.2026 | Claude | 58 telegram-bot: phone.ts (phoneTail), phone.test.ts (5 тестов), bot.ts (handleUpdate, /start /stop contact, m_body/m_ib/m_visits/m_sub), telegram.ts (POST /tg/webhook), measure.ts (getOrCreateShareToken экспорт), index.ts (mountTelegramRoute), .env.example, package.json | текущий | Env в Render и регистрация вебхука — на стороне Сергея. Проверка 401/200 — Claude Code. Сценарий привязки — на стороне Сергея. |
 | 16.11.2026 | Claude | 57 zamery: manager.ts — убран role!==admin из /kviz/api/reports prefix-guard; tasks+studio получили requireAdmin; inbody — requirePerm(reports.inbody, view) через getSessionWithPerms; ReportsPage.tsx InBodySection — fetchError стейт, 403→«Нет доступа» | текущий |
 | 16.11.2026 | Claude | 56-1 logins: permContext.tsx useRole() хук; StaffPage.tsx — usePerm()→useRole(), positionsLoaded state, loadPositions всегда на маунте, role==='' guard, saveProfile защита position_id, красное предупреждение учитывает positionsLoaded | текущий |
 | 16.11.2026 | Claude | 56 logins: permissions.ts рерайт (PERM_CATALOG 10 блоков block.row, POSITION_PRESETS 7 должностей, TAB_BLOCK); auth.ts (ExtendedSession+branch_id/all_branches, getSessionWithPerms резолвит позиционные права, requirePerm type-predicate, invalidatePositionCache); index.ts (seedPositionPresets, cleanLegacyPermKeys); shell.ts (settings для settings.* не-админов); shell-app.js (TAB_BLOCK, canTab префиксный); staff.ts рерайт (CRUD должностей /api/positions/*, requireStaffAccess, permsNotWider); StaffPage.tsx рерайт (PermTree 3-сегмент, PositionDetail, 2 вкладки); crm.ts Part7 (phone mask clients.phone, IIN mask clients.documents, clients.delete, kassa.sale/shift/refunds); measure.ts Part7 (measure.delete) | — | Нужен проверка на проде: Вера (hall_admin) видит правильные вкладки. Существующих сотрудников назначить на должность hall_admin через UI Должностей. |

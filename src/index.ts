@@ -35,6 +35,7 @@ import { runControl, runControlRange } from './jobs/control';
 import { syncControlSheet, shouldSyncSheet } from './jobs/controlSheetSync';
 import { runProbeControl } from './jobs/probeControl';
 import { POSITION_PRESETS } from './core/permissions';
+import { mountTelegramRoute } from './http/telegram';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -474,6 +475,7 @@ mountStaffRoutes(app);
 mountScriptologRoutes(app);
 mountKvizRoutes(app);
 mountWindowRoutes(app);
+mountTelegramRoute(app);
 
 // ── Startup: seed default permissions for managers without any ────────────────
 

@@ -8,6 +8,18 @@ import { fetchAll } from './metrics';
 
 const CIRC_FIELDS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
 
+export async function getOrCreateShareToken(clientId: string): Promise<string | null> {
+  const { data: c } = await supabase.from('body_clients').select('share_token').eq('id', clientId).single();
+  if (!c) return null;
+  let token = c.share_token as string | null;
+  if (!token) {
+    token = crypto.randomBytes(18).toString('base64url');
+    const { error } = await supabase.from('body_clients').update({ share_token: token }).eq('id', clientId);
+    if (error) return null;
+  }
+  return token;
+}
+
 function normalizePhone(raw: string): string | null {
   let d = raw.replace(/\D/g, '');
   if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1);
@@ -497,14 +509,8 @@ export function buildMeasureRouter(): Router {
 
   r.get('/kviz/api/measure/clients/:id/share', async (req, res) => {
     try {
-      const { data: c } = await supabase.from('body_clients').select('share_token').eq('id', req.params.id).single();
-      if (!c) { res.status(404).json({ error: 'Клиент не найден' }); return; }
-      let token = c.share_token as string | null;
-      if (!token) {
-        token = crypto.randomBytes(18).toString('base64url'); // 24 URL-safe chars
-        const { error } = await supabase.from('body_clients').update({ share_token: token }).eq('id', req.params.id);
-        if (error) { res.status(500).json({ error: error.message }); return; }
-      }
+      const token = await getOrCreateShareToken(req.params.id);
+      if (!token) { res.status(404).json({ error: 'Клиент не найден' }); return; }
       res.json({ token, url: `/r/${token}` });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
