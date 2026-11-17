@@ -70,11 +70,20 @@ JSON-схема **v2**: `{ v: 2, elements: ScreenEl[] }` хранится в `tv
 - Лимит тела для TV-маршрутов: `app.use('/kviz/api/tv', express.json({ limit: '16mb' }))` в `src/index.ts` (было 12mb, повышено в task 51).
 - v2 screen_layout: миссия студии живёт в `studio_settings` (не в layout). `GET/PUT /kviz/api/tv/screen` принимает `{ layout, mission }` — одним запросом. Редактор сохраняет и layout, и текст миссии вместе.
 - TvScreenEditor: поворот элемента — atan2(dx,dy)+90° с привязкой к 5° (Shift: 15°). Ручка поворота позиционируется `top: -26px, left: 50%` над выделенным элементом. История хранит `[ScreenLayout, string][]` (layout+mission) — undo/redo восстанавливает оба состояния.
+- В template-режиме координаты drag/resize измеряются относительно `carouselRef` (div карусели внутри 16:9 превью) — элементы хранятся в % карусели. Оверлеи на preview пересчитываются: `ox = carousel.x + el.x * carousel.w / 100`. Радиус slot_client: `calc(var(--screen-h,400px) * slot.h * slot.radius / 10000)` — получается % от высоты слота.
+- `radius` в `TplElSlotClient` (0–50): хранится в `tv_settings.slide_templates` jsonb, валидируется одинаково на клиенте (`tvScreenLayout.ts`) и сервере (`tv.ts`). Комментарий в коде напоминает о синхронизации.
 
 ## Мобильная версия
 (нет отдельных задач; ResultsPage оптимизирована под большой экран ТВ)
 
 ## Сделано
+### 17.11.2026 · 98c342b · task 63 — редактор шаблона внутри макета экрана ТВ, радиус slot_client, мини-превью с реальными данными
+- **`TvScreenEditor.tsx`** (расширен): режим `template` теперь показывает полный 16:9 экран (TvScreen) с затемнением `rgba(0,0,0,0.38)` поверх и подсвеченным слотом карусели (`#02BDB6`). `carouselRef` указывает на div карусели → drag/resize элементов работает в координатах карусели (% карусели, а не % экрана). Оверлеи выбранных элементов пересчитываются в пространство полного превью: `ox = carouselEl.x + el.x * carouselEl.w / 100`. Дочерние элементы slot_client аналогично. Аспект preview: `'16/9'` в template-режиме (было CAROUSEL_ASPECT). `isDirty` = JSON.stringify сравнение → подтверждение при отмене. Кнопка «Сохранить» заблокирована если нет карусели; подсказка «Положение карусели меняется в редакторе экрана». Раздел «Экран (только просмотр)» — коллапсируемый под слоями шаблона. Кнопки добавления элементов фильтруются (нет лишних slot_a/b если уже есть).
+- **`SlideTemplate.tsx`**: `borderRadius` на slot_client wrap: `calc(var(--screen-h,400px) * ${slot.h * slot.radius} / 10000)`.
+- **`tvScreenLayout.ts`**: `radius?: number` (0–50, % от высоты слота) на `TplElSlotClient`; валидатор `validateSlideTemplate()` проверяет диапазон.
+- **`src/http/tv.ts`**: `validateSlideTemplateServer()` добавлена та же проверка radius (0–50); комментарий о синхронизации.
+- **`SettingsPage.tsx`**: мини-превью шаблона показывает реальные данные первого слайда совпадающего вида (если есть), иначе sample; `initialLayout` и `initialMission` теперь передаются в редактор.
+
 ### 12.11.2026 · (текущий) · task 52 — шаблоны слайдов (результат 1 и 2 клиента, картинка) в редакторе, слоты клиента и слот текста
 - **`kviz/client/src/lib/tvScreenLayout.ts`**: новые типы `SlotChildText/Image/Shape`, `TplElSlotClient/Image/Text`, `TemplateTopEl`, `SlideTemplate { v:1, elements }`, `SlideTemplates { result1, result2, image }`, `TemplateKind`. Экспорты: `TEMPLATE_KIND_LABELS`, `TEMPLATE_EL_LABELS`, `defSlotChildren()`, `defaultSlideTemplates()`, `validateSlideTemplate()`.
 - **`kviz/client/src/components/tv/SlideTemplate.tsx`** (новый, ~205 строк): компонент рендера шаблона; ResizeObserver → `--screen-h`; рендерит все 6 типов элементов (text/image/shape/slot_client/slot_image/slot_text); показывает sample-плейсхолдеры (ДО/ПОСЛЕ); принимает `selectedId/selectedChildId/onElementClick/onChildClick` для режима редактора.

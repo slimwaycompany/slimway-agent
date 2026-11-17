@@ -14,7 +14,7 @@
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 04.11.2026 | task 35: QuizPage tabs на мобиле (Вопрос/Ответы/Резюме) |
 | Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 17.11.2026 | task 61: карточки-кнопки в landing, ?section=measure|inbody, recalcStudioResultForClient, auto-trigger studio после замеров и InBody |
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 04.11.2026 | task 35: аккордеон групп на мобиле (openGroups, localStorage) |
-| ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 12.11.2026 | task 52: шаблоны слайдов (result1/result2/image), слоты клиента/текста, редактор шаблонов |
+| ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 17.11.2026 | task 63: редактор шаблона внутри 16:9 экрана, радиус slot_client, мини-превью с реальными данными |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |
