@@ -43,7 +43,7 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
-### 17.11.2026 · (task 61) · две кнопки-карточки вместо подвкладок + авто-отправка студии
+### 17.11.2026 · c99b29c · task 61 · две кнопки-карточки вместо подвкладок + авто-отправка студии
 
 - **MeasureLayout.tsx**: вместо sub-tabs — landing с двумя карточками-кнопками; карточки navigate через `?section=measure|inbody`; `isLanding = pathname === '/measure' && !section`; в non-landing режиме — шапка с «← Назад» к `/measure`; `active` prop оставлен для обратной совместимости (не используется).
 - **App.tsx**: добавлен `MeasureLandingPage` (читает `?section`, рендерит `NewMeasurePage` / `InBodyScanPage` / `<MeasureLayout />`); маршрут `/measure` теперь рендерит `<RequireAuth><MeasureLandingPage /></RequireAuth>` вместо редиректа на `/measure/new`.
