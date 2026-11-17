@@ -86,6 +86,7 @@ export default function NewMeasurePage() {
   const [fbSendingResult, setFbSendingResult] = useState(false);
   const [fbErrorResult, setFbErrorResult] = useState<string | null>(null);
   const [fbAtResult, setFbAtResult] = useState<string | null>(null);
+  const [studioWarn, setStudioWarn] = useState<string | null>(null);
   const [showInbodyModal, setShowInbodyModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -195,6 +196,7 @@ export default function NewMeasurePage() {
       for (const f of FIELDS) payload[f.key] = values[f.key] ?? '';
       const m = await apiPost('/api/measure/measurements', payload);
       if (m.error) { setSaveErr(m.error); return; }
+      setStudioWarn(m.studioWarning ?? null);
       // Reload client
       const refreshed = await apiGet(`/api/measure/clients/${selectedClient.id}`);
       const sorted = refreshed.measurements as Measurement[];
@@ -202,7 +204,7 @@ export default function NewMeasurePage() {
       const prev = idx > 0 ? sorted[idx - 1] : null;
       const start = idx > 0 ? sorted[0] : null;
       setResult({ m, client: refreshed, prev, start });
-    setFbAtResult(null); setFbErrorResult(null);
+      setFbAtResult(null); setFbErrorResult(null);
     } catch (e: unknown) {
       setSaveErr(String(e));
     } finally { setSaving(false); }
@@ -309,6 +311,12 @@ export default function NewMeasurePage() {
             {prevTotal !== null && <span style={{ color: total - prevTotal < 0 ? '#16a34a' : '#f59e0b', marginLeft: 8 }}>{fmtDiff(total - prevTotal)} к прошлому</span>}
             {startTotal !== null && <span style={{ color: total - startTotal < 0 ? '#16a34a' : '#f59e0b', marginLeft: 8 }}>{fmtDiff(total - startTotal)} со старта</span>}
           </div>
+
+          {studioWarn && (
+            <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#92400e' }}>
+              ⚠ {studioWarn}
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button className="btn btn-secondary" onClick={copyResult}>📋 Скопировать итог</button>

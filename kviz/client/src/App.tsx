@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { MeasureLayout } from './pages/measure/MeasureLayout';
 import HomePage from './pages/HomePage';
 import QuizPage from './pages/QuizPage';
 import SummaryPage from './pages/SummaryPage';
@@ -66,6 +67,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   );
 }
 
+function MeasureLandingPage() {
+  const [sp] = useSearchParams();
+  const s = sp.get('section');
+  if (s === 'measure') return <NewMeasurePage />;
+  if (s === 'inbody')  return <InBodyScanPage />;
+  return <MeasureLayout />;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -76,7 +85,7 @@ export default function App() {
       <Route path="/q/:id/summary" element={<RequireAuth><SummaryPage /></RequireAuth>} />
       <Route path="/q/:id/:step" element={<RequireAuth><QuizPage /></RequireAuth>} />
       <Route path="/history" element={<RequireAuth><HistoryPage /></RequireAuth>} />
-      <Route path="/measure" element={<Navigate to="/measure/new" replace />} />
+      <Route path="/measure" element={<RequireAuth><MeasureLandingPage /></RequireAuth>} />
       <Route path="/measure/new" element={<RequireAuth><NewMeasurePage /></RequireAuth>} />
       <Route path="/measure/reports" element={<Navigate to="/reports" replace />} />
       <Route path="/measure/client/:id" element={<RequireAuth><ClientPage /></RequireAuth>} />

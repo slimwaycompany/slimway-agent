@@ -224,6 +224,91 @@ async function runClientsSync(): Promise<{ ok: true; total: number; upserted: nu
   return { ok: true, total: rows.length, upserted, linked, pages, elapsed_ms: Date.now() - startMs, last_sync_at: now };
 }
 
+// ── Studio result auto-recalculation ─────────────────────────────────────────
+
+type MeasRow = { measure_no: number; total_cm: number | null; measured_at: string };
+type IbRow   = { tested_at: string; weight: number | null; bfm: number | null };
+
+export function calcLosses(
+  measurements: MeasRow[],
+  ibTests: IbRow[],
+): { cmLost: number; kgLost: number; fatKgLost: number | null } {
+  const firstM = measurements[0];
+  const lastM  = measurements.length ? measurements[measurements.length - 1] : undefined;
+  const cmLost = firstM && lastM
+    ? Math.max(0, Number(firstM.total_cm ?? 0) - Number(lastM.total_cm ?? 0))
+    : 0;
+
+  let kgLost = 0, fatKgLost: number | null = null;
+  if (ibTests.length) {
+    const firstDate = firstM ? String(firstM.measured_at ?? '').slice(0, 10) : '2000-01-01';
+    const ibAfterFirst = ibTests.filter(t => String(t.tested_at ?? '') >= firstDate);
+    const ibRef = ibAfterFirst.length ? ibAfterFirst : ibTests;
+    const ibFirst = ibRef[0], ibLast = ibRef[ibRef.length - 1];
+    if (ibFirst.weight != null && ibLast.weight != null)
+      kgLost = Math.max(0, Number(ibFirst.weight) - Number(ibLast.weight));
+    if (ibRef.length >= 2 && ibFirst.bfm != null && ibLast.bfm != null)
+      fatKgLost = Math.max(0, Number(ibFirst.bfm) - Number(ibLast.bfm));
+  }
+
+  return { cmLost, kgLost, fatKgLost };
+}
+
+export async function recalcStudioResultForClient(
+  clientId: string,
+  sentBy: string,
+): Promise<{ action: 'upserted' | 'deleted' | 'none'; error?: string }> {
+  try {
+    const [{ data: ms }, { data: clientRow }] = await Promise.all([
+      supabase.from('body_measurements')
+        .select('measure_no,total_cm,measured_at')
+        .eq('client_id', clientId)
+        .order('measure_no', { ascending: true }),
+      supabase.from('body_clients').select('phone_digits').eq('id', clientId).maybeSingle(),
+    ]);
+
+    let ibTests: IbRow[] = [];
+    if (clientRow?.phone_digits) {
+      const { data: ib } = await supabase.from('inbody_tests')
+        .select('tested_at,weight,bfm')
+        .eq('phone_digits', clientRow.phone_digits)
+        .order('tested_at', { ascending: true });
+      ibTests = (ib || []) as IbRow[];
+    }
+
+    const { cmLost, kgLost, fatKgLost } = calcLosses(
+      (ms || []) as MeasRow[],
+      ibTests,
+    );
+
+    if (cmLost <= 0 && kgLost <= 0 && (fatKgLost == null || fatKgLost <= 0)) {
+      const { data: existing } = await supabase.from('studio_results')
+        .select('id').eq('client_id', clientId).maybeSingle();
+      if (existing) {
+        await supabase.from('studio_results').delete().eq('client_id', clientId);
+        tvNotify();
+        return { action: 'deleted' };
+      }
+      return { action: 'none' };
+    }
+
+    const firstM = (ms || [])[0] as MeasRow | undefined;
+    const lastM  = (ms || []).length ? ((ms || []) as MeasRow[])[(ms || []).length - 1] : undefined;
+    const { error } = await supabase.from('studio_results').upsert({
+      client_id: clientId,
+      from_measure_no: firstM?.measure_no ?? null,
+      to_measure_no: lastM?.measure_no ?? null,
+      cm_lost: cmLost, kg_lost: kgLost, fat_kg_lost: fatKgLost,
+      sent_by: sentBy, sent_at: new Date().toISOString(),
+    }, { onConflict: 'client_id' });
+    if (error) return { action: 'none', error: `Результаты студии: ${error.message}` };
+    tvNotify();
+    return { action: 'upserted' };
+  } catch (e) {
+    return { action: 'none', error: `Результаты студии: ${String(e)}` };
+  }
+}
+
 // ── Measure router ────────────────────────────────────────────────────────────
 
 export function buildMeasureRouter(): Router {
@@ -427,7 +512,8 @@ export function buildMeasureRouter(): Router {
       .select('*').single();
     if (error) { res.status(500).json({ error: error.message }); return; }
 
-    res.json(m);
+    const sr = await recalcStudioResultForClient(client_id, consultant);
+    res.json({ ...(m as Record<string, unknown>), ...(sr.error ? { studioWarning: sr.error } : {}) });
   });
 
   r.get('/kviz/api/measure/measurements', async (req, res) => {

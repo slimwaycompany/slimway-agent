@@ -12,7 +12,7 @@
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 28.10.2026 | Работает, кабинет агента |
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟡 | 30.10.2026 | Закрытие смены из Fitbase — тестовый режим; GET /cash/sync-time теперь admin-only |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 04.11.2026 | task 35: QuizPage tabs на мобиле (Вопрос/Ответы/Резюме) |
-| Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 16.11.2026 | task 57: reports.inbody через requirePerm, tasks/studio с requireAdmin, фронт — «Нет доступа» при 403 |
+| Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 17.11.2026 | task 61: карточки-кнопки в landing, ?section=measure|inbody, recalcStudioResultForClient, auto-trigger studio после замеров и InBody |
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 04.11.2026 | task 35: аккордеон групп на мобиле (openGroups, localStorage) |
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 12.11.2026 | task 52: шаблоны слайдов (result1/result2/image), слоты клиента/текста, редактор шаблонов |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |

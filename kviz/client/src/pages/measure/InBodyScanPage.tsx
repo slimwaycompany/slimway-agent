@@ -22,6 +22,7 @@ export default function InBodyScanPage() {
   const [saveErr, setSaveErr] = useState('');
   const [savedClient, setSavedClient] = useState<SavedClient | null>(null);
   const [photoStatus, setPhotoStatus] = useState<null | 'searching' | 'notfound'>(null);
+  const [studioWarn, setStudioWarn] = useState<string | null>(null);
   const captureRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
@@ -61,6 +62,7 @@ export default function InBodyScanPage() {
       });
       const json = await r.json();
       if (!r.ok) { setSaveErr(json.error || 'Ошибка сохранения'); return; }
+      if (json.studioWarning) setStudioWarn(json.studioWarning);
       // Look up client by phone_digits to navigate after save
       const phone = parsed.phone.replace(/\D/g, '');
       const clients = await fetch(`/kviz/api/measure/clients?q=${encodeURIComponent(phone)}`, { credentials: 'include' })
@@ -79,6 +81,11 @@ export default function InBodyScanPage() {
         <div style={{ maxWidth: 480, margin: '0 auto', padding: '40px 16px', textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
           <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8, color: '#16a34a' }}>InBody сохранён</div>
+          {studioWarn && (
+            <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#92400e', textAlign: 'left' }}>
+              ⚠ {studioWarn}
+            </div>
+          )}
           {savedClient === 'not_found' ? (
             <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 16 }}>
               Клиент с этим номером не найден в базе.

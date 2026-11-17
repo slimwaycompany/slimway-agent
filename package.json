@@ -11,7 +11,7 @@
     "import:trial-state": "tsx scripts/importTrialState.ts",
     "check-tree": "node scripts/check-tree.js",
     "check:mobile": "node scripts/check-mobile.js",
-    "test": "tsx src/telegram/phone.test.ts && tsx src/telegram/inbodyView.test.ts"
+    "test": "tsx src/telegram/phone.test.ts && tsx src/telegram/inbodyView.test.ts && tsx src/http/studioResults.test.ts"
   },
   "engines": {
     "node": ">=22"

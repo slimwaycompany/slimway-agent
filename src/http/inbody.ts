@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession } from './auth';
+import { recalcStudioResultForClient } from './measure';
 
 supabase.from('inbody_tests').select('id').limit(0)
   .then(({ error }) => error
@@ -136,7 +137,17 @@ export function buildInbodyRouter(): Router {
         .upsert(row, { onConflict: 'inbody_id,tested_at', ignoreDuplicates: false })
         .select('id, tested_at, bfm, pbf, smm, weight').single();
       if (error) { res.status(500).json({ error: error.message }); return; }
-      res.json({ ok: true, test: data });
+
+      let studioWarning: string | undefined;
+      const pd = row.phone?.replace(/\D/g, '') ?? null;
+      if (pd) {
+        const { data: bc } = await supabase.from('body_clients').select('id').eq('phone_digits', pd).maybeSingle();
+        if (bc?.id) {
+          const sr = await recalcStudioResultForClient(bc.id, session.display_name);
+          if (sr.error) studioWarning = sr.error;
+        }
+      }
+      res.json({ ok: true, test: data, ...(studioWarning ? { studioWarning } : {}) });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -239,6 +250,16 @@ export function buildInbodyRouter(): Router {
       const knownDigits = await knownPhoneDigitsSet(phoneDigits);
       const without_client = prepared.filter(r => !r.phone || !knownDigits.has(r.phone.replace(/\D/g, ''))).length;
 
+      // Fire-and-forget studio recalc for affected clients
+      const sentBy = session.display_name;
+      (async () => {
+        try {
+          const { data: cls } = await supabase.from('body_clients').select('id').in('phone_digits', phoneDigits);
+          await Promise.all((cls || []).map((c: Record<string, unknown>) =>
+            recalcStudioResultForClient(c.id as string, sentBy)));
+        } catch (e) { console.error('[studio recalc csv-import]', e); }
+      })();
+
       res.json({ ok: true, added, skipped, without_client });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -339,6 +360,19 @@ export function buildInbodyRouter(): Router {
         if (error) { res.status(500).json({ error: error.message, at_index: i }); return; }
         updated += chunk.length;
       }
+
+      // Fire-and-forget studio recalc for all CSV-source clients
+      const recalcSentBy = session.display_name;
+      (async () => {
+        try {
+          const { data: its } = await supabase.from('inbody_tests').select('phone_digits').eq('source', 'csv').not('phone_digits', 'is', null);
+          const pds = [...new Set((its || []).map((t: Record<string, unknown>) => t.phone_digits as string).filter(Boolean))];
+          if (!pds.length) return;
+          const { data: cls } = await supabase.from('body_clients').select('id').in('phone_digits', pds);
+          await Promise.all((cls || []).map((c: Record<string, unknown>) =>
+            recalcStudioResultForClient(c.id as string, recalcSentBy)));
+        } catch (e) { console.error('[studio recalc recalculate]', e); }
+      })();
 
       res.json({ ok: true, updated });
     } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -464,7 +498,8 @@ export function buildInbodyRouter(): Router {
         .update({ phone: client.phone }).in('inbody_id', inbodyIds);
       if (updateErr) { res.status(500).json({ error: updateErr.message }); return; }
 
-      res.json({ ok: true, linked: inbodyIds.length });
+      const sr = await recalcStudioResultForClient(client_id, session.display_name);
+      res.json({ ok: true, linked: inbodyIds.length, ...(sr.error ? { studioWarning: sr.error } : {}) });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

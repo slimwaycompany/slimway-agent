@@ -462,14 +462,30 @@ img, video, svg, iframe { max-width: 100%; }
 .script-btn:hover { background: #f3f4f6; }
 .script-btn-used { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
 
-/* ─── Measure subtabs ─── */
-.measure-subtab {
-  padding: 6px 14px; border-radius: 8px; border: none; background: none;
-  font-size: 14px; font-weight: 600; color: #6b7280; cursor: pointer; font-family: inherit;
-  transition: background .15s, color .15s;
+/* ─── Measure home landing ─── */
+.measure-home {
+  flex: 1; display: flex; flex-direction: row; align-items: center; justify-content: center;
+  padding: 48px 24px; gap: 24px; min-height: calc(100vh - 56px);
 }
-.measure-subtab:hover { background: rgba(2,189,182,0.08); color: #1a1a2e; }
-.measure-subtab.active { background: rgba(2,189,182,0.13); color: #02BDB6; }
+.measure-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; width: 220px; min-height: 180px; padding: 32px 24px;
+  background: rgba(255,255,255,0.78); backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(2,189,182,0.25); border-radius: 20px;
+  box-shadow: 0 8px 28px rgba(38,61,217,0.1); cursor: pointer; font-family: inherit;
+  transition: transform .15s, box-shadow .15s; text-align: center;
+}
+.measure-card:hover { transform: translateY(-3px); box-shadow: 0 14px 36px rgba(38,61,217,0.17); border-color: rgba(2,189,182,0.5); }
+.measure-card:active { transform: none; }
+.measure-card-icon { font-size: 48px; line-height: 1; }
+.measure-card-title { font-size: 20px; font-weight: 700; color: #1a1a2e; }
+.measure-card-sub { font-size: 14px; color: #6b7280; margin-top: 2px; }
+@media (max-width: 640px) {
+  .measure-home { flex-direction: column; padding: 32px 16px; gap: 16px; min-height: calc(100dvh - 56px); align-items: stretch; justify-content: center; }
+  .measure-card { flex-direction: row; width: auto; min-height: 80px; padding: 20px 24px; gap: 18px; align-items: center; text-align: left; justify-content: flex-start; }
+  .measure-card-icon { font-size: 40px; flex-shrink: 0; }
+  .measure-card-title { font-size: 18px; }
+}
 
 .measure-client-content { width: 100%; max-width: 1600px; box-sizing: border-box; margin: 0 auto; padding: 16px; }
 .measure-client-grid { display: grid; grid-template-columns: minmax(370px, 4fr) minmax(0, 6fr); gap: 18px; align-items: start; }

@@ -43,6 +43,17 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
+### 17.11.2026 · (task 61) · две кнопки-карточки вместо подвкладок + авто-отправка студии
+
+- **MeasureLayout.tsx**: вместо sub-tabs — landing с двумя карточками-кнопками; карточки navigate через `?section=measure|inbody`; `isLanding = pathname === '/measure' && !section`; в non-landing режиме — шапка с «← Назад» к `/measure`; `active` prop оставлен для обратной совместимости (не используется).
+- **App.tsx**: добавлен `MeasureLandingPage` (читает `?section`, рендерит `NewMeasurePage` / `InBodyScanPage` / `<MeasureLayout />`); маршрут `/measure` теперь рендерит `<RequireAuth><MeasureLandingPage /></RequireAuth>` вместо редиректа на `/measure/new`.
+- **shell-app.js**: `TAB_HOME.measure` и оба места создания iframe — `/kviz/measure/new` → `/kviz/measure`.
+- **index.css**: `.measure-subtab` → `.measure-home` + `.measure-card` (glassmorphism, десктоп рядом, мобиле — строчки). Брейкпоинты ≤640px.
+- **measure.ts**: добавлены `calcLosses(measurements, ibTests)` (экспортируется, тестируема) и `recalcStudioResultForClient(clientId, sentBy)`: если все потери ≤ 0 — удаляет из `studio_results` + tvNotify; иначе — upsert + tvNotify; не бросает исключений, возвращает `{ action, error? }`. `POST /kviz/api/measure/measurements` теперь вызывает `recalcStudioResultForClient` и добавляет `studioWarning` в ответ если ошибка.
+- **inbody.ts**: импортирует `recalcStudioResultForClient`; `POST /inbody/qr` — ищет клиента по `phone_digits`, вызывает recalc; `POST /inbody/link-to-client` — recalc после привязки; `POST /inbody/csv-import` и `POST /inbody/recalculate` — fire-and-forget recalc для затронутых клиентов.
+- **NewMeasurePage.tsx** / **InBodyScanPage.tsx**: показывают `studioWarning` из ответа сервера (жёлтый блок-предупреждение).
+- **studioResults.test.ts**: 7 тестов `calcLosses`; `package.json test` обновлён (18 тестов всего).
+
 ### 16.11.2026 · (task 57) · фикс доступа к отчёту по InBody для сотрудников
 - **manager.ts**: убран `role !== 'admin'` из префикс-guard `/kviz/api/reports` (остался только 401); `/kviz/api/reports/tasks` и `/kviz/api/reports/studio` получили явный `requireAdmin`; `/kviz/api/reports/inbody` теперь проверяет `requirePerm(..., 'reports.inbody', 'view', session)` через `getSessionWithPerms`.
 - **ReportsPage.tsx**: `InBodySection` — добавлен стейт `fetchError`; при 403 → «Нет доступа», при других ошибках → «Ошибка загрузки»; «Пока нет тестов InBody» — только при 200 с пустым списком.

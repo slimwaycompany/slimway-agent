@@ -75,7 +75,7 @@
     manager:  '/kviz/manager',
     agent:    '/window',
     kviz:     '/kviz/',
-    measure:  '/kviz/measure/new',
+    measure:  '/kviz/measure',
     reports:  '/kviz/reports',
     schedule: '/kviz/crm/schedule',
     clients:  '/kviz/crm/clients',
@@ -217,11 +217,11 @@
         // Insert before right button "Отчёты" (injected server-side)
         var sideToReports = $('side-to-reports');
         if (sideToReports) $('measure-pane').insertBefore(
-          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure/new'; f.setAttribute('allow','camera; clipboard-write'); return f; })(),
+          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure'; f.setAttribute('allow','camera; clipboard-write'); return f; })(),
           sideToReports
         );
         else $('measure-pane').appendChild(
-          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure/new'; f.setAttribute('allow','camera; clipboard-write'); return f; })()
+          (function(){ var f=document.createElement('iframe'); f.id='measure-iframe'; f.className='frame'; f.src='/kviz/measure'; f.setAttribute('allow','camera; clipboard-write'); return f; })()
         );
         measureCreated = true;
       }
