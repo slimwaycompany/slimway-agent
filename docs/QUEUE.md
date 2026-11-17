@@ -16,7 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 60 | telegram-bot | InBody: блоки рекомендаций, сравнение с прошлым тестом, навигация ‹/›, ideal_weight | ТЗ в чате | 🔧 в работе (Claude, 17.11.2026) |
+| 60 | telegram-bot | InBody: блоки рекомендаций, сравнение с прошлым тестом, навигация ‹/›, ideal_weight | ТЗ в чате | 🟡 частично (7182dce; вебхук 401✅; проверка тестовых данных — на стороне Сергея) |
 | 59 | telegram-bot | Сверка номера по 11 цифрам, замеры и InBody кнопками с датами и детальным просмотром | ТЗ в чате | ✅ готово (b8cbf1f) |
 | 58 | telegram-bot | Telegram-бот клиентов: привязка по контакту, phoneTail, /start /stop, меню замеры/InBody/посещения/абонемент | ТЗ в чате | ✅ готово (d3267d8) |
 | 57 | zamery | Отчёт по InBody доступен сотрудникам с правом reports.inbody | — | ✅ готово (pending) |
@@ -117,6 +117,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 17.11.2026 | Claude | 60 telegram-bot: inbodyView.ts (extractDataFields, beforeTarget, delta, formatValue, 6 тестов); screenInBodyDetail — 4 блока + навигация ‹/›/К списку дат/Меню; ideal_weight standalone когда beforeTarget null; 11 тестов npm test | 7182dce | Вебхук 401✅. Тестовые данные по клиентам из части 5 — на стороне Сергея. |
 | 17.11.2026 | Claude | 59 telegram-bot: normalizePhone (11 цифр, закрыт баг «Номер не найден»); screenBody (кнопки по датам, пагинация mp:, детали m:); screenInBody (кнопки ip:, детали i:); убраны getOrCreateShareToken и «🔗 Полный отчёт»; 5 тестов обновлены | b8cbf1f | Вебхук 401✅. Сценарий привязки и проверка замеров/InBody — на стороне Сергея. |
 | 17.11.2026 | Claude | 58 telegram-bot: phone.ts (phoneTail), phone.test.ts (5 тестов), bot.ts (handleUpdate, /start /stop contact, m_body/m_ib/m_visits/m_sub), telegram.ts (POST /tg/webhook), measure.ts (getOrCreateShareToken экспорт), index.ts (mountTelegramRoute), .env.example, package.json | d3267d8 | Prod: 401 без секрета ✅. 200 с секретом — нужен TG_WEBHOOK_SECRET в Render. Регистрация вебхука и сценарий привязки — на стороне Сергея. |
 | 16.11.2026 | Claude | 57 zamery: manager.ts — убран role!==admin из /kviz/api/reports prefix-guard; tasks+studio получили requireAdmin; inbody — requirePerm(reports.inbody, view) через getSessionWithPerms; ReportsPage.tsx InBodySection — fetchError стейт, 403→«Нет доступа» | текущий |
