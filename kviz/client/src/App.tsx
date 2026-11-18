@@ -76,6 +76,22 @@ function MeasureLandingPage() {
 }
 
 export default function App() {
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (!e.data || e.data.type !== 'sw-theme') return;
+      const t = e.data.theme, root = document.documentElement;
+      if (window.location.pathname.startsWith('/kviz/results')) return; // TV always light
+      if (t === 'dark') root.setAttribute('data-theme', 'dark');
+      else if (t === 'light') root.removeAttribute('data-theme');
+      else {
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) root.setAttribute('data-theme', 'dark');
+        else root.removeAttribute('data-theme');
+      }
+    }
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
   return (
     <Routes>
       <Route path="/results" element={<ResultsPage />} />

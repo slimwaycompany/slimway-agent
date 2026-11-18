@@ -20,6 +20,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')}()</script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SlimWay — Вход</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -100,8 +101,10 @@ const SHELL_HTML = `<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')}()</script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#02BDB6">
+<meta name="theme-color" id="tc-light" media="(prefers-color-scheme: light)" content="#f2f4f7">
+<meta name="theme-color" id="tc-dark" media="(prefers-color-scheme: dark)" content="#0b0f14">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>SlimWay</title>
@@ -284,6 +287,14 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
   .choice-btns{gap:12px}
   .choice-btn{width:140px;height:90px}
 }
+/* Theme toggle */
+.ua-theme{display:flex;gap:4px;margin:8px 0}
+.ua-theme-btn{flex:1;padding:6px 4px;border-radius:6px;border:1.5px solid var(--border);
+  background:none;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text-2);
+  transition:border-color var(--dur-fast),background var(--dur-fast)}
+.ua-theme-btn.active{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
+/* Minimal dark shell background */
+html[data-theme="dark"],html[data-theme="dark"] body{background:var(--bg);color:var(--text)}
 </style>
 </head>
 <body>
@@ -312,6 +323,11 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
       <button class="ua-btn" id="ua-btn" aria-label="Меню пользователя">?</button>
       <div class="ua-menu" id="ua-menu">
         <div class="ua-menu-name"><!--DNAME--></div>
+        <div class="ua-theme" role="group" aria-label="Тема">
+          <button class="ua-theme-btn" data-theme-val="light">Светлая</button>
+          <button class="ua-theme-btn" data-theme-val="dark">Тёмная</button>
+          <button class="ua-theme-btn" data-theme-val="auto">Авто</button>
+        </div>
         <button class="ua-menu-exit" id="ua-menu-exit">Выйти</button>
       </div>
     </div>
@@ -395,6 +411,11 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
   </div>
   <div class="drawer-items" id="drawer-items"></div>
   <div class="drawer-foot">
+    <div class="ua-theme" role="group" aria-label="Тема" style="margin-bottom:10px">
+      <button class="ua-theme-btn" data-theme-val="light">Светлая</button>
+      <button class="ua-theme-btn" data-theme-val="dark">Тёмная</button>
+      <button class="ua-theme-btn" data-theme-val="auto">Авто</button>
+    </div>
     <button class="drawer-exit-btn" id="drawer-exit">Выйти</button>
   </div>
 </div>

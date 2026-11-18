@@ -12,17 +12,28 @@
   let audioCtx = null;
 
   // ── Dark mode ─────────────────────────────────────────────────────────────
-  let darkMode = localStorage.getItem('sw_theme') === 'dark';
+  let darkMode = localStorage.getItem('sw-theme') === 'dark' ||
+    (localStorage.getItem('sw_theme') === 'dark' && !localStorage.getItem('sw-theme'));
   function applyTheme() {
-    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+    if (darkMode) document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
     $('theme-btn').textContent = darkMode ? '☀️' : '🌙';
   }
   applyTheme();
   $('theme-btn').onclick = function () {
     darkMode = !darkMode;
-    localStorage.setItem('sw_theme', darkMode ? 'dark' : 'light');
+    localStorage.setItem('sw-theme', darkMode ? 'dark' : 'light');
     applyTheme();
   };
+  // Receive theme broadcast from shell
+  window.addEventListener('message', function (e) {
+    if (!e.data || e.data.type !== 'sw-theme') return;
+    var t = e.data.theme;
+    if (t === 'dark') darkMode = true;
+    else if (t === 'light') darkMode = false;
+    else darkMode = matchMedia('(prefers-color-scheme:dark)').matches;
+    applyTheme();
+  });
 
   // ── Sound ─────────────────────────────────────────────────────────────────
   function playBeep() {

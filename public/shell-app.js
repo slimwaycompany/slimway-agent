@@ -604,6 +604,47 @@
     };
   }
 
+  // ── Theme toggle ────────────────────────────────────────────────────────────
+  function applyShellTheme(val) {
+    var root = document.documentElement;
+    if (val === 'dark') {
+      root.setAttribute('data-theme', 'dark');
+    } else if (val === 'light') {
+      root.removeAttribute('data-theme');
+    } else {
+      if (matchMedia('(prefers-color-scheme:dark)').matches) root.setAttribute('data-theme', 'dark');
+      else root.removeAttribute('data-theme');
+    }
+    try { localStorage.setItem('sw-theme', val); } catch (e) {}
+    // Update active state on all theme buttons
+    var btns = document.querySelectorAll('[data-theme-val]');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('active', btns[i].getAttribute('data-theme-val') === val);
+    }
+    // Broadcast to iframes
+    var frames = document.querySelectorAll('iframe.frame');
+    for (var j = 0; j < frames.length; j++) {
+      try { frames[j].contentWindow.postMessage({ type: 'sw-theme', theme: val }, origin); } catch (e) {}
+    }
+  }
+
+  // Wire up theme buttons + set initial active
+  var initThemeVal = localStorage.getItem('sw-theme') || 'auto';
+  var allThemeBtns = document.querySelectorAll('[data-theme-val]');
+  for (var ti = 0; ti < allThemeBtns.length; ti++) {
+    (function (btn) {
+      btn.addEventListener('click', function () { applyShellTheme(btn.getAttribute('data-theme-val')); });
+      btn.classList.toggle('active', btn.getAttribute('data-theme-val') === initThemeVal);
+    }(allThemeBtns[ti]));
+  }
+
+  // Update shell theme when system preference changes (while 'auto' is selected)
+  try {
+    matchMedia('(prefers-color-scheme:dark)').addEventListener('change', function () {
+      if ((localStorage.getItem('sw-theme') || 'auto') === 'auto') applyShellTheme('auto');
+    });
+  } catch (e) {}
+
   // ── Restore last tab on reload ──────────────────────────────────────────────
   try {
     var inSession = sessionStorage.getItem('sw-session');
