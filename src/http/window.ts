@@ -57,21 +57,9 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 <title>SlimWay — помощник</title>
 <script>if(window.self===window.top){location.replace('/');}</script>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ui/tokens.css">
 <link rel="stylesheet" href="/window/agent-room/room.css">
 <style>
-:root{
-  --brand:#02BDB6;--accent:#263CD9;
-  --red:#ef4444;--orange:#f59e0b;--yellow:#eab308;--green:#10b981;
-  --c-bg:#eef2f7;--c-text:#1a202c;--c-muted:#64748b;--c-border:rgba(255,255,255,0.6);
-  --glass:rgba(255,255,255,0.55);--card:rgba(255,255,255,0.82);
-  --shadow:0 4px 24px rgba(2,49,100,0.08);
-  --radius-panel:20px;--radius-card:14px;
-}
-[data-theme="dark"]{
-  --c-bg:#0d1117;--c-text:#e2e8f0;--c-muted:#94a3b8;--c-border:rgba(255,255,255,0.08);
-  --glass:rgba(20,28,44,0.62);--card:rgba(20,28,44,0.82);
-  --shadow:0 4px 24px rgba(0,0,0,0.35);
-}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{font-family:'Manrope',system-ui,sans-serif;background:var(--c-bg);color:var(--c-text);font-size:14px;overflow-x:hidden}

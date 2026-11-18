@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/kviz/api': 'http://localhost:3000',
+      '/ui': 'http://localhost:3000',
     },
   },
   build: {

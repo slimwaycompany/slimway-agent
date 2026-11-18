@@ -1,0 +1,143 @@
+/* ── SlimWay Design Tokens ──────────────────────────────────────────────── */
+
+:root {
+  /* Palette — light */
+  --bg: #f2f4f7;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --glass: rgba(255,255,255,.72);
+  --glass-blur: 16px;
+  --glass-border: rgba(255,255,255,0.4);
+  --border: #e5e8ec;
+  --text: #0f172a;
+  --text-2: #475569;
+  --text-3: #94a3b8;
+  --primary: #02BDB6;
+  --primary-hover: #01a8a2;
+  --primary-soft: #e0faf9;
+  --on-primary: #fff;
+  --accent: #263CD9;
+  --accent-soft: #eef0fd;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --success: #16a34a;
+  --success-soft: #f0fdf4;
+  --warning: #d97706;
+  --warning-soft: #fffbeb;
+  --info: #2563eb;
+  --info-soft: #eff6ff;
+
+  /* Charts */
+  --chart-1: var(--primary);
+  --chart-2: var(--accent);
+  --chart-3: #f59e0b;
+  --chart-4: #16a34a;
+  --chart-5: #ef4444;
+  --chart-6: #8b5cf6;
+
+  /* Typography */
+  --font: 'Manrope', system-ui, sans-serif;
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 17px;
+  --fs-title: 20px;
+  --fs-num: 24px;
+
+  /* Spacing (4–32 px) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 28px;
+  --sp-8: 32px;
+
+  /* Radii */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-full: 999px;
+
+  /* Shadows */
+  --sh-1: 0 1px 4px rgba(0,0,0,.08);
+  --sh-2: 0 4px 24px rgba(0,0,0,.12);
+
+  /* Motion */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 300ms;
+  --ease: cubic-bezier(.2,.8,.2,1);
+
+  /* Heights */
+  --row: 52px;
+  --btn: 44px;
+  --btn-lg: 48px;
+  --header: 56px;
+
+  /* Backward-compat aliases */
+  --teal: var(--primary);
+  --blue: var(--accent);
+  --teal-light: var(--primary-soft);
+  --stop: var(--danger);
+  --radius: var(--r-md);
+  --shadow: var(--sh-2);
+  --brand: var(--primary);
+  --red: var(--danger);
+  --orange: var(--warning);
+  --green: var(--success);
+  --yellow: var(--warning);
+  --c-bg: var(--bg);
+  --c-text: var(--text);
+  --c-muted: var(--text-2);
+  --c-border: var(--border);
+  --card: var(--surface);
+  --radius-panel: var(--r-xl);
+  --radius-card: var(--r-md);
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --bg: #0b0f14;
+  --surface: #151a21;
+  --surface-2: #1c222b;
+  --glass: rgba(21,26,33,.72);
+  --glass-border: rgba(255,255,255,0.08);
+  --border: #2a313b;
+  --text: #e6e9ee;
+  --text-2: #a7b0bd;
+  --text-3: #6b7480;
+  --primary: #19cfc8;
+  --primary-soft: rgba(2,189,182,.16);
+  --on-primary: #04211f;
+  --accent: #6b7bff;
+  --accent-soft: rgba(38,60,217,.2);
+  --danger: #f87171;
+  --danger-soft: rgba(248,113,113,.14);
+  --success: #4ade80;
+  --success-soft: rgba(74,222,128,.14);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251,191,36,.14);
+  --info: #60a5fa;
+  --info-soft: rgba(96,165,250,.14);
+  --sh-1: 0 1px 4px rgba(0,0,0,.24);
+  --sh-2: 0 4px 24px rgba(0,0,0,.4);
+}
+
+@media (max-width: 1024px) {
+  :root { --fs-xs: 13px; }
+}
+
+@media (max-width: 640px) {
+  :root { --glass-blur: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
+}
+
+@media print {
+  :root { --bg: #ffffff; --surface: #ffffff; --text: #000000; --text-2: #333333; }
+}
