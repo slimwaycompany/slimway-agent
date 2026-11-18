@@ -150,14 +150,15 @@ export default function ManagerPage() {
     stopStream();
   }
 
-  async function submitCheckin() {
-    if (!checkinPhoto || checkinBusy) return;
+  async function submitCheckin(photoOverride?: string | null) {
+    const photo = photoOverride !== undefined ? photoOverride : checkinPhoto;
+    // For 'in', photo is required; for 'out', no photo needed
+    if (checkinOpen === 'in' && !photo) return;
+    if (checkinBusy) return;
     setCheckinBusy(true); setCheckinErr('');
     try {
-      const body: Record<string, unknown> = {
-        type: checkinOpen,
-        photo: checkinPhoto.replace(/^data:image\/\w+;base64,/, ''),
-      };
+      const body: Record<string, unknown> = { type: checkinOpen };
+      if (photo) body.photo = photo.replace(/^data:image\/\w+;base64,/, '');
       if (checkinRole) body.role = checkinRole;
       const r = await fetch('/kviz/api/checkin/mark', {
         method: 'POST', credentials: 'include',
@@ -177,6 +178,7 @@ export default function ManagerPage() {
     setCheckinOpen(type); setCheckinPhoto(null);
     setRequireRole(false); setCheckinRole('');
     setCheckinErr(''); setCheckinOk(false);
+    // For 'out', don't start camera
   }
 
   function closeCheckinModal() {
@@ -184,9 +186,9 @@ export default function ManagerPage() {
     setRequireRole(false); setCheckinRole(''); setCheckinErr(''); setCheckinOk(false);
   }
 
-  // Start camera when modal opens; stop when it closes
+  // Start camera only for arrival modal
   useEffect(() => {
-    if (checkinOpen) void startCamera();
+    if (checkinOpen === 'in') void startCamera();
     return () => stopStream();
   }, [checkinOpen, startCamera]);
 
@@ -436,12 +438,25 @@ export default function ManagerPage() {
         <div style={s.ciOverlay} onClick={closeCheckinModal}>
           <div style={s.ciModal} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{checkinOpen === 'in' ? '📸 Пришла на смену' : '📸 Ушла со смены'}</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{checkinOpen === 'in' ? '📸 Пришла на смену' : '👋 Ушла со смены'}</div>
               <button style={s.iconBtn} onClick={closeCheckinModal}>✕</button>
             </div>
             {checkinOk ? (
               <div style={{ textAlign: 'center', color: '#16a34a', fontSize: 15, fontWeight: 700, padding: '20px 0' }}>✓ Отметка принята</div>
+            ) : checkinOpen === 'out' ? (
+              /* Departure: no camera, just confirm */
+              <>
+                {checkinErr && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{checkinErr}</div>}
+                <div style={{ fontSize: 14, color: '#374151', marginBottom: 20 }}>Завершить смену?</div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button style={s.btnCancelEnd} onClick={closeCheckinModal}>Отмена</button>
+                  <button style={s.btnStartShift} disabled={checkinBusy} onClick={() => void submitCheckin(null)}>
+                    {checkinBusy ? '…' : 'Подтвердить'}
+                  </button>
+                </div>
+              </>
             ) : (
+              /* Arrival: camera + photo */
               <>
                 {checkinErr && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{checkinErr}</div>}
                 {!checkinPhoto ? (

@@ -38,6 +38,9 @@ import { POSITION_PRESETS } from './core/permissions';
 import { mountTelegramRoute } from './http/telegram';
 import { buildCheckinRouter } from './http/checkin';
 import { buildPbxRouter, runPbxSync } from './http/pbx';
+import { buildControl2Router } from './http/control2';
+import { runControl2, runControl2Range } from './jobs/control2';
+import { seedDefaultVersions } from './control/lineVersions';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -334,6 +337,28 @@ async function handleControlSheetSync(req: express.Request, res: express.Respons
 app.get('/run/control-sheet-sync',  handleControlSheetSync);
 app.post('/run/control-sheet-sync', handleControlSheetSync);
 
+// control2: v2 engine, once per day or range; supports ?date=, ?from=&to=
+async function handleControl2(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const qDate = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : undefined;
+  const qFrom = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : undefined;
+  const qTo   = typeof req.query.to   === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to)   ? req.query.to   : undefined;
+
+  if (qFrom && qTo) {
+    const locked = await acquireLock('control2', 30 * 60);
+    if (!locked) { res.json({ status: 'already_running' }); return; }
+    res.status(202).json({ status: 'accepted', job: 'control2-range', from: qFrom, to: qTo });
+    executeJob('control2', () => runControl2Range(qFrom, qTo));
+  } else {
+    const locked = await acquireLock('control2', 10 * 60);
+    if (!locked) { res.json({ status: 'already_running' }); return; }
+    res.status(202).json({ status: 'accepted', job: 'control2', date: qDate });
+    executeJob('control2', () => runControl2(qDate));
+  }
+}
+app.get('/run/control2',  handleControl2);
+app.post('/run/control2', handleControl2);
+
 // probe-control: synchronous, read-only, Fitbase + Supabase exploration
 async function handleProbeControl(req: express.Request, res: express.Response): Promise<void> {
   if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
@@ -491,6 +516,7 @@ mountWindowRoutes(app);
 mountTelegramRoute(app);
 app.use(buildCheckinRouter());
 app.use(buildPbxRouter());
+app.use(buildControl2Router());
 
 // ── Startup: seed default permissions for managers without any ────────────────
 
@@ -588,4 +614,5 @@ async function clearStaleLocks(): Promise<void> {
 clearStaleLocks().catch(() => {/* already logged inside */});
 cleanLegacyPermKeys().catch(() => {/* already logged inside */});
 seedOkkPosition().then(() => seedPositionPresets()).catch(() => {/* already logged inside */});
+seedDefaultVersions().catch((e: Error) => console.error('[startup] seedDefaultVersions:', e.message));
 app.listen(env.PORT, () => console.log(`[server] port ${env.PORT}`));

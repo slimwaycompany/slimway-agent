@@ -23,7 +23,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv';
+type Section = 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -2504,6 +2504,241 @@ function TimeField({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
+// ── Control 2.0 line versions constructor ─────────────────────────────────────
+
+interface LineCheckCfg { key: string; type: string; params: Record<string, unknown>; enabled: boolean }
+interface LinePointCfg { key: string; title: string; description: string; enabled: boolean; order: number; checks: LineCheckCfg[] }
+interface LineConfig {
+  fixed_pay: number; point_price: number; max_variable: number;
+  formula: 'forgive_then_all' | 'per_point';
+  forgive_count: number;
+  finalize: 'next_morning' | 'after_review';
+  review_auto_days: number;
+  points: LinePointCfg[];
+}
+interface LineVersion { id: string; role: string; effective_from: string; config: LineConfig; created_at: string }
+type C2Role = 'call_center' | 'consultant';
+
+const ROLE_LABELS: Record<C2Role, string> = { call_center: 'Call center', consultant: 'Консультант' };
+const FORMULA_LABELS: Record<string, string> = { forgive_then_all: 'Прощение + полный вычет', per_point: 'По пунктам' };
+const FINALIZE_LABELS: Record<string, string> = { next_morning: 'Утром следующего дня', after_review: 'После проверки ОКК' };
+
+function ControlLinesSection() {
+  const [role, setRole] = useState<C2Role>('call_center');
+  const [versions, setVersions] = useState<LineVersion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState<LineConfig | null>(null);
+  const [savingDate, setSavingDate] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState('');
+
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
+    fontSize: 13, fontWeight: active ? 700 : 500,
+    color: active ? '#02BDB6' : '#64748b',
+    borderBottom: active ? '2px solid #02BDB6' : '2px solid transparent',
+  });
+
+  async function loadVersions(r: C2Role) {
+    setLoading(true);
+    const resp = await fetch(`/kviz/api/control2/versions/${r}`, { credentials: 'include' });
+    const data = await resp.json();
+    setVersions(Array.isArray(data) ? data : []);
+    setLoading(false);
+  }
+
+  useEffect(() => { loadVersions(role); }, [role]);
+
+  function startEdit(v?: LineVersion) {
+    setErr(''); setOk('');
+    if (v) {
+      setDraft(JSON.parse(JSON.stringify(v.config)));
+    } else if (versions.length > 0) {
+      setDraft(JSON.parse(JSON.stringify(versions[0].config)));
+    } else {
+      setDraft({
+        fixed_pay: 10000, point_price: 1000, max_variable: 5000,
+        formula: 'per_point', forgive_count: 0,
+        finalize: 'next_morning', review_auto_days: 7,
+        points: [],
+      });
+    }
+    setSavingDate(new Date().toISOString().slice(0, 10));
+  }
+
+  async function save() {
+    if (!draft || !savingDate) return;
+    setSaving(true); setErr(''); setOk('');
+    const resp = await fetch(`/kviz/api/control2/versions/${role}`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ effective_from: savingDate, config: draft }),
+    });
+    const data = await resp.json();
+    setSaving(false);
+    if (!resp.ok) { setErr(data.error || 'Ошибка'); return; }
+    setOk(`Версия от ${savingDate} сохранена`);
+    setDraft(null);
+    loadVersions(role);
+  }
+
+  function setDraftField<K extends keyof LineConfig>(key: K, val: LineConfig[K]) {
+    setDraft(d => d ? { ...d, [key]: val } : d);
+  }
+
+  function togglePoint(idx: number) {
+    if (!draft) return;
+    const pts = [...draft.points];
+    pts[idx] = { ...pts[idx], enabled: !pts[idx].enabled };
+    setDraftField('points', pts);
+  }
+
+  function toggleCheck(pi: number, ci: number) {
+    if (!draft) return;
+    const pts = [...draft.points];
+    const checks = [...pts[pi].checks];
+    checks[ci] = { ...checks[ci], enabled: !checks[ci].enabled };
+    pts[pi] = { ...pts[pi], checks };
+    setDraftField('points', pts);
+  }
+
+  const fmtMoney = (n: number) => n.toLocaleString('ru-KZ') + ' ₸';
+
+  return (
+    <div style={S.section}>
+      <div style={{ borderBottom: '1px solid #e2e8f0', display: 'flex', marginBottom: 20 }}>
+        {(['call_center', 'consultant'] as C2Role[]).map(r => (
+          <button key={r} style={tabStyle(role === r)} onClick={() => { setRole(r); setDraft(null); setErr(''); setOk(''); }}>
+            {ROLE_LABELS[r]}
+          </button>
+        ))}
+      </div>
+
+      {/* Version list */}
+      {loading && <div style={{ color: '#94a3b8', padding: '12px 0' }}>Загрузка…</div>}
+      {!loading && versions.length === 0 && (
+        <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 12 }}>Версий нет — будет создана версия по умолчанию при первом запуске движка.</div>
+      )}
+      {!loading && versions.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>Версии</div>
+          {versions.map((v, i) => (
+            <div key={v.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '7px 10px', background: i === 0 ? '#f0fdf4' : '#f8fafc', borderRadius: 7, marginBottom: 6, border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>с {v.effective_from}</span>
+              {i === 0 && <span style={{ background: '#02BDB6', color: '#fff', fontSize: 11, borderRadius: 4, padding: '1px 7px' }}>текущая</span>}
+              <span style={{ color: '#64748b', fontSize: 12 }}>
+                фикс {fmtMoney(v.config.fixed_pay)} · перем. {fmtMoney(v.config.max_variable)} · {FORMULA_LABELS[v.config.formula]}
+              </span>
+              <button style={{ ...S.editBtn, marginLeft: 'auto' }} onClick={() => startEdit(v)}>Редактировать</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button style={S.addBtn} onClick={() => startEdit()}>+ Новая версия</button>
+
+      {/* Draft editor */}
+      {draft && (
+        <div style={{ marginTop: 20, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Редактор черновика</div>
+
+          {err && <div style={S.errBox}>{err}</div>}
+          {ok  && <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: '#15803d', marginBottom: 12 }}>{ok}</div>}
+
+          {/* Money fields */}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+            {([['fixed_pay', 'Фикс (₸)'], ['max_variable', 'Макс. переменная (₸)'], ['point_price', 'Цена пункта (₸)']] as [keyof LineConfig, string][]).map(([k, label]) => (
+              <div key={k} style={{ flex: '1 1 140px', minWidth: 120 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>{label}</label>
+                <input type="number" min={0} style={{ ...S.inp, width: '100%' }}
+                  value={String(draft[k])}
+                  onChange={e => setDraftField(k as 'fixed_pay', Number(e.target.value))} />
+              </div>
+            ))}
+          </div>
+
+          {/* Formula */}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div style={{ flex: '1 1 180px' }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Формула</label>
+              <select style={{ ...S.inp, width: '100%' }} value={draft.formula} onChange={e => setDraftField('formula', e.target.value as 'forgive_then_all' | 'per_point')}>
+                <option value="forgive_then_all">Прощение + полный вычет</option>
+                <option value="per_point">По пунктам</option>
+              </select>
+            </div>
+            {draft.formula === 'forgive_then_all' && (
+              <div style={{ flex: '1 1 120px', minWidth: 100 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Прощается нарушений</label>
+                <input type="number" min={0} max={10} style={{ ...S.inp, width: '100%' }}
+                  value={String(draft.forgive_count)}
+                  onChange={e => setDraftField('forgive_count', Number(e.target.value))} />
+              </div>
+            )}
+            <div style={{ flex: '1 1 180px' }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Итог окончателен</label>
+              <select style={{ ...S.inp, width: '100%' }} value={draft.finalize} onChange={e => setDraftField('finalize', e.target.value as 'next_morning' | 'after_review')}>
+                <option value="next_morning">Утром следующего дня</option>
+                <option value="after_review">После проверки ОКК</option>
+              </select>
+            </div>
+            <div style={{ flex: '1 1 140px', minWidth: 100 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Авто-зачёт ОКК (дней)</label>
+              <input type="number" min={1} max={30} style={{ ...S.inp, width: '100%' }}
+                value={String(draft.review_auto_days)}
+                onChange={e => setDraftField('review_auto_days', Number(e.target.value))} />
+            </div>
+          </div>
+
+          {/* Points list */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>Пункты</div>
+            {draft.points.map((pt, pi) => (
+              <div key={pt.key} style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '10px 14px', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <input type="checkbox" checked={pt.enabled} onChange={() => togglePoint(pi)}
+                    style={{ width: 16, height: 16, accentColor: '#02BDB6', cursor: 'pointer' }} />
+                  <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{pt.title}</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>#{pt.order}</span>
+                </div>
+                {pt.description && <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 6px 24px' }}>{pt.description}</div>}
+                <div style={{ marginLeft: 24 }}>
+                  {pt.checks.map((ch, ci) => (
+                    <div key={ch.key} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
+                      <input type="checkbox" checked={ch.enabled} onChange={() => toggleCheck(pi, ci)}
+                        style={{ width: 14, height: 14, accentColor: '#263CD9', cursor: 'pointer' }} />
+                      <span style={{ fontSize: 12, color: '#374151' }}>{ch.type}</span>
+                      {Object.keys(ch.params).length > 0 && (
+                        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                          ({Object.entries(ch.params).map(([k, v]) => `${k}=${v}`).join(', ')})
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Save with date */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Действует с даты</label>
+              <input type="date" style={{ ...S.inp, width: '100%' }} value={savingDate} onChange={e => setSavingDate(e.target.value)} />
+            </div>
+            <button style={{ ...S.addBtn, minWidth: 160 }} disabled={saving} onClick={save}>
+              {saving ? 'Сохранение…' : 'Сохранить с даты…'}
+            </button>
+            <button style={{ ...S.delBtn, background: 'none', color: '#64748b', border: '1px solid #e2e8f0' }} onClick={() => { setDraft(null); setErr(''); setOk(''); }}>
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ControlSettingsSection() {
   const [cfg, setCfg] = useState<ControlCfg | null>(null);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
@@ -3369,6 +3604,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: 'fb-users',     label: 'Сопоставление FB',     icon: '👤' },
   { id: 'scriptolog',   label: 'Скриптолог',           icon: '📝' },
   { id: 'control',          label: 'Контроль менеджеров',  icon: '📊' },
+  { id: 'control-lines',    label: 'Линейки ролей',         icon: '📋' },
   { id: 'control-schedule', label: 'График смен',           icon: '📅' },
   { id: 'control-devices',  label: 'Дов. компьютеры',       icon: '💻' },
   { id: 'pbx',              label: 'АТС',                   icon: '📞' },
@@ -3429,6 +3665,7 @@ export default function SettingsPage() {
         {section === 'fb-users'   && <FbUsersSection />}
         {section === 'scriptolog' && <ScriptologSection />}
         {section === 'control'          && <ControlSettingsSection />}
+        {section === 'control-lines'    && <ControlLinesSection />}
         {section === 'control-schedule' && <ControlScheduleSection />}
         {section === 'control-devices'  && <TrustedDevicesSection />}
         {section === 'pbx'              && <PbxSection />}

@@ -201,6 +201,49 @@
 
 ## Сделано
 <!-- новые записи сверху -->
+### 18.11.2026 · task 66 · Control 2.0 этап 2: каталог проверок, линейки ролей, движок v2, конструктор
+
+**Ч.1 Фото только при «Пришла» (`src/http/checkin.ts`, `ManagerPage.tsx`):**
+- Сервер: фото обязательно только при `type=in`; при `type=out` — не требуется и не сохраняется.
+- Клиент: модальное окно «Ушла со смены» — только подтверждение без камеры; при «Пришла» — поведение прежнее.
+
+**Ч.2 Каталог типов проверок (`src/control/catalog.ts`):**
+- Экспорт: `CheckCtx`, `CheckResult`, `ViolationSpec`, `ManualReviewItem`, `CheckType`, `catalog`, `findCheck`.
+- Ready: `lateness_arrival`, `lateness_leave`, `measure_inbody_trial`, `measure_first_visit`, `measure_last_visit`, `measure_inbody_weekly`, `measure_body_monthly`, `schedule_unmarked`, `schedule_wrong_abonement`, `schedule_deleted`, `schedule_double_booking`, `manual`.
+- Soon: все CC-проверки (АТС, B.A.N.T., follow-up) — возвращают `no_data`.
+- `manual` — создаёт `control_manual_reviews` rows; результат зависит от заполненного `result` поля.
+- Эндпоинт: `GET /kviz/api/control2/catalog`.
+
+**Ч.3 Версии линеек (`src/control/lineVersions.ts`):**
+- `getLineVersion(role, date)` — max(effective_from) ≤ date. `getAllVersions(role)`. `createVersion(...)` — upsert по дате.
+- `seedDefaultVersions()` — создаёт дефолтные версии `2026-11-18` при первом запуске (CC: 6 пунктов forgive_then_all; конс: 5 пунктов per_point).
+- `calcVariablePay(config, violatedCount)` — вычисляет переменную часть.
+- Вызов `seedDefaultVersions()` при старте сервера в `src/index.ts`.
+
+**Ч.4 Конструктор в Настройках (`SettingsPage.tsx` → `ControlLinesSection`):**
+- Новая вкладка «Линейки ролей» (раздел `control-lines`) в Настройках.
+- Переключатель «Call center / Консультант»; список версий с меткой «текущая».
+- Редактор черновика: поля фикс/макс перем./цена пункта, формула (прощение/по пунктам), количество прощений, финализация, авто-зачёт ОКК (дней).
+- Пункты — чекбоксы вкл/выкл; проверки внутри каждого пункта — чекбоксы.
+- Кнопка «Сохранить с даты…» с выбором даты.
+
+**Ч.5 Движок v2 (`src/jobs/control2.ts`) + `/run/control2` в `src/index.ts`:**
+- Загружает людей с ролями: `staff_shifts.role` → `control_shift_schedule.role` → «без роли» (логируется, не оценивается).
+- Для каждого человека+роли: получает версию по дате → вызывает `evaluate()` каждой включённой проверки → upsert `control_violations` (не перезаписывает waived), `control_point_scores`, `control_shift_pay`.
+- Финализация: `next_morning` — final сразу на следующий день; `after_review` — не final, авто-зачёт стейлых ревью (review_auto_days).
+- Поддерживает `?date=`, `?from=&to=`, параллельный с `/run/control`.
+
+**Ч.6 API (`src/http/control2.ts`) + temp экран (`ReportsPage.tsx`):**
+- `GET /kviz/api/control2/catalog` — открытый, без авторизации.
+- `GET /kviz/api/control2/versions/:role` / `POST /kviz/api/control2/versions/:role` (admin) — CRUD линеек.
+- `GET /kviz/api/control2/summary` — сводка оплаты по роли+периоду; права `reports.control_cc` / `reports.control_consultant`, `seeAll`.
+- `GET /kviz/api/control2/violations` — список нарушений; те же права.
+- `POST /kviz/api/control2/violations/:id/waive` (admin, reason) → crm_audit_log.
+- `POST /kviz/api/control2/violations/:id/dispute` (свои нарушения, text) → статус `disputed`.
+- `POST /kviz/api/control2/violations/:id/dispute/resolve` (admin, accept/reject).
+- `GET/POST /kviz/api/control2/reviews` — очередь ручных проверок; право `control.review`.
+- Temp экран «Контроль 2.0 (тест)» в Отчёты → Менеджер: таблица оплаты + список нарушений за день по роли.
+
 ### 18.11.2026 · task 65 · Control 2.0 этап 1: роль в графике, отметка v2, ОКК, АТС OnlinePBX
 
 **Роль в графике смен (`src/jobs/controlSheetSync.ts`):**

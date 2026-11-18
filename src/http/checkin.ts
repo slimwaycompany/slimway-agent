@@ -256,8 +256,9 @@ export function buildCheckinRouter(): Router {
     }
 
     const photoBase64 = String(body.photo ?? '');
-    if (!photoBase64) {
-      res.status(400).json({ error: 'Фото обязательно' }); return;
+    // Photo is mandatory only for arrival; departure requires no photo
+    if (type === 'in' && !photoBase64) {
+      res.status(400).json({ error: 'Фото обязательно при приходе' }); return;
     }
 
     try {
@@ -274,8 +275,11 @@ export function buildCheckinRouter(): Router {
         .limit(1)
         .maybeSingle();
 
-      // Upload photo
-      const photoPath = await uploadPhoto(photoBase64, String(s.id), type);
+      // Upload photo (only for arrival)
+      let photoPath: string | null = null;
+      if (photoBase64) {
+        photoPath = await uploadPhoto(photoBase64, String(s.id), type);
+      }
 
       // Get schedule for role + late/early calculation
       const schedule = await getTodaySchedule(s.display_name);
@@ -341,7 +345,7 @@ export function buildCheckinRouter(): Router {
           shiftId = String(newShift.id);
         }
       } else {
-        // out
+        // out — no photo required
         if (!existingShift || existingShift.status !== 'open') {
           res.status(409).json({ error: 'Нет открытой смены — сначала нажмите «Пришла»' }); return;
         }
@@ -349,7 +353,7 @@ export function buildCheckinRouter(): Router {
           .from('staff_shifts')
           .update({
             ended_at: now, status: 'closed',
-            photo_out_path: photoPath, left_early_minutes: leftEarlyMinutes,
+            left_early_minutes: leftEarlyMinutes,
           })
           .eq('id', existingShift.id);
         if (error) { res.status(500).json({ error: error.message }); return; }
@@ -368,11 +372,11 @@ export function buildCheckinRouter(): Router {
       };
       await supabase.from('control_shift_marks').upsert(markData, { onConflict: 'branch_id,shift_date,user_name', ignoreDuplicates: false });
 
-      // Get photo signed URL for Google Sheet
+      // Get photo signed URL for Google Sheet (only if photo was taken)
       let photoUrl = '';
-      try {
-        photoUrl = await getPhotoUrl(photoPath);
-      } catch { /* non-fatal */ }
+      if (photoPath) {
+        try { photoUrl = await getPhotoUrl(photoPath); } catch { /* non-fatal */ }
+      }
 
       // Get staff_name_map for full name
       const { data: nameMapCfg } = await supabase

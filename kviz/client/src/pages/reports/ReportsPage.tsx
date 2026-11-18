@@ -31,7 +31,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu' | 'control';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu' | 'control' | 'control2';
 
 interface TbuPeriod {
   label: string; from: string; to: string;
@@ -94,7 +94,8 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
     items: [
       { id: 'tasks',   label: 'Задачи',       desc: 'Выполнение задач по периоду',     adminOnly: false },
       { id: 'shifts',  label: 'Смены',         desc: 'Отметки, часы, сотрудники',       adminOnly: false },
-      { id: 'control', label: 'Контроль 5п',   desc: '5 стандартов работы менеджеров',  adminOnly: true  },
+      { id: 'control',  label: 'Контроль 5п',        desc: '5 стандартов работы менеджеров',  adminOnly: true  },
+      { id: 'control2', label: 'Контроль 2.0 (тест)', desc: 'Линейки ролей, пункты, оплата',   adminOnly: true  },
     ],
   },
   {
@@ -227,7 +228,8 @@ export default function ReportsPage() {
       {section === 'daily-metrics'  && isAdmin && <DailyMetricsSection />}
       {section === 'payroll'        && isAdmin && <PayrollSection />}
       {section === 'tbu'            && isAdmin && <TbuSection />}
-      {section === 'control'        && isAdmin && <ControlSection />}
+      {section === 'control'         && isAdmin && <ControlSection />}
+      {section === 'control2'        && isAdmin && <Control2Section />}
     </div>
   );
 }
@@ -3582,6 +3584,124 @@ const RESULT_ICON: Record<string, string> = {
 function fmtAmt(n: number) { return n.toLocaleString('ru-RU') + ' ₸'; }
 function isoToLocalDate(iso: string) {
   return new Date(iso).toLocaleDateString('ru', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Yekaterinburg' });
+}
+
+// ── Control 2.0 temp test screen ──────────────────────────────────────────────
+
+interface C2PayRow { id: string; shift_date: string; user_name: string; role: string; fixed_pay: number; variable_pay: number; total_pay: number; violated_points: number; is_final: boolean }
+interface C2PointRow { id: string; shift_date: string; user_name: string; role: string; point_key: string; result: string; is_final: boolean }
+
+function Control2Section() {
+  const todayYek = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
+  const [date, setDate] = useState(todayYek);
+  const [role, setRole] = useState<'call_center' | 'consultant'>('call_center');
+  const [pay, setPay] = useState<C2PayRow[]>([]);
+  const [points, setPoints] = useState<C2PointRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function load() {
+    setLoading(true); setErr('');
+    try {
+      const [payRes, violRes] = await Promise.all([
+        fetch(`/kviz/api/control2/summary?role=${role}&from=${date}&to=${date}`, { credentials: 'include' }),
+        fetch(`/kviz/api/control2/violations?date=${date}&role=${role}`, { credentials: 'include' }),
+      ]);
+      const payData = await payRes.json();
+      const violData = await violRes.json();
+      if (!payRes.ok) { setErr(payData.error || 'Ошибка загрузки'); setLoading(false); return; }
+      setPay(Array.isArray(payData) ? payData : []);
+      setPoints(Array.isArray(violData) ? violData : []);
+    } catch (e) { setErr(String(e)); }
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, [date, role]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const roleLabel = role === 'call_center' ? 'Call center' : 'Консультант';
+  const fmtMoney = (n: number) => n.toLocaleString('ru-RU') + ' ₸';
+
+  const RESULT_ICONS: Record<string, string> = {
+    ok: '✅', fail: '❌', pending: '🟡', no_data: '▫️',
+  };
+
+  return (
+    <div style={{ padding: '16px 20px', maxWidth: 1000 }}>
+      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>Контроль 2.0 — тест</div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          style={{ padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit' }} />
+        <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+          {(['call_center', 'consultant'] as const).map(r => (
+            <button key={r} onClick={() => setRole(r)}
+              style={{ padding: '7px 14px', border: 'none', background: role === r ? '#02BDB6' : '#fff', color: role === r ? '#fff' : '#374151', fontWeight: role === r ? 700 : 400, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>
+              {r === 'call_center' ? 'Call center' : 'Консультант'}
+            </button>
+          ))}
+        </div>
+        <button onClick={load} style={{ padding: '7px 14px', background: '#263CD9', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+          Обновить
+        </button>
+      </div>
+
+      {err && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{err}</div>}
+      {loading && <div style={{ color: '#94a3b8', fontSize: 14, padding: '12px 0' }}>Загрузка…</div>}
+
+      {!loading && pay.length === 0 && !err && (
+        <div style={{ color: '#94a3b8', fontSize: 14 }}>Нет данных за {date} ({roleLabel})</div>
+      )}
+
+      {!loading && pay.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700 }}>Сотрудник</th>
+                <th style={{ padding: '8px 10px', textAlign: 'center' }}>Нарушений</th>
+                <th style={{ padding: '8px 10px', textAlign: 'right' }}>Фикс</th>
+                <th style={{ padding: '8px 10px', textAlign: 'right' }}>Перем.</th>
+                <th style={{ padding: '8px 10px', textAlign: 'right' }}>Итого</th>
+                <th style={{ padding: '8px 10px', textAlign: 'center' }}>Финал</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pay.map(row => (
+                <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '7px 10px', fontWeight: 600 }}>{row.user_name}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>{row.violated_points}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'right' }}>{fmtMoney(row.fixed_pay)}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'right', color: row.variable_pay < (row.total_pay - row.fixed_pay) ? '#ef4444' : '#16a34a' }}>{fmtMoney(row.variable_pay)}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>{fmtMoney(row.total_pay)}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>{row.is_final ? '✅' : '🟡'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && points.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Нарушения</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(points as unknown as Array<Record<string, unknown>>).map((v) => (
+              <div key={String(v.id)} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{String(v.owner_name)}</span>
+                  <span style={{ background: '#f1f5f9', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>{String(v.point_key)}</span>
+                  <span style={{ background: '#fef9c3', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>{String(v.check_key)}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 12 }}>{RESULT_ICONS[String(v.status)] ?? String(v.status)}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#374151' }}>{String(v.details)}</div>
+                {v.how_to_fix && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{String(v.how_to_fix)}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ControlSection() {
