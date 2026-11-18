@@ -178,6 +178,8 @@ async function syncLeads(): Promise<{ total: number; upserted: number; skipped: 
   let skipped = 0;
   let failed = 0;
   const failedExamples: string[] = [];
+  const phonesFromLeads = new Set<string>();          // phone_digits: 7XXXXXXXXXX
+  const phoneToName = new Map<string, string>();
 
   for (let i = 0; i < fbLeads.length; i += 100) {
     const batch = fbLeads.slice(i, i + 100);
@@ -224,13 +226,22 @@ async function syncLeads(): Promise<{ total: number; upserted: number; skipped: 
         if (prev != null) actPending.push({ fitbase_id: fbId, kind: 'stage_change', text: 'Этап изменён' });
       }
 
+      const ph = normPhone(l.phone);
+      if (ph) {
+        phonesFromLeads.add(ph);
+        if (!phoneToName.has(ph)) {
+          const n = `${(l.name as string | null) ?? ''} ${(l.surname as string | null) ?? ''}`.trim();
+          phoneToName.set(ph, n || '+' + ph);
+        }
+      }
+
       rows.push({
         branch_id: BRANCH_ID, fitbase_id: fbId, origin: 'fitbase',
         title:        String(l.title ?? '').trim(),
         name:         (l.name        as string | null) ?? null,
         surname:      (l.surname     as string | null) ?? null,
         patronymic:   (l.patronymic  as string | null) ?? null,
-        phone:        normPhone(l.phone),
+        phone:        ph,
         email:        (l.email       as string | null) ?? null,
         instagram:    (l.instagram   as string | null) ?? null,
         telegram:     (l.telegram    as string | null) ?? null,
@@ -309,6 +320,28 @@ async function syncLeads(): Promise<{ total: number; upserted: number; skipped: 
   }
 
   if (failedExamples.length) console.error('[crm-leads-sync] failures:', failedExamples.join(' | '));
+
+  // Create body_clients for lead phones not yet in the system (idempotent)
+  if (phonesFromLeads.size > 0) {
+    try {
+      const digits = [...phonesFromLeads];
+      const { data: existing } = await supabase.from('body_clients')
+        .select('phone_digits').in('phone_digits', digits);
+      const existingSet = new Set((existing ?? []).map((c: Record<string, unknown>) => c.phone_digits as string));
+      const toInsert = digits
+        .filter(d => !existingSet.has(d))
+        .map(d => ({ name: phoneToName.get(d) ?? ('+' + d), phone: '+' + d }));
+      if (toInsert.length > 0) {
+        for (let i = 0; i < toInsert.length; i += 100) {
+          await supabase.from('body_clients').insert(toInsert.slice(i, i + 100));
+        }
+        console.log(`[crm-leads-sync] body_clients: добавлено ${toInsert.length}`);
+      }
+    } catch (e) {
+      console.error('[crm-leads-sync] body_clients sync error:', e);
+    }
+  }
+
   return { total: fbLeads.length, upserted, skipped, failed };
 }
 

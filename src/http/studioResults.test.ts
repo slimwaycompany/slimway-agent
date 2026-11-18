@@ -54,3 +54,46 @@ test('single InBody test → kgLost 0, fatKgLost null', () => {
   assert.equal(r.kgLost, 0);
   assert.equal(r.fatKgLost, null);
 });
+
+test('cm only: kgLost 0, fatKgLost null', () => {
+  const r = calcLosses([m(1, 300, '2026-01-01'), m(2, 285, '2026-06-01')], []);
+  assert.equal(r.cmLost, 15);
+  assert.equal(r.kgLost, 0);
+  assert.equal(r.fatKgLost, null);
+});
+
+test('kg only: no measurements, InBody weight reduced', () => {
+  const r = calcLosses([], [
+    ib('2026-01-01T00:00:00Z', 80, 30),
+    ib('2026-06-01T00:00:00Z', 72, 25),
+  ]);
+  assert.equal(r.cmLost, 0);
+  assert.equal(r.kgLost, 8);
+});
+
+test('fat only: weight same, fat reduced', () => {
+  const r = calcLosses([m(1, 300, '2026-01-01')], [
+    ib('2026-01-05T10:00:00Z', 75, 30),
+    ib('2026-06-05T10:00:00Z', 75, 20),
+  ]);
+  assert.equal(r.kgLost, 0);
+  assert.equal(r.fatKgLost, 10);
+});
+
+test('all metrics grew → cmLost 0 kgLost 0', () => {
+  const r = calcLosses([m(1, 280, '2026-01-01'), m(2, 290, '2026-06-01')], [
+    ib('2026-01-05T10:00:00Z', 72, 25),
+    ib('2026-06-05T10:00:00Z', 80, 28),
+  ]);
+  assert.equal(r.cmLost, 0);
+  assert.equal(r.kgLost, 0);
+});
+
+test('mixed: cm fell weight rose → cmLost > 0 kgLost 0', () => {
+  const r = calcLosses([m(1, 300, '2026-01-01'), m(2, 285, '2026-06-01')], [
+    ib('2026-01-05T10:00:00Z', 72, 25),
+    ib('2026-06-05T10:00:00Z', 80, 28),
+  ]);
+  assert.equal(r.cmLost, 15);
+  assert.equal(r.kgLost, 0);
+});

@@ -7,6 +7,11 @@
 
 ## Сделано
 
+### 18.11.2026 · task 67 · syncLeads() создаёт body_clients для заявок с телефоном
+
+- **crmLeadsSync.ts** `syncLeads()`: после upsert всех заявок собирает телефоны (normPhone → `7XXXXXXXXXX`), фильтрует по `body_clients.phone_digits` (SELECT IN), вставляет только новых в батчах по 100 (`{name: «Имя Фамилия», phone: «+7XXXXXXXXXX»}`); всё в try/catch — ошибка не прерывает синк; логирует `[crm-leads-sync] body_clients: добавлено N`.
+- Не затрагивает: `fitbase_clients_cache`, кнопку «Перенести клиентов InBody», существующих клиентов в `body_clients`.
+
 ### 05.11.2026 · task 38 — fix sync (budget/title not-null, user_id map, stage kind), resilient batches, missing sync steps, board/drawer/settings/manager gaps
 
 - **crmLeadsSync.ts полностью переписан:** `toNum()` → budget NOT NULL (null→0); title NOT NULL (null→''); stage_id NOT NULL (нет этапа/не найден → skip + счётчик skipped); `user_id` вместо `app_user_id` в `crm_fitbase_user_map`; этапы — UPDATE existing (только имя/воронку/цвет/сорт, не трогает kind и is_personal) + INSERT новых; skip funnel 5/6/7; пачки по 100, try/catch, retry per-row, лог до 20 примеров ошибок; каждый шаг независим; итог: `{ leads: { total, upserted, skipped, failed }, tasks: { total, upserted, failed } }`.

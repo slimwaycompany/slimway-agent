@@ -43,6 +43,11 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
+### 18.11.2026 · task 67 · проверка путей TV-пересчёта + 5 новых тестов calcLosses
+
+- **Пути recalcStudioResultForClient подтверждены** (код не менялся): measure.ts:515 (POST /measure/measurements), inbody.ts:146 (POST /inbody/qr), inbody.ts:259 (POST /inbody/csv-import, fire-and-forget), inbody.ts:373 (POST /inbody/recalculate, fire-and-forget), inbody.ts:501 (POST /inbody/link-to-client) — все 5 путей присутствуют.
+- **studioResults.test.ts**: добавлено 5 тестов `calcLosses` — cm only (kgLost=0, fatKgLost=null), kg only (нет замеров — cmLost=0), fat only (вес одинаков, жир уменьшился), all metrics grew (cmLost=0, kgLost=0), mixed (cm fell weight rose → cmLost>0, kgLost=0). Итого 12 тестов, все проходят.
+
 ### 17.11.2026 · c99b29c · task 61 · две кнопки-карточки вместо подвкладок + авто-отправка студии
 
 - **MeasureLayout.tsx**: вместо sub-tabs — landing с двумя карточками-кнопками; карточки navigate через `?section=measure|inbody`; `isLanding = pathname === '/measure' && !section`; в non-landing режиме — шапка с «← Назад» к `/measure`; `active` prop оставлен для обратной совместимости (не используется).
