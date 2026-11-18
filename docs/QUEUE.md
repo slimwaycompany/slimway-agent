@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 68 | ui | UI Foundation шаг «а»: токены, тёмная тема, иконки, компоненты обратной связи, точки перелома, viewport | `docs/tasks/68-ui-foundation.md` | 🔧 в работе (Claude Code, 18.11.2026) |
 | 67 | zamery, crm-leads | TV-пересчёт: проверка 5 путей + 5 тестов calcLosses; syncLeads создаёт body_clients для заявок Fitbase | `docs/tasks/67-zamery-crm-leads-sync.md` | ✅ готово (см. журнал) |
 | 66 | control | Control 2.0 этап 2: каталог проверок, версии линеек, конструктор, движок v2, ручные проверки, API | `docs/tasks/66-control2-stage2.md` | ✅ готово (см. журнал) |
 | 65 | control | Control 2.0 этап 1: роль в графике смен, отметка v2 (доверенный ПК + фото), должность ОКК, приёмник АТС OnlinePBX | `docs/tasks/65-control2-stage1.md` | ✅ готово (см. журнал) |
