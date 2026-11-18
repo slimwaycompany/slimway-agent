@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 
 interface ModalProps {
   title: string;
@@ -11,23 +11,28 @@ interface ModalProps {
 
 /** On desktop: centered overlay. On phone (≤640px): bottom sheet. */
 export default function Modal({ title, onClose, children, actions, wide }: ModalProps) {
-  // Close on Escape
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
-
   return (
-    <div className="ui-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={`ui-modal-sheet${wide ? ' ui-modal-sheet--wide' : ''}`}>
-        <div className="ui-modal-header">
-          <span className="ui-modal-title">{title}</span>
-          <button className="ui-modal-close" onClick={onClose} aria-label="Закрыть">✕</button>
-        </div>
-        <div className="ui-modal-body">{children}</div>
-        {actions && <div className="ui-modal-actions">{actions}</div>}
-      </div>
-    </div>
+    <Dialog.Root open onOpenChange={open => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay
+          className="ui-modal-overlay"
+          onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+        >
+          <Dialog.Content
+            className={`ui-modal-sheet${wide ? ' ui-modal-sheet--wide' : ''}`}
+            onInteractOutside={e => e.preventDefault()}
+          >
+            <div className="ui-modal-header">
+              <Dialog.Title className="ui-modal-title">{title}</Dialog.Title>
+              <Dialog.Close asChild>
+                <button className="ui-modal-close" aria-label="Закрыть">✕</button>
+              </Dialog.Close>
+            </div>
+            <div className="ui-modal-body">{children}</div>
+            {actions && <div className="ui-modal-actions">{actions}</div>}
+          </Dialog.Content>
+        </Dialog.Overlay>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

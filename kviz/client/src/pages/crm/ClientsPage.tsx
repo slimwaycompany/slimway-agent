@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { showConfirm } from '../../lib/confirm';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -590,7 +591,7 @@ export default function ClientsPage() {
   }
 
   async function archiveClient(id: string) {
-    if (!confirm('Архивировать клиента?')) return;
+    if (!await showConfirm('Архивировать клиента?')) return;
     await apiJSON('DELETE', `/kviz/api/crm/clients/${id}`);
     setSelectedId(null); load();
   }

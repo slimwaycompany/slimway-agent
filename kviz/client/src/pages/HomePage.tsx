@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { showConfirm } from '../lib/confirm';
 import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiDelete } from '../api';
 import { TEMP_BADGES, TEMP_COLORS, EARLY_CLOSE_REASONS } from '../config/qualify';
@@ -48,7 +49,7 @@ export default function HomePage() {
 
   async function deleteSession(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    if (!confirm('Удалить черновик?')) return;
+    if (!await showConfirm('Удалить черновик?')) return;
     await apiDelete(`/api/sessions/${id}`);
     setSessions(prev => prev.filter(s => s.id !== id));
   }

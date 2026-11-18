@@ -60,6 +60,7 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 <script>if(window.self===window.top){location.replace('/');}</script>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui/tokens.css">
+<script src="/ui/ui.js"></script>
 <link rel="stylesheet" href="/window/agent-room/room.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}

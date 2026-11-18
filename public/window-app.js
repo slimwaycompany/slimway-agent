@@ -59,7 +59,7 @@
   };
 
   $('notif-btn').onclick = function () {
-    if (typeof Notification === 'undefined') { alert('Уведомления не поддерживаются'); return; }
+    if (typeof Notification === 'undefined') { (window.ui?.toast || function(m){console.error(m);})('Уведомления не поддерживаются', 'error'); return; }
     Notification.requestPermission().then(function (p) {
       notifGranted = p === 'granted';
       $('notif-btn').textContent = notifGranted ? 'Уведомления вкл' : 'Уведомления выкл';

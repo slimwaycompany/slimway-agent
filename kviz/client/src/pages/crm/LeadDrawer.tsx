@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { postToParent } from '../../utils/iframe';
+import { showConfirm } from '../../lib/confirm';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -215,7 +216,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
 
   async function handleDelete() {
     if (!lead) return;
-    if (!confirm('Удалить заявку? Это действие необратимо.')) return;
+    if (!await showConfirm('Удалить заявку? Это действие необратимо.')) return;
     const { ok, data } = await api('DELETE', `/kviz/api/crm/leads/${lead.id}`);
     if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
     onDeleted(lead.id);

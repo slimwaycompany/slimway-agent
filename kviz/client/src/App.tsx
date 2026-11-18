@@ -24,6 +24,8 @@ import FunnelPage from './pages/crm/FunnelPage';
 import { isEmbedded } from './utils/iframe';
 import { PermContext } from './lib/permContext';
 import type { PermEntry } from './lib/permContext';
+import { Toaster } from './components/ui/Toaster';
+import { ConfirmProvider } from './components/ui/ConfirmProvider';
 import './index.css';
 
 interface MeResponse {
@@ -93,6 +95,7 @@ export default function App() {
   }, []);
 
   return (
+    <ConfirmProvider>
     <Routes>
       <Route path="/results" element={<ResultsPage />} />
       <Route path="/r/:token" element={<SharePage />} />
@@ -120,5 +123,7 @@ export default function App() {
       <Route path="/crm/cashier" element={<RequireAuth><KassaPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    <Toaster />
+    </ConfirmProvider>
   );
 }

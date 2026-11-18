@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from '../../lib/toast';
 import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
@@ -251,7 +252,7 @@ export default function NewMeasurePage() {
       const refreshed = await apiGet(`/api/measure/clients/${selectedClient!.id}`);
       setSelectedClient(refreshed);
       setConfirmDelete(null);
-    } catch (e) { alert(String(e)); }
+    } catch (e) { toast.error(String(e)); }
   }
 
   // ── Result screen ────────────────────────────────────────────────────────

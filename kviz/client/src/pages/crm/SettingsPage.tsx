@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from '../../lib/toast';
+import { showConfirm } from '../../lib/confirm';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 import StaffPage from './StaffPage';
 import FreeSlide from '../../components/tv/FreeSlide';
@@ -58,19 +61,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function ConfirmModal({ message, onConfirm, onClose }: { message: string; onConfirm: () => void; onClose: () => void }) {
-  return (
-    <div style={S.overlay} onClick={onClose}>
-      <div style={{ ...S.modal, maxWidth: 380 }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize: 15, lineHeight: 1.6, marginBottom: 20, color: '#1a202c' }}>{message}</div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button style={S.cancelBtn} onClick={onClose}>Отмена</button>
-          <button style={{ ...S.saveBtn, background: '#ef4444' }} onClick={onConfirm}>Удалить</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+const ConfirmModal = ConfirmDialog;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -151,7 +142,7 @@ function DevicesSection() {
   async function doDelete(kind: 'type' | 'device', id: string) {
     const url = kind === 'type' ? `/kviz/api/crm/device-types/${id}` : `/kviz/api/crm/devices/${id}`;
     const { ok, data } = await api('DELETE', url);
-    if (!ok) { alert(data.error || 'Ошибка'); } else load();
+    if (!ok) { toast.error(data.error || 'Ошибка'); } else load();
     setConfirm(null);
   }
 
@@ -383,7 +374,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
 
   async function doDelete(plan: Plan) {
     const { ok, data } = await api('DELETE', `/kviz/api/crm/plans/${plan.id}`);
-    if (!ok) alert(data.error || 'Ошибка'); else load();
+    if (!ok) toast.error(data.error || 'Ошибка'); else load();
     setConfirm(null);
   }
 
@@ -544,7 +535,7 @@ function SuppliersSection() {
 
   async function doDelete(id: string, name: string) {
     const { ok, data } = await api('DELETE', `/kviz/api/crm/suppliers/${id}`);
-    if (!ok) alert(data.error || 'Ошибка'); else load();
+    if (!ok) toast.error(data.error || 'Ошибка'); else load();
     setConfirm(null);
   }
 
@@ -656,7 +647,7 @@ function ProductsSection() {
     setNewSupSaving(true);
     const { ok, data } = await api('POST', '/kviz/api/crm/suppliers', { name: newSupName.trim(), phone: newSupPhone || null, link: newSupLink || null });
     setNewSupSaving(false);
-    if (!ok) { alert(data.error || 'Ошибка'); return; }
+    if (!ok) { toast.error(data.error || 'Ошибка'); return; }
     setSuppliers(prev => [...prev, data]);
     setSupplySupId(data.id);
     setAddingNewSup(false);
@@ -682,7 +673,7 @@ function ProductsSection() {
 
   async function deleteSupply(id: string) {
     const { ok, data } = await api('DELETE', `/kviz/api/crm/product-supplies/${id}`);
-    if (!ok) { alert(data.error || 'Ошибка'); return; }
+    if (!ok) { toast.error(data.error || 'Ошибка'); return; }
     if (showSupplies) loadSupplies(showSupplies);
     setConfirm(null);
   }
@@ -714,7 +705,7 @@ function ProductsSection() {
                 <button style={S.editBtn} onClick={() => api('PATCH', `/kviz/api/crm/products/${p.id}`, { is_active: !p.is_active }).then(load)}>
                   {p.is_active ? 'В архив' : 'Восстановить'}
                 </button>
-                <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить товар «${p.name}» навсегда?`, action: () => api('DELETE', `/kviz/api/crm/products/${p.id}`).then(r => { if (!r.ok) alert(r.data.error || 'Ошибка'); else load(); setConfirm(null); }) })}>Удалить</button>
+                <button style={S.delBtn} onClick={() => setConfirm({ message: `Удалить товар «${p.name}» навсегда?`, action: () => api('DELETE', `/kviz/api/crm/products/${p.id}`).then(r => { if (!r.ok) toast.error(r.data.error || 'Ошибка'); else load(); setConfirm(null); }) })}>Удалить</button>
               </div>
             </div>
             {showSupplies === p.id && (
@@ -831,7 +822,7 @@ function PromoCodesSection() {
 
   async function doDelete(id: string) {
     const { ok, data } = await api('DELETE', `/kviz/api/crm/promo-codes/${id}`);
-    if (!ok) alert(data.error || 'Ошибка'); else load();
+    if (!ok) toast.error(data.error || 'Ошибка'); else load();
     setConfirm(null);
   }
 
@@ -938,7 +929,7 @@ function PaymentMethodsSection() {
 
   async function doDelete(id: string, name: string) {
     const { ok, data } = await api('DELETE', `/kviz/api/crm/payment-methods/${id}`);
-    if (!ok) alert(data.error || 'Ошибка'); else load();
+    if (!ok) toast.error(data.error || 'Ошибка'); else load();
     setConfirm(null);
   }
 
@@ -1050,7 +1041,7 @@ function AdSourcesSection() {
 
   async function doDelete(id: string) {
     const { ok, data } = await api('DELETE', `/kviz/api/crm/ad-sources/${id}`);
-    if (!ok) alert(data.error || 'Ошибка'); else load();
+    if (!ok) toast.error(data.error || 'Ошибка'); else load();
     setConfirm(null);
   }
 
@@ -1804,7 +1795,7 @@ function LeadTagsSection() {
 
   async function del(tag: LeadTag) {
     if (tag.is_system) { setErr('Системные теги нельзя удалить'); return; }
-    if (!confirm(`Удалить тег «${tag.name}»?`)) return;
+    if (!await showConfirm(`Удалить тег «${tag.name}»?`)) return;
     const { ok, data } = await api('DELETE', `/kviz/api/crm/lead-tags/${tag.id}`);
     if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
     load();
@@ -1862,7 +1853,7 @@ function TaskTypesSection() {
   }
 
   async function del(id: string, name: string) {
-    if (!confirm(`Удалить тип «${name}»?`)) return;
+    if (!await showConfirm(`Удалить тип «${name}»?`)) return;
     const { ok, data } = await api('DELETE', `/kviz/api/crm/task-types/${id}`);
     if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
     load();
@@ -1935,7 +1926,7 @@ function LostReasonsSection() {
   }
 
   async function del(id: string, name: string) {
-    if (!confirm(`Удалить причину «${name}»?`)) return;
+    if (!await showConfirm(`Удалить причину «${name}»?`)) return;
     const { ok, data } = await api('DELETE', `/kviz/api/crm/lost-reasons/${id}`);
     if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
     load();

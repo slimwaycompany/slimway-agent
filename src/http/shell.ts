@@ -126,6 +126,7 @@ const SHELL_HTML = `<!DOCTYPE html>
 <title>SlimWay</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui/tokens.css">
+<script src="/ui/ui.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;font-family:'Manrope',system-ui,sans-serif;background:var(--bg);color:var(--text)}

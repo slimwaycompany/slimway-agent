@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from '../../lib/toast';
 import { useRole } from '../../lib/permContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -269,13 +270,13 @@ function PositionDetail({ pos, catalog, allPositions, onRefresh, onClose }: {
     setPermsSaving(true);
     const r = await api('PUT', `/api/positions/${posObj.id}/permissions`, permMapToArray(perms));
     setPermsSaving(false);
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
   }
 
   async function resetToPreset() {
     if (!posObj) return;
     const r = await api('POST', `/api/positions/${posObj.id}/reset`);
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
     await loadPerms();
     setConfirm(null);
   }
@@ -283,14 +284,14 @@ function PositionDetail({ pos, catalog, allPositions, onRefresh, onClose }: {
   async function doCopy() {
     if (!copyFrom || !posObj) return;
     const r = await api('POST', `/api/positions/${posObj.id}/copy-perms`, { from_position_id: copyFrom });
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
     await loadPerms(); setCopyFrom('');
   }
 
   async function archive(v: boolean) {
     if (!posObj) return;
     const r = await api('PATCH', `/api/positions/${posObj.id}`, { is_archived: v });
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
     onRefresh();
   }
 
@@ -298,7 +299,7 @@ function PositionDetail({ pos, catalog, allPositions, onRefresh, onClose }: {
     if (!posObj) return;
     if (!confirm) { setConfirm('delete'); return; }
     const r = await api('DELETE', `/api/positions/${posObj.id}`);
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); setConfirm(null); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); setConfirm(null); return; }
     onRefresh(); onClose?.();
   }
 
@@ -440,13 +441,13 @@ function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, on
     if (enable) {
       // Copy position perms to user perms and enable custom
       const r = await api('POST', `/api/staff/${member.id}/permissions/copy-from-position`);
-      if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+      if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
       setCustomPerms(true); await loadPerms();
     } else {
       if (!confirm) { setConfirm('disable-custom'); return; }
       setConfirm(null);
       const r = await api('DELETE', `/api/staff/${member.id}/permissions`);
-      if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+      if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
       setCustomPerms(false); await loadPerms();
     }
   }
@@ -455,13 +456,13 @@ function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, on
     setPermsSaving(true);
     const r = await api('PUT', `/api/staff/${member.id}/permissions`, permMapToArray(perms));
     setPermsSaving(false);
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
   }
 
   async function doCopyPerms() {
     if (!copyFrom) return;
     const r = await api('POST', `/api/staff/${member.id}/permissions/copy`, { from_user_id: copyFrom });
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
     await loadPerms(); setCopyFrom('');
   }
 
@@ -469,13 +470,13 @@ function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, on
     if (!confirm) { setConfirm('fire'); return; }
     setConfirm(null);
     const r = await api('POST', `/api/staff/${member.id}/fire`);
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
     onRefresh();
   }
 
   async function restore() {
     const r = await api('DELETE', `/api/staff/${member.id}/fire`);
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
     onRefresh();
   }
 
@@ -483,7 +484,7 @@ function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, on
     if (!confirm) { setConfirm('delete'); return; }
     setConfirm(null);
     const r = await api('DELETE', `/api/staff/${member.id}`);
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
     onRefresh();
   }
 
@@ -491,7 +492,7 @@ function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, on
     if (!confirm) { setConfirm('logout'); return; }
     setConfirm(null);
     const r = await api('POST', `/api/staff/${member.id}/logout-all`);
-    if (!r.ok) { alert(r.data.error || 'Ошибка'); return; }
+    if (!r.ok) { toast.error(r.data.error || 'Ошибка'); return; }
   }
 
   async function loadLog() {
