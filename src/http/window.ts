@@ -52,7 +52,7 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')}()</script>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" id="tc-light" media="(prefers-color-scheme: light)" content="#f2f4f7">
 <meta name="theme-color" id="tc-dark" media="(prefers-color-scheme: dark)" content="#0b0f14">
 <link rel="manifest" href="/window/manifest.json">

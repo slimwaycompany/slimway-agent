@@ -21,7 +21,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')}()</script>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>SlimWay — Вход</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui/tokens.css">
@@ -95,6 +95,22 @@ login.focus();
 </body>
 </html>`;
 
+// ── SVG tab icons (Lucide 24×24, stroke 1.75) ───────────────────────────────
+
+const _S = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"`;
+const ICONS: Record<string, string> = {
+  manager:  `<svg ${_S}><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>`,
+  agent:    `<svg ${_S}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`,
+  schedule: `<svg ${_S}><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>`,
+  clients:  `<svg ${_S}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  funnel:   `<svg ${_S}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`,
+  cashier:  `<svg ${_S}><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>`,
+  kviz:     `<svg ${_S}><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>`,
+  measure:  `<svg ${_S}><path d="M21.3 8.7 8.7 21.3c-1 1-2.5 1-3.4 0l-2.6-2.6c-1-1-1-2.5 0-3.4L15.3 2.7c1-1 2.5-1 3.4 0l2.6 2.6c1 1 1 2.5 0 3.4Z"/><path d="m7.5 10.5 2 2"/><path d="m10.5 7.5 2 2"/><path d="m13.5 4.5 2 2"/><path d="m4.5 13.5 2 2"/></svg>`,
+  reports:  `<svg ${_S}><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>`,
+  settings: `<svg ${_S}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
+};
+
 // ── Shell page HTML ──────────────────────────────────────────────────────────
 
 const SHELL_HTML = `<!DOCTYPE html>
@@ -102,7 +118,7 @@ const SHELL_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')}()</script>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" id="tc-light" media="(prefers-color-scheme: light)" content="#f2f4f7">
 <meta name="theme-color" id="tc-dark" media="(prefers-color-scheme: dark)" content="#0b0f14">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -132,6 +148,7 @@ html,body{height:100%;overflow:hidden;font-family:'Manrope',system-ui,sans-serif
   flex-shrink:0;min-height:36px;white-space:nowrap}
 .tab-btn:hover{background:rgba(2,189,182,0.1);color:var(--text)}
 .tab-btn.active{background:rgba(2,189,182,0.13);color:var(--brand)}
+.tab-btn svg{width:16px;height:16px;flex-shrink:0}
 .tbadge{min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;
   font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;
   padding:0 4px;font-family:inherit}
@@ -199,7 +216,8 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
   transition:background .15s,border-color .15s,box-shadow .15s}
 .choice-btn:hover{background:rgba(2,189,182,0.1);border-color:rgba(2,189,182,0.45);
   box-shadow:0 0 0 4px rgba(2,189,182,0.08)}
-.choice-icon{font-size:28px;line-height:1}
+.choice-icon{line-height:1;display:flex;align-items:center;justify-content:center}
+.choice-icon svg{width:28px;height:28px}
 .choice-label{font-size:14px;font-weight:600;color:var(--text)}
 .cbadge{position:absolute;top:8px;right:8px;min-width:20px;height:20px;border-radius:10px;
   background:var(--red);color:#fff;font-size:12px;font-weight:700;
@@ -254,6 +272,8 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
   transition:background .12s;position:relative}
 .drawer-item:hover{background:rgba(2,189,182,0.08)}
 .drawer-item.active{background:rgba(2,189,182,0.13);color:var(--brand)}
+.drawer-item svg{width:18px;height:18px;flex-shrink:0;opacity:.65}
+.drawer-item.active svg,.drawer-item:hover svg{opacity:1}
 .drawer-ibadge{margin-left:auto;min-width:18px;height:18px;border-radius:9px;
   background:var(--red);color:#fff;font-size:11px;font-weight:700;
   display:none;align-items:center;justify-content:center;padding:0 4px;flex-shrink:0}
@@ -306,14 +326,14 @@ html[data-theme="dark"],html[data-theme="dark"] body{background:var(--bg);color:
     <button id="ham-btn" aria-label="Меню">☰<span class="ham-dot" id="ham-dot"></span></button>
     <span id="tab-label"></span>
     <div class="tabs">
-      <button class="tab-btn" id="tab-btn-manager">👔 Менеджер<span class="tbadge" id="badge-tab-manager">0</span></button>
-      <button class="tab-btn active" id="tab-btn-agent">🐕 Агент<span class="tbadge" id="badge-tab-agent">0</span></button>
-      <button class="tab-btn" id="tab-btn-schedule">📅 Расписание</button>
-      <button class="tab-btn" id="tab-btn-clients">👥 Клиенты</button>
-      <button class="tab-btn" id="tab-btn-funnel">📈 Воронка</button>
-      <button class="tab-btn" id="tab-btn-cashier">💰 Касса</button>
-      <button class="tab-btn" id="tab-btn-kviz">📝 <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
-      <button class="tab-btn" id="tab-btn-measure">📏 Замеры</button>
+      <button class="tab-btn" id="tab-btn-manager">${ICONS.manager} Менеджер<span class="tbadge" id="badge-tab-manager">0</span></button>
+      <button class="tab-btn active" id="tab-btn-agent">${ICONS.agent} Агент<span class="tbadge" id="badge-tab-agent">0</span></button>
+      <button class="tab-btn" id="tab-btn-schedule">${ICONS.schedule} Расписание</button>
+      <button class="tab-btn" id="tab-btn-clients">${ICONS.clients} Клиенты</button>
+      <button class="tab-btn" id="tab-btn-funnel">${ICONS.funnel} Воронка</button>
+      <button class="tab-btn" id="tab-btn-cashier">${ICONS.cashier} Касса</button>
+      <button class="tab-btn" id="tab-btn-kviz">${ICONS.kviz} <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
+      <button class="tab-btn" id="tab-btn-measure">${ICONS.measure} Замеры</button>
       <!--REPORTS_TAB_BTN-->
       <!--METRICS_TAB_BTN-->
       <!--SETTINGS_TAB_BTN-->
@@ -429,37 +449,37 @@ html[data-theme="dark"],html[data-theme="dark"] body{background:var(--bg);color:
     <div class="choice-btns">
       <button class="choice-btn" id="choice-manager">
         <span class="cbadge" id="badge-choice-manager">0</span>
-        <span class="choice-icon">👔</span>
+        <span class="choice-icon">${ICONS.manager}</span>
         <span class="choice-label">Менеджер</span>
       </button>
       <button class="choice-btn" id="choice-agent">
         <span class="cbadge" id="badge-choice-agent">0</span>
-        <span class="choice-icon">🐕</span>
+        <span class="choice-icon">${ICONS.agent}</span>
         <span class="choice-label">Агент</span>
       </button>
       <button class="choice-btn" id="choice-schedule">
-        <span class="choice-icon">📅</span>
+        <span class="choice-icon">${ICONS.schedule}</span>
         <span class="choice-label">Расписание</span>
       </button>
       <button class="choice-btn" id="choice-clients">
-        <span class="choice-icon">👥</span>
+        <span class="choice-icon">${ICONS.clients}</span>
         <span class="choice-label">Клиенты</span>
       </button>
       <button class="choice-btn" id="choice-funnel">
-        <span class="choice-icon">📈</span>
+        <span class="choice-icon">${ICONS.funnel}</span>
         <span class="choice-label">Воронка</span>
       </button>
       <button class="choice-btn" id="choice-cashier">
-        <span class="choice-icon">💰</span>
+        <span class="choice-icon">${ICONS.cashier}</span>
         <span class="choice-label">Касса</span>
       </button>
       <button class="choice-btn" id="choice-kviz">
         <span class="cbadge" id="badge-choice-kviz">0</span>
-        <span class="choice-icon">📝</span>
+        <span class="choice-icon">${ICONS.kviz}</span>
         <span class="choice-label">Квалификация</span>
       </button>
       <button class="choice-btn" id="choice-measure">
-        <span class="choice-icon">📏</span>
+        <span class="choice-icon">${ICONS.measure}</span>
         <span class="choice-label">Замеры</span>
       </button>
       <!--REPORTS_CHOICE_BTN-->
@@ -514,16 +534,16 @@ export function mountShellRoutes(app: Application): void {
     const hasSettings = isAdmin || Object.keys(session.perms).some(k => k.startsWith('settings.'));
     const reportsSettingsBtn = hasSettings ? '<button class="side-btn" id="side-to-settings"><span class="side-text">Настройки</span></button>' : '';
     const reportsPane = `<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button>${reportsSettingsBtn}</div>`;
-    const settingsBtn  = hasSettings ? '<button class="tab-btn" id="tab-btn-settings">⚙️ Настройки</button>' : '';
+    const settingsBtn  = hasSettings ? `<button class="tab-btn" id="tab-btn-settings">${ICONS.settings} Настройки</button>` : '';
     const settingsPane = hasSettings ? '<div class="pane hidden" id="settings-pane"><button class="side-btn left" id="side-set-to-reports"><span class="side-text">Отчёты</span></button></div>' : '';
-    const settingsCh   = hasSettings ? '<button class="choice-btn" id="choice-settings"><span class="choice-icon">⚙️</span><span class="choice-label">Настройки</span></button>' : '';
+    const settingsCh   = hasSettings ? `<button class="choice-btn" id="choice-settings"><span class="choice-icon">${ICONS.settings}</span><span class="choice-label">Настройки</span></button>` : '';
     const permsScript  = `<script>window.SW_PERMS=${swPerms};</script>`;
     const html = SHELL_HTML
       .replace('<!--DNAME-->', escapeHtml(session.display_name))
-      .replace('<!--REPORTS_TAB_BTN-->', '<button class="tab-btn" id="tab-btn-reports">📊 Отчёты</button>')
+      .replace('<!--REPORTS_TAB_BTN-->', `<button class="tab-btn" id="tab-btn-reports">${ICONS.reports} Отчёты</button>`)
       .replace('<!--REPORTS_SIDE_FROM_MEASURE-->', '<button class="side-btn" id="side-to-reports"><span class="side-text">Отчёты</span></button>')
       .replace('<!--REPORTS_PANE-->', reportsPane)
-      .replace('<!--REPORTS_CHOICE_BTN-->', '<button class="choice-btn" id="choice-reports"><span class="choice-icon">📊</span><span class="choice-label">Отчёты</span></button>')
+      .replace('<!--REPORTS_CHOICE_BTN-->', `<button class="choice-btn" id="choice-reports"><span class="choice-icon">${ICONS.reports}</span><span class="choice-label">Отчёты</span></button>`)
       .replace('<!--METRICS_TAB_BTN-->', '')
       .replace('<!--METRICS_PANE-->', '')
       .replace('<!--METRICS_CHOICE_BTN-->', '')
