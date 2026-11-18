@@ -43,7 +43,7 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
-### 18.11.2026 · task 67 · проверка путей TV-пересчёта + 5 новых тестов calcLosses
+### 18.11.2026 · 8f16595 · task 67 · проверка путей TV-пересчёта + 5 новых тестов calcLosses
 
 - **Пути recalcStudioResultForClient подтверждены** (код не менялся): measure.ts:515 (POST /measure/measurements), inbody.ts:146 (POST /inbody/qr), inbody.ts:259 (POST /inbody/csv-import, fire-and-forget), inbody.ts:373 (POST /inbody/recalculate, fire-and-forget), inbody.ts:501 (POST /inbody/link-to-client) — все 5 путей присутствуют.
 - **studioResults.test.ts**: добавлено 5 тестов `calcLosses` — cm only (kgLost=0, fatKgLost=null), kg only (нет замеров — cmLost=0), fat only (вес одинаков, жир уменьшился), all metrics grew (cmLost=0, kgLost=0), mixed (cm fell weight rose → cmLost>0, kgLost=0). Итого 12 тестов, все проходят.

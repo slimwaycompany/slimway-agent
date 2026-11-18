@@ -7,7 +7,7 @@
 
 ## Сделано
 
-### 18.11.2026 · task 67 · syncLeads() создаёт body_clients для заявок с телефоном
+### 18.11.2026 · 8f16595 · task 67 · syncLeads() создаёт body_clients для заявок с телефоном
 
 - **crmLeadsSync.ts** `syncLeads()`: после upsert всех заявок собирает телефоны (normPhone → `7XXXXXXXXXX`), фильтрует по `body_clients.phone_digits` (SELECT IN), вставляет только новых в батчах по 100 (`{name: «Имя Фамилия», phone: «+7XXXXXXXXXX»}`); всё в try/catch — ошибка не прерывает синк; логирует `[crm-leads-sync] body_clients: добавлено N`.
 - Не затрагивает: `fitbase_clients_cache`, кнопку «Перенести клиентов InBody», существующих клиентов в `body_clients`.
