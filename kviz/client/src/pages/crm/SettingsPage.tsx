@@ -23,7 +23,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'tv';
+type Section = 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -2433,6 +2433,9 @@ interface ControlCfg {
   session_minutes: number; s3_after_minutes: number;
   s4_enabled: boolean; s4_sessions_left: number; s4_ended_contact_days: number; s4_no_visit_days: number; s4_retry_days: number; s4_checks: string[];
   s5_enabled: boolean; s5_mark_minutes: number; s5_checks: string[];
+  show_my_shift: boolean;
+  arrive_before_minutes: number;
+  checkin_mobile_hidden_positions: string[];
 }
 
 const S3_CHECKS = ['s3_no_source','s3_no_manager','s3_no_task','s3_no_lost_reason','s3_bad_comment','s3_no_client_card','s3_no_booking','s3_no_next_step','s3_client_fields','s3_bad_name'];
@@ -2504,6 +2507,7 @@ function TimeField({ label, value, onChange }: { label: string; value: string; o
 function ControlSettingsSection() {
   const [cfg, setCfg] = useState<ControlCfg | null>(null);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
+  const [positions, setPositions] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [ok, setOk] = useState(false);
@@ -2512,9 +2516,11 @@ function ControlSettingsSection() {
     Promise.all([
       fetch('/kviz/api/control/settings', { credentials: 'include' }).then(r => r.json()),
       fetch('/kviz/api/control/funnel-stages', { credentials: 'include' }).then(r => r.json()),
-    ]).then(([c, s]) => {
+      fetch('/api/positions', { credentials: 'include' }).then(r => r.ok ? r.json() : []),
+    ]).then(([c, s, p]) => {
       setCfg(c as ControlCfg);
       setStages(Array.isArray(s) ? s : []);
+      setPositions(Array.isArray(p) ? (p as { id: string; name: string; is_archived?: boolean }[]).filter(x => !x.is_archived) : []);
     });
   }, []);
 
@@ -2638,11 +2644,300 @@ function ControlSettingsSection() {
         <CheckList checks={S5_CHECKS} labels={S5_LABELS} value={cfg.s5_checks} onChange={v => patch({ s5_checks: v })} />
       </div>
 
+      {/* Отметка на смене (check-in) */}
+      <div style={grpStyle}>
+        <div style={grpTitle}>Отметка на смене</div>
+        <ToggleRow label="Показывать раздел «Моя смена» менеджеру" checked={cfg.show_my_shift ?? false} onChange={v => patch({ show_my_shift: v })} />
+        <NumField label="Опоздание = приход позднее чем за N мин до смены" value={cfg.arrive_before_minutes ?? 15} onChange={v => patch({ arrive_before_minutes: v })} min={0} max={120} />
+        {positions.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+              Скрыть кнопку «Пришла» на мобильных для должностей
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {positions.map(p => (
+                <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox"
+                    checked={(cfg.checkin_mobile_hidden_positions ?? []).includes(p.id)}
+                    onChange={e => {
+                      const cur = cfg.checkin_mobile_hidden_positions ?? [];
+                      patch({ checkin_mobile_hidden_positions: e.target.checked ? [...cur, p.id] : cur.filter(x => x !== p.id) });
+                    }} />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button style={S.saveBtn} onClick={save} disabled={saving}>
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Control Schedule ──────────────────────────────────────────────────────────
+
+function ControlScheduleSection() {
+  const todayISO = () => new Date(Date.now() + 5*3600_000).toISOString().slice(0, 10);
+  const [from, setFrom] = useState(todayISO);
+  const [to,   setTo]   = useState(todayISO);
+  const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  async function load() {
+    setLoading(true);
+    const r = await fetch(`/kviz/api/control/schedule?from=${from}&to=${to}`, { credentials: 'include' });
+    setLoading(false);
+    if (r.ok) setRows(await r.json());
+  }
+
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function sync() {
+    setSyncing(true); setMsg('');
+    const r = await api('POST', '/kviz/api/control/schedule/sync');
+    setSyncing(false);
+    if (r.ok) { setMsg(`Синхронизировано: ${r.data.marks ?? 0} отметок, ${r.data.schedule ?? 0} строк`); await load(); }
+    else setMsg(r.data?.error || 'Ошибка');
+  }
+
+  const roleLabel = (v: unknown) => v === 'call_center' ? 'КЦ' : v === 'consultant' ? 'КОНС' : '—';
+
+  return (
+    <div style={S.section}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+          style={{ padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14 }} />
+        <span style={{ color: '#64748b' }}>—</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)}
+          style={{ padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14 }} />
+        <button style={S.editBtn} onClick={load} disabled={loading}>{loading ? '…' : 'Показать'}</button>
+        <button style={S.addBtn} onClick={sync} disabled={syncing}>{syncing ? 'Синхронизация…' : 'Синхронизировать с таблицей'}</button>
+      </div>
+      {msg && <div style={{ marginBottom: 8, fontSize: 13, color: msg.startsWith('С') ? '#16a34a' : '#ef4444' }}>{msg}</div>}
+      <div style={S.list}>
+        <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 90px 90px 90px 90px 60px', gap: 0, background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '8px 12px', fontSize: 12, fontWeight: 700, color: '#64748b' }}>
+          <span>Дата</span><span>Сотрудник</span><span>План (нач)</span><span>План (кон)</span><span>Факт (нач)</span><span>Факт (кон)</span><span>Роль</span>
+        </div>
+        {rows.length === 0 && !loading && <div style={S.empty}>Нет данных за период</div>}
+        {rows.map((r, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 90px 90px 90px 90px 60px', gap: 0, padding: '8px 12px', borderBottom: '1px solid #f1f5f9', fontSize: 13, alignItems: 'center' }}>
+            <span style={{ color: '#64748b' }}>{String(r.shift_date)}</span>
+            <span style={{ fontWeight: 600 }}>{String(r.user_name)}</span>
+            <span>{String(r.plan_start ?? '—')}</span>
+            <span>{String(r.plan_end   ?? '—')}</span>
+            <span style={{ color: r.fact_start ? '#16a34a' : '#94a3b8' }}>{String(r.fact_start ?? '—')}</span>
+            <span style={{ color: r.fact_end   ? '#16a34a' : '#94a3b8' }}>{String(r.fact_end   ?? '—')}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#3b82f6' }}>{roleLabel(r.role)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Trusted Devices ───────────────────────────────────────────────────────────
+
+function TrustedDevicesSection() {
+  const [devices, setDevices] = useState<Record<string, unknown>[]>([]);
+  const [name, setName] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
+
+  async function load() {
+    const r = await fetch('/kviz/api/checkin/devices', { credentials: 'include' });
+    if (r.ok) setDevices(await r.json());
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function register() {
+    if (!name.trim()) { setErr('Введите название'); return; }
+    setAdding(true); setErr(''); setMsg('');
+    const r = await api('POST', '/kviz/api/checkin/register', { name: name.trim() });
+    setAdding(false);
+    if (!r.ok) { setErr(r.data?.error || 'Ошибка'); return; }
+    setMsg(`Компьютер «${name.trim()}» зарегистрирован и привязан к этому браузеру`);
+    setName('');
+    await load();
+  }
+
+  async function deactivate(id: string) {
+    const r = await api('DELETE', `/kviz/api/checkin/devices/${id}`);
+    if (r.ok) await load();
+  }
+
+  return (
+    <div style={S.section}>
+      <div style={{ marginBottom: 16, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e' }}>
+        Зарегистрируйте компьютеры, с которых сотрудники будут отмечаться. Эта страница должна быть открыта на нужном компьютере — cookie привяжется к этому браузеру.
+      </div>
+      {err && <div style={S.errBox}>{err}</div>}
+      {msg && <div style={{ ...S.errBox, background: '#f0fdf4', color: '#16a34a' }}>{msg}</div>}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input style={{ ...S.inp, flex: 1 }} placeholder="Название компьютера (например: Ресепшн 1)"
+          value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && register()} />
+        <button style={S.addBtn} onClick={register} disabled={adding}>
+          {adding ? 'Регистрация…' : 'Зарегистрировать этот компьютер'}
+        </button>
+      </div>
+      <div style={S.list}>
+        {devices.length === 0 && <div style={S.empty}>Нет доверенных компьютеров</div>}
+        {devices.map(d => (
+          <div key={String(d.id)} style={{ ...S.row }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {String(d.name)}
+                {d.is_current && <span style={{ fontSize: 11, background: '#dcfce7', color: '#16a34a', padding: '1px 6px', borderRadius: 5, fontWeight: 700 }}>этот компьютер</span>}
+                {!d.is_active && <span style={{ fontSize: 11, background: '#fee2e2', color: '#dc2626', padding: '1px 6px', borderRadius: 5 }}>отключён</span>}
+              </div>
+              <span style={S.meta}>Добавил: {String(d.created_by ?? '—')} · Последний визит: {d.last_seen_at ? new Date(String(d.last_seen_at)).toLocaleString('ru-RU') : '—'}</span>
+            </div>
+            <div style={S.rowActions}>
+              {d.is_active && <button style={S.delBtn} onClick={() => deactivate(String(d.id))}>Отключить</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── PBX (АТС) ─────────────────────────────────────────────────────────────────
+
+function PbxSection() {
+  const [settings, setSettings] = useState<{ webhook_url: string | null; configured: boolean; extensions: Record<string, unknown>[] } | null>(null);
+  const [calls,  setCalls]  = useState<Record<string, unknown>[]>([]);
+  const [events, setEvents] = useState<Record<string, unknown>[]>([]);
+  const [tab, setTab] = useState<'extensions' | 'calls' | 'events'>('extensions');
+  const [extNum, setExtNum] = useState('');
+  const [extUser, setExtUser] = useState('');
+  const [err, setErr] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  async function load() {
+    const r = await api('GET', '/kviz/api/pbx/settings');
+    if (r.ok) setSettings(r.data);
+  }
+  async function loadCalls()  { const r = await api('GET', '/kviz/api/pbx/calls');  if (r.ok) setCalls(r.data); }
+  async function loadEvents() { const r = await api('GET', '/kviz/api/pbx/events'); if (r.ok) setEvents(r.data); }
+
+  useEffect(() => { load(); }, []);
+  useEffect(() => { if (tab === 'calls') loadCalls(); if (tab === 'events') loadEvents(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function addExt() {
+    if (!extNum.trim() || !extUser.trim()) { setErr('Введите номер и сотрудника'); return; }
+    setErr('');
+    const r = await api('POST', '/kviz/api/pbx/extensions', { extension: extNum.trim(), user_name: extUser.trim() });
+    if (!r.ok) { setErr(r.data?.error || 'Ошибка'); return; }
+    setExtNum(''); setExtUser(''); await load();
+  }
+
+  async function delExt(ext: string) {
+    const r = await api('DELETE', `/kviz/api/pbx/extensions/${encodeURIComponent(ext)}`);
+    if (r.ok) await load();
+  }
+
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
+    fontSize: 13, fontWeight: active ? 700 : 500,
+    color: active ? '#02BDB6' : '#64748b',
+    borderBottom: active ? '2px solid #02BDB6' : '2px solid transparent',
+  });
+
+  return (
+    <div style={S.section}>
+      {!settings && <div style={{ color: '#94a3b8', padding: 24 }}>Загрузка…</div>}
+      {settings && (
+        <>
+          <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Webhook URL для OnlinePBX</div>
+            {settings.configured && settings.webhook_url ? (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <code style={{ flex: 1, fontSize: 11, background: '#f8fafc', padding: '6px 10px', borderRadius: 6, wordBreak: 'break-all', border: '1px solid #e2e8f0' }}>{settings.webhook_url}</code>
+                <button style={S.editBtn} onClick={async () => { await navigator.clipboard.writeText(settings.webhook_url!); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+                  {copied ? '✓' : 'Копировать'}
+                </button>
+              </div>
+            ) : (
+              <div style={{ color: '#ef4444', fontSize: 13 }}>PBX_WEBHOOK_SECRET не задан в Render Environment</div>
+            )}
+          </div>
+
+          <div style={{ borderBottom: '1px solid #e2e8f0', display: 'flex', marginBottom: 16 }}>
+            <button style={tabStyle(tab === 'extensions')} onClick={() => setTab('extensions')}>Внутренние номера</button>
+            <button style={tabStyle(tab === 'calls')}      onClick={() => setTab('calls')}>Последние звонки</button>
+            <button style={tabStyle(tab === 'events')}     onClick={() => setTab('events')}>События</button>
+          </div>
+
+          {tab === 'extensions' && (
+            <>
+              {err && <div style={S.errBox}>{err}</div>}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                <input style={{ ...S.inp, width: 100 }} placeholder="Номер" value={extNum} onChange={e => setExtNum(e.target.value)} />
+                <input style={{ ...S.inp, flex: 1, minWidth: 150 }} placeholder="Сотрудник (display_name)" value={extUser} onChange={e => setExtUser(e.target.value)} />
+                <button style={S.addBtn} onClick={addExt}>Добавить</button>
+              </div>
+              <div style={S.list}>
+                {settings.extensions.length === 0 && <div style={S.empty}>Нет привязанных номеров</div>}
+                {settings.extensions.map(e => (
+                  <div key={String(e.extension)} style={S.row}>
+                    <div>
+                      <span style={{ fontWeight: 600 }}>{String(e.extension)}</span>
+                      <span style={{ marginLeft: 8, color: '#374151' }}>{String(e.user_name)}</span>
+                    </div>
+                    <button style={S.delBtn} onClick={() => delExt(String(e.extension))}>Удалить</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {tab === 'calls' && (
+            <div style={S.list}>
+              {calls.length === 0 && <div style={S.empty}>Нет звонков</div>}
+              {calls.map((c, i) => (
+                <div key={i} style={S.row}>
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{String(c.client_phone ?? '—')}</span>
+                    <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>{String(c.direction ?? '')} · {String(c.status ?? '')}</span>
+                    {c.user_name && <span style={{ marginLeft: 8, fontSize: 12 }}>{String(c.user_name)}</span>}
+                  </div>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{c.started_at ? new Date(String(c.started_at)).toLocaleString('ru-RU') : '—'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === 'events' && (
+            <div style={S.list}>
+              {events.length === 0 && <div style={S.empty}>Нет событий</div>}
+              {events.map((e, i) => (
+                <div key={i} style={S.row}>
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{String(e.event ?? '—')}</span>
+                    <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>{String(e.call_uuid ?? '')}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {e.error && <span style={{ fontSize: 11, color: '#ef4444' }}>{String(e.error)}</span>}
+                    <span style={{ fontSize: 11, background: e.processed ? '#dcfce7' : '#fee2e2', color: e.processed ? '#16a34a' : '#dc2626', padding: '1px 6px', borderRadius: 4 }}>{e.processed ? 'OK' : 'Ошибка'}</span>
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{e.received_at ? new Date(String(e.received_at)).toLocaleString('ru-RU') : '—'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -3073,8 +3368,11 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: 'lost-reasons', label: 'Причины отказа',       icon: '❌' },
   { id: 'fb-users',     label: 'Сопоставление FB',     icon: '👤' },
   { id: 'scriptolog',   label: 'Скриптолог',           icon: '📝' },
-  { id: 'control',      label: 'Контроль менеджеров',  icon: '📊' },
-  { id: 'tv',           label: 'ТВ-экран',             icon: '📺' },
+  { id: 'control',          label: 'Контроль менеджеров',  icon: '📊' },
+  { id: 'control-schedule', label: 'График смен',           icon: '📅' },
+  { id: 'control-devices',  label: 'Дов. компьютеры',       icon: '💻' },
+  { id: 'pbx',              label: 'АТС',                   icon: '📞' },
+  { id: 'tv',               label: 'ТВ-экран',              icon: '📺' },
 ];
 
 export default function SettingsPage() {
@@ -3130,8 +3428,11 @@ export default function SettingsPage() {
         {section === 'lost-reasons' && <LostReasonsSection />}
         {section === 'fb-users'   && <FbUsersSection />}
         {section === 'scriptolog' && <ScriptologSection />}
-        {section === 'control'    && <ControlSettingsSection />}
-        {section === 'tv'         && <TvSection />}
+        {section === 'control'          && <ControlSettingsSection />}
+        {section === 'control-schedule' && <ControlScheduleSection />}
+        {section === 'control-devices'  && <TrustedDevicesSection />}
+        {section === 'pbx'              && <PbxSection />}
+        {section === 'tv'               && <TvSection />}
       </div>
     </div>
   );

@@ -116,6 +116,80 @@ export default function ManagerPage() {
   const [, setTick] = useState(0);
   const [showCashClosing, setShowCashClosing] = useState(false);
 
+  // Check-in state
+  const [checkinStatus, setCheckinStatus] = useState<{ trusted: boolean; device_name: string | null; hide_on_mobile: boolean } | null>(null);
+  const [checkinOpen, setCheckinOpen]     = useState<'in' | 'out' | null>(null);
+  const [checkinPhoto, setCheckinPhoto]   = useState<string | null>(null);
+  const [checkinRole, setCheckinRole]     = useState<'call_center' | 'consultant' | ''>('');
+  const [requireRole, setRequireRole]     = useState(false);
+  const [checkinBusy, setCheckinBusy]     = useState(false);
+  const [checkinErr,  setCheckinErr]      = useState('');
+  const [checkinOk,   setCheckinOk]       = useState(false);
+  const videoRef  = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const startCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      streamRef.current = stream;
+      if (videoRef.current) { videoRef.current.srcObject = stream; void videoRef.current.play(); }
+    } catch { setCheckinErr('Нет доступа к камере'); }
+  }, []);
+
+  function stopStream() {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+  }
+
+  function capturePhoto() {
+    if (!videoRef.current) return;
+    const cv = document.createElement('canvas');
+    cv.width = 320; cv.height = 240;
+    cv.getContext('2d')?.drawImage(videoRef.current, 0, 0, 320, 240);
+    setCheckinPhoto(cv.toDataURL('image/jpeg', 0.7));
+    stopStream();
+  }
+
+  async function submitCheckin() {
+    if (!checkinPhoto || checkinBusy) return;
+    setCheckinBusy(true); setCheckinErr('');
+    try {
+      const body: Record<string, unknown> = {
+        type: checkinOpen,
+        photo: checkinPhoto.replace(/^data:image\/\w+;base64,/, ''),
+      };
+      if (checkinRole) body.role = checkinRole;
+      const r = await fetch('/kviz/api/checkin/mark', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (r.status === 400 && d.require_role) { setRequireRole(true); setCheckinBusy(false); return; }
+      if (!r.ok) { setCheckinErr(d.error || 'Ошибка'); setCheckinBusy(false); return; }
+      setCheckinOk(true);
+      setTimeout(() => { setCheckinOpen(null); setCheckinOk(false); stopStream(); }, 1500);
+    } catch (e) { setCheckinErr(String(e)); }
+    setCheckinBusy(false);
+  }
+
+  function openCheckinModal(type: 'in' | 'out') {
+    setCheckinOpen(type); setCheckinPhoto(null);
+    setRequireRole(false); setCheckinRole('');
+    setCheckinErr(''); setCheckinOk(false);
+  }
+
+  function closeCheckinModal() {
+    setCheckinOpen(null); stopStream(); setCheckinPhoto(null);
+    setRequireRole(false); setCheckinRole(''); setCheckinErr(''); setCheckinOk(false);
+  }
+
+  // Start camera when modal opens; stop when it closes
+  useEffect(() => {
+    if (checkinOpen) void startCamera();
+    return () => stopStream();
+  }, [checkinOpen, startCamera]);
+
   useEffect(() => {
     const t = setInterval(() => setTick(n => n + 1), 60_000);
     return () => clearInterval(t);
@@ -159,6 +233,8 @@ export default function ManagerPage() {
       .then(r => r.ok ? r.json() : [])
       .then((d: unknown) => setShiftUsers(Array.isArray(d) ? d as { id: string; display_name: string }[] : []))
       .catch(() => {});
+    fetch('/kviz/api/checkin/device-status', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(setCheckinStatus).catch(() => {});
     const t = setInterval(() => { load(); loadShift(); loadWeekReels(); }, 30_000);
     return () => clearInterval(t);
   }, [load, loadShift, loadWeekReels]);
@@ -341,6 +417,69 @@ export default function ManagerPage() {
               Сейчас на смене: {shiftData.on_shift.map(ws => `${ws.name} (с ${fmtHHMM(ws.started_at)})`).join(', ')}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Check-in block: only on trusted device */}
+      {checkinStatus?.trusted && !(checkinStatus.hide_on_mobile && window.innerWidth <= 640) && (
+        <div style={s.checkinBlock}>
+          <div style={s.checkinLabel}>{checkinStatus.device_name ?? 'Студия'}</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={s.btnCheckinIn}  onClick={() => openCheckinModal('in')}>Пришла</button>
+            <button style={s.btnCheckinOut} onClick={() => openCheckinModal('out')}>Ушла</button>
+          </div>
+        </div>
+      )}
+
+      {/* Check-in modal */}
+      {checkinOpen && (
+        <div style={s.ciOverlay} onClick={closeCheckinModal}>
+          <div style={s.ciModal} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{checkinOpen === 'in' ? '📸 Пришла на смену' : '📸 Ушла со смены'}</div>
+              <button style={s.iconBtn} onClick={closeCheckinModal}>✕</button>
+            </div>
+            {checkinOk ? (
+              <div style={{ textAlign: 'center', color: '#16a34a', fontSize: 15, fontWeight: 700, padding: '20px 0' }}>✓ Отметка принята</div>
+            ) : (
+              <>
+                {checkinErr && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{checkinErr}</div>}
+                {!checkinPhoto ? (
+                  <>
+                    <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', borderRadius: 8, background: '#000', display: 'block' }} />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+                      <button style={s.btnCancelEnd} onClick={closeCheckinModal}>Отмена</button>
+                      <button style={s.btnStartShift} onClick={capturePhoto}>Сделать фото</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <img src={checkinPhoto} alt="" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+                    {requireRole && (
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: '#374151' }}>Укажите роль:</div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {(['call_center', 'consultant'] as const).map(r => (
+                            <button key={r} onClick={() => setCheckinRole(r)}
+                              style={{ flex: 1, padding: '8px', borderRadius: 8, border: `2px solid ${checkinRole === r ? '#02BDB6' : '#e2e8f0'}`,
+                                background: checkinRole === r ? '#e0faf9' : '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>
+                              {r === 'call_center' ? 'Call Center' : 'Консультант'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+                      <button style={s.btnCancelEnd} onClick={() => { setCheckinPhoto(null); setCheckinErr(''); setRequireRole(false); void startCamera(); }}>Переснять</button>
+                      <button style={s.btnStartShift} disabled={checkinBusy || (requireRole && !checkinRole)} onClick={() => void submitCheckin()}>
+                        {checkinBusy ? '…' : 'Отправить'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -676,4 +815,11 @@ const s: Record<string, React.CSSProperties> = {
   actions:       { display: 'flex', gap: 8, marginTop: 8 },
   btnDone:       { padding: '7px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
   btnCancel:     { padding: '7px 16px', background: 'none', color: '#ef4444', border: '1px solid #ef4444', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  checkinBlock:  { background: '#fff', padding: '10px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 12 },
+  checkinLabel:  { fontSize: 12, color: '#64748b', fontWeight: 600, flex: 1 },
+  btnCheckinIn:  { padding: '8px 20px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  btnCheckinOut: { padding: '8px 20px', background: '#f8fafc', color: '#374151', border: '1.5px solid #e2e8f0', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  ciOverlay:     { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 },
+  ciModal:       { background: '#fff', borderRadius: 16, padding: 24, width: 'min(400px,95vw)', maxHeight: '90dvh', overflow: 'auto', boxShadow: '0 8px 40px rgba(0,0,0,.25)' },
+  iconBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#64748b', padding: '2px 6px' },
 };

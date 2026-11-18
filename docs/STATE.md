@@ -22,7 +22,7 @@
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 05.11.2026 | task 38: fix sync (budget/title NOT NULL, user_id, stage kind), dict sync, deleted leads, LeadDrawer body→text, postMessage, ManagerPage groups |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | ⚪ | 05.11.2026 | Модуль создан: собраны решения по визуалу, аудит интерфейса (18 проблем) |
-| Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 06.11.2026 | task 40-2 ч.6: фикс fitbase_visits.id→fitbase_id (S5/S3 теперь работают), 53 error checks, staff_name_map editor, bottom sheet, control-schema.md |
+| Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 18.11.2026 | task 65: роль (КЦ/КОНС) в графике смен, отметка v2 (доверенный ПК + webcam-фото + опоздание), должность ОКК, приёмник OnlinePBX |
 | Telegram-бот клиентов | `modules/telegram-bot.md` | Telegram-бот клиентов | 🟡 | 17.11.2026 | task 60: InBody детальный экран — 4 блока (состав/до цели/с прошлого/со старта), навигация ‹/›, ideal_weight |
 
 Вкладка «Воронка» — модуль `modules/crm-leads.md` (пока заглушка, собираем требования).

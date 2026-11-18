@@ -36,6 +36,8 @@ import { syncControlSheet, shouldSyncSheet } from './jobs/controlSheetSync';
 import { runProbeControl } from './jobs/probeControl';
 import { POSITION_PRESETS } from './core/permissions';
 import { mountTelegramRoute } from './http/telegram';
+import { buildCheckinRouter } from './http/checkin';
+import { buildPbxRouter, runPbxSync } from './http/pbx';
 
 const PROCESS_STARTED_AT = new Date().toISOString();
 
@@ -343,6 +345,17 @@ async function handleProbeControl(req: express.Request, res: express.Response): 
 app.get('/run/probe-control',  handleProbeControl);
 app.post('/run/probe-control', handleProbeControl);
 
+// pbx-sync: pull last 2h from OnlinePBX API
+async function handlePbxSync(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  try {
+    const result = await runPbxSync();
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+}
+app.get('/run/pbx-sync',  handlePbxSync);
+app.post('/run/pbx-sync', handlePbxSync);
+
 // shifts-autoclose — must be before generic /run/:job
 app.use(buildShiftsAutocloseRoute());
 
@@ -476,8 +489,29 @@ mountScriptologRoutes(app);
 mountKvizRoutes(app);
 mountWindowRoutes(app);
 mountTelegramRoute(app);
+app.use(buildCheckinRouter());
+app.use(buildPbxRouter());
 
 // ── Startup: seed default permissions for managers without any ────────────────
+
+const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
+
+// Ensure "ОКК" row exists in app_positions so seedPositionPresets can seed its perms
+async function seedOkkPosition(): Promise<void> {
+  try {
+    const { data: pos } = await supabase
+      .from('app_positions')
+      .select('id')
+      .eq('code', 'okk')
+      .maybeSingle();
+    if (!pos) {
+      await supabase.from('app_positions').insert({ code: 'okk', name: 'ОКК', is_active: true });
+      console.log('[startup] created app_position: okk');
+    }
+  } catch (e) {
+    console.error('[startup] seedOkkPosition error:', (e as Error).message);
+  }
+}
 
 // Seed app_position_permissions from POSITION_PRESETS if a position has no rows yet
 async function seedPositionPresets(): Promise<void> {
@@ -553,5 +587,5 @@ async function clearStaleLocks(): Promise<void> {
 
 clearStaleLocks().catch(() => {/* already logged inside */});
 cleanLegacyPermKeys().catch(() => {/* already logged inside */});
-seedPositionPresets().catch(() => {/* already logged inside */});
+seedOkkPosition().then(() => seedPositionPresets()).catch(() => {/* already logged inside */});
 app.listen(env.PORT, () => console.log(`[server] port ${env.PORT}`));

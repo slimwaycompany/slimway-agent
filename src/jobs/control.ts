@@ -73,6 +73,9 @@ export interface ControlSettings {
   s5_enabled:             boolean;
   s5_mark_minutes:        number;
   s5_checks:              string[];
+  show_my_shift:                   boolean;
+  arrive_before_minutes:           number;
+  checkin_mobile_hidden_positions: string[];
 }
 
 export const DEFAULT_SETTINGS: ControlSettings = {
@@ -109,6 +112,9 @@ export const DEFAULT_SETTINGS: ControlSettings = {
   s5_enabled:             true,
   s5_mark_minutes:        30,
   s5_checks:              ['s5_unmarked','s5_no_abonement','s5_expired_abonement'],
+  show_my_shift:                   false,
+  arrive_before_minutes:           15,
+  checkin_mobile_hidden_positions: [],
 };
 
 export async function loadSettings(): Promise<ControlSettings> {

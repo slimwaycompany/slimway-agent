@@ -16,7 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 65 | control | Control 2.0 этап 1: роль в графике смен, отметка v2 (доверенный ПК + фото), должность ОКК, приёмник АТС OnlinePBX | `docs/tasks/65-control2-stage1.md` | 🔧 в работе (Claude, 18.11.2026) |
+| 65 | control | Control 2.0 этап 1: роль в графике смен, отметка v2 (доверенный ПК + фото), должность ОКК, приёмник АТС OnlinePBX | `docs/tasks/65-control2-stage1.md` | ✅ готово (см. журнал) |
 | 64 | tv | ТВ: живой фон, тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка счётчиков, настройки эффектов в редакторе | ТЗ в чате | ✅ готово (8251bc5) |
 | 63 | tv | ТВ: редактор шаблона внутри макета экрана (16/9), радиус slot_client, мини-превью с реальными данными, валидация сервера | ТЗ в чате | ✅ готово (98c342b) |
 | 62 | manager | «Мой месяц»: личный отчёт менеджера — план, заработок, продажи, смены, задачи, клиенты, мотивация | ТЗ в чате | ✅ готово (a234da8) |
@@ -122,6 +122,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 18.11.2026 | Claude | 65 control: src/http/checkin.ts (доверенные ПК, отметка с фото); src/http/pbx.ts (OnlinePBX webhook, pbx_events, pbx_calls, настройки АТС); src/jobs/control.ts (3 новых поля настроек); src/http/control.ts (эндпоинты расписания + syncControlSheet); src/index.ts (роутеры, /run/pbx-sync, seedOkkPosition); src/core/permissions.ts (OKK-пресет, новые права); src/jobs/controlSheetSync.ts (parseScheduleCell, postToControlSheet); SettingsPage (3 новых секции: расписание, устройства, АТС); ManagerPage (кнопки «Пришла/Ушла», модал камеры) | — | ⛔ Нужен SQL (таблицы control_shift_schedule c role/sheet_value, trusted_devices, pbx_events, pbx_calls). Нужен env на Render: PBX_WEBHOOK_SECRET (обязательно), ONLINEPBX_DOMAIN + ONLINEPBX_API_KEY (для /run/pbx-sync, опционально). |
 | 17.11.2026 | Claude | 64 tv: ElFx/ScreenFx/DEFAULT_FX/resolveScreenFx в tvScreenLayout.ts; TvBackground.tsx (blob-градиенты, SVG-зерно, staticOnly); TvScreen — float/glass/shadow/blur/counter-flash; TextBox flashClass/extraStyle; SlideTemplate staggerMs; ResultsPage — data-t переходы, enterBlur, sheen, dots, progressKey, TvBackground; TvScreenEditor — ScreenFxPanel + ElFxPanel; SettingsPage — TvBackground staticOnly в превью; src/http/tv.ts validateFx | 8251bc5 | SQL не нужен. Проверка на проде: /results?key=… — проверить анимацию фона, переходы слайдов, точки, прогресс; Настройки → Шаблоны слайдов → фон в превью; Редактор экрана → Эффекты экрана/элемента. |
 | 17.11.2026 | Claude | 63 tv: TvScreenEditor template-режим — 16:9 превью (TvScreen + затемнение + выделение карусели + carouselRef для drag); isDirty+confirmClose; заблокированный Save без карусели; слои «Экран (только просмотр)»; слой радиуса slot_client (0–50). SlideTemplate borderRadius. tvScreenLayout.ts и tv.ts radius-валидация. SettingsPage мини-превью с реальными данными. | 98c342b | Проверка на проде — ручная (Настройки → Шаблоны слайдов → Редактировать). |
 | 17.11.2026 | Claude | 62 manager: MyMonthPage.tsx + motivation.ts (новые); ManagerPage subTab; /mapped-staff + /my-month в manager.ts; export computePayroll, buildClientLeadMap, clMgr | a234da8 | SQL не нужен. Проверка на проде: заработок → сверить с Отчёты→Зарплата; переключение подвкладок. |

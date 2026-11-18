@@ -198,6 +198,43 @@
 
 ## Сделано
 <!-- новые записи сверху -->
+### 18.11.2026 · task 65 · Control 2.0 этап 1: роль в графике, отметка v2, ОКК, АТС OnlinePBX
+
+**Роль в графике смен (`src/jobs/controlSheetSync.ts`):**
+- `parseScheduleCell` парсит `ЧЧ:ММ-ЧЧ:ММ [КЦ|КОНС|CC|К]` → `{ start, end, role }` (call_center / consultant / null).
+- Поля `role` и `sheet_value` добавлены в upsert `control_shift_schedule`. `postToControlSheet` экспортирован для check-in.
+
+**Доверенные ПК + отметка прихода/ухода (`src/http/checkin.ts`):**
+- Новый router `buildCheckinRouter()`. Cookie `sw_device` = `<device_id>.<hmac16>` (подпись WINDOW_SECRET/CRON_SECRET).
+- `GET /kviz/api/checkin/devices` / `POST /kviz/api/checkin/register` (admin, ставит cookie, Max-Age 2 года) / `DELETE /kviz/api/checkin/devices/:id`.
+- `GET /kviz/api/checkin/device-status` → `{ trusted, device_name, hide_on_mobile }`.
+- `POST /kviz/api/checkin/mark` → фото (base64 JPEG, макс 500КБ) → bucket `shift-photos/YYYY-MM-DD/<user_id>_<in|out>_<HHMM>.jpg`; создаёт/обновляет `staff_shifts`; upsert `control_shift_marks`; отправляет в Google Sheet (action:'mark'); считает `late_minutes` / `left_early_minutes` из `control_shift_schedule`.
+
+**Должность ОКК + новые ключи прав (`src/core/permissions.ts`):**
+- Добавлены ключи: `reports.control_cc`, `reports.control_consultant`, `settings.control_schedule`, `settings.control_devices`, `settings.pbx`, `control.review`.
+- Новый пресет `okk`: задачи, смена, просмотр контроль 5п/cc/конс, сдвиги, задачи; `settings.control_schedule`; `control.review`.
+- `seedOkkPosition()` в `src/index.ts`: создаёт `app_positions` row `code='okk'` при старте если нет.
+
+**АТС OnlinePBX (`src/http/pbx.ts`):**
+- `GET /hooks/onlinepbx?key=` — проверка доступности.
+- `POST /hooks/onlinepbx?key=` — вебхук (JSON+form-urlencoded); 200 немедленно; async: insert `pbx_events`, parse → upsert `pbx_calls` (by call_uuid); привязка к `crm_leads` / `fitbase_clients_cache` по `phone_digits`.
+- Settings API: `GET/POST/DELETE /kviz/api/pbx/extensions`, `GET /kviz/api/pbx/settings` (webhook URL), `GET /kviz/api/pbx/calls`, `GET /kviz/api/pbx/events`.
+- `runPbxSync()` — опциональный pull из OnlinePBX API `/api/v1/history` (нужен `ONLINEPBX_DOMAIN` + `ONLINEPBX_API_KEY`).
+- `/run/pbx-sync` в `src/index.ts`.
+
+**UI Настройки (3 новых раздела, `kviz/client/src/pages/crm/SettingsPage.tsx`):**
+- `ControlScheduleSection` (`settings.control_schedule`): просмотр графика смен за период + кнопка «Синхронизировать с таблицей».
+- `TrustedDevicesSection` (`settings.control_devices`): список компьютеров, кнопка «Зарегистрировать этот компьютер» (cookie ставится сразу).
+- `PbxSection` (`settings.pbx`): webhook URL + внутренние номера CRUD + вкладки Звонки/События.
+- `ControlSettingsSection`: добавлена группа «Отметка на смене» — `show_my_shift`, `arrive_before_minutes`, `checkin_mobile_hidden_positions` (список должностей → скрыть кнопку на мобильных).
+
+**Менеджер — кнопки «Пришла» / «Ушла» (`kviz/client/src/pages/manager/ManagerPage.tsx`):**
+- Загружает `/kviz/api/checkin/device-status` при старте. Если `trusted=true`, показывает блок с кнопками.
+- Модальное окно с камерой (`getUserMedia`): видео → «Сделать фото» → превью → «Отправить». При `require_role=true` (нет роли в графике) → выбор «Call Center» / «Консультант».
+
+**Новые env (добавить в Render):** `PBX_WEBHOOK_SECRET` (обязателен для АТС); опционально `ONLINEPBX_DOMAIN`, `ONLINEPBX_API_KEY` (для `/run/pbx-sync`).
+
+
 ### 06.11.2026 · (task 40-2 ч.6) · fitbase_visits.id→fitbase_id, 53 error checks, schema, staff_name_map, bottom sheet
 - **Баг fitbase_visits PK**: PK таблицы — `fitbase_id` (string), колонки `id` нет. `checkS5` и `checkS3TrialVisitors` запрашивали `.select('id,...')` → ошибка 42703 → `return 0`. S3/S5 нарушения не создавались. Исправлено в 9 местах в `control.ts`: select `fitbase_id`, `.eq('fitbase_id', entityId)`, `String(v.fitbase_id)`.
 - **Error checks (53 места)**: все Supabase-запросы в `control.ts` получили `const { data, error }` + `if (error) console.error(...)`. В `checkViolationFixed` критично: ошибка → `return false` (нарушение не помечается исправлено ложно).

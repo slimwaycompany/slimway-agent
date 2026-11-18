@@ -9,11 +9,40 @@ function parseDDMMYYYY(s: string): string | null {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
-function parseHHMMRange(s: string): { start: string; end: string } | null {
-  const m = s.trim().match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
+// Parse "08:00-20:00" or "08:00-20:00 КЦ" or "08:00-20:00 КОНС" etc.
+function parseScheduleCell(s: string): { start: string; end: string; role: 'call_center' | 'consultant' | null } | null {
+  const m = s.trim().match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})(?:\s+(.+))?$/i);
   if (!m) return null;
-  const pad = (t: string) => t.length === 4 ? '0' + t : t; // "8:00" → "08:00"
-  return { start: pad(m[1]), end: pad(m[2]) };
+  const pad = (t: string) => t.length === 4 ? '0' + t : t;
+  const suffix = (m[3] ?? '').trim().toUpperCase();
+  const role: 'call_center' | 'consultant' | null =
+    suffix === 'КЦ' || suffix === 'CC' ? 'call_center' :
+    suffix === 'КОНС' || suffix === 'К' ? 'consultant' : null;
+  return { start: pad(m[1]), end: pad(m[2]), role };
+}
+
+// Legacy alias used in older schedule parsing
+function parseHHMMRange(s: string): { start: string; end: string } | null {
+  const r = parseScheduleCell(s);
+  return r ? { start: r.start, end: r.end } : null;
+}
+
+// Post action to the Control Google Sheet via Apps Script doPost
+export async function postToControlSheet(payload: Record<string, unknown>): Promise<void> {
+  const url = process.env.CONTROL_SHEET_URL;
+  const key = process.env.CONTROL_SHEET_SECRET;
+  if (!url || !key) return;
+  const body = JSON.stringify({ key, ...payload });
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    redirect: 'follow',
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`ControlSheet ${resp.status}: ${text.slice(0, 200)}`);
+  }
 }
 
 async function resolveDisplayName(
@@ -125,16 +154,19 @@ export async function syncControlSheet(): Promise<{ ok: boolean; marks: number; 
       const shiftDate = parseDDMMYYYY(row[0] ?? '');
       if (!shiftDate) continue;
 
-      const planByEmp = new Map<string, { start: string; end: string }>();
-      const factByEmp = new Map<string, { start: string; end: string }>();
+      type CellInfo = { start: string; end: string; role: 'call_center' | 'consultant' | null; raw: string };
+      const planByEmp = new Map<string, CellInfo>();
+      const factByEmp = new Map<string, CellInfo>();
 
       for (let c = 1; c < row.length; c++) {
         const col = cols[c];
         if (!col?.emp) continue;
-        const parsed = parseHHMMRange(row[c] ?? '');
+        const cellRaw = (row[c] ?? '').trim();
+        const parsed = parseScheduleCell(cellRaw);
         if (!parsed) continue;
-        if (col.isPlan && !planByEmp.has(col.emp)) planByEmp.set(col.emp, parsed);
-        if (col.isFact && !factByEmp.has(col.emp)) factByEmp.set(col.emp, parsed);
+        const info: CellInfo = { ...parsed, raw: cellRaw };
+        if (col.isPlan && !planByEmp.has(col.emp)) planByEmp.set(col.emp, info);
+        if (col.isFact && !factByEmp.has(col.emp)) factByEmp.set(col.emp, info);
       }
 
       const empNames = new Set([...planByEmp.keys(), ...factByEmp.keys()]);
@@ -145,11 +177,17 @@ export async function syncControlSheet(): Promise<{ ok: boolean; marks: number; 
         const plan = planByEmp.get(empRaw);
         const fact = factByEmp.get(empRaw);
 
+        // Role from fact if present, otherwise from plan
+        const role = fact?.role ?? plan?.role ?? null;
+        // sheet_value: fact raw value if present, else plan raw
+        const sheetValue = fact?.raw ?? plan?.raw ?? null;
+
         const { error } = await supabase.from('control_shift_schedule').upsert({
           branch_id:  BRANCH_ID, shift_date: shiftDate, user_name: userName,
           plan_start: plan?.start ?? null, plan_end: plan?.end ?? null,
           fact_start: fact?.start ?? null, fact_end: fact?.end ?? null,
           is_fact:    !!fact, source: 'google_sheet', synced_at: new Date().toISOString(),
+          role, sheet_value: sheetValue,
         }, { onConflict: 'branch_id,shift_date,user_name' });
         if (error) console.error('[sheet-sync] schedule upsert:', error.message);
         else schedCount++;

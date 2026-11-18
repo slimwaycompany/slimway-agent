@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession, requireAdmin } from './auth';
 import { loadSettings, saveSettings, DEFAULT_SETTINGS, runControl } from '../jobs/control';
+import { syncControlSheet } from '../jobs/controlSheetSync';
 
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -102,6 +103,14 @@ export function buildControlRouter(): Router {
       if (typeof v !== 'object' || v === null || Array.isArray(v)) errors.push('staff_name_map: ожидается объект');
       else patch.staff_name_map = v;
     }
+
+    if ('show_my_shift' in body) patch.show_my_shift = b(body.show_my_shift);
+    if ('arrive_before_minutes' in body) {
+      const v = n(body.arrive_before_minutes);
+      if (v < 0 || v > 120) errors.push('arrive_before_minutes: от 0 до 120');
+      else patch.arrive_before_minutes = v;
+    }
+    if ('checkin_mobile_hidden_positions' in body) patch.checkin_mobile_hidden_positions = arr(body.checkin_mobile_hidden_positions);
 
     if (errors.length) { res.status(400).json({ error: errors.join('; ') }); return; }
 
@@ -336,6 +345,34 @@ export function buildControlRouter(): Router {
       }
 
       res.json({ ok: true, review });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Schedule view (settings.control_schedule) ────────────────────────────
+
+  r.get('/kviz/api/control/schedule', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const from = str(req.query.from || req.query.date) || new Date(Date.now() + 5*3600_000).toISOString().slice(0, 10);
+    const to   = str(req.query.to) || from;
+    try {
+      const { data, error } = await supabase
+        .from('control_shift_schedule')
+        .select('shift_date,user_name,plan_start,plan_end,fact_start,fact_end,is_fact,role,sheet_value,source,synced_at')
+        .eq('branch_id', BRANCH_ID)
+        .gte('shift_date', from)
+        .lte('shift_date', to)
+        .order('shift_date')
+        .order('user_name');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data ?? []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/control/schedule/sync', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const result = await syncControlSheet();
+      res.json(result);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
