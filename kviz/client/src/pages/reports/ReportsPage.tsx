@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import Modal from '../../components/ui/Modal';
+import { toast } from '../../lib/toast';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea, Cell } from 'recharts';
 import OccupancySection from './OccupancySection';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
@@ -3778,7 +3779,7 @@ function ControlSection() {
   }
 
   async function doWaive(id: string) {
-    if (!waiveReason.trim()) { alert('Укажите причину'); return; }
+    if (!waiveReason.trim()) { toast.error('Укажите причину'); return; }
     await fetch(`/kviz/api/control/violations/${id}/waive`, {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason: waiveReason }),
