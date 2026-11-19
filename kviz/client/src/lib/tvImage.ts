@@ -1,4 +1,4 @@
-const MAX_SIDE  = 2400;
+﻿const MAX_SIDE  = 2400;
 const MAX_BYTES = 8 * 1024 * 1024;
 
 /** Compress image for upload: resize to ≤2400px long side; PNG→PNG (preserves transparency); JPEG→JPEG q0.9.

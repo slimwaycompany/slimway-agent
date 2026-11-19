@@ -1,4 +1,4 @@
-import type { FreeEl } from './FreeSlide';
+﻿import type { FreeEl } from './FreeSlide';
 
 interface Props {
   el: FreeEl & { type: 'image' };

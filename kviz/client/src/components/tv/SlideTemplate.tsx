@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { ShapeBox, ImageEl } from './TvScreen';
 import TextBox from './TextBox';
 import type { ScreenElImage, ScreenElShape, ScreenElText, TextStyle } from '../../lib/tvScreenLayout';
@@ -98,7 +98,7 @@ function TopEl({
     borderRadius: slotRadius,
     opacity: isEditor && hidden ? 0.25 : undefined,
     cursor: onElementClick ? 'pointer' : undefined,
-    outline: isEditor && isSelected ? '2px solid #02BDB6' : undefined,
+    outline: isEditor && isSelected ? '2px solid var(--primary)' : undefined,
   };
 
   let content: React.ReactNode = null;

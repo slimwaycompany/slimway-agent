@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { postToParent } from '../../utils/iframe';
 import { showConfirm } from '../../lib/confirm';
 
@@ -80,18 +80,18 @@ const KIND_LABELS: Record<string, string> = { created: 'Создан', comment: 
 function TaskItem({ task, onToggle, onDelete }: { task: LeadTask; onToggle: () => void; onDelete: () => void }) {
   const done = task.status === 'done';
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-      <input type="checkbox" checked={done} onChange={onToggle} style={{ marginTop: 2, flexShrink: 0, accentColor: '#02BDB6' }} />
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+      <input type="checkbox" checked={done} onChange={onToggle} style={{ marginTop: 2, flexShrink: 0, accentColor: 'var(--primary)' }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, color: done ? '#94a3b8' : '#1a202c', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word' }}>{task.description}</div>
+        <div style={{ fontSize: 13, color: done ? 'var(--text-3)' : 'var(--text)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word' }}>{task.description}</div>
         {task.due_at && (
-          <div style={{ fontSize: 11, color: task.is_overdue && !done ? '#ef4444' : '#94a3b8', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: task.is_overdue && !done ? 'var(--danger)' : 'var(--text-3)', marginTop: 2 }}>
             {fmtDate(task.due_at)}{task.is_overdue && !done ? ' — просрочено' : ''}
           </div>
         )}
-        {task.type && <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{task.type.name}</div>}
+        {task.type && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 1 }}>{task.type.name}</div>}
       </div>
-      <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: 14, padding: '0 2px', flexShrink: 0 }}>✕</button>
+      <button onClick={onDelete} style={{ background: 'none', border: 'none', color: 'var(--border)', cursor: 'pointer', fontSize: 14, padding: '0 2px', flexShrink: 0 }}>✕</button>
     </div>
   );
 }
@@ -262,7 +262,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
         style={{
           position: 'fixed', top: 0, right: 0, bottom: 0,
           width: 'min(100vw, 480px)',
-          background: '#fff', zIndex: 101,
+          background: 'var(--surface)', zIndex: 101,
           display: 'flex', flexDirection: 'column',
           boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
           fontFamily: "'Manrope',system-ui,sans-serif",
@@ -270,30 +270,30 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
         }}
       >
         {/* Drawer header */}
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #e2e8f0', flexShrink: 0, gap: 8 }}>
-          <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: '#1a202c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, gap: 8 }}>
+          <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {lead ? (lead.title ?? [lead.name, lead.surname].filter(Boolean).join(' ') ?? 'Заявка') : 'Загрузка...'}
           </div>
-          {lead && <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{lead.origin === 'manual' ? 'Вручную' : 'Fitbase'}</span>}
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', padding: '0 4px', flexShrink: 0 }}>✕</button>
+          {lead && <span style={{ fontSize: 11, color: 'var(--text-3)', flexShrink: 0 }}>{lead.origin === 'manual' ? 'Вручную' : 'Fitbase'}</span>}
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--text-2)', cursor: 'pointer', padding: '0 4px', flexShrink: 0 }}>✕</button>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           {(['main', 'custom'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              style={{ flex: 1, padding: '9px 0', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 700 : 500, color: tab === t ? '#02BDB6' : '#64748b', borderBottom: tab === t ? '2px solid #02BDB6' : '2px solid transparent', marginBottom: -1 }}>
+              style={{ flex: 1, padding: '9px 0', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 700 : 500, color: tab === t ? 'var(--primary)' : 'var(--text-2)', borderBottom: tab === t ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }}>
               {t === 'main' ? 'Основное' : 'Произвольные поля'}
             </button>
           ))}
         </div>
 
-        {err && <div style={{ background: '#fef2f2', color: '#ef4444', fontSize: 13, padding: '8px 16px', flexShrink: 0 }}>{err}</div>}
+        {err && <div style={{ background: 'var(--danger-soft)', color: 'var(--danger)', fontSize: 13, padding: '8px 16px', flexShrink: 0 }}>{err}</div>}
 
-        {!lead && <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>Загрузка...</div>}
+        {!lead && <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>Загрузка...</div>}
 
         {lead && tab === 'custom' && (
-          <div style={{ padding: 16, flex: 1, color: '#94a3b8', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ padding: 16, flex: 1, color: 'var(--text-3)', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center' }}><div style={{ fontSize: 36, marginBottom: 8 }}>🚧</div>В разработке</div>
           </div>
         )}
@@ -303,7 +303,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
             {/* Two-column layout on wide screens, single column on mobile */}
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
               {/* Left — lead fields */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', borderRight: '1px solid #f1f5f9', minWidth: 0 }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', borderRight: '1px solid var(--border)', minWidth: 0 }}>
                 <Field label="Заголовок"><input style={S.inp} value={title} onChange={e => setTitle(e.target.value)} /></Field>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <Field label="Имя"><input style={S.inp} value={name} onChange={e => setName(e.target.value)} /></Field>
@@ -311,7 +311,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
                 </div>
                 <Field label="Телефон">
                   <input style={S.inp} value={phone} onChange={e => setPhone(e.target.value)} type="tel" />
-                  {lead.phone && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{formatPhone(lead.phone)}</div>}
+                  {lead.phone && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{formatPhone(lead.phone)}</div>}
                 </Field>
                 <Field label="Email"><input style={S.inp} value={email} onChange={e => setEmail(e.target.value)} type="email" /></Field>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -346,21 +346,21 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
                     <option value="">— не назначен —</option>
                     {appUsers.map(u => <option key={u.id} value={u.id}>{u.display_name}</option>)}
                   </select>
-                  {lead.fitbase_manager_name && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>FB: {lead.fitbase_manager_name}</div>}
+                  {lead.fitbase_manager_name && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>FB: {lead.fitbase_manager_name}</div>}
                 </Field>
 
                 {(lead.utm_source || lead.utm_campaign) && (
-                  <div style={{ marginTop: 12, padding: 10, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>UTM</div>
-                    {lead.utm_source   && <div style={{ fontSize: 12, color: '#374151' }}>source: {lead.utm_source}</div>}
-                    {lead.utm_campaign && <div style={{ fontSize: 12, color: '#374151' }}>campaign: {lead.utm_campaign}</div>}
-                    {lead.utm_medium   && <div style={{ fontSize: 12, color: '#374151' }}>medium: {lead.utm_medium}</div>}
-                    {lead.utm_term     && <div style={{ fontSize: 12, color: '#374151' }}>term: {lead.utm_term}</div>}
-                    {lead.utm_content  && <div style={{ fontSize: 12, color: '#374151' }}>content: {lead.utm_content}</div>}
+                  <div style={{ marginTop: 12, padding: 10, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', marginBottom: 6 }}>UTM</div>
+                    {lead.utm_source   && <div style={{ fontSize: 12, color: 'var(--text)' }}>source: {lead.utm_source}</div>}
+                    {lead.utm_campaign && <div style={{ fontSize: 12, color: 'var(--text)' }}>campaign: {lead.utm_campaign}</div>}
+                    {lead.utm_medium   && <div style={{ fontSize: 12, color: 'var(--text)' }}>medium: {lead.utm_medium}</div>}
+                    {lead.utm_term     && <div style={{ fontSize: 12, color: 'var(--text)' }}>term: {lead.utm_term}</div>}
+                    {lead.utm_content  && <div style={{ fontSize: 12, color: 'var(--text)' }}>content: {lead.utm_content}</div>}
                   </div>
                 )}
 
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 12 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 12 }}>
                   Создан: {fmtDateTime(lead.fb_created_at)} · Обновлён: {fmtDateTime(lead.fb_updated_at)}
                 </div>
               </div>
@@ -369,7 +369,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
               <div style={{ width: 220, flexShrink: 0, overflowY: 'auto', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {/* Tasks */}
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Задачи</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Задачи</div>
                   {tasks.map(t => (
                     <TaskItem key={t.id} task={t} onToggle={() => handleTaskToggle(t)} onDelete={() => handleTaskDelete(t.id)} />
                   ))}
@@ -393,7 +393,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
 
                 {/* Activity */}
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Лента</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Лента</div>
                   <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
                     <input
                       style={{ ...S.inp, flex: 1, fontSize: 12 }} placeholder="Комментарий..."
@@ -403,16 +403,16 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
                     <button onClick={handleComment} style={{ ...S.addBtn, fontSize: 12, padding: '5px 10px', flexShrink: 0 }}>↵</button>
                   </div>
                   {activity.map(a => (
-                    <div key={a.id} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 12 }}>
+                    <div key={a.id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
                       <div style={{ display: 'flex', gap: 5, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 600, color: '#374151' }}>{KIND_LABELS[a.kind] ?? a.kind}</span>
-                        <span style={{ color: '#94a3b8', fontSize: 11 }}>{fmtDateTime(a.created_at)}</span>
+                        <span style={{ fontWeight: 600, color: 'var(--text)' }}>{KIND_LABELS[a.kind] ?? a.kind}</span>
+                        <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{fmtDateTime(a.created_at)}</span>
                       </div>
-                      {a.author && <div style={{ color: '#64748b', fontSize: 11 }}>{a.author}</div>}
-                      {a.text && <div style={{ color: '#374151', marginTop: 2, wordBreak: 'break-word' }}>{a.text}</div>}
+                      {a.author && <div style={{ color: 'var(--text-2)', fontSize: 11 }}>{a.author}</div>}
+                      {a.text && <div style={{ color: 'var(--text)', marginTop: 2, wordBreak: 'break-word' }}>{a.text}</div>}
                     </div>
                   ))}
-                  {activity.length === 0 && <div style={{ color: '#94a3b8', fontSize: 12 }}>История пуста</div>}
+                  {activity.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 12 }}>История пуста</div>}
                 </div>
               </div>
             </div>
@@ -422,17 +422,17 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
         {/* Footer buttons */}
         {lead && (
           <>
-            <div style={{ display: 'flex', gap: 8, padding: '10px 16px', borderTop: '1px solid #e2e8f0', flexShrink: 0, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap' }}>
               <button onClick={handleSave} disabled={saving} style={{ ...S.saveBtn, flex: 1 }}>
                 {saving ? 'Сохранение...' : 'Сохранить'}
               </button>
               <button onClick={handleArchive} disabled={saving}
-                style={{ padding: '8px 14px', background: 'none', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#64748b', fontWeight: 500 }}>
+                style={{ padding: '8px 14px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-2)', fontWeight: 500 }}>
                 {lead.is_archived ? 'Восстановить' : 'В архив'}
               </button>
               {isAdmin && (
                 <button onClick={handleDelete}
-                  style={{ padding: '8px 14px', background: 'none', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#ef4444', fontWeight: 500 }}>
+                  style={{ padding: '8px 14px', background: 'none', border: '1px solid var(--danger)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--danger)', fontWeight: 500 }}>
                   Удалить
                 </button>
               )}
@@ -443,7 +443,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
                   if (origin === 'fitbase') { setToast('Продажа доступна только для заявок в нашей CRM'); setTimeout(() => setToast(''), 3000); return; }
                   postToParent({ type: 'open-cashier' });
                 }}
-                style={{ padding: '7px 14px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                style={{ padding: '7px 14px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
               >
                 Продать
               </button>
@@ -452,11 +452,11 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
                   if (origin === 'fitbase') { setToast('Запись доступна только для заявок в нашей CRM'); setTimeout(() => setToast(''), 3000); return; }
                   postToParent({ type: 'open-schedule' });
                 }}
-                style={{ padding: '7px 14px', background: 'none', border: '1.5px solid #02BDB6', color: '#02BDB6', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                style={{ padding: '7px 14px', background: 'none', border: '1.5px solid #02BDB6', color: 'var(--primary)', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
               >
                 Записать на пробное
               </button>
-              {toast && <div style={{ width: '100%', background: '#fef3c7', color: '#92400e', borderRadius: 7, padding: '6px 10px', fontSize: 12, fontWeight: 500 }}>{toast}</div>}
+              {toast && <div style={{ width: '100%', background: 'var(--warning-soft)', color: '#92400e', borderRadius: 7, padding: '6px 10px', fontSize: 12, fontWeight: 500 }}>{toast}</div>}
             </div>
           </>
         )}
@@ -470,7 +470,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 3 }}>{label}</label>
       {children}
     </div>
   );
@@ -479,7 +479,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
 const S: Record<string, React.CSSProperties> = {
-  inp:    { width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: '#fff' },
-  saveBtn:{ padding: '8px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  addBtn: { padding: '6px 12px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  inp:    { width: '100%', padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: 'var(--surface)' },
+  saveBtn:{ padding: '8px 18px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  addBtn: { padding: '6px 12px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 7, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
 };

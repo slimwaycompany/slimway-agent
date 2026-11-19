@@ -1,4 +1,4 @@
-import path   from 'path';
+﻿import path   from 'path';
 import fs     from 'fs';
 import express from 'express';
 import { supabase } from '../db/supabase';
@@ -92,8 +92,8 @@ a{color:inherit}
 .sp-brand{background:rgba(2,189,182,.08);color:var(--brand);border-color:rgba(2,189,182,.2)}
 .sp-task{background:rgba(38,61,217,.08);color:var(--accent);border-color:rgba(38,61,217,.2)}
 .sp-muted{background:rgba(100,116,139,.08);color:var(--c-muted)}
-.stale-banner{background:#fef9c3;border:1px solid #fde047;color:#713f12;padding:8px 14px;border-radius:10px;margin-bottom:10px;font-size:13px}
-#err-banner{display:none;background:var(--danger-soft);border:1px solid #fca5a5;color:var(--danger);padding:8px 14px;border-radius:10px;margin-bottom:10px;font-size:13px}
+.stale-banner{background:var(--warning-soft);border:1px solid var(--warning);color:var(--warning);padding:8px 14px;border-radius:10px;margin-bottom:10px;font-size:13px}
+#err-banner{display:none;background:var(--danger-soft);border:1px solid var(--danger);color:var(--danger);padding:8px 14px;border-radius:10px;margin-bottom:10px;font-size:13px}
 #err-banner.show{display:block}
 .columns{display:flex;flex-direction:column;gap:10px;padding-bottom:14px}
 .col-alerts{order:1}.col-closed{order:2}.col-feed{order:3}
@@ -127,7 +127,7 @@ a{color:inherit}
 [data-theme="dark"] .card-new-lead.escalated{background:linear-gradient(rgba(20,28,44,.92),rgba(20,28,44,.92)) padding-box,linear-gradient(135deg,var(--red),#f97316) border-box}
 .source-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(2,189,182,.1);color:var(--brand)}
 .timer-lbl{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px;background:rgba(2,189,182,.1);color:var(--brand);margin-top:4px}
-.timer-lbl.warn{background:rgba(234,179,8,.12);color:#b45309}
+.timer-lbl.warn{background:rgba(234,179,8,.12);color:var(--warning)}
 .timer-lbl.late{background:rgba(239,68,68,.1);color:var(--red)}
 .dl-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;margin-top:4px}
 .dl-ok{background:rgba(100,116,139,.08);color:var(--c-muted)}

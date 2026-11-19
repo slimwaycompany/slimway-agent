@@ -1,4 +1,4 @@
-// синхронизировать с src/http/tv.ts (validateScreenLayoutV2, defaultScreenLayoutV2Server, migrateToV2Server, validateFx)
+﻿// синхронизировать с src/http/tv.ts (validateScreenLayoutV2, defaultScreenLayoutV2Server, migrateToV2Server, validateFx)
 
 export type TextAlignV2  = 'left' | 'center' | 'right';
 export type FontNameV2   = 'Manrope' | 'Montserrat' | 'Oswald' | 'Barlow Condensed' | 'Playfair Display' | 'Russo One' | 'Unbounded';

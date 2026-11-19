@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
   PointerSensor, TouchSensor, useSensor, useSensors,
@@ -64,24 +64,24 @@ function DraggableCard({ lead, onClick, isDragging }: { lead: Lead; onClick: () 
 }
 
 function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
-  const bg = lead.is_overdue ? '#fff0f4' : '#fff';
+  const bg = lead.is_overdue ? 'var(--danger-soft)' : 'var(--surface)';
   return (
     <div
-      style={{ background: bg, borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.07)', cursor: 'pointer', border: '1px solid #e2e8f0', userSelect: 'none' }}
+      style={{ background: bg, borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.07)', cursor: 'pointer', border: '1px solid var(--border)', userSelect: 'none' }}
       onClick={onClick}
     >
-      <div style={{ fontWeight: 600, fontSize: 13, color: '#1a202c', marginBottom: 4, lineHeight: 1.3 }}>{leadTitle(lead)}</div>
-      {lead.budget && <div style={{ fontSize: 12, color: '#02BDB6', fontWeight: 700, marginBottom: 4 }}>{Number(lead.budget).toLocaleString('ru-RU')} ₸</div>}
+      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', marginBottom: 4, lineHeight: 1.3 }}>{leadTitle(lead)}</div>
+      {lead.budget && <div style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 700, marginBottom: 4 }}>{Number(lead.budget).toLocaleString('ru-RU')} ₸</div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        {lead.fb_created_at && <span style={{ fontSize: 11, color: '#94a3b8' }}>{fmtDate(lead.fb_created_at)}</span>}
-        {lead.fitbase_manager_name && <span style={{ fontSize: 11, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>{lead.fitbase_manager_name.split(' ')[0]}</span>}
-        {lead.is_overdue && <span style={{ fontSize: 11, background: '#fee2e2', color: '#ef4444', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>просрочено</span>}
-        {lead.is_duplicate && <span style={{ fontSize: 11, background: '#fef3c7', color: '#b45309', borderRadius: 4, padding: '1px 5px' }}>дубль</span>}
+        {lead.fb_created_at && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{fmtDate(lead.fb_created_at)}</span>}
+        {lead.fitbase_manager_name && <span style={{ fontSize: 11, color: 'var(--text-2)', background: 'var(--surface-2)', borderRadius: 4, padding: '1px 5px' }}>{lead.fitbase_manager_name.split(' ')[0]}</span>}
+        {lead.is_overdue && <span style={{ fontSize: 11, background: 'var(--danger-soft)', color: 'var(--danger)', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>просрочено</span>}
+        {lead.is_duplicate && <span style={{ fontSize: 11, background: 'var(--warning-soft)', color: '#b45309', borderRadius: 4, padding: '1px 5px' }}>дубль</span>}
       </div>
       {lead.tags && lead.tags.length > 0 && (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
           {(lead.tags as string[]).slice(0, 3).map((t, i) => (
-            <span key={i} style={{ fontSize: 10, background: 'rgba(2,189,182,0.12)', color: '#02BDB6', borderRadius: 4, padding: '1px 5px' }}>{t}</span>
+            <span key={i} style={{ fontSize: 10, background: 'rgba(2,189,182,0.12)', color: 'var(--primary)', borderRadius: 4, padding: '1px 5px' }}>{t}</span>
           ))}
         </div>
       )}
@@ -101,14 +101,14 @@ function StageColumn({ stage, leads, onCardClick }: { stage: Stage; leads: Lead[
     >
       <div style={{ padding: '10px 10px 6px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         {stage.color && <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color, flexShrink: 0, display: 'inline-block' }} />}
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase' as const, letterSpacing: '0.04em', flex: 1 }}>{stage.name}</span>
-        <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', borderRadius: 10, padding: '1px 7px', fontWeight: 600 }}>{leads.length}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' as const, letterSpacing: '0.04em', flex: 1 }}>{stage.name}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-3)', background: 'var(--surface-2)', borderRadius: 10, padding: '1px 7px', fontWeight: 600 }}>{leads.length}</span>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px', minHeight: 60 }}>
         {leads.map(l => (
           <DraggableCard key={l.id} lead={l} onClick={() => onCardClick(l)} />
         ))}
-        {leads.length === 0 && <div style={{ color: '#cbd5e1', fontSize: 12, textAlign: 'center', padding: '16px 0' }}>пусто</div>}
+        {leads.length === 0 && <div style={{ color: 'var(--border)', fontSize: 12, textAlign: 'center', padding: '16px 0' }}>пусто</div>}
       </div>
     </div>
   );
@@ -216,33 +216,33 @@ export default function FunnelPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
+      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
         <select
           value={selFunnelId}
           onChange={e => selectFunnel(e.target.value)}
-          style={{ padding: '7px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', fontWeight: 600, color: '#1a202c', background: '#fff', cursor: 'pointer', outline: 'none' }}
+          style={{ padding: '7px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', fontWeight: 600, color: 'var(--text)', background: 'var(--surface)', cursor: 'pointer', outline: 'none' }}
         >
           {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
         <input
           type="text" placeholder="Поиск..." value={search}
           onChange={e => handleSearchInput(e.target.value)}
-          style={{ flex: 1, minWidth: 140, padding: '7px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
+          style={{ flex: 1, minWidth: 140, padding: '7px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
         />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b', cursor: 'pointer', flexShrink: 0 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-2)', cursor: 'pointer', flexShrink: 0 }}>
           <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
           Архив
         </label>
         <button
           onClick={handleSync} disabled={syncing}
-          style={{ padding: '7px 14px', background: syncing ? '#94a3b8' : '#263CD9', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: syncing ? 'default' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+          style={{ padding: '7px 14px', background: syncing ? 'var(--text-3)' : 'var(--accent)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: syncing ? 'default' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
         >
           {syncing ? '⟳ Синхр...' : '↓ Синхр. FB'}
         </button>
-        {syncMsg && <span style={{ fontSize: 12, color: '#64748b' }}>{syncMsg}</span>}
-        {loading && <span style={{ fontSize: 12, color: '#94a3b8' }}>Загрузка...</span>}
+        {syncMsg && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{syncMsg}</span>}
+        {loading && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Загрузка...</span>}
       </div>
 
       {/* Board */}
@@ -257,7 +257,7 @@ export default function FunnelPage() {
             />
           ))}
           {stages.length === 0 && !loading && (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 14 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 14 }}>
               {funnel ? 'Нет этапов в этой воронке' : 'Выберите воронку'}
             </div>
           )}

@@ -1,4 +1,4 @@
-export default function PlaceholderPage({ title }: { title: string }) {
+﻿export default function PlaceholderPage({ title }: { title: string }) {
   return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', fontFamily: "'Manrope',system-ui,sans-serif" }}>
       <div style={{ textAlign: 'center', color: '#94a3b8' }}>

@@ -1,4 +1,4 @@
-import fs   from 'fs';
+﻿import fs   from 'fs';
 import path  from 'path';
 import express, { Application } from 'express';
 import { supabase } from '../db/supabase';
@@ -163,7 +163,7 @@ html,body{height:100%;overflow:hidden;font-family:'Manrope',system-ui,sans-serif
 .ua-menu.open{display:block}
 .ua-menu-name{font-size:13px;font-weight:600;color:var(--text);padding-bottom:10px;
   border-bottom:1px solid var(--border);margin-bottom:8px}
-.ua-menu-exit{width:100%;background:var(--danger-soft);border:1px solid #fecaca;border-radius:8px;
+.ua-menu-exit{width:100%;background:var(--danger-soft);border:1px solid var(--danger);border-radius:8px;
   padding:9px 12px;font-size:14px;cursor:pointer;color:var(--danger);font-weight:600;font-family:inherit}
 
 
@@ -270,7 +270,7 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
   background:var(--red);color:#fff;font-size:11px;font-weight:700;
   display:none;align-items:center;justify-content:center;padding:0 4px;flex-shrink:0}
 .drawer-foot{padding:12px 18px;border-top:1px solid rgba(2,189,182,0.15)}
-.drawer-exit-btn{width:100%;padding:10px;background:var(--danger-soft);border:1px solid #fecaca;
+.drawer-exit-btn{width:100%;padding:10px;background:var(--danger-soft);border:1px solid var(--danger);
   border-radius:8px;font-size:14px;font-weight:600;color:var(--danger);
   cursor:pointer;font-family:inherit}
 

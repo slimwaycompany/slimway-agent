@@ -1,4 +1,4 @@
-import type { TextStyle } from '../../lib/tvScreenLayout';
+﻿import type { TextStyle } from '../../lib/tvScreenLayout';
 
 interface Props {
   style: TextStyle;

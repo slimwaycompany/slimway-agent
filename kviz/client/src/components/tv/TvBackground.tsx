@@ -1,4 +1,4 @@
-import type { DEFAULT_FX } from '../../lib/tvScreenLayout';
+﻿import type { DEFAULT_FX } from '../../lib/tvScreenLayout';
 
 type ResolvedFx = typeof DEFAULT_FX;
 

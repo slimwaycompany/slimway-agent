@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+﻿import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiGet, apiPost } from '../api';
 
@@ -34,7 +34,7 @@ export default function NewPage() {
   }, []);
 
   return (
-    <div style={{ padding: 40, textAlign: 'center', color: '#6b7280', fontSize: 16 }}>
+    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-2)', fontSize: 16 }}>
       Открываем квалификацию…
     </div>
   );

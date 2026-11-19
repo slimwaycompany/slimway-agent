@@ -1,4 +1,4 @@
-// Rewrite /api/... → /kviz/api/... so the same paths work in dev (proxied) and prod
+﻿// Rewrite /api/... → /kviz/api/... so the same paths work in dev (proxied) and prod
 const pfx = (path: string) => path.startsWith('/api') ? '/kviz' + path : path;
 
 async function req(path: string, opts?: RequestInit) {

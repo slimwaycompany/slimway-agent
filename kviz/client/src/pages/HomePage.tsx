@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+﻿import { useEffect, useState, useRef } from 'react';
 import { showConfirm } from '../lib/confirm';
 import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiDelete } from '../api';
@@ -87,7 +87,7 @@ export default function HomePage() {
           <>
             <span>Консультант: <strong>{consultant}</strong></span>
             <button className="edit-link" onClick={() => { setNameInput(consultant); setEditingName(true); }}>изменить</button>
-            <button className="edit-link" style={{ marginLeft: 'auto', color: '#9ca3af' }} onClick={logout}>выйти</button>
+            <button className="edit-link" style={{ marginLeft: 'auto', color: 'var(--text-3)' }} onClick={logout}>выйти</button>
           </>
         )}
       </div>
@@ -103,7 +103,7 @@ export default function HomePage() {
             <div key={s.id} className="session-card" onClick={() => navigate(`/q/${s.id}/${s.current_step}`)}>
               <div>
                 <div style={{ fontWeight: 600 }}>{s.client_name ?? s.consultant}</div>
-                {s.client_name && <div style={{ fontSize: 13, color: '#6b7280' }}>{s.consultant}</div>}
+                {s.client_name && <div style={{ fontSize: 13, color: 'var(--text-2)' }}>{s.consultant}</div>}
                 <div className="meta">Шаг {s.current_step} · {fmtDate(s.created_at)}</div>
               </div>
               <button className="btn btn-danger" style={{ fontSize: 13, padding: '6px 12px' }}
@@ -122,16 +122,16 @@ export default function HomePage() {
             <div key={s.id} className="session-card" onClick={() => navigate(`/q/${s.id}/summary`)}>
               <div>
                 <div style={{ fontWeight: 600 }}>{s.client_name ?? 'Без имени'}</div>
-                <div style={{ fontSize: 13, color: '#6b7280' }}>{s.consultant}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-2)' }}>{s.consultant}</div>
                 <div className="meta">{fmtDate(s.completed_at ?? s.created_at)}</div>
                 {s.answers?.closed_early && (
-                  <div className="meta" style={{ color: '#9ca3af' }}>
+                  <div className="meta" style={{ color: 'var(--text-3)' }}>
                     Закрыта досрочно: {EARLY_CLOSE_REASONS.find(r => r.id === s.answers!.closed_early!.reason)?.label ?? s.answers.closed_early.reason}
                   </div>
                 )}
               </div>
               {s.temperature && (
-                <span style={{ background: TEMP_COLORS[s.temperature], color: '#fff', padding: '4px 10px', borderRadius: 999, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <span style={{ background: TEMP_COLORS[s.temperature], color: 'var(--surface)', padding: '4px 10px', borderRadius: 999, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>
                   {TEMP_BADGES[s.temperature]}
                 </span>
               )}

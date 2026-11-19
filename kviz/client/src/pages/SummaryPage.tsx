@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { apiGet, apiPatch, apiPost } from '../api';
 import { isEmbedded, postToParent } from '../utils/iframe';
@@ -148,7 +148,7 @@ export default function SummaryPage() {
   const a12 = answers[12] as A12 | undefined;
   const paramsSkipped = !a7 || !!a7.skipped || (!a7.height && !a7.weight);
   const readOnly = session.status === 'done';
-  const color = TEMP_COLORS[result.temperature] ?? '#6b7280';
+  const color = TEMP_COLORS[result.temperature] ?? 'var(--text-2)';
   const usedScripts = answers.used_scripts ?? [];
 
   const closingScripts = SCRIPTS.filter(s =>
@@ -214,8 +214,8 @@ export default function SummaryPage() {
         <button className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: 13 }} onClick={goBack}>
           ← Назад
         </button>
-        <span style={{ color: '#9ca3af', fontSize: 14 }}>{session.consultant}</span>
-        {!isEmbedded && <a href="/window" style={{ marginLeft: 'auto', fontSize: 13, color: '#6b7280', textDecoration: 'none' }}>← Овчарка</a>}
+        <span style={{ color: 'var(--text-3)', fontSize: 14 }}>{session.consultant}</span>
+        {!isEmbedded && <a href="/window" style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--text-2)', textDecoration: 'none' }}>← Овчарка</a>}
       </div>
 
       {readOnly && (
@@ -225,7 +225,7 @@ export default function SummaryPage() {
       {(a0?.name || a0?.phone) && (
         <div className="summary-section" style={{ paddingBottom: 8 }}>
           {a0.name && <div style={{ fontWeight: 700, fontSize: 16 }}>{a0.name}</div>}
-          {a0.phone && <div style={{ fontSize: 14, color: '#6b7280' }}>{a0.phone}</div>}
+          {a0.phone && <div style={{ fontSize: 14, color: 'var(--text-2)' }}>{a0.phone}</div>}
         </div>
       )}
 
@@ -233,7 +233,7 @@ export default function SummaryPage() {
         <div className="badge" style={{ background: color, fontSize: 24 }}>
           {TEMP_BADGES[result.temperature]}
         </div>
-        <div style={{ color: '#6b7280', fontSize: 14, marginTop: 4 }}>Счёт: {result.score} баллов</div>
+        <div style={{ color: 'var(--text-2)', fontSize: 14, marginTop: 4 }}>Счёт: {result.score} баллов</div>
       </div>
 
       {a12?.outcome && (
@@ -243,24 +243,24 @@ export default function SummaryPage() {
             {CALL_OUTCOMES.find(o => o.id === a12.outcome)?.label}
           </p>
           {a12.outcome === 'booked' && a12.visit_date && (
-            <p style={{ fontSize: 13, color: '#6b7280' }}>{a12.visit_date} {a12.visit_time}</p>
+            <p style={{ fontSize: 13, color: 'var(--text-2)' }}>{a12.visit_date} {a12.visit_time}</p>
           )}
           {(a12.outcome === 'callback' || a12.outcome === 'thinking') && a12.callback_date && (
-            <p style={{ fontSize: 13, color: '#6b7280' }}>Перезвон: {a12.callback_date} {a12.callback_time}</p>
+            <p style={{ fontSize: 13, color: 'var(--text-2)' }}>Перезвон: {a12.callback_date} {a12.callback_time}</p>
           )}
           {a12.outcome === 'refused' && a12.refusal_reason && (
-            <p style={{ fontSize: 13, color: '#6b7280' }}>
+            <p style={{ fontSize: 13, color: 'var(--text-2)' }}>
               {REFUSAL_REASONS.find(r => r.id === a12!.refusal_reason)?.label}
             </p>
           )}
-          {a12.comment && <p style={{ fontSize: 13, color: '#6b7280' }}>{a12.comment}</p>}
+          {a12.comment && <p style={{ fontSize: 13, color: 'var(--text-2)' }}>{a12.comment}</p>}
         </div>
       )}
 
       {answers.closed_early && (
         <div className="summary-section">
           <h3>Закрыта досрочно</h3>
-          <p style={{ color: '#6b7280', fontSize: 14 }}>
+          <p style={{ color: 'var(--text-2)', fontSize: 14 }}>
             {EARLY_CLOSE_REASONS.find(r => r.id === answers.closed_early!.reason)?.label ?? answers.closed_early.reason}
             {answers.closed_early.comment ? ` — ${answers.closed_early.comment}` : ''}
           </p>
@@ -297,7 +297,7 @@ export default function SummaryPage() {
               </span>
             ))}
           </div>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 8 }}>
+          <p style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 8 }}>
             {result.format_recommendation}
             <br />
             <span style={{ opacity: .7 }}>Окончательно — после диагностики и пробной</span>
@@ -326,7 +326,7 @@ export default function SummaryPage() {
       <div className="summary-section">
         <h3>Параметры</h3>
         {paramsSkipped
-          ? <p style={{ color: '#9ca3af', fontSize: 14, marginTop: 4 }}>Не указаны</p>
+          ? <p style={{ color: 'var(--text-3)', fontSize: 14, marginTop: 4 }}>Не указаны</p>
           : result.bmi > 0
             ? (() => {
                 const diff = a7?.goal_weight && a7?.weight ? Number(a7.weight) - Number(a7.goal_weight) : null;
@@ -337,7 +337,7 @@ export default function SummaryPage() {
                   </div>
                 );
               })()
-            : <p style={{ color: '#9ca3af', fontSize: 14, marginTop: 4 }}>Не заполнены</p>
+            : <p style={{ color: 'var(--text-3)', fontSize: 14, marginTop: 4 }}>Не заполнены</p>
         }
       </div>
 
@@ -367,7 +367,7 @@ export default function SummaryPage() {
         </button>
         {session.fitbase_lead_id ? (
           fbSentAt ? (
-            <div style={{ fontSize: 13, color: '#22c55e', textAlign: 'center' }}>
+            <div style={{ fontSize: 13, color: 'var(--success)', textAlign: 'center' }}>
               ✓ Отправлено в Fitbase {new Date(fbSentAt).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}
             </div>
           ) : (
@@ -375,7 +375,7 @@ export default function SummaryPage() {
               <button className="btn btn-outline" disabled={fbSending} onClick={sendToFitbase}>
                 {fbSending ? 'Отправка…' : 'Отправить в Fitbase'}
               </button>
-              {fbError && <div style={{ fontSize: 13, color: '#ef4444', marginTop: 4 }}>{fbError}</div>}
+              {fbError && <div style={{ fontSize: 13, color: 'var(--danger)', marginTop: 4 }}>{fbError}</div>}
             </div>
           )
         ) : (
@@ -402,7 +402,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ textAlign: 'center' }}>
       <div style={{ fontSize: 20, fontWeight: 700 }}>{value}</div>
-      <div style={{ fontSize: 12, color: '#9ca3af' }}>{label}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{label}</div>
     </div>
   );
 }

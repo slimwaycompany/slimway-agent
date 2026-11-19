@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from '../../lib/toast';
 import { useRole } from '../../lib/permContext';
 
@@ -55,40 +55,40 @@ function permMapToArray(m: PermMap): PermEntry[] {
 
 const S: Record<string, React.CSSProperties> = {
   root: { display: 'flex', height: '100%', fontFamily: "'Manrope',system-ui,sans-serif", fontSize: 14 },
-  list: { width: 260, flexShrink: 0, borderRight: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', flexDirection: 'column' },
-  listHead: { padding: '12px 14px 10px', borderBottom: '1px solid #e5e7eb' },
-  listTitle: { fontSize: 14, fontWeight: 700, color: '#1a202c', marginBottom: 8 },
+  list: { width: 260, flexShrink: 0, borderRight: '1px solid var(--border)', background: '#f9fafb', display: 'flex', flexDirection: 'column' },
+  listHead: { padding: '12px 14px 10px', borderBottom: '1px solid var(--border)' },
+  listTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 8 },
   tabs: { display: 'flex', gap: 2, marginBottom: 8 },
   tabBtn: { flex: 1, padding: '5px 8px', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-  addBtn: { width: '100%', padding: '7px 12px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' },
-  search: { width: '100%', padding: '6px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
+  addBtn: { width: '100%', padding: '7px 12px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 7, fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' },
+  search: { width: '100%', padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
   listItems: { flex: 1, overflowY: 'auto', padding: '4px 0' },
   listItem: { display: 'flex', alignItems: 'center', gap: 9, padding: '9px 14px', cursor: 'pointer', borderLeft: '3px solid transparent' },
-  listItemActive: { background: 'rgba(2,189,182,0.08)', borderLeft: '3px solid #02BDB6' },
-  avatar: { width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#02BDB6,#263CD9)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 },
-  itemName: { fontWeight: 600, color: '#1a202c', fontSize: 13, whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
-  itemSub: { fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
+  listItemActive: { background: 'rgba(2,189,182,0.08)', borderLeft: '3px solid var(--primary)' },
+  avatar: { width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#02BDB6,#263CD9)', color: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 },
+  itemName: { fontWeight: 600, color: 'var(--text)', fontSize: 13, whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
+  itemSub: { fontSize: 11, color: 'var(--text-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
   content: { flex: 1, overflowY: 'auto', padding: '20px 24px' },
-  empty: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' },
+  empty: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' },
   section: { marginBottom: 20 },
-  sectionTitle: { fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '.05em', marginBottom: 8 },
+  sectionTitle: { fontSize: 11, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase' as const, letterSpacing: '.05em', marginBottom: 8 },
   row: { display: 'flex', gap: 10, marginBottom: 10, alignItems: 'flex-end', flexWrap: 'wrap' as const },
-  label: { fontSize: 12, color: '#64748b', marginBottom: 4, display: 'block' },
-  input: { width: '100%', padding: '7px 9px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
-  select: { width: '100%', padding: '7px 9px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' as const },
+  label: { fontSize: 12, color: 'var(--text-2)', marginBottom: 4, display: 'block' },
+  input: { width: '100%', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
+  select: { width: '100%', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', background: 'var(--surface)', outline: 'none', boxSizing: 'border-box' as const },
   btn: { padding: '7px 14px', border: 'none', borderRadius: 7, fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 },
-  btnPrimary: { background: '#02BDB6', color: '#fff' },
-  btnDanger: { background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca' },
-  btnSecondary: { background: '#f1f5f9', color: '#374151', border: '1px solid #e5e7eb' },
+  btnPrimary: { background: 'var(--primary)', color: 'var(--surface)' },
+  btnDanger: { background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid var(--danger)' },
+  btnSecondary: { background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)' },
   overlay: { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
-  modal: { background: '#fff', borderRadius: 14, padding: 20, width: 'min(480px,100%)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' },
-  err: { fontSize: 12, color: '#ef4444', marginTop: 5 },
+  modal: { background: 'var(--surface)', borderRadius: 14, padding: 20, width: 'min(480px,100%)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' },
+  err: { fontSize: 12, color: 'var(--danger)', marginTop: 5 },
   divider: { height: 1, background: '#e5e7eb', margin: '16px 0' },
-  permBlock: { marginBottom: 10, border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' },
-  permBlockHead: { padding: '9px 12px', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' as const },
-  seg: { display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden', flexShrink: 0 },
-  segBtn: { padding: '3px 8px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: 'transparent', color: '#64748b' },
-  segBtnActive: { background: '#02BDB6', color: '#fff' },
+  permBlock: { marginBottom: 10, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' },
+  permBlockHead: { padding: '9px 12px', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' as const },
+  seg: { display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', flexShrink: 0 },
+  segBtn: { padding: '3px 8px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: 'transparent', color: 'var(--text-2)' },
+  segBtnActive: { background: 'var(--primary)', color: 'var(--surface)' },
 };
 
 // ── New PermTree (3-segment) ───────────────────────────────────────────────────
@@ -160,7 +160,7 @@ function PermTree({
             <div style={S.permBlockHead} onClick={() => !q && toggleBlock(block.key)}>
               <span>{block.icon}</span>
               <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{block.label}</span>
-              <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 6 }}>{openCount}/{rowRows.length}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-3)', marginRight: 6 }}>{openCount}/{rowRows.length}</span>
               {!disabled && (
                 <div style={S.seg} onClick={e => e.stopPropagation()}>
                   <button style={{ ...S.segBtn }} onClick={() => blockSetAll(block, 'none')}>Нет</button>
@@ -168,7 +168,7 @@ function PermTree({
                   <button style={{ ...S.segBtn }} onClick={() => blockSetAll(block, 'edit')}>Всё E</button>
                 </div>
               )}
-              {!q && <span style={{ fontSize: 11, color: '#94a3b8' }}>{isOpen ? '▲' : '▼'}</span>}
+              {!q && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{isOpen ? '▲' : '▼'}</span>}
             </div>
             {isOpen && block.rows.map(row => {
               if (q && !row.label.toLowerCase().includes(q)) return null;
@@ -177,7 +177,7 @@ function PermTree({
                 const hasParent = Boolean(parentPerm);
                 const isChecked = Boolean(perms[row.key]);
                 return (
-                  <div key={row.key} style={{ padding: '7px 12px 7px 36px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 8, opacity: hasParent ? 1 : 0.4 }}>
+                  <div key={row.key} style={{ padding: '7px 12px 7px 36px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, opacity: hasParent ? 1 : 0.4 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: disabled || !hasParent ? 'default' : 'pointer', minHeight: 40 }}>
                       <input type="checkbox" style={{ width: 15, height: 15 }} checked={isChecked}
                         disabled={disabled || !hasParent}
@@ -191,7 +191,7 @@ function PermTree({
               const cur = perms[row.key];
               const curLevel: 'none' | 'view' | 'edit' = cur ? cur.level : 'none';
               return (
-                <div key={row.key} style={{ padding: '7px 12px', borderTop: '1px solid #f1f5f9' }}>
+                <div key={row.key} style={{ padding: '7px 12px', borderTop: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
                     <span style={{ fontSize: 13, flex: 1, minWidth: 100 }}>{row.label}</span>
                     {!disabled ? (
@@ -204,7 +204,7 @@ function PermTree({
                         ))}
                       </div>
                     ) : (
-                      <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
                         {curLevel === 'none' ? 'Нет' : curLevel === 'view' ? 'Просмотр' : 'Изменение'}
                       </span>
                     )}
@@ -309,10 +309,10 @@ function PositionDetail({ pos, catalog, allPositions, onRefresh, onClose }: {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>
             {isNew ? 'Новая должность' : posObj!.name}
-            {!isNew && posObj!.code && <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>готовая</span>}
-            {!isNew && posObj!.is_archived && <span style={{ marginLeft: 8, fontSize: 11, background: '#fef2f2', color: '#ef4444', padding: '1px 6px', borderRadius: 10 }}>архив</span>}
+            {!isNew && posObj!.code && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-3)', fontWeight: 400 }}>готовая</span>}
+            {!isNew && posObj!.is_archived && <span style={{ marginLeft: 8, fontSize: 11, background: 'var(--danger-soft)', color: 'var(--danger)', padding: '1px 6px', borderRadius: 10 }}>архив</span>}
           </div>
-          {!isNew && <div style={{ fontSize: 12, color: '#64748b' }}>{posObj!.employee_count} сотр.</div>}
+          {!isNew && <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{posObj!.employee_count} сотр.</div>}
         </div>
         {onClose && <button style={{ ...S.btn, ...S.btnSecondary }} onClick={onClose}>✕</button>}
       </div>
@@ -511,9 +511,9 @@ function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, on
         <div style={{ ...S.avatar, width: 40, height: 40, fontSize: 16 }}>{member.display_name[0]?.toUpperCase()}</div>
         <div style={{ flex: 1, minWidth: 120 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>{member.display_name}</div>
-          <div style={{ color: '#64748b', fontSize: 12 }}>
+          <div style={{ color: 'var(--text-2)', fontSize: 12 }}>
             @{member.login}
-            {isFired && <span style={{ marginLeft: 8, fontSize: 11, background: '#fef2f2', color: '#ef4444', padding: '1px 6px', borderRadius: 10 }}>Уволен</span>}
+            {isFired && <span style={{ marginLeft: 8, fontSize: 11, background: 'var(--danger-soft)', color: 'var(--danger)', padding: '1px 6px', borderRadius: 10 }}>Уволен</span>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
@@ -532,15 +532,15 @@ function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, on
       </div>
 
       {showLog && logEntries && (
-        <div style={{ background: '#f8fafc', borderRadius: 8, padding: 10, marginBottom: 16 }}>
+        <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 10, marginBottom: 16 }}>
           <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Журнал входов (последние 30)</div>
-          {logEntries.length === 0 && <div style={{ color: '#94a3b8', fontSize: 12 }}>Нет записей</div>}
+          {logEntries.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Нет записей</div>}
           {logEntries.map(e => (
-            <div key={e.id} style={{ display: 'flex', gap: 8, fontSize: 11, padding: '3px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ color: e.ok ? '#16a34a' : '#ef4444', fontWeight: 700 }}>{e.ok ? '✓' : '✗'}</span>
-              <span style={{ color: '#64748b' }}>{fmtDate(e.created_at)}</span>
+            <div key={e.id} style={{ display: 'flex', gap: 8, fontSize: 11, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: e.ok ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>{e.ok ? '✓' : '✗'}</span>
+              <span style={{ color: 'var(--text-2)' }}>{fmtDate(e.created_at)}</span>
               <span>{e.ip}</span>
-              {e.reason && <span style={{ color: '#ef4444' }}>{e.reason}</span>}
+              {e.reason && <span style={{ color: 'var(--danger)' }}>{e.reason}</span>}
             </div>
           ))}
         </div>
@@ -586,7 +586,7 @@ function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, on
         </div>
         {editErr && <div style={S.err}>{editErr}</div>}
         <button style={{ ...S.btn, ...S.btnPrimary }} onClick={saveProfile}>Сохранить</button>
-        <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 6 }}>Последний вход: {fmtDate(member.last_login_at)}</div>
+        <div style={{ color: 'var(--text-3)', fontSize: 11, marginTop: 6 }}>Последний вход: {fmtDate(member.last_login_at)}</div>
       </div>
 
       <div style={S.divider} />
@@ -644,21 +644,21 @@ function StaffDetail({ member, catalog, allStaff, positions, positionsLoaded, on
             </div>
           )}
           {!customPerms && posObj && (
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8, padding: '6px 10px', background: '#f8fafc', borderRadius: 6 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 8, padding: '6px 10px', background: 'var(--surface-2)', borderRadius: 6 }}>
               Права должности «{posObj.name}». Изменить — в Должностях или включите «Свои права».
             </div>
           )}
           {!customPerms && !posObj && (!form.position_id || positionsLoaded) && (
-            <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>Должность не задана — нет доступа ни к чему.</div>
+            <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 8 }}>Должность не задана — нет доступа ни к чему.</div>
           )}
           {!customPerms && !posObj && form.position_id && !positionsLoaded && (
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Загрузка…</div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 8 }}>Загрузка…</div>
           )}
           <input style={{ ...S.search, marginBottom: 8 }} placeholder="Поиск…" value={permSearch} onChange={e => setPermSearch(e.target.value)} />
           <PermTree catalog={catalog} perms={displayPerms} onChange={customPerms ? setPerms : () => {}} disabled={permsDisabled} search={permSearch} />
         </div>
       ) : (
-        <div style={{ color: '#64748b', fontSize: 13, fontStyle: 'italic', marginBottom: 16 }}>Администратор — полный доступ ко всему.</div>
+        <div style={{ color: 'var(--text-2)', fontSize: 13, fontStyle: 'italic', marginBottom: 16 }}>Администратор — полный доступ ко всему.</div>
       )}
 
       <div style={S.divider} />
@@ -734,7 +734,7 @@ export default function StaffPage() {
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 640;
 
-  if (role === '') return <div style={{ padding: 24, color: '#64748b', fontSize: 14 }}>Загрузка…</div>;
+  if (role === '') return <div style={{ padding: 24, color: 'var(--text-2)', fontSize: 14 }}>Загрузка…</div>;
 
   return (
     <div style={{ ...S.root, flexDirection: isMobile ? 'column' : 'row' }}>
@@ -744,9 +744,9 @@ export default function StaffPage() {
           <div style={S.listTitle}>Сотрудники</div>
           {isAdmin && (
             <div style={S.tabs}>
-              <button style={{ ...S.tabBtn, background: activeTab === 'staff' ? '#02BDB6' : '#f1f5f9', color: activeTab === 'staff' ? '#fff' : '#374151' }}
+              <button style={{ ...S.tabBtn, background: activeTab === 'staff' ? 'var(--primary)' : 'var(--surface-2)', color: activeTab === 'staff' ? 'var(--surface)' : 'var(--text)' }}
                 onClick={() => setActiveTab('staff')}>Сотрудники</button>
-              <button style={{ ...S.tabBtn, background: activeTab === 'positions' ? '#02BDB6' : '#f1f5f9', color: activeTab === 'positions' ? '#fff' : '#374151' }}
+              <button style={{ ...S.tabBtn, background: activeTab === 'positions' ? 'var(--primary)' : 'var(--surface-2)', color: activeTab === 'positions' ? 'var(--surface)' : 'var(--text)' }}
                 onClick={() => setActiveTab('positions')}>Должности</button>
             </div>
           )}
@@ -756,7 +756,7 @@ export default function StaffPage() {
           {activeTab === 'staff' && (
             <>
               <input style={{ ...S.search, marginBottom: 6 }} placeholder="Поиск…" value={staffSearch} onChange={e => setStaffSearch(e.target.value)} />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-2)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={showFired} onChange={e => setShowFired(e.target.checked)} />
                 Показать уволенных
               </label>
@@ -775,7 +775,7 @@ export default function StaffPage() {
             </div>
           ))}
           {activeTab === 'staff' && visibleStaff.length === 0 && (
-            <div style={{ padding: '16px 14px', color: '#94a3b8', fontSize: 12 }}>Нет сотрудников</div>
+            <div style={{ padding: '16px 14px', color: 'var(--text-3)', fontSize: 12 }}>Нет сотрудников</div>
           )}
           {activeTab === 'positions' && positions.map(p => (
             <div key={p.id} style={{ ...S.listItem, ...(selectedPos === p.id ? S.listItemActive : {}), opacity: p.is_archived ? 0.5 : 1 }}
@@ -788,7 +788,7 @@ export default function StaffPage() {
             </div>
           ))}
           {activeTab === 'positions' && positions.length === 0 && (
-            <div style={{ padding: '16px 14px', color: '#94a3b8', fontSize: 12 }}>Нет должностей</div>
+            <div style={{ padding: '16px 14px', color: 'var(--text-3)', fontSize: 12 }}>Нет должностей</div>
           )}
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 
 interface Visit {
@@ -116,7 +116,7 @@ export default function OccupancySection() {
     <div style={{ padding: '12px 12px 32px' }}>
       <div style={s.filterRow}>
         <input type="date" style={s.inp} value={from} onChange={e => setFrom(e.target.value)} />
-        <span style={{ color: '#64748b' }}>—</span>
+        <span style={{ color: 'var(--text-2)' }}>—</span>
         <input type="date" style={s.inp} value={to} onChange={e => setTo(e.target.value)} />
         {data?.resources && data.resources.length > 0 && (
           <select style={s.sel} value={resource} onChange={e => setResource(e.target.value)}>
@@ -141,11 +141,11 @@ export default function OccupancySection() {
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             {[
-              { label: 'Всего', val: data.total, color: '#02BDB6' },
-              { label: 'Уникальных клиентов', val: data.unique_clients, color: '#263CD9' },
+              { label: 'Всего', val: data.total, color: 'var(--primary)' },
+              { label: 'Уникальных клиентов', val: data.unique_clients, color: 'var(--accent)' },
             ].map(c => (
               <div key={c.label} style={s.card}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>{c.label}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{c.label}</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: c.color }}>{c.val}</div>
               </div>
             ))}
@@ -162,13 +162,13 @@ export default function OccupancySection() {
               <tbody>
                 {dates.map(date => (
                   <tr key={date}>
-                    <td style={{ ...s.td, fontWeight: 600, whiteSpace: 'nowrap', background: '#f8fafc' }}>{fmtDate(date)}</td>
+                    <td style={{ ...s.td, fontWeight: 600, whiteSpace: 'nowrap', background: 'var(--surface-2)' }}>{fmtDate(date)}</td>
                     {HOURS.map(h => {
                       const cnt = getCell(date, h).length;
                       const intensity = cnt === 0 ? 0 : Math.round(40 + (cnt / maxCount) * 215);
-                      const bg = cnt === 0 ? '#f8fafc' : `rgba(2,189,182,${(intensity / 255).toFixed(2)})`;
+                      const bg = cnt === 0 ? 'var(--surface-2)' : `rgba(2,189,182,${(intensity / 255).toFixed(2)})`;
                       return (
-                        <td key={h} style={{ ...s.td, background: bg, cursor: cnt > 0 ? 'pointer' : 'default', color: intensity > 180 ? '#fff' : '#1a202c' }}
+                        <td key={h} style={{ ...s.td, background: bg, cursor: cnt > 0 ? 'pointer' : 'default', color: intensity > 180 ? 'var(--surface)' : 'var(--text)' }}
                           onClick={() => cnt > 0 && clickCell(date, h)} title={cnt > 0 ? `${cnt} визитов` : ''}>
                           {cnt > 0 ? cnt : ''}
                         </td>
@@ -190,7 +190,7 @@ export default function OccupancySection() {
               {cellVisits.map(v => (
                 <div key={v.fitbase_id} style={s.visitRow}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{v.client_name || '—'}</div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
                     {fmtTime(v.visit_at)} · {statusLabel(v.status)} · {v.service || '—'}
                     {v.resource ? ` · ${v.resource}` : ''}
                     {v.abonement ? ` · ${v.abonement}` : ''}
@@ -220,17 +220,17 @@ export default function OccupancySection() {
 
 const s: Record<string, React.CSSProperties> = {
   filterRow:    { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 },
-  inp:          { padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
-  sel:          { padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
-  loadBtn:      { padding: '8px 16px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  csvBtn:       { padding: '8px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  empty:        { color: '#94a3b8', fontSize: 13 },
-  card:         { background: '#fff', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 130 },
-  th:           { padding: '5px 7px', background: '#f1f5f9', fontWeight: 600, color: '#475569', border: '1px solid #e2e8f0', whiteSpace: 'nowrap', textAlign: 'center' as const },
-  td:           { padding: '4px 7px', border: '1px solid #e2e8f0', textAlign: 'center' as const, minWidth: 34, fontSize: 12 },
-  panel:        { background: '#fff', borderRadius: 10, padding: '12px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', marginBottom: 16 },
-  visitRow:     { borderBottom: '1px solid #f1f5f9', paddingBottom: 6, marginBottom: 6 },
-  closeBtn:     { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#64748b', padding: '0 4px' },
-  sectionTitle: { fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 6, marginTop: 16 },
-  totalRow:     { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f1f5f9' },
+  inp:          { padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
+  sel:          { padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
+  loadBtn:      { padding: '8px 16px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  csvBtn:       { padding: '8px 14px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  empty:        { color: 'var(--text-3)', fontSize: 13 },
+  card:         { background: 'var(--surface)', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 130 },
+  th:           { padding: '5px 7px', background: 'var(--surface-2)', fontWeight: 600, color: 'var(--text-2)', border: '1px solid var(--border)', whiteSpace: 'nowrap', textAlign: 'center' as const },
+  td:           { padding: '4px 7px', border: '1px solid var(--border)', textAlign: 'center' as const, minWidth: 34, fontSize: 12 },
+  panel:        { background: 'var(--surface)', borderRadius: 10, padding: '12px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', marginBottom: 16 },
+  visitRow:     { borderBottom: '1px solid var(--border)', paddingBottom: 6, marginBottom: 6 },
+  closeBtn:     { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text-2)', padding: '0 4px' },
+  sectionTitle: { fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 6, marginTop: 16 },
+  totalRow:     { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--border)' },
 };

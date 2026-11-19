@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Component } from 'react';
+﻿import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { apiGet, apiPost } from '../../api';
@@ -25,17 +25,17 @@ const BODY_POINTS: { key: CircKey; label: string; x: number; y: number }[] = [
 ];
 
 const ALL_ZONES: { key: string; label: string; color: string; isWeight?: boolean }[] = [
-  { key: 'total_cm', label: 'Сумма',   color: '#02BDB6' },
-  { key: 'neck',     label: 'Шея',     color: '#f59e0b' },
+  { key: 'total_cm', label: 'Сумма',   color: 'var(--primary)' },
+  { key: 'neck',     label: 'Шея',     color: 'var(--warning)' },
   { key: 'chest',    label: 'Грудь',   color: '#ec4899' },
-  { key: 'arm_l',    label: 'Л.рука',  color: '#8b5cf6' },
+  { key: 'arm_l',    label: 'Л.рука',  color: 'var(--accent)' },
   { key: 'arm_r',    label: 'П.рука',  color: '#06b6d4' },
-  { key: 'waist',    label: 'Талия',   color: '#ef4444' },
+  { key: 'waist',    label: 'Талия',   color: 'var(--danger)' },
   { key: 'belly',    label: 'Живот',   color: '#f97316' },
   { key: 'glutes',   label: 'Ягодицы', color: '#84cc16' },
   { key: 'thigh_l',  label: 'Л.бедро', color: '#14b8a6' },
   { key: 'thigh_r',  label: 'П.бедро', color: '#a855f7' },
-  { key: 'shin_l',   label: 'Л.голень',color: '#64748b' },
+  { key: 'shin_l',   label: 'Л.голень',color: 'var(--text-2)' },
   { key: 'shin_r',   label: 'П.голень',color: '#78716c' },
 ];
 const DEFAULT_ZONES = ['total_cm'];
@@ -66,8 +66,8 @@ class ErrorBlock extends Component<{ children: ReactNode; label: string }, { err
   static getDerivedStateFromError(e: unknown) { return { err: String(e) }; }
   render() {
     if (this.state.err) return (
-      <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, marginBottom: 14, color: '#ef4444', fontSize: 13 }}>
-        Не удалось загрузить: {this.props.label}. <span style={{ color: '#9ca3af' }}>{this.state.err}</span>
+      <div style={{ padding: '12px 16px', background: 'var(--danger-soft)', border: '1px solid var(--danger)', borderRadius: 10, marginBottom: 14, color: 'var(--danger)', fontSize: 13 }}>
+        Не удалось загрузить: {this.props.label}. <span style={{ color: 'var(--text-3)' }}>{this.state.err}</span>
       </div>
     );
     return this.props.children;
@@ -85,7 +85,7 @@ function fmtPhone(p: string | null) {
 }
 function shortId(id: string) { return id.replace(/-/g,'').slice(0,6).toUpperCase(); }
 function fmtDiff(d: number): string { return (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1); }
-function diffColor(d: number) { return d < 0 ? '#16a34a' : d > 0 ? '#f59e0b' : '#9ca3af'; }
+function diffColor(d: number) { return d < 0 ? 'var(--success)' : d > 0 ? 'var(--warning)' : 'var(--text-3)'; }
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' });
 }
@@ -121,7 +121,7 @@ function BodyFigure({ m, prev, activeZones, activeZone, onZoneClick }: {
         const val = m?.[pt.key] != null ? Number(m![pt.key]) : null;
         const diff = val != null && prev && prev[pt.key] != null ? val - Number(prev[pt.key]) : null;
         const active = activeZones.includes(pt.key);
-        const zoneColor = ALL_ZONES.find(z => z.key === pt.key)?.color ?? '#02BDB6';
+        const zoneColor = ALL_ZONES.find(z => z.key === pt.key)?.color ?? 'var(--primary)';
         const side = sideByKey.get(pt.key)!;
         return (
           <div key={pt.key}
@@ -171,9 +171,9 @@ function ZoneCheckboxes({ zones, onChange }: { zones: string[]; onChange: (z: st
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
         {ALL_ZONES.map(z => (
           <label key={z.key} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 12, padding: '3px 8px',
-            background: zones.includes(z.key) ? z.color + '22' : '#f1f5f9',
-            border: `1.5px solid ${zones.includes(z.key) ? z.color : '#e2e6ea'}`,
-            borderRadius: 20, color: zones.includes(z.key) ? '#1a202c' : '#64748b',
+            background: zones.includes(z.key) ? z.color + '22' : 'var(--surface-2)',
+            border: `1.5px solid ${zones.includes(z.key) ? z.color : 'var(--border)'}`,
+            borderRadius: 20, color: zones.includes(z.key) ? 'var(--text)' : 'var(--text-2)',
             fontWeight: zones.includes(z.key) ? 600 : 400, transition: 'all .15s',
           }}>
             <input type="checkbox" style={{ display: 'none' }} checked={zones.includes(z.key)} onChange={() => toggle(z.key)} />
@@ -191,8 +191,8 @@ function ZoneCheckboxes({ zones, onChange }: { zones: string[]; onChange: (z: st
   );
 }
 const qBtn: React.CSSProperties = {
-  fontSize: 11, padding: '3px 10px', border: '1px solid #e2e6ea', borderRadius: 6,
-  background: '#f8fafc', cursor: 'pointer', fontFamily: 'inherit', color: '#374151',
+  fontSize: 11, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 6,
+  background: 'var(--surface-2)', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)',
 };
 
 // ── Multi-line SVG chart ───────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ function MultiLineChart({ ms, zones, selectedId, onSelect }: {
 
   if (ms.length < 2) {
     return (
-      <div style={{ background: '#f8fafc', borderRadius: 10, padding: '24px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+      <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '24px 16px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
         Динамика появится после второго замера
       </div>
     );
@@ -268,12 +268,12 @@ function MultiLineChart({ ms, zones, selectedId, onSelect }: {
       {/* Grid */}
       {[0, 0.5, 1].map((f, i) => (
         <line key={i} x1={PL} x2={W - PR} y1={PT + iH * (1 - f)} y2={PT + iH * (1 - f)}
-          stroke="#e2e6ea" strokeWidth={0.8} />
+          stroke="var(--border)" strokeWidth={0.8} />
       ))}
 
       {/* X axis labels */}
       {ms.map((m, i) => (
-        <text key={i} x={tx(i)} y={H - 4} textAnchor="middle" fontSize={9} fill="#9ca3af">
+        <text key={i} x={tx(i)} y={H - 4} textAnchor="middle" fontSize={9} fill="var(--text-3)">
           {`№${m.measure_no}·${fmtShortDate(m.measured_at)}`}
         </text>
       ))}
@@ -281,13 +281,13 @@ function MultiLineChart({ ms, zones, selectedId, onSelect }: {
       {/* Left Y axis labels (cm) */}
       {cmZones.length > 0 && [0, 0.5, 1].map((f, i) => {
         const v = (cmMin - cmPad) + f * (cmRange + 2 * cmPad);
-        return <text key={i} x={PL - 4} y={PT + iH * (1 - f) + 3} textAnchor="end" fontSize={9} fill="#6b7280">{v.toFixed(0)}</text>;
+        return <text key={i} x={PL - 4} y={PT + iH * (1 - f) + 3} textAnchor="end" fontSize={9} fill="var(--text-2)">{v.toFixed(0)}</text>;
       })}
 
       {/* Right Y axis labels (kg) */}
       {hasWeight && [0, 0.5, 1].map((f, i) => {
         const v = (wMin - wPad) + f * (wRange + 2 * wPad);
-        return <text key={i} x={W - PR + 4} y={PT + iH * (1 - f) + 3} textAnchor="start" fontSize={9} fill="#263CD9">{v.toFixed(1)}</text>;
+        return <text key={i} x={W - PR + 4} y={PT + iH * (1 - f) + 3} textAnchor="start" fontSize={9} fill="var(--accent)">{v.toFixed(1)}</text>;
       })}
 
       {/* Lines */}
@@ -304,7 +304,7 @@ function MultiLineChart({ ms, zones, selectedId, onSelect }: {
           if (m.weight == null) return null;
           return `${i === 0 || ms.slice(0, i).every(x => x.weight == null) ? 'M' : 'L'}${tx(i).toFixed(1)},${tyW(m.weight).toFixed(1)}`;
         }).filter(Boolean).join(' ');
-        return pts ? <path d={pts} fill="none" stroke="#263CD9" strokeWidth={2} strokeDasharray="5 3" strokeLinejoin="round" /> : null;
+        return pts ? <path d={pts} fill="none" stroke="var(--accent)" strokeWidth={2} strokeDasharray="5 3" strokeLinejoin="round" /> : null;
       })()}
 
       {/* Dots */}
@@ -316,7 +316,7 @@ function MultiLineChart({ ms, zones, selectedId, onSelect }: {
           const isLast = i === ms.length - 1;
           return (
             <g key={`${z.key}-${i}`}>
-              <circle cx={tx(i)} cy={tyCm(v)} r={isSelected ? 6 : isLast ? 5 : 3.5} fill={z.color} stroke="#fff" strokeWidth={1.5} />
+              <circle cx={tx(i)} cy={tyCm(v)} r={isSelected ? 6 : isLast ? 5 : 3.5} fill={z.color} stroke="var(--surface)" strokeWidth={1.5} />
               {isLast && z.key === activeZones[0]?.key && (
                 <text x={tx(i)} y={tyCm(v) - 8} textAnchor="middle" fontSize={9} fontWeight="700" fill={z.color}>
                   {v.toFixed(1)}
@@ -332,9 +332,9 @@ function MultiLineChart({ ms, zones, selectedId, onSelect }: {
         const isLast = i === ms.length - 1;
         return (
           <g key={`w-${i}`}>
-            <circle cx={tx(i)} cy={tyW(m.weight)} r={isSelected ? 5 : isLast ? 4 : 3} fill="#263CD9" stroke="#fff" strokeWidth={1.5} />
+            <circle cx={tx(i)} cy={tyW(m.weight)} r={isSelected ? 5 : isLast ? 4 : 3} fill="var(--accent)" stroke="var(--surface)" strokeWidth={1.5} />
             {isLast && zones[0] === 'weight' && (
-              <text x={tx(i)} y={tyW(m.weight) - 7} textAnchor="middle" fontSize={9} fontWeight="700" fill="#263CD9">
+              <text x={tx(i)} y={tyW(m.weight) - 7} textAnchor="middle" fontSize={9} fontWeight="700" fill="var(--accent)">
                 {m.weight.toFixed(1)}
               </text>
             )}
@@ -345,7 +345,7 @@ function MultiLineChart({ ms, zones, selectedId, onSelect }: {
       {/* Selected highlight bar */}
       {selIdx >= 0 && (
         <line x1={tx(selIdx)} x2={tx(selIdx)} y1={PT} y2={PT + iH}
-          stroke="#94a3b8" strokeWidth={1} strokeDasharray="3 2" opacity={0.6} />
+          stroke="var(--text-3)" strokeWidth={1} strokeDasharray="3 2" opacity={0.6} />
       )}
 
       {/* Hover cursor + tooltip */}
@@ -414,26 +414,26 @@ function FitbaseBtn({ m, client, onDone }: {
   }
 
   if (!client.fitbase_client_id) {
-    return <span style={{ fontSize: 11, color: '#9ca3af' }}>Нет связи Fitbase</span>;
+    return <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Нет связи Fitbase</span>;
   }
   if (localAt) {
     return (
-      <span style={{ fontSize: 11, color: '#22c55e' }}>
+      <span style={{ fontSize: 11, color: 'var(--success)' }}>
         ✓ {fmtTime(localAt)}
         {!confirm && <button onClick={() => setConfirm(true)} style={fbReSt}>↺</button>}
-        {confirm && <><button onClick={send} disabled={sending} style={{ ...fbReSt, color: '#f59e0b' }}>Ещё раз?</button><button onClick={() => setConfirm(false)} style={fbReSt}>✕</button></>}
+        {confirm && <><button onClick={send} disabled={sending} style={{ ...fbReSt, color: 'var(--warning)' }}>Ещё раз?</button><button onClick={() => setConfirm(false)} style={fbReSt}>✕</button></>}
       </span>
     );
   }
   return (
     <div>
       <button onClick={send} disabled={sending} style={fbBtnSt}>{sending ? '…' : 'Fitbase'}</button>
-      {error && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>{error}</div>}
+      {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2 }}>{error}</div>}
     </div>
   );
 }
-const fbBtnSt: React.CSSProperties = { fontSize: 11, padding: '2px 8px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' };
-const fbReSt:  React.CSSProperties = { fontSize: 10, marginLeft: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0 };
+const fbBtnSt: React.CSSProperties = { fontSize: 11, padding: '2px 8px', background: 'var(--info-soft)', color: 'var(--info)', border: '1px solid var(--info)', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' };
+const fbReSt:  React.CSSProperties = { fontSize: 10, marginLeft: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 0 };
 
 // ── Link dialog ────────────────────────────────────────────────────────────────
 
@@ -481,16 +481,16 @@ function LinkDialog({ clientId, onLinked, onClose }: {
           <div style={{ marginTop: 8, maxHeight: 200, overflowY: 'auto' }}>
             {results.map(c => (
               <div key={c.fitbase_client_id} onClick={() => !saving && link(c.fitbase_client_id)}
-                style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', border: '1px solid #e2e6ea', marginBottom: 4, background: '#fff',
+                style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border)', marginBottom: 4, background: 'var(--surface)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</span>
-                {c.phone && <span style={{ fontSize: 12, color: '#6b7280' }}>{c.phone}</span>}
+                {c.phone && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{c.phone}</span>}
               </div>
             ))}
           </div>
         )}
-        {err && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 6 }}>{err}</div>}
-        <button onClick={onClose} style={{ ...fbBtnSt, marginTop: 12, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea' }}>Отмена</button>
+        {err && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 6 }}>{err}</div>}
+        <button onClick={onClose} style={{ ...fbBtnSt, marginTop: 12, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)' }}>Отмена</button>
       </div>
     </div>
   );
@@ -543,10 +543,10 @@ function PrintDialog({ ms, clientId, onClose }: {
         <select value={toId} onChange={e => setToId(e.target.value)} style={selS}>
           {ms.map(m => <option key={m.id} value={m.id}>№{m.measure_no} ({fmtDate(m.measured_at)})</option>)}
         </select>
-        <iframe title="Предпросмотр бланка" src={`/kviz/measure/print?${query}&embed=1&mode=preview`} style={{ flex: 1, minHeight: 220, width: '100%', border: '1px solid #e2e6ea', borderRadius: 8, background: '#f8fafc', marginTop: 14 }} />
+        <iframe title="Предпросмотр бланка" src={`/kviz/measure/print?${query}&embed=1&mode=preview`} style={{ flex: 1, minHeight: 220, width: '100%', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', marginTop: 14 }} />
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button onClick={onClose} style={{ ...fbBtnSt, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', padding: '7px 14px', fontSize: 13 }}>Отмена</button>
-          <button onClick={printBlank} style={{ padding: '7px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flex: 1 }}>
+          <button onClick={onClose} style={{ ...fbBtnSt, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', padding: '7px 14px', fontSize: 13 }}>Отмена</button>
+          <button onClick={printBlank} style={{ padding: '7px 18px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flex: 1 }}>
             Печать
           </button>
         </div>
@@ -555,10 +555,10 @@ function PrintDialog({ ms, clientId, onClose }: {
   );
 }
 const overlayS: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 };
-const modalS:   React.CSSProperties = { background: '#fff', borderRadius: 14, padding: '20px 22px', width: 'min(400px,94vw)', maxHeight: '90vh', overflow: 'auto' };
-const inputS:   React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e6ea', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' };
-const selS:     React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1.5px solid #e2e6ea', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', marginTop: 4 };
-const lblS:     React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#374151', display: 'block' };
+const modalS:   React.CSSProperties = { background: 'var(--surface)', borderRadius: 14, padding: '20px 22px', width: 'min(400px,94vw)', maxHeight: '90vh', overflow: 'auto' };
+const inputS:   React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' };
+const selS:     React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', marginTop: 4 };
+const lblS:     React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'block' };
 
 // ── Share link dialog ──────────────────────────────────────────────────────────
 
@@ -595,24 +595,24 @@ function ShareLinkDialog({ clientId, onClose }: { clientId: string; onClose: () 
     <div style={overlayS} onClick={onClose}>
       <div style={{ ...modalS, width: 'min(400px,94vw)' }} onClick={e => e.stopPropagation()}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Ссылка для клиента</div>
-        {loading && <div style={{ color: '#9ca3af', fontSize: 13 }}>Генерация…</div>}
-        {err && <div style={{ color: '#ef4444', fontSize: 13 }}>{err}</div>}
+        {loading && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Генерация…</div>}
+        {err && <div style={{ color: 'var(--danger)', fontSize: 13 }}>{err}</div>}
         {url && !loading && (
           <>
-            <div style={{ background: '#f1f5f9', borderRadius: 8, padding: '8px 12px', fontSize: 12, wordBreak: 'break-all', marginBottom: 12 }}>{url}</div>
+            <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '8px 12px', fontSize: 12, wordBreak: 'break-all', marginBottom: 12 }}>{url}</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
               <button onClick={copy} style={{ ...ibBtnSt, flex: 1 }}>{copied ? '✓ Скопировано' : 'Скопировать'}</button>
               <a href={waUrl} target="_blank" rel="noopener noreferrer"
-                style={{ ...ibBtnSt, textDecoration: 'none', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', flex: 1, textAlign: 'center' as const }}>
+                style={{ ...ibBtnSt, textDecoration: 'none', background: 'var(--success-soft)', color: 'var(--success)', border: '1px solid var(--success)', flex: 1, textAlign: 'center' as const }}>
                 WhatsApp
               </a>
             </div>
-            <button onClick={refresh} disabled={loading} style={{ fontSize: 12, background: 'none', border: '1px solid #e2e6ea', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', color: '#6b7280', width: '100%', fontFamily: 'inherit' }}>
+            <button onClick={refresh} disabled={loading} style={{ fontSize: 12, background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', color: 'var(--text-2)', width: '100%', fontFamily: 'inherit' }}>
               Перевыпустить ссылку (старая перестанет работать)
             </button>
           </>
         )}
-        <button onClick={onClose} style={{ ...fbBtnSt, marginTop: 12, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', width: '100%', padding: '8px', fontSize: 13 }}>Закрыть</button>
+        <button onClick={onClose} style={{ ...fbBtnSt, marginTop: 12, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', width: '100%', padding: '8px', fontSize: 13 }}>Закрыть</button>
       </div>
     </div>
   );
@@ -725,13 +725,13 @@ function InBodyDialog({ clientId, onDone, onClose, isAdmin }: {
             </div>
 
             {photoStatus === 'searching' && (
-              <div style={{ padding: '10px 0', color: '#6b7280', fontSize: 13 }}>⏳ Ищу QR на листе…</div>
+              <div style={{ padding: '10px 0', color: 'var(--text-2)', fontSize: 13 }}>⏳ Ищу QR на листе…</div>
             )}
             {photoStatus === 'notfound' && (
               <div style={{ marginBottom: 10 }}>
-                <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 6 }}>QR не найден. Сфотографируйте ближе: QR должен занимать примерно четверть кадра, без бликов</div>
+                <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 6 }}>QR не найден. Сфотографируйте ближе: QR должен занимать примерно четверть кадра, без бликов</div>
                 {isAdmin && diagInfo && (
-                  <div style={{ color: '#9ca3af', fontSize: 11, marginBottom: 6, fontFamily: 'monospace', background: '#f8fafc', padding: '4px 8px', borderRadius: 6 }}>
+                  <div style={{ color: 'var(--text-3)', fontSize: 11, marginBottom: 6, fontFamily: 'monospace', background: 'var(--surface-2)', padding: '4px 8px', borderRadius: 6 }}>
                     {diagInfo}
                   </div>
                 )}
@@ -742,22 +742,22 @@ function InBodyDialog({ clientId, onDone, onClose, isAdmin }: {
             {/* Camera video — always in DOM so videoRef is never null */}
             <div style={{ position: 'relative', marginBottom: cameraActive ? 12 : 0, borderRadius: 8, overflow: 'hidden', background: '#000', display: cameraActive ? 'block' : 'none' }}>
               <video ref={videoRef} style={{ width: '100%', display: 'block' }} muted playsInline />
-              <div style={{ position: 'absolute', inset: 0, border: '2px solid #02BDB6', borderRadius: 8, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', inset: 0, border: '2px solid var(--primary)', borderRadius: 8, pointerEvents: 'none' }} />
               <div style={{ position: 'absolute', bottom: 10, left: 0, right: 0, textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.75)', pointerEvents: 'none' }}>
                 Наведите на QR в углу листа
               </div>
             </div>
             <canvas ref={canvasRef} style={{ display: 'none' }} />
-            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Или вставьте ссылку / строку из QR:</div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Или вставьте ссылку / строку из QR:</div>
             <input style={inputS} placeholder="https://qrcode.inbody.com?IBData=..." value={pasteVal}
               onChange={e => { setPasteVal(e.target.value); if (e.target.value.length > 20) tryParse(e.target.value); }} />
-            {(parseErr || cameraErr) && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 6 }}>{parseErr || cameraErr}</div>}
+            {(parseErr || cameraErr) && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 6 }}>{parseErr || cameraErr}</div>}
           </>
         )}
 
         {parsed && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: 13 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6, color: '#166534' }}>✓ Данные распознаны</div>
+          <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: 13 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--success)' }}>✓ Данные распознаны</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
               <span>Дата: {new Date(parsed.measured_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</span>
               <span>Вес: {parsed.weight_kg} кг</span>
@@ -766,17 +766,17 @@ function InBodyDialog({ clientId, onDone, onClose, isAdmin }: {
               <span>Мышцы: {parsed.skeletal_muscle_kg} кг</span>
               <span>ИМТ: {parsed.bmi}</span>
             </div>
-            <button style={{ marginTop: 8, fontSize: 12, background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 0 }}
+            <button style={{ marginTop: 8, fontSize: 12, background: 'none', border: 'none', color: 'var(--text-2)', cursor: 'pointer', padding: 0 }}
               onClick={() => { setParsed(null); setPasteVal(''); }}>← Заново</button>
           </div>
         )}
 
-        {saveErr && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 8 }}>{saveErr}</div>}
+        {saveErr && <div style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 8 }}>{saveErr}</div>}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-          <button onClick={onClose} style={{ ...fbBtnSt, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', padding: '7px 14px', fontSize: 13 }}>Отмена</button>
+          <button onClick={onClose} style={{ ...fbBtnSt, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', padding: '7px 14px', fontSize: 13 }}>Отмена</button>
           {parsed && (
-            <button onClick={save} disabled={saving} style={{ flex: 1, padding: '7px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button onClick={save} disabled={saving} style={{ flex: 1, padding: '7px 18px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
               {saving ? 'Сохранение…' : 'Сохранить'}
             </button>
           )}
@@ -785,7 +785,7 @@ function InBodyDialog({ clientId, onDone, onClose, isAdmin }: {
     </div>
   );
 }
-const ibBtnSt: React.CSSProperties = { padding: '6px 14px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 };
+const ibBtnSt: React.CSSProperties = { padding: '6px 14px', background: 'var(--info-soft)', color: 'var(--info)', border: '1px solid var(--info)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 };
 
 // ── Zone Detail Panel ─────────────────────────────────────────────────────────
 
@@ -848,7 +848,7 @@ function ZoneDetailPanel({ zoneKey, ms, latestIBData, onClose }: { zoneKey: Circ
         </div>
 
         <div className="zone-panel-history">
-          {history.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Нет замеров для этой зоны</div>}
+          {history.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет замеров для этой зоны</div>}
           {history.map(({ m, prev: p }, hi) => {
             const val = Number(m[zoneKey]);
             const diffPrev = p && p[zoneKey] != null ? val - Number(p[zoneKey]) : null;
@@ -873,7 +873,7 @@ function ZoneDetailPanel({ zoneKey, ms, latestIBData, onClose }: { zoneKey: Circ
         )}
 
         {trendInfo && (
-          <div style={{ fontSize: 12, color: '#374151', marginTop: 8, padding: '6px 10px', background: '#f8fafc', borderRadius: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--text)', marginTop: 8, padding: '6px 10px', background: 'var(--surface-2)', borderRadius: 8 }}>
             <span style={{ fontWeight: 600 }}>Тренд: </span>
             {trendInfo.slopePerWeek < 0 ? '↓ ' : '↑ '}{Math.abs(trendInfo.slopePerWeek).toFixed(2)} см/нед ·{' '}
             через 2 нед: <b>{trendInfo.next2w.toFixed(1)}</b> · через 4 нед: <b>{trendInfo.next4w.toFixed(1)}</b>
@@ -881,16 +881,16 @@ function ZoneDetailPanel({ zoneKey, ms, latestIBData, onClose }: { zoneKey: Circ
         )}
 
         {latestIBData && segKey && segDataKeys && (
-          <div style={{ fontSize: 12, color: '#374151', marginTop: 8, padding: '6px 10px', background: 'rgba(2,189,182,.06)', borderRadius: 8, border: '1px solid rgba(2,189,182,.2)' }}>
+          <div style={{ fontSize: 12, color: 'var(--text)', marginTop: 8, padding: '6px 10px', background: 'rgba(2,189,182,.06)', borderRadius: 8, border: '1px solid rgba(2,189,182,.2)' }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>InBody · {SEG_LABELS[segKey]}</div>
             {latestIBData[segDataKeys.ffm] != null && (
               <div>Безжир.: <b>{Number(latestIBData[segDataKeys.ffm]).toFixed(2)} кг</b>
-                {latestIBData[segDataKeys.ffmPct] != null && <span style={{ color: '#9ca3af', marginLeft: 4 }}>({Number(latestIBData[segDataKeys.ffmPct]).toFixed(1)}%)</span>}
+                {latestIBData[segDataKeys.ffmPct] != null && <span style={{ color: 'var(--text-3)', marginLeft: 4 }}>({Number(latestIBData[segDataKeys.ffmPct]).toFixed(1)}%)</span>}
               </div>
             )}
             {latestIBData[segDataKeys.bfm] != null && (
               <div>Жировая: <b>{Number(latestIBData[segDataKeys.bfm]).toFixed(2)} кг</b>
-                {latestIBData[segDataKeys.bfmPct] != null && <span style={{ color: '#9ca3af', marginLeft: 4 }}>({Number(latestIBData[segDataKeys.bfmPct]).toFixed(1)}%)</span>}
+                {latestIBData[segDataKeys.bfmPct] != null && <span style={{ color: 'var(--text-3)', marginLeft: 4 }}>({Number(latestIBData[segDataKeys.bfmPct]).toFixed(1)}%)</span>}
               </div>
             )}
             {segKey === 'trunk' && (
@@ -919,11 +919,11 @@ function UnlinkBtn({ testId, onDone }: { testId: string; onDone: () => void }) {
       onDone();
     } finally { setLoading(false); setConfirm(false); }
   }
-  if (!confirm) return <button onClick={() => setConfirm(true)} style={{ fontSize: 10, padding: '1px 6px', background: 'none', border: '1px solid #e2e6ea', borderRadius: 4, cursor: 'pointer', color: '#9ca3af', fontFamily: 'inherit' }}>Отвязать</button>;
+  if (!confirm) return <button onClick={() => setConfirm(true)} style={{ fontSize: 10, padding: '1px 6px', background: 'none', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-3)', fontFamily: 'inherit' }}>Отвязать</button>;
   return (
     <span>
-      <button onClick={unlink} disabled={loading} style={{ fontSize: 10, padding: '1px 6px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, cursor: 'pointer', color: '#ef4444', fontFamily: 'inherit' }}>{loading ? '…' : 'Да'}</button>
-      <button onClick={() => setConfirm(false)} style={{ fontSize: 10, marginLeft: 2, padding: '1px 4px', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>✕</button>
+      <button onClick={unlink} disabled={loading} style={{ fontSize: 10, padding: '1px 6px', background: 'var(--danger-soft)', border: '1px solid var(--danger)', borderRadius: 4, cursor: 'pointer', color: 'var(--danger)', fontFamily: 'inherit' }}>{loading ? '…' : 'Да'}</button>
+      <button onClick={() => setConfirm(false)} style={{ fontSize: 10, marginLeft: 2, padding: '1px 4px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)' }}>✕</button>
     </span>
   );
 }
@@ -985,8 +985,8 @@ function LinkInBodyDialog({ clientId, clientPhone, onLinked, onClose }: {
     <div style={overlayS} onClick={onClose}>
       <div style={modalS} onClick={e => e.stopPropagation()}>
         <div style={{ fontWeight: 700, marginBottom: 10 }}>Привязать InBody</div>
-        <div style={{ color: '#f59e0b', fontSize: 13 }}>У клиента нет номера телефона — привязка невозможна</div>
-        <button onClick={onClose} style={{ ...fbBtnSt, marginTop: 14, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea' }}>Закрыть</button>
+        <div style={{ color: 'var(--warning)', fontSize: 13 }}>У клиента нет номера телефона — привязка невозможна</div>
+        <button onClick={onClose} style={{ ...fbBtnSt, marginTop: 14, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)' }}>Закрыть</button>
       </div>
     </div>
   );
@@ -995,21 +995,21 @@ function LinkInBodyDialog({ clientId, clientPhone, onLinked, onClose }: {
     <div style={overlayS} onClick={onClose}>
       <div style={{ ...modalS, width: 'min(640px,96vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Привязать InBody к клиенту</div>
-        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>Телефон клиента: <b>{clientPhone}</b></div>
+        <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10 }}>Телефон клиента: <b>{clientPhone}</b></div>
         <input style={{ ...inputS, marginBottom: 10 }} placeholder="Поиск по ID или дате (YYYY-MM-DD)…" value={q} onChange={e => setQ(e.target.value)} />
-        {err && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 8 }}>{err}</div>}
-        {loading && <div style={{ color: '#9ca3af', fontSize: 13 }}>Загрузка…</div>}
+        {err && <div style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
+        {loading && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-          {!loading && shown.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13, padding: 8 }}>Нет непривязанных тестов</div>}
+          {!loading && shown.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13, padding: 8 }}>Нет непривязанных тестов</div>}
           {shown.map(t => (
             <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8,
-              background: selected.has(t.id) ? 'rgba(2,189,182,.08)' : '#f8fafc',
-              border: `1px solid ${selected.has(t.id) ? '#02BDB6' : '#e2e6ea'}`,
+              background: selected.has(t.id) ? 'rgba(2,189,182,.08)' : 'var(--surface-2)',
+              border: `1px solid ${selected.has(t.id) ? 'var(--primary)' : 'var(--border)'}`,
               marginBottom: 4, cursor: 'pointer' }}>
               <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} style={{ flexShrink: 0 }} />
               <div style={{ flex: 1, fontSize: 12 }}>
-                <div style={{ fontWeight: 600 }}>{fmtDate(t.tested_at)} <span style={{ color: '#9ca3af', fontWeight: 400 }}>ID: {t.inbody_id}</span></div>
-                <div style={{ color: '#6b7280' }}>
+                <div style={{ fontWeight: 600 }}>{fmtDate(t.tested_at)} <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>ID: {t.inbody_id}</span></div>
+                <div style={{ color: 'var(--text-2)' }}>
                   {t.weight != null && `Вес: ${t.weight.toFixed(1)} кг`}
                   {t.bfm != null && ` · Жир: ${t.bfm.toFixed(1)} кг`}
                   {t.smm != null && ` · Мышцы: ${t.smm.toFixed(1)} кг`}
@@ -1020,9 +1020,9 @@ function LinkInBodyDialog({ clientId, clientPhone, onLinked, onClose }: {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <button onClick={onClose} style={{ ...fbBtnSt, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea' }}>Отмена</button>
+          <button onClick={onClose} style={{ ...fbBtnSt, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)' }}>Отмена</button>
           <button onClick={link} disabled={saving || !selected.size}
-            style={{ flex: 1, padding: '7px 18px', background: selected.size ? '#02BDB6' : '#e2e6ea', color: selected.size ? '#fff' : '#9ca3af', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: selected.size ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+            style={{ flex: 1, padding: '7px 18px', background: selected.size ? 'var(--primary)' : 'var(--border)', color: selected.size ? 'var(--surface)' : 'var(--text-3)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: selected.size ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             {saving ? 'Привязка…' : `Привязать${selected.size ? ` (${selected.size})` : ''}`}
           </button>
         </div>
@@ -1063,22 +1063,22 @@ function resolveNorm(m: IBMetric, data: Record<string, unknown> | null): [number
 }
 
 function ibColor(val: number, norms: [number, number] | null, goodDir?: 'low' | 'high'): string {
-  if (!norms) return '#374151';
+  if (!norms) return 'var(--text)';
   const [lo, hi] = norms;
-  if (val >= lo && val <= hi) return '#16a34a';
-  if (goodDir === 'low' && val > hi) return '#ef4444';
-  if (goodDir === 'high' && val < lo) return '#ef4444';
-  return '#f59e0b';
+  if (val >= lo && val <= hi) return 'var(--success)';
+  if (goodDir === 'low' && val > hi) return 'var(--danger)';
+  if (goodDir === 'high' && val < lo) return 'var(--danger)';
+  return 'var(--warning)';
 }
 
 type IBChartKey = 'weight' | 'smm' | 'bfm' | 'pbf' | 'tbw' | 'inbody_score';
 const IB_CHART_LINES: { key: IBChartKey; label: string; color: string; dashed?: boolean; dataKey?: string }[] = [
-  { key: 'weight',       label: 'Вес кг',      color: '#263CD9', dashed: true },
-  { key: 'smm',          label: 'Мышцы кг',    color: '#02BDB6' },
-  { key: 'bfm',          label: 'Жир кг',      color: '#ef4444' },
+  { key: 'weight',       label: 'Вес кг',      color: 'var(--accent)', dashed: true },
+  { key: 'smm',          label: 'Мышцы кг',    color: 'var(--primary)' },
+  { key: 'bfm',          label: 'Жир кг',      color: 'var(--danger)' },
   { key: 'pbf',          label: '% жира',      color: '#f97316' },
   { key: 'tbw',          label: 'Вода л',      color: '#06b6d4', dataKey: 'tbw' },
-  { key: 'inbody_score', label: 'Оценка',      color: '#8b5cf6' },
+  { key: 'inbody_score', label: 'Оценка',      color: 'var(--accent)' },
 ];
 
 // ── InBody Full Sheet popup ────────────────────────────────────────────────────
@@ -1093,13 +1093,13 @@ function ibBarPct(val: number, lo: number, hi: number): number {
 }
 
 function NormBar({ val, lo, hi, goodDir, unit = '' }: { val: number | null; lo: number | null; hi: number | null; goodDir?: 'low' | 'high'; unit?: string }) {
-  if (val == null || lo == null || hi == null) return <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>;
+  if (val == null || lo == null || hi == null) return <span style={{ color: 'var(--text-3)', fontSize: 12 }}>—</span>;
   const pct = ibBarPct(val, lo, hi);
   const color = ibColor(val, [lo, hi], goodDir);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 4, position: 'relative', overflow: 'visible' }}>
-        <div style={{ position: 'absolute', left: '25%', right: '25%', height: '100%', background: '#dcfce7', borderRadius: 2 }} />
+      <div style={{ flex: 1, height: 8, background: 'var(--surface-2)', borderRadius: 4, position: 'relative', overflow: 'visible' }}>
+        <div style={{ position: 'absolute', left: '25%', right: '25%', height: '100%', background: 'var(--success-soft)', borderRadius: 2 }} />
         <div style={{ position: 'absolute', left: `${pct}%`, top: -2, width: 12, height: 12, background: color, borderRadius: '50%', transform: 'translateX(-50%)', border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
       </div>
       <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 40, textAlign: 'right' }}>{val.toFixed(1)}{unit}</span>
@@ -1136,16 +1136,16 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
     return (d >= 0 ? '+' : '') + d.toFixed(1);
   }
   function diffColor2(a: number | null, b: number | null, goodDir?: 'low' | 'high'): string {
-    if (a == null || b == null) return '#9ca3af';
+    if (a == null || b == null) return 'var(--text-3)';
     const d = b - a;
-    if (d === 0) return '#9ca3af';
-    if (goodDir === 'low') return d > 0 ? '#ef4444' : '#16a34a';
-    if (goodDir === 'high') return d > 0 ? '#16a34a' : '#ef4444';
-    return '#374151';
+    if (d === 0) return 'var(--text-3)';
+    if (goodDir === 'low') return d > 0 ? 'var(--danger)' : 'var(--success)';
+    if (goodDir === 'high') return d > 0 ? 'var(--success)' : 'var(--danger)';
+    return 'var(--text)';
   }
 
   const score = t.inbody_score;
-  const scoreColor = score != null ? ibColor(score, [70, 90], 'high') : '#9ca3af';
+  const scoreColor = score != null ? ibColor(score, [70, 90], 'high') : 'var(--text-3)';
 
   function Row({ label, val, unit = '', normMin, normMax, goodDir, fKey }: {
     label: string; val: number | null; unit?: string;
@@ -1156,11 +1156,11 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
     const fVal = fKey ? fn(fKey) : null;
     return (
       <tr>
-        <td style={{ padding: '4px 8px', fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap' }}>{label}</td>
-        <td style={{ padding: '4px 8px', fontSize: 13, fontWeight: 700, color: val != null && lo != null && hi != null ? ibColor(val, [lo, hi], goodDir) : '#374151' }}>
+        <td style={{ padding: '4px 8px', fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{label}</td>
+        <td style={{ padding: '4px 8px', fontSize: 13, fontWeight: 700, color: val != null && lo != null && hi != null ? ibColor(val, [lo, hi], goodDir) : 'var(--text)' }}>
           {val != null ? val.toFixed(1) + unit : '—'}
         </td>
-        <td style={{ padding: '4px 8px', fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+        <td style={{ padding: '4px 8px', fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
           {lo != null && hi != null ? `${lo.toFixed(1)}–${hi.toFixed(1)}` : ''}
         </td>
         {compare && <td style={{ padding: '4px 8px', fontSize: 12, fontWeight: 600, color: diffColor2(fVal, val, goodDir) }}>
@@ -1175,8 +1175,8 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
     const ffmF = fn(ffm), bfmF = fn(bfm);
     return (
       <tr>
-        <td style={{ padding: '3px 6px', fontSize: 11, color: '#6b7280' }}>{label}</td>
-        <td style={{ padding: '3px 6px', fontSize: 12, fontWeight: 600, color: '#02BDB6' }}>
+        <td style={{ padding: '3px 6px', fontSize: 11, color: 'var(--text-2)' }}>{label}</td>
+        <td style={{ padding: '3px 6px', fontSize: 12, fontWeight: 600, color: 'var(--primary)' }}>
           {ffmV != null ? ffmV.toFixed(2) : '—'}{compare && ffmF != null && ffmV != null ? <span style={{ fontSize: 10, color: diffColor2(ffmF, ffmV, 'high'), marginLeft: 3 }}>{diff(ffmF, ffmV)}</span> : null}
         </td>
         <td style={{ padding: '3px 6px', fontSize: 12, fontWeight: 600, color: '#f97316' }}>
@@ -1188,16 +1188,16 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: 14, width: 'min(860px,96vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 12px 48px rgba(0,0,0,.3)' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, width: 'min(860px,96vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 12px 48px rgba(0,0,0,.3)' }} onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid #e2e6ea', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
           <div style={{ fontSize: 28, fontWeight: 800, color: scoreColor, minWidth: 56 }}>
-            {score != null ? score.toFixed(0) : '—'}<span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af', marginLeft: 2 }}>pts</span>
+            {score != null ? score.toFixed(0) : '—'}<span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-3)', marginLeft: 2 }}>pts</span>
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 15 }}>Полный лист InBody</div>
             <select value={selIdx} onChange={e => setSelIdx(Number(e.target.value))}
-              style={{ fontSize: 12, border: '1px solid #e2e6ea', borderRadius: 6, padding: '2px 6px', fontFamily: 'inherit', marginTop: 2 }}>
+              style={{ fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, padding: '2px 6px', fontFamily: 'inherit', marginTop: 2 }}>
               {tests.map((t, i) => <option key={t.id} value={i}>{fmtDate(t.tested_at)} ({t.source})</option>)}
             </select>
           </div>
@@ -1207,7 +1207,7 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
               Сравнить с первым
             </label>
           )}
-          <button onClick={onClose} style={{ fontSize: 22, background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ fontSize: 22, background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -1215,9 +1215,9 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
           <div>
             {/* Body composition */}
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Состав тела</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 8 }}>Состав тела</div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr><th style={{ padding: '3px 8px', fontSize: 11, color: '#9ca3af', textAlign: 'left', fontWeight: 400 }}>Показатель</th><th style={{ textAlign: 'left', padding: '3px 8px', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Значение</th><th style={{ textAlign: 'left', padding: '3px 8px', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Норма</th>{compare && <th style={{ padding: '3px 8px', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Δ</th>}</tr></thead>
+                <thead><tr><th style={{ padding: '3px 8px', fontSize: 11, color: 'var(--text-3)', textAlign: 'left', fontWeight: 400 }}>Показатель</th><th style={{ textAlign: 'left', padding: '3px 8px', fontSize: 11, color: 'var(--text-3)', fontWeight: 400 }}>Значение</th><th style={{ textAlign: 'left', padding: '3px 8px', fontSize: 11, color: 'var(--text-3)', fontWeight: 400 }}>Норма</th>{compare && <th style={{ padding: '3px 8px', fontSize: 11, color: 'var(--text-3)', fontWeight: 400 }}>Δ</th>}</tr></thead>
                 <tbody>
                   <Row label="Вода (л)" val={n('tbw')} normMin="tbw_min" normMax="tbw_max" fKey="tbw" goodDir="high" />
                   <Row label="Белок (кг)" val={n('protein')} normMin="protein_min" normMax="protein_max" fKey="protein" goodDir="high" />
@@ -1230,7 +1230,7 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
 
             {/* Muscle–fat analysis */}
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Мышцы–жир</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 8 }}>Мышцы–жир</div>
               {([
                 { label: 'Вес (кг)', val: n('weight'), lo: n('weight_min'), hi: n('weight_max'), fKey: 'weight' },
                 { label: 'Мышцы кг', val: n('smm'), lo: n('smm_min'), hi: n('smm_max'), goodDir: 'high' as const, fKey: 'smm' },
@@ -1238,7 +1238,7 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
               ]).map(({ label, val, lo, hi, goodDir, fKey }) => (
                 <div key={label} style={{ marginBottom: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
-                    <span style={{ color: '#6b7280' }}>{label}</span>
+                    <span style={{ color: 'var(--text-2)' }}>{label}</span>
                     {compare && fn(fKey) != null && val != null && <span style={{ fontSize: 11, color: diffColor2(fn(fKey), val, goodDir) }}>{diff(fn(fKey), val)}</span>}
                   </div>
                   <NormBar val={val} lo={lo} hi={hi} goodDir={goodDir} />
@@ -1248,14 +1248,14 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
 
             {/* Obesity */}
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Ожирение</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 8 }}>Ожирение</div>
               {([
                 { label: 'ИМТ', val: n('bmi'), lo: n('bmi_min'), hi: n('bmi_max'), fKey: 'bmi' },
                 { label: '% жира', val: n('pbf'), lo: n('pbf_min'), hi: n('pbf_max'), goodDir: 'low' as const, fKey: 'pbf' },
               ]).map(({ label, val, lo, hi, goodDir, fKey }) => (
                 <div key={label} style={{ marginBottom: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
-                    <span style={{ color: '#6b7280' }}>{label}</span>
+                    <span style={{ color: 'var(--text-2)' }}>{label}</span>
                     {compare && fn(fKey) != null && val != null && <span style={{ fontSize: 11, color: diffColor2(fn(fKey), val, goodDir) }}>{diff(fn(fKey), val)}</span>}
                   </div>
                   <NormBar val={val} lo={lo} hi={hi} goodDir={goodDir} />
@@ -1265,11 +1265,11 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
 
             {/* Segments */}
             <div>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 6 }}>Сегменты (кг)</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 6 }}>Сегменты (кг)</div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
-                  <th style={{ padding: '3px 6px', fontSize: 11, color: '#9ca3af', textAlign: 'left', fontWeight: 400 }}>Зона</th>
-                  <th style={{ padding: '3px 6px', fontSize: 11, color: '#02BDB6', textAlign: 'left', fontWeight: 600 }}>Безжир.</th>
+                  <th style={{ padding: '3px 6px', fontSize: 11, color: 'var(--text-3)', textAlign: 'left', fontWeight: 400 }}>Зона</th>
+                  <th style={{ padding: '3px 6px', fontSize: 11, color: 'var(--primary)', textAlign: 'left', fontWeight: 600 }}>Безжир.</th>
                   <th style={{ padding: '3px 6px', fontSize: 11, color: '#f97316', textAlign: 'left', fontWeight: 600 }}>Жир</th>
                 </tr></thead>
                 <tbody>
@@ -1285,8 +1285,8 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
 
           {/* Right column */}
           <div>
-            <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Контроль и цели</div>
+            <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 8 }}>Контроль и цели</div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   {[
@@ -1296,8 +1296,8 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
                     { label: 'Контроль мышц', key: 'ffm_control', unit: ' кг' },
                   ].map(({ label, key, unit }) => (
                     <tr key={key}>
-                      <td style={{ padding: '3px 0', fontSize: 12, color: '#6b7280' }}>{label}</td>
-                      <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: '#374151' }}>
+                      <td style={{ padding: '3px 0', fontSize: 12, color: 'var(--text-2)' }}>{label}</td>
+                      <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                         {n(key) != null ? n(key)!.toFixed(1) + unit : '—'}
                       </td>
                     </tr>
@@ -1306,8 +1306,8 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
               </table>
             </div>
 
-            <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Дополнительно</div>
+            <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 8 }}>Дополнительно</div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   {[
@@ -1321,8 +1321,8 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
                     const val = key === 'ffm' ? t.ffm : n(key);
                     return (
                       <tr key={key}>
-                        <td style={{ padding: '3px 0', fontSize: 12, color: '#6b7280' }}>{label}</td>
-                        <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: '#374151' }}>
+                        <td style={{ padding: '3px 0', fontSize: 12, color: 'var(--text-2)' }}>{label}</td>
+                        <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                           {val != null ? val.toFixed(key === 'vfl' || key === 'smi' ? 0 : 2) + unit : '—'}
                         </td>
                       </tr>
@@ -1333,19 +1333,19 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
             </div>
 
             <div style={{ background: 'rgba(2,189,182,.06)', border: '1px solid rgba(2,189,182,.2)', borderRadius: 10, padding: '12px 14px' }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>Обмен веществ</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 8 }}>Обмен веществ</div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr>
-                    <td style={{ padding: '3px 0', fontSize: 12, color: '#6b7280' }}>Базальный метаболизм</td>
-                    <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: '#374151' }}>
+                    <td style={{ padding: '3px 0', fontSize: 12, color: 'var(--text-2)' }}>Базальный метаболизм</td>
+                    <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                       {t.bmr != null ? `${t.bmr.toFixed(0)} ккал` : '—'}
-                      {n('bmr_min') != null && n('bmr_max') != null && <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 4 }}>({n('bmr_min')!.toFixed(0)}–{n('bmr_max')!.toFixed(0)})</span>}
+                      {n('bmr_min') != null && n('bmr_max') != null && <span style={{ fontSize: 10, color: 'var(--text-3)', marginLeft: 4 }}>({n('bmr_min')!.toFixed(0)}–{n('bmr_max')!.toFixed(0)})</span>}
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '3px 0', fontSize: 12, color: '#6b7280' }}>Рекомендуемые ккал</td>
-                    <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: '#374151' }}>
+                    <td style={{ padding: '3px 0', fontSize: 12, color: 'var(--text-2)' }}>Рекомендуемые ккал</td>
+                    <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                       {n('recommended_kcal') != null ? `${n('recommended_kcal')!.toFixed(0)} ккал` : '—'}
                     </td>
                   </tr>
@@ -1366,12 +1366,12 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
 
   if (tests.length === 0) {
     return (
-      <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>InBody</span>
+          <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>InBody</span>
           <button onClick={onScan} style={ibBtnSt}>+ Сканировать</button>
         </div>
-        <div style={{ color: '#9ca3af', fontSize: 13, marginTop: 8 }}>Нет данных InBody</div>
+        <div style={{ color: 'var(--text-3)', fontSize: 13, marginTop: 8 }}>Нет данных InBody</div>
       </div>
     );
   }
@@ -1401,12 +1401,12 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
   function ty(v: number, mn: number, mx: number) { return PT + iH - ((v - mn) / (mx - mn)) * iH; }
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, marginBottom: 14, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, marginBottom: 14, overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>InBody · {tests.length} тест{tests.length > 1 ? 'ов' : ''}</span>
+      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>InBody · {tests.length} тест{tests.length > 1 ? 'ов' : ''}</span>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => setFullSheet(true)} style={{ ...ibBtnSt, background: 'rgba(2,189,182,.08)', color: '#02BDB6', border: '1px solid rgba(2,189,182,.3)' }}>Полный лист</button>
+          <button onClick={() => setFullSheet(true)} style={{ ...ibBtnSt, background: 'rgba(2,189,182,.08)', color: 'var(--primary)', border: '1px solid rgba(2,189,182,.3)' }}>Полный лист</button>
           <button onClick={onScan} style={ibBtnSt}>+ Сканировать</button>
         </div>
       </div>
@@ -1414,7 +1414,7 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
 
       {/* Latest test metrics with norms and arrows */}
       <div style={{ padding: '12px 16px' }}>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8 }}>
           Последний: {fmtDate(last.tested_at)} ({last.source === 'qr' ? 'QR' : 'CSV'})
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '8px 12px' }}>
@@ -1435,8 +1435,8 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
                 <div style={{ fontSize: 17, fontWeight: 700, color: col, lineHeight: 1.1 }}>
                   {Number(v).toFixed(decimals)}{m.unit}<span style={{ fontSize: 11, color: col }}>{arrow}</span>
                 </div>
-                {norm && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>{norm[0].toFixed(1)}–{norm[1].toFixed(1)}</div>}
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{m.label}</div>
+                {norm && <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>{norm[0].toFixed(1)}–{norm[1].toFixed(1)}</div>}
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>{m.label}</div>
               </div>
             );
           })}
@@ -1449,8 +1449,8 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
             {IB_CHART_LINES.map(l => (
               <label key={l.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer',
-                padding: '2px 8px', borderRadius: 20, border: `1.5px solid ${ibLines.includes(l.key) ? l.color : '#e2e6ea'}`,
-                background: ibLines.includes(l.key) ? l.color + '18' : '#f8fafc', color: ibLines.includes(l.key) ? '#1a202c' : '#9ca3af' }}>
+                padding: '2px 8px', borderRadius: 20, border: `1.5px solid ${ibLines.includes(l.key) ? l.color : 'var(--border)'}`,
+                background: ibLines.includes(l.key) ? l.color + '18' : 'var(--surface-2)', color: ibLines.includes(l.key) ? 'var(--text)' : 'var(--text-3)' }}>
                 <input type="checkbox" style={{ display: 'none' }} checked={ibLines.includes(l.key)}
                   onChange={() => setIbLines(prev => prev.includes(l.key) ? prev.filter(k => k !== l.key) : [...prev, l.key])} />
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: l.color, flexShrink: 0 }} />
@@ -1459,9 +1459,9 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
             ))}
           </div>
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }}>
-            {[0, 0.5, 1].map((f, i) => <line key={i} x1={PL} x2={W - PR} y1={PT + iH * (1 - f)} y2={PT + iH * (1 - f)} stroke="#e2e6ea" strokeWidth={0.7} />)}
+            {[0, 0.5, 1].map((f, i) => <line key={i} x1={PL} x2={W - PR} y1={PT + iH * (1 - f)} y2={PT + iH * (1 - f)} stroke="var(--border)" strokeWidth={0.7} />)}
             {tests.map((t, i) => (
-              <text key={i} x={tx(i)} y={H - 4} textAnchor="middle" fontSize={8} fill="#9ca3af">
+              <text key={i} x={tx(i)} y={H - 4} textAnchor="middle" fontSize={8} fill="var(--text-3)">
                 {fmtShortDate(t.tested_at)}
               </text>
             ))}
@@ -1485,7 +1485,7 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
                 const isLast = i === tests.length - 1;
                 return (
                   <g key={`${l.key}-${i}`}>
-                    <circle cx={tx(i)} cy={ty(Number(v), range.mn, range.mx)} r={isLast ? 4 : 2.5} fill={l.color} stroke="#fff" strokeWidth={1} />
+                    <circle cx={tx(i)} cy={ty(Number(v), range.mn, range.mx)} r={isLast ? 4 : 2.5} fill={l.color} stroke="var(--surface)" strokeWidth={1} />
                     {isLast && (
                       <text x={tx(i)} y={ty(Number(v), range.mn, range.mx) - 6} textAnchor="middle" fontSize={8} fontWeight="700" fill={l.color}>
                         {Number(v).toFixed(1)}
@@ -1502,7 +1502,7 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
               if (!range) return null;
               return [0, 0.5, 1].map((f, i) => {
                 const v = range.mn + f * (range.mx - range.mn);
-                return <text key={i} x={PL - 3} y={PT + iH * (1 - f) + 3} textAnchor="end" fontSize={8} fill="#9ca3af">{v.toFixed(1)}</text>;
+                return <text key={i} x={PL - 3} y={PT + iH * (1 - f) + 3} textAnchor="end" fontSize={8} fill="var(--text-3)">{v.toFixed(1)}</text>;
               });
             })()}
           </svg>
@@ -1511,8 +1511,8 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
 
       {/* Expand/collapse table */}
       <button onClick={() => setExpanded(e => !e)}
-        style={{ width: '100%', padding: '8px 16px', background: '#f8fafc', border: 'none', borderTop: '1px solid #f1f5f9',
-          cursor: 'pointer', fontSize: 12, color: '#6b7280', textAlign: 'left', fontFamily: 'inherit' }}>
+        style={{ width: '100%', padding: '8px 16px', background: 'var(--surface-2)', border: 'none', borderTop: '1px solid var(--border)',
+          cursor: 'pointer', fontSize: 12, color: 'var(--text-2)', textAlign: 'left', fontFamily: 'inherit' }}>
         {expanded ? '▲ Скрыть таблицу' : `▼ Все тесты (${tests.length})`}
       </button>
       {expanded && (
@@ -1530,14 +1530,14 @@ function InBodyBlock({ tests, onScan, onUnlink }: { tests: InBodyTest[]; onScan:
                 return (
                   <tr key={t.id}>
                     <td>{fmtDate(t.tested_at)}</td>
-                    <td style={{ color: '#9ca3af' }}>{t.source}</td>
+                    <td style={{ color: 'var(--text-3)' }}>{t.source}</td>
                     <td>{t.weight?.toFixed(1) ?? '—'}</td>
-                    <td>{t.bfm != null ? <span style={{ color: diff != null ? diffColor(diff) : '#374151' }}>{t.bfm.toFixed(1)}</span> : '—'}</td>
+                    <td>{t.bfm != null ? <span style={{ color: diff != null ? diffColor(diff) : 'var(--text)' }}>{t.bfm.toFixed(1)}</span> : '—'}</td>
                     <td>{t.pbf?.toFixed(1) ?? '—'}</td>
                     <td>{t.smm?.toFixed(1) ?? '—'}</td>
                     <td>{t.bmi?.toFixed(1) ?? '—'}</td>
                     <td>{t.vfl?.toFixed(0) ?? '—'}</td>
-                    <td style={{ fontWeight: 600, color: t.inbody_score != null ? ibColor(t.inbody_score, [70, 90], 'high') : '#9ca3af' }}>
+                    <td style={{ fontWeight: 600, color: t.inbody_score != null ? ibColor(t.inbody_score, [70, 90], 'high') : 'var(--text-3)' }}>
                       {t.inbody_score?.toFixed(0) ?? '—'}
                     </td>
                     <td>
@@ -1616,8 +1616,8 @@ export default function ClientPage() {
   function openZoneDetail(key: CircKey) { setZoneDetailKey(key); }
 
   const wrap = (inner: React.ReactElement) => fromReports ? inner : <MeasureLayout>{inner}</MeasureLayout>;
-  if (loading) return wrap(<div style={{ padding: 32, color: '#9ca3af' }}>Загрузка…</div>);
-  if (loadError) return wrap(<div style={{ padding: 32, color: '#ef4444', fontSize: 14 }}>{loadError}</div>);
+  if (loading) return wrap(<div style={{ padding: 32, color: 'var(--text-3)' }}>Загрузка…</div>);
+  if (loadError) return wrap(<div style={{ padding: 32, color: 'var(--danger)', fontSize: 14 }}>{loadError}</div>);
   if (!client) return wrap(<div style={{ padding: 32 }}>Клиент не найден</div>);
 
   const ms = client.measurements;
@@ -1714,21 +1714,21 @@ export default function ClientPage() {
 
         {/* Client info */}
         <div style={{ background: 'rgba(2,189,182,0.06)', border: '1px solid rgba(2,189,182,0.3)', borderRadius: 12, padding: '10px 16px', marginBottom: 16, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-          {client.phone && <span style={{ fontSize: 13, color: '#6b7280' }}>{fmtPhone(client.phone)}</span>}
-          <span style={{ fontSize: 13, color: '#6b7280' }}>ID: {shortId(client.id)}</span>
-          <span style={{ fontSize: 13, color: '#6b7280' }}>Замеров: {ms.length}</span>
-          {first && <span style={{ fontSize: 13, color: '#6b7280' }}>Старт: {fmtDate(first.measured_at)}</span>}
+          {client.phone && <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{fmtPhone(client.phone)}</span>}
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>ID: {shortId(client.id)}</span>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Замеров: {ms.length}</span>
+          {first && <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Старт: {fmtDate(first.measured_at)}</span>}
           {first && last && ms.length > 1 && (
             <span style={{ fontSize: 13, fontWeight: 700, color: diffColor(Number(last.total_cm) - Number(first.total_cm)) }}>
               Δ∑ {fmtDiff(Number(last.total_cm) - Number(first.total_cm))} см
             </span>
           )}
           {!client.fitbase_client_id && (
-            <button onClick={() => setLinkDialog(true)} style={{ fontSize: 12, color: '#6b7280', background: 'none', border: '1px solid #e2e6ea', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
+            <button onClick={() => setLinkDialog(true)} style={{ fontSize: 12, color: 'var(--text-2)', background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
               Связать с Fitbase
             </button>
           )}
-          {client.fitbase_client_id && <span style={{ fontSize: 12, color: '#22c55e' }}>Fitbase #{client.fitbase_client_id}</span>}
+          {client.fitbase_client_id && <span style={{ fontSize: 12, color: 'var(--success)' }}>Fitbase #{client.fitbase_client_id}</span>}
         </div>
 
         {/* Measurement chips */}
@@ -1739,8 +1739,8 @@ export default function ClientPage() {
               return (
                 <button key={m.id} onClick={() => setSelectedMId(m.id)}
                   style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit',
-                    background: active ? '#02BDB6' : '#f1f5f9', color: active ? '#fff' : '#374151',
-                    border: `1.5px solid ${active ? '#02BDB6' : '#e2e6ea'}` }}>
+                    background: active ? 'var(--primary)' : 'var(--surface-2)', color: active ? 'var(--surface)' : 'var(--text)',
+                    border: `1.5px solid ${active ? 'var(--primary)' : 'var(--border)'}` }}>
                   №{m.measure_no} · {fmtDate(m.measured_at)}
                 </button>
               );
@@ -1755,8 +1755,8 @@ export default function ClientPage() {
           </aside>
           <section>
             <div className="measure-lost-card" id="s-itog">
-              <div style={{ fontWeight: 700, color: '#263CD9', fontSize: 16 }}>Потеряно со старта</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>{first && last ? `С замера №${first.measure_no} по №${last.measure_no}` : 'Появится после первого замера'}</div>
+              <div style={{ fontWeight: 700, color: 'var(--accent)', fontSize: 16 }}>Потеряно со старта</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{first && last ? `С замера №${first.measure_no} по №${last.measure_no}` : 'Появится после первого замера'}</div>
               <div className="measure-lost-values">
                 <div className="measure-lost-value"><strong>{cmLost.toFixed(1)}</strong><span>сантиметров</span></div>
                 <div className="measure-lost-value"><strong>{kgLost != null ? kgLost.toFixed(1) : '—'}</strong><span>килограммов</span></div>
@@ -1765,27 +1765,27 @@ export default function ClientPage() {
               <button disabled={!canSendResult || sendingResult} title={!canSendResult ? 'Потерь со старта пока нет' : undefined} onClick={sendStudioResult}>
                 {sendingResult ? 'Отправка…' : studioResult ? 'Обновить результат студии' : 'Отправить в результаты студии'}
               </button>
-              {!canSendResult && <span style={{ marginLeft: 10, fontSize: 12, color: '#64748b' }}>Кнопка активна при снижении обхватов, веса InBody или жира InBody</span>}
+              {!canSendResult && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-2)' }}>Кнопка активна при снижении обхватов, веса InBody или жира InBody</span>}
               {resultError && <div style={{ color: '#b91c1c', fontSize: 12, marginTop: 8 }}>{resultError}</div>}
               {studioResult && <div style={{ color: '#047857', fontSize: 12, marginTop: 8 }}>
                 В результатах студии: {Number(studioResult.cm_lost).toFixed(0)} см, {Number(studioResult.kg_lost).toFixed(1)} кг ({new Date(studioResult.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}, {studioResult.sent_by})
               </div>}
             </div>
             <div id="s-inbody"><ErrorBlock label="InBody"><InBodyBlock tests={inbodyTests} onScan={() => setInbodyDialog(true)} onUnlink={() => reload()} /></ErrorBlock></div>
-            {mergedM && <div id="s-measures" style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>Замер №{mergedM.measure_no} · {fmtDate(mergedM.measured_at)}</div>
-              <div style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 10px' }}>{mergedM.consultant}{mergedM.note && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>{mergedM.note}</span>}</div>
+            {mergedM && <div id="s-measures" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>Замер №{mergedM.measure_no} · {fmtDate(mergedM.measured_at)}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', margin: '4px 0 10px' }}>{mergedM.consultant}{mergedM.note && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>{mergedM.note}</span>}</div>
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 8, fontSize: 13 }}>
                 {mergedM.weight != null && <span>Вес: <b>{Number(mergedM.weight).toFixed(1)} кг</b>{prevM?.weight != null && <span style={{ color: diffColor(Number(mergedM.weight) - Number(prevM.weight)), marginLeft: 5 }}>{fmtDiff(Number(mergedM.weight) - Number(prevM.weight))}</span>}</span>}
-                <span>∑ обхватов: <b style={{ color: '#02BDB6' }}>{Number(mergedM.total_cm).toFixed(1)} см</b>{prevM && <span style={{ color: diffColor(Number(mergedM.total_cm) - Number(prevM.total_cm)), marginLeft: 5 }}>{fmtDiff(Number(mergedM.total_cm) - Number(prevM.total_cm))}</span>}</span>
+                <span>∑ обхватов: <b style={{ color: 'var(--primary)' }}>{Number(mergedM.total_cm).toFixed(1)} см</b>{prevM && <span style={{ color: diffColor(Number(mergedM.total_cm) - Number(prevM.total_cm)), marginLeft: 5 }}>{fmtDiff(Number(mergedM.total_cm) - Number(prevM.total_cm))}</span>}</span>
               </div>
               <FitbaseBtn m={{ ...mergedM, fitbase_comment_at: fbOverrides[mergedM.id] ?? mergedM.fitbase_comment_at }} client={mergedClient} onDone={onFbDone} />
             </div>}
 
         {/* Zone checkboxes + chart */}
         {ms.length >= 2 && (
-          <div id="s-chart" style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', marginBottom: 20, border: '1px solid #e2e6ea' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 8 }}>График динамики</div>
+          <div id="s-chart" style={{ background: 'var(--surface)', borderRadius: 12, padding: '14px 16px', marginBottom: 20, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 8 }}>График динамики</div>
             <ZoneCheckboxes zones={zones} onChange={saveZones} />
             <MultiLineChart ms={ms} zones={zones} selectedId={selectedMId} onSelect={id => setSelectedMId(id)} />
           </div>
@@ -1793,14 +1793,14 @@ export default function ClientPage() {
 
         {/* Comparison */}
         {ms.length >= 2 && (
-          <div style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', marginBottom: 20, border: '1px solid #e2e6ea' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 12 }}>Сравнение замеров</div>
+          <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '14px 16px', marginBottom: 20, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 12 }}>Сравнение замеров</div>
             <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-              <select value={cmpFrom} onChange={e => setCmpFrom(e.target.value)} style={{ padding: '7px 12px', border: '1px solid #e2e6ea', borderRadius: 8, fontSize: 14 }}>
+              <select value={cmpFrom} onChange={e => setCmpFrom(e.target.value)} style={{ padding: '7px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14 }}>
                 <option value="">С замера…</option>
                 {ms.map(m => <option key={m.id} value={m.id}>№{m.measure_no} ({fmtDate(m.measured_at)})</option>)}
               </select>
-              <select value={cmpTo} onChange={e => setCmpTo(e.target.value)} style={{ padding: '7px 12px', border: '1px solid #e2e6ea', borderRadius: 8, fontSize: 14 }}>
+              <select value={cmpTo} onChange={e => setCmpTo(e.target.value)} style={{ padding: '7px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14 }}>
                 <option value="">По замер…</option>
                 {ms.map(m => <option key={m.id} value={m.id}>№{m.measure_no} ({fmtDate(m.measured_at)})</option>)}
               </select>
@@ -1823,7 +1823,7 @@ export default function ClientPage() {
                             <td>{label}</td>
                             <td>{a?.toFixed(1) ?? '—'}</td>
                             <td>{b?.toFixed(1) ?? '—'}</td>
-                            <td style={{ fontWeight: 600, color: d != null ? diffColor(d) : '#9ca3af' }}>{d != null ? fmtDiff(d) : '—'}</td>
+                            <td style={{ fontWeight: 600, color: d != null ? diffColor(d) : 'var(--text-3)' }}>{d != null ? fmtDiff(d) : '—'}</td>
                           </tr>
                         );
                       })}
@@ -1842,8 +1842,8 @@ export default function ClientPage() {
         )}
 
         {/* All measurements table */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e6ea', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e6ea', fontWeight: 600, fontSize: 13, color: '#9ca3af', textTransform: 'uppercase' }}>
+        <div style={{ background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13, color: 'var(--text-3)', textTransform: 'uppercase' }}>
             Все замеры
           </div>
           <div style={{ overflowX: 'auto' }}>
@@ -1869,8 +1869,8 @@ export default function ClientPage() {
                       <td style={{ fontSize: 12 }}>{m.consultant}</td>
                       {CIRC_KEYS.map(k => <td key={k}>{m[k] != null ? Number(m[k]).toFixed(1) : '—'}</td>)}
                       <td style={{ fontWeight: 600 }}>{Number(m.total_cm).toFixed(1)}</td>
-                      <td style={{ fontWeight: 600, color: dp != null ? diffColor(dp) : '#9ca3af' }}>{dp != null ? fmtDiff(dp) : '—'}</td>
-                      <td style={{ fontWeight: 600, color: ds != null ? diffColor(ds) : '#9ca3af' }}>{ds != null ? fmtDiff(ds) : '—'}</td>
+                      <td style={{ fontWeight: 600, color: dp != null ? diffColor(dp) : 'var(--text-3)' }}>{dp != null ? fmtDiff(dp) : '—'}</td>
+                      <td style={{ fontWeight: 600, color: ds != null ? diffColor(ds) : 'var(--text-3)' }}>{ds != null ? fmtDiff(ds) : '—'}</td>
                       <td onClick={e => e.stopPropagation()}>
                         <FitbaseBtn
                           m={{ ...m, fitbase_comment_at: fbAt }}

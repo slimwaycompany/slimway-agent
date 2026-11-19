@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+﻿import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MeasureLayout } from './MeasureLayout';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
@@ -90,18 +90,18 @@ export default function InBodyImportPage() {
       <div style={{ padding: '24px 16px', maxWidth: 560, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
           <button onClick={() => navigate('/measure/reports')}
-            style={{ fontSize: 13, padding: '6px 12px', background: '#f1f5f9', border: '1px solid #e2e6ea', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', color: '#374151' }}>
+            style={{ fontSize: 13, padding: '6px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' }}>
             ← Отчёты
           </button>
           <span style={{ fontWeight: 700, fontSize: 18, color: '#1a1a2e' }}>Импорт InBody CSV</span>
         </div>
 
-        <div style={{ background: '#f8fafc', border: '1px solid #e2e6ea', borderRadius: 12, padding: '16px 20px', marginBottom: 20, fontSize: 13, color: '#6b7280' }}>
+        <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 20px', marginBottom: 20, fontSize: 13, color: 'var(--text-2)' }}>
           Загрузите файл <b>inbody270_data.csv</b> из LookinBody Web. Файл не сохраняется — только читается в браузере.
         </div>
 
         <button
-          style={{ padding: '12px 24px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8,
+          style={{ padding: '12px 24px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8,
             fontWeight: 600, fontSize: 15, cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit',
             width: '100%', marginBottom: 10, opacity: loading ? 0.7 : 1 }}
           onClick={() => fileRef.current?.click()}
@@ -110,7 +110,7 @@ export default function InBodyImportPage() {
           {loading ? 'Обработка…' : 'Выбрать файл CSV…'}
         </button>
         <button
-          style={{ padding: '10px 24px', background: '#f8fafc', color: '#374151', border: '1px solid #e2e6ea', borderRadius: 8,
+          style={{ padding: '10px 24px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8,
             fontWeight: 600, fontSize: 14, cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit',
             width: '100%', marginBottom: 16, opacity: loading ? 0.7 : 1 }}
           onClick={doRecalculate}
@@ -120,55 +120,55 @@ export default function InBodyImportPage() {
           Пересчитать InBody (исправить CSV)
         </button>
         {recalcResult && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 14, color: '#166534' }}>
+          <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 14, color: 'var(--success)' }}>
             ✓ Пересчитано тестов: <b>{recalcResult.updated}</b>
           </div>
         )}
         <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleFile} />
 
         {error && (
-          <div style={{ color: '#ef4444', marginBottom: 16, fontSize: 14, padding: '10px 14px',
-            background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8 }}>
+          <div style={{ color: 'var(--danger)', marginBottom: 16, fontSize: 14, padding: '10px 14px',
+            background: 'var(--danger-soft)', border: '1px solid var(--danger)', borderRadius: 8 }}>
             {error}
           </div>
         )}
 
         {preview && !importResult && (
-          <div style={{ background: '#fff', border: '1px solid #e2e6ea', borderRadius: 12, padding: '20px', marginBottom: 20 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '20px', marginBottom: 20 }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 14 }}>Предпросмотр</div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <tbody>
                 {[
-                  ['Всего строк', preview.total, '#374151'],
-                  ['Новых', preview.new, '#16a34a'],
-                  ['Дублей (уже в базе)', preview.duplicates, '#9ca3af'],
-                  ['С привязкой к клиенту', preview.linked, '#2563eb'],
-                  ['Без клиента', preview.unlinked, preview.unlinked > 0 ? '#f59e0b' : '#9ca3af'],
+                  ['Всего строк', preview.total, 'var(--text)'],
+                  ['Новых', preview.new, 'var(--success)'],
+                  ['Дублей (уже в базе)', preview.duplicates, 'var(--text-3)'],
+                  ['С привязкой к клиенту', preview.linked, 'var(--info)'],
+                  ['Без клиента', preview.unlinked, preview.unlinked > 0 ? 'var(--warning)' : 'var(--text-3)'],
                 ].map(([label, val, color]) => (
                   <tr key={String(label)}>
-                    <td style={{ padding: '5px 0', color: '#6b7280' }}>{label}</td>
+                    <td style={{ padding: '5px 0', color: 'var(--text-2)' }}>{label}</td>
                     <td style={{ padding: '5px 0', fontWeight: 700, color: String(color) }}>{val}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {preview.unlinked_ids.length > 0 && (
-              <div style={{ marginTop: 10, fontSize: 12, color: '#9ca3af', lineHeight: 1.5 }}>
+              <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
                 Без клиента (ID): {preview.unlinked_ids.join(', ')}{preview.unlinked_ids.length === 20 ? ' …' : ''}
               </div>
             )}
             {preview.new > 0 ? (
               <button
                 onClick={doImport} disabled={loading}
-                style={{ marginTop: 18, padding: '12px 24px', background: '#263CD9', color: '#fff',
+                style={{ marginTop: 18, padding: '12px 24px', background: 'var(--accent)', color: 'var(--surface)',
                   border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 15, cursor: loading ? 'wait' : 'pointer',
                   fontFamily: 'inherit', width: '100%', opacity: loading ? 0.7 : 1 }}
               >
                 {loading ? 'Импорт…' : `Импортировать ${preview.new} новых`}
               </button>
             ) : (
-              <div style={{ marginTop: 16, padding: '10px', background: '#f0fdf4', border: '1px solid #86efac',
-                borderRadius: 8, fontSize: 14, color: '#166534', textAlign: 'center' }}>
+              <div style={{ marginTop: 16, padding: '10px', background: 'var(--success-soft)', border: '1px solid var(--success)',
+                borderRadius: 8, fontSize: 14, color: 'var(--success)', textAlign: 'center' }}>
                 Все строки уже в базе — нечего импортировать
               </div>
             )}
@@ -176,30 +176,30 @@ export default function InBodyImportPage() {
         )}
 
         {importResult && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '20px' }}>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10, color: '#166534' }}>✓ Импорт завершён</div>
+          <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 12, padding: '20px' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10, color: 'var(--success)' }}>✓ Импорт завершён</div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <tbody>
                 {[
-                  ['Добавлено', importResult.added, '#16a34a'],
-                  ['Пропущено дублей', importResult.skipped, '#9ca3af'],
-                  ['Без клиента', importResult.without_client, importResult.without_client > 0 ? '#f59e0b' : '#9ca3af'],
+                  ['Добавлено', importResult.added, 'var(--success)'],
+                  ['Пропущено дублей', importResult.skipped, 'var(--text-3)'],
+                  ['Без клиента', importResult.without_client, importResult.without_client > 0 ? 'var(--warning)' : 'var(--text-3)'],
                 ].map(([label, val, color]) => (
                   <tr key={String(label)}>
-                    <td style={{ padding: '4px 0', color: '#6b7280' }}>{label}</td>
+                    <td style={{ padding: '4px 0', color: 'var(--text-2)' }}>{label}</td>
                     <td style={{ padding: '4px 0', fontWeight: 700, color: String(color) }}>{val}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {(importResult.without_client > 0) && (
-              <div style={{ marginTop: 12, fontSize: 13, color: '#6b7280' }}>
+              <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-2)' }}>
                 Непривязанные тесты можно привязать вручную через экран «InBody без клиента».
               </div>
             )}
             <button onClick={() => { setRows(null); setPreview(null); setImportResult(null); }}
-              style={{ marginTop: 16, padding: '9px 20px', background: '#f1f5f9', color: '#374151',
-                border: '1px solid #e2e6ea', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>
+              style={{ marginTop: 16, padding: '9px 20px', background: 'var(--surface-2)', color: 'var(--text)',
+                border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>
               Загрузить ещё
             </button>
           </div>

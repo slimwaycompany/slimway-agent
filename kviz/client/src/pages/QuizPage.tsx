@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { apiGet, apiPatch, apiPost } from '../api';
 import {
@@ -115,7 +115,7 @@ function Step1({ answer, onChange, ro }: { answer?: A1; onChange: (v: A1) => voi
         <div className="field">
           <label>Район</label>
           <select value={a.district ?? ''} disabled={ro} onChange={e => set('district', e.target.value)}
-            style={{ padding: '10px 12px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 14, background: '#fff' }}>
+            style={{ padding: '10px 12px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 14, background: 'var(--surface)' }}>
             <option value="">—</option>
             {DISTRICTS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
           </select>
@@ -123,7 +123,7 @@ function Step1({ answer, onChange, ro }: { answer?: A1; onChange: (v: A1) => voi
         <div className="field">
           <label>Откуда удобнее</label>
           <select value={a.from ?? ''} disabled={ro} onChange={e => set('from', e.target.value)}
-            style={{ padding: '10px 12px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 14, background: '#fff' }}>
+            style={{ padding: '10px 12px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 14, background: 'var(--surface)' }}>
             <option value="">—</option>
             {FROM_WHERE.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
           </select>
@@ -131,7 +131,7 @@ function Step1({ answer, onChange, ro }: { answer?: A1; onChange: (v: A1) => voi
         <div className="field">
           <label>Как добирается</label>
           <select value={a.transport ?? ''} disabled={ro} onChange={e => set('transport', e.target.value)}
-            style={{ padding: '10px 12px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 14, background: '#fff' }}>
+            style={{ padding: '10px 12px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 14, background: 'var(--surface)' }}>
             <option value="">—</option>
             {TRANSPORT.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
@@ -273,7 +273,7 @@ function Step4({ answer, onChange, ro }: { answer?: A4; onChange: (v: A4) => voi
           <label>Главная зона (необязательно)</label>
           <select value={a.main_zone ?? ''} disabled={ro}
             onChange={e => onChange({ ...a, main_zone: e.target.value || undefined })}
-            style={{ padding: '10px 12px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 14, background: '#fff' }}>
+            style={{ padding: '10px 12px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 14, background: 'var(--surface)' }}>
             <option value="">—</option>
             {GOALS.filter(g => a.selected.includes(g.id)).map(g => (
               <option key={g.id} value={g.id}>{g.label}</option>
@@ -427,7 +427,7 @@ function Step7({ answer, onChange, ro }: { answer?: A7; onChange: (v: A7) => voi
 
   return (
     <>
-      {a.skipped && <p style={{ color: '#9ca3af', fontSize: 14 }}>Параметры пропущены</p>}
+      {a.skipped && <p style={{ color: 'var(--text-3)', fontSize: 14 }}>Параметры пропущены</p>}
       {!a.skipped && (
         <>
           <div className="field">
@@ -579,7 +579,7 @@ function Step10({ answer, onChange, ro }: { answer?: A10; onChange: (v: A10) => 
   const a: A10 = answer ?? { value: 0 };
   return (
     <>
-      <p style={{ color: '#6b7280', marginTop: 8 }}>Насколько важно решить это сейчас?</p>
+      <p style={{ color: 'var(--text-2)', marginTop: 8 }}>Насколько важно решить это сейчас?</p>
       <div className="scale-grid">
         {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
           <button key={n} className={`scale-btn ${a.value === n ? 'selected' : ''}`}
@@ -969,7 +969,7 @@ export default function QuizPage() {
             {fromSummary ? '← К итогу' : stepNum === 1 ? 'Главная' : '← Назад'}
           </button>
           {isSkippable && !isSkipped && (
-            <button className="btn btn-secondary" onClick={skip} style={{ color: '#9ca3af' }}>Пропустить</button>
+            <button className="btn btn-secondary" onClick={skip} style={{ color: 'var(--text-3)' }}>Пропустить</button>
           )}
           <button className="btn btn-primary" disabled={!proceed} onClick={goNext}>
             {stepNum === 13 || fromSummary ? 'Завершить →' : 'Далее →'}
@@ -995,7 +995,7 @@ export default function QuizPage() {
       <div className="col-panel" style={{ marginTop: 0 }}>
         <h4>💬 Что сказать</h4>
         {stepCards.length === 0
-          ? <p style={{ color: '#9ca3af', fontSize: 13 }}>Нет подсказок</p>
+          ? <p style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет подсказок</p>
           : stepCards.map(s => {
               const isUsed = s.mergedIds
                 ? s.mergedIds.some(mid => usedScripts.includes(mid))
@@ -1045,7 +1045,7 @@ export default function QuizPage() {
           {!saving && savedAt && <div className="save-indicator">Сохранено</div>}
 
           <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{STEP_TITLES[stepNum - 1]}</h2>
-          <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 8 }}>Шаг {stepNum} из 13</p>
+          <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 8 }}>Шаг {stepNum} из 13</p>
 
           {stepContent}
         </div>

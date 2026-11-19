@@ -1,4 +1,4 @@
-type ToastType = 'error' | 'success' | 'info';
+﻿type ToastType = 'error' | 'success' | 'info';
 type Handler = (msg: string, type: ToastType) => void;
 
 let _handler: Handler | null = null;

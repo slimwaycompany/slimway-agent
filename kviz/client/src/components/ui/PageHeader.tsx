@@ -1,4 +1,4 @@
-interface PageHeaderProps {
+﻿interface PageHeaderProps {
   title: string;
   subtitle?: string;
   /** Buttons / controls. On mobile: wraps below title. */

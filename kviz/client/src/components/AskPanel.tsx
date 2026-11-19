@@ -1,4 +1,4 @@
-import { STEP_ASK, Answers } from '../config/qualify';
+﻿import { STEP_ASK, Answers } from '../config/qualify';
 
 export default function AskPanel({ step, answers, onToggle, readOnly }: {
   step: number; answers: Answers; onToggle: (qIdx: number) => void; readOnly?: boolean;

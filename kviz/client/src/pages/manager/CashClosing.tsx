@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 
 interface Op {
@@ -244,22 +244,22 @@ export default function CashClosing({ onClose }: Props) {
   }
 
   if (loading) return (
-    <div style={S.overlay}><div style={S.modal}><div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Загрузка данных…</div></div></div>
+    <div style={S.overlay}><div style={S.modal}><div style={{ padding: 40, textAlign: 'center', color: 'var(--text-2)' }}>Загрузка данных…</div></div></div>
   );
 
   return (
     <div style={S.overlay}>
       <div style={S.modal}>
         {/* Test mode banner */}
-        <div style={{ background: '#fef3c7', borderBottom: '1px solid #fcd34d', padding: '8px 18px', fontSize: 13, color: '#92400e', display: 'flex', alignItems: 'center', gap: 8, borderRadius: '12px 12px 0 0' }}>
+        <div style={{ background: 'var(--warning-soft)', borderBottom: '1px solid #fcd34d', padding: '8px 18px', fontSize: 13, color: '#92400e', display: 'flex', alignItems: 'center', gap: 8, borderRadius: '12px 12px 0 0' }}>
           <span style={{ fontSize: 16 }}>⚠️</span>
           <span><b>Тестовый режим</b> — в Fitbase ничего не отправляется</span>
         </div>
 
         {actionError && (
-          <div style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca', padding: '8px 18px', fontSize: 13, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ background: 'var(--danger-soft)', borderBottom: '1px solid var(--danger)', padding: '8px 18px', fontSize: 13, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ flex: 1 }}>{actionError}</span>
-            <button onClick={() => setActionError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#ef4444', padding: 0 }}>✕</button>
+            <button onClick={() => setActionError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--danger)', padding: 0 }}>✕</button>
           </div>
         )}
 
@@ -275,8 +275,8 @@ export default function CashClosing({ onClose }: Props) {
 
         <div style={S.body}>
           {/* Sync status */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e6ea', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, color: '#6b7280', flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-2)', flex: 1, minWidth: 0 }}>
               Данные операций: обновлено в <b>{fmtSyncTime(data?.synced_at ?? null)}</b>
             </span>
             <button onClick={() => sync()} disabled={syncing} style={{ ...S.btnSecondary, fontSize: 12, padding: '4px 12px', flexShrink: 0 }}>
@@ -336,7 +336,7 @@ export default function CashClosing({ onClose }: Props) {
                   {' × = '}<b>{fmt(d * (billCounts[d] || 0))}</b>
                 </Row>
               ))}
-              <div style={{ gridColumn: '1/-1', fontSize: 12, color: '#94a3b8', margin: '4px 0 2px' }}>Монеты</div>
+              <div style={{ gridColumn: '1/-1', fontSize: 12, color: 'var(--text-3)', margin: '4px 0 2px' }}>Монеты</div>
               {COINS.map(d => (
                 <Row key={d} label={`${d} ₸`}>
                   <input style={{ ...S.input, width: 60, textAlign: 'right' }} type="number" min={0}
@@ -352,10 +352,10 @@ export default function CashClosing({ onClose }: Props) {
             <Row label="Ожидаемый остаток (нал.)"><b>{fmt(expectedCash)}</b> ₸</Row>
             <Row label="Безнал приход"><b>{fmt(cardIn)}</b> ₸</Row>
             <Row label="Безнал расход"><b>−{fmt(cardRefund)}</b> ₸</Row>
-            <Row label="Посчитано купюрами"><b>{fmt(countedCash)}</b> ₸ {countedCash === 0 && <span style={{ color: '#94a3b8', fontSize: 12 }}>(не заполнено)</span>}</Row>
+            <Row label="Посчитано купюрами"><b>{fmt(countedCash)}</b> ₸ {countedCash === 0 && <span style={{ color: 'var(--text-3)', fontSize: 12 }}>(не заполнено)</span>}</Row>
             {countedCash > 0 && (
               <Row label="Расхождение">
-                <b style={{ color: discrepancy === 0 ? '#22c55e' : '#ef4444' }}>
+                <b style={{ color: discrepancy === 0 ? 'var(--success)' : 'var(--danger)' }}>
                   {discrepancy >= 0 ? '+' : ''}{fmt(discrepancy)} ₸
                 </b>
               </Row>
@@ -365,15 +365,15 @@ export default function CashClosing({ onClose }: Props) {
           {/* Notes */}
           <Section title="Комментарии">
             <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Расхождения по операциям CRM</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Расхождения по операциям CRM</div>
               <textarea style={S.textarea} value={crmNote} onChange={e => setCrmNote(e.target.value)} rows={2} />
             </div>
             <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Прочие расхождения</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Прочие расхождения</div>
               <textarea style={S.textarea} value={otherNote} onChange={e => setOtherNote(e.target.value)} rows={2} />
             </div>
             <div>
-              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Замечания при пересменке</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Замечания при пересменке</div>
               <textarea style={S.textarea} value={remarks} onChange={e => setRemarks(e.target.value)} rows={2} />
             </div>
           </Section>
@@ -388,7 +388,7 @@ export default function CashClosing({ onClose }: Props) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ fontWeight: 600, fontSize: 13, color: '#475569', borderBottom: '1px solid #e2e8f0', paddingBottom: 4, marginBottom: 8 }}>{title}</div>
+      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-2)', borderBottom: '1px solid var(--border)', paddingBottom: 4, marginBottom: 8 }}>{title}</div>
       {children}
     </div>
   );
@@ -396,7 +396,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, fontSize: 14 }}>
-      <span className="cc-row-label" style={{ color: '#64748b', minWidth: 180 }}>{label}</span>
+      <span className="cc-row-label" style={{ color: 'var(--text-2)', minWidth: 180 }}>{label}</span>
       {children}
     </div>
   );
@@ -481,13 +481,13 @@ ${opRows}
 
 const S: Record<string, React.CSSProperties> = {
   overlay:   { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '20px 0' },
-  modal:     { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 700, margin: '0 16px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' },
-  header:    { padding: '14px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, position: 'sticky', top: 0, background: '#fff', zIndex: 1 },
+  modal:     { background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 700, margin: '0 16px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' },
+  header:    { padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 },
   body:      { padding: '18px', overflowY: 'auto' },
-  btnPrimary:{ background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 16px', cursor: 'pointer', fontWeight: 600, fontSize: 13 },
-  btnSecondary: { background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 7, padding: '6px 14px', cursor: 'pointer', fontSize: 13 },
-  btnClose:  { background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', fontSize: 13, color: '#64748b' },
-  linkBtn:   { background: 'none', border: 'none', color: '#263CD9', cursor: 'pointer', fontSize: 13, padding: 0 },
-  input:     { padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', width: 120 },
-  textarea:  { width: '100%', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' },
+  btnPrimary:{ background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 7, padding: '6px 16px', cursor: 'pointer', fontWeight: 600, fontSize: 13 },
+  btnSecondary: { background: 'var(--surface-2)', color: '#334155', border: 'none', borderRadius: 7, padding: '6px 14px', cursor: 'pointer', fontSize: 13 },
+  btnClose:  { background: 'none', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', fontSize: 13, color: 'var(--text-2)' },
+  linkBtn:   { background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0 },
+  input:     { padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', width: 120 },
+  textarea:  { width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' },
 };

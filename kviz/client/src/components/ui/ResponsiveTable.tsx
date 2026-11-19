@@ -1,4 +1,4 @@
-interface Column {
+﻿interface Column {
   key: string;
   label: string;
   /** Pin this column when mode="scroll" (usually the first column) */

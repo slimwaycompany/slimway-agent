@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { _registerConfirmHandler } from '../../lib/confirm';
 import { ConfirmDialog } from './ConfirmDialog';
 

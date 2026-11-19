@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { showConfirm } from '../../lib/confirm';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -191,7 +191,7 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
         <div>
           <label style={SF.label}>ИИН (12 цифр)</label>
           <input style={SF.inp} value={form.iin} onChange={e => onIinChange(e.target.value)} maxLength={12} placeholder="000000000000" />
-          {form.iin.length > 0 && form.iin.length < 12 && <span style={{ fontSize: 11, color: '#f59e0b' }}>Введено {form.iin.length}/12</span>}
+          {form.iin.length > 0 && form.iin.length < 12 && <span style={{ fontSize: 11, color: 'var(--warning)' }}>Введено {form.iin.length}/12</span>}
         </div>
         <div>
           <label style={SF.label}>Дата рождения</label>
@@ -216,17 +216,17 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
                 placeholder="Поиск по имени или телефону"
               />
               {referrerResults.length > 0 && !form.referrer_client_id && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10 }}>
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10 }}>
                   {referrerResults.map(c => (
-                    <div key={c.id} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f1f5f9' }}
+                    <div key={c.id} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}
                       onMouseDown={() => { setForm(f => ({ ...f, referrer_client_id: c.id })); setReferrerName(c.full_name); setReferrerSearch(''); setReferrerResults([]); }}>
-                      {c.full_name} {c.phone && <span style={{ color: '#64748b' }}>{c.phone}</span>}
+                      {c.full_name} {c.phone && <span style={{ color: 'var(--text-2)' }}>{c.phone}</span>}
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            {form.referrer_client_id && <div style={{ fontSize: 12, color: '#02BDB6', marginTop: 4 }}>✓ {referrerName}</div>}
+            {form.referrer_client_id && <div style={{ fontSize: 12, color: 'var(--primary)', marginTop: 4 }}>✓ {referrerName}</div>}
           </div>
         )}
         <div>
@@ -318,8 +318,8 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
     }
   }, [tab, clientId, plans, sales]);
 
-  if (loading) return <div style={{ padding: 20, color: '#94a3b8', fontSize: 13 }}>Загрузка…</div>;
-  if (!client) return <div style={{ padding: 20, color: '#ef4444', fontSize: 13 }}>Клиент не найден</div>;
+  if (loading) return <div style={{ padding: 20, color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>;
+  if (!client) return <div style={{ padding: 20, color: 'var(--danger)', fontSize: 13 }}>Клиент не найден</div>;
 
   const source = adSources.find(s => s.id === client.ad_source_id);
 
@@ -334,12 +334,12 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
   }
 
   const planStatusLabel: Record<string, { text: string; color: string }> = {
-    not_activated: { text: 'Не активирован', color: '#f59e0b' },
-    active:        { text: 'Активен',         color: '#16a34a' },
+    not_activated: { text: 'Не активирован', color: 'var(--warning)' },
+    active:        { text: 'Активен',         color: 'var(--success)' },
     frozen:        { text: 'Заморожен',        color: '#6366f1' },
-    expired:       { text: 'Истёк',            color: '#ef4444' },
-    refunded:      { text: 'Возвращён',        color: '#94a3b8' },
-    cancelled:     { text: 'Отменён',          color: '#94a3b8' },
+    expired:       { text: 'Истёк',            color: 'var(--danger)' },
+    refunded:      { text: 'Возвращён',        color: 'var(--text-3)' },
+    cancelled:     { text: 'Отменён',          color: 'var(--text-3)' },
   };
 
   return (
@@ -347,19 +347,19 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
       <div style={SC.header}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           {photoUrl ? <img src={photoUrl} alt="" style={{ width: 56, height: 56, borderRadius: 28, objectFit: 'cover', flexShrink: 0 }} /> : (
-            <div style={{ width: 56, height: 56, borderRadius: 28, background: 'linear-gradient(135deg,#02BDB6,#263CD9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 22, fontWeight: 700, flexShrink: 0 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 28, background: 'linear-gradient(135deg,#02BDB6,#263CD9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--surface)', fontSize: 22, fontWeight: 700, flexShrink: 0 }}>
               {client.full_name[0].toUpperCase()}
             </div>
           )}
           <div>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{client.full_name}</div>
-            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{client.phone ?? 'Без телефона'}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>{client.phone ?? 'Без телефона'}</div>
             <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
               {client.profile_complete && <span style={SC.chip}>✓ Анкета</span>}
-              {client.fitbase_client_id && <span style={{ ...SC.chip, background: '#dbeafe', color: '#1d4ed8' }}>Fitbase</span>}
-              {client.status !== 'active' && <span style={{ ...SC.chip, background: '#fee2e2', color: '#ef4444' }}>{client.status}</span>}
-              {balance && balance.deposit > 0 && <span style={{ ...SC.chip, background: '#ecfdf5', color: '#059669' }}>Депозит: {balance.deposit.toLocaleString('ru-RU')} ₸</span>}
-              {balance && balance.bonus > 0 && <span style={{ ...SC.chip, background: '#ede9fe', color: '#6d28d9' }}>{balance.bonus} б.</span>}
+              {client.fitbase_client_id && <span style={{ ...SC.chip, background: 'var(--info-soft)', color: '#1d4ed8' }}>Fitbase</span>}
+              {client.status !== 'active' && <span style={{ ...SC.chip, background: 'var(--danger-soft)', color: 'var(--danger)' }}>{client.status}</span>}
+              {balance && balance.deposit > 0 && <span style={{ ...SC.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>Депозит: {balance.deposit.toLocaleString('ru-RU')} ₸</span>}
+              {balance && balance.bonus > 0 && <span style={{ ...SC.chip, background: 'var(--accent-soft)', color: '#6d28d9' }}>{balance.bonus} б.</span>}
             </div>
           </div>
         </div>
@@ -370,9 +370,9 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, padding: '8px 16px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+      <div style={{ display: 'flex', gap: 4, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
         {(['info', 'plans', 'sales'] as const).map(t => (
-          <button key={t} style={{ padding: '5px 14px', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: tab === t ? 700 : 500, background: tab === t ? '#02BDB6' : '#f1f5f9', color: tab === t ? '#fff' : '#374151' }} onClick={() => setTab(t)}>
+          <button key={t} style={{ padding: '5px 14px', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: tab === t ? 700 : 500, background: tab === t ? 'var(--primary)' : 'var(--surface-2)', color: tab === t ? 'var(--surface)' : 'var(--text)' }} onClick={() => setTab(t)}>
             {t === 'info' ? 'Анкета' : t === 'plans' ? 'Абонементы' : 'Продажи'}
           </button>
         ))}
@@ -395,24 +395,24 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
 
       {tab === 'plans' && (
         <div style={{ padding: '12px 16px' }}>
-          {plans === null && <div style={{ color: '#94a3b8', fontSize: 13 }}>Загрузка…</div>}
-          {plans !== null && plans.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Абонементы не найдены</div>}
+          {plans === null && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
+          {plans !== null && plans.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Абонементы не найдены</div>}
           {(plans ?? []).map(cp => {
-            const st = planStatusLabel[cp.status] ?? { text: cp.status, color: '#64748b' };
+            const st = planStatusLabel[cp.status] ?? { text: cp.status, color: 'var(--text-2)' };
             return (
-              <div key={cp.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
+              <div key={cp.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: 600, fontSize: 14 }}>{cp.plan?.name ?? cp.plan_id}</span>
                   <span style={{ fontSize: 11, fontWeight: 600, color: st.color, background: st.color + '1a', padding: '2px 8px', borderRadius: 4 }}>{st.text}</span>
                 </div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>
                   {cp.activated_at && <span>Активирован: {fmtDate(cp.activated_at)}</span>}
                   {cp.valid_until && <span style={{ marginLeft: 8 }}>До: {fmtDate(cp.valid_until)}</span>}
                 </div>
                 {cp.crm_client_plan_items.length > 0 && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
                     {cp.crm_client_plan_items.map((it, i) => (
-                      <span key={i} style={{ fontSize: 11, background: '#f1f5f9', padding: '1px 7px', borderRadius: 4 }}>
+                      <span key={i} style={{ fontSize: 11, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 4 }}>
                         {it.device_type_code}: {it.sessions_left}/{it.sessions_total} сеансов
                       </span>
                     ))}
@@ -426,15 +426,15 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
 
       {tab === 'sales' && (
         <div style={{ padding: '12px 16px' }}>
-          {sales === null && <div style={{ color: '#94a3b8', fontSize: 13 }}>Загрузка…</div>}
-          {sales !== null && sales.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Продажи не найдены</div>}
+          {sales === null && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
+          {sales !== null && sales.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Продажи не найдены</div>}
           {(sales ?? []).map(sale => (
-            <div key={sale.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
+            <div key={sale.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontWeight: 600, fontSize: 14 }}>#{sale.number} · {sale.total.toLocaleString('ru-RU')} ₸</span>
-                {sale.status !== 'completed' && <span style={{ fontSize: 11, color: '#ef4444', background: '#fef2f2', padding: '1px 6px', borderRadius: 4 }}>{sale.status}</span>}
+                {sale.status !== 'completed' && <span style={{ fontSize: 11, color: 'var(--danger)', background: 'var(--danger-soft)', padding: '1px 6px', borderRadius: 4 }}>{sale.status}</span>}
               </div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
                 {sale.cashier} · {fmtDate(sale.created_at)}
                 {sale.discount_kind !== 'none' && ` · скидка (${sale.discount_kind})`}
               </div>
@@ -495,30 +495,30 @@ function FitbaseImport({ onDone }: { onDone: () => void }) {
   const pct = (job.total || 0) > 0 ? Math.round(((job.processed || 0) / job.total!) * 100) : 0;
 
   return (
-    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 16, marginBottom: 12 }}>
+    <div style={{ background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 12 }}>
       <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Импорт из Fitbase</div>
-      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Загрузит всех клиентов из Fitbase. Дубли (по fitbase_client_id) пропускаются.</div>
-      {error && <div style={{ background: '#fef2f2', color: '#ef4444', padding: '6px 10px', borderRadius: 6, fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10 }}>Загрузит всех клиентов из Fitbase. Дубли (по fitbase_client_id) пропускаются.</div>
+      {error && <div style={{ background: 'var(--danger-soft)', color: 'var(--danger)', padding: '6px 10px', borderRadius: 6, fontSize: 12, marginBottom: 8 }}>{error}</div>}
       {running && (
         <div style={{ marginBottom: 10 }}>
           {(job.total || 0) > 0 ? (
             <>
-              <div style={{ background: '#e2e8f0', borderRadius: 4, height: 6, overflow: 'hidden', marginBottom: 4 }}>
-                <div style={{ background: '#02BDB6', height: '100%', width: `${pct}%`, transition: 'width 0.5s' }} />
+              <div style={{ background: 'var(--border)', borderRadius: 4, height: 6, overflow: 'hidden', marginBottom: 4 }}>
+                <div style={{ background: 'var(--primary)', height: '100%', width: `${pct}%`, transition: 'width 0.5s' }} />
               </div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>{job.processed} / {job.total} ({pct}%)</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{job.processed} / {job.total} ({pct}%)</div>
             </>
           ) : (
-            <div style={{ fontSize: 12, color: '#64748b' }}>Загрузка данных…</div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>Загрузка данных…</div>
           )}
         </div>
       )}
       {job.status === 'done' && (
-        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13 }}>
+        <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13 }}>
           Всего: {job.total} · Добавлено: <b>{job.added}</b> · Обновлено: {job.updated} · Пропущено: {job.skipped}
         </div>
       )}
-      <button style={{ padding: '8px 16px', background: '#263CD9', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: running ? 'default' : 'pointer', fontFamily: 'inherit', opacity: running ? 0.7 : 1 }} onClick={run} disabled={running}>
+      <button style={{ padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: running ? 'default' : 'pointer', fontFamily: 'inherit', opacity: running ? 0.7 : 1 }} onClick={run} disabled={running}>
         {running ? 'Импортируем…' : 'Запустить импорт'}
       </button>
     </div>
@@ -607,7 +607,7 @@ export default function ClientsPage() {
   // edit mode: full screen form
   if (editClient !== null) {
     return (
-      <div style={{ height: '100vh', overflow: 'auto', background: '#f8fafc', fontFamily: "'Manrope',system-ui,sans-serif" }}>
+      <div style={{ height: '100vh', overflow: 'auto', background: 'var(--surface-2)', fontFamily: "'Manrope',system-ui,sans-serif" }}>
         <ClientForm
           client={editClient === 'new' ? null : editClient}
           adSources={adSources}
@@ -619,11 +619,11 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="clients-wrap" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
+    <div className="clients-wrap" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
       {/* Left: list */}
-      <div className={selectedId ? 'clients-list--detail' : ''} style={{ width: selectedId ? 360 : '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: selectedId ? '1px solid #e2e8f0' : 'none', background: '#fff' }}>
+      <div className={selectedId ? 'clients-list--detail' : ''} style={{ width: selectedId ? 360 : '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: selectedId ? '1px solid var(--border)' : 'none', background: 'var(--surface)' }}>
         {/* Toolbar */}
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <input style={SL.search} value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по имени или телефону" />
           <select style={SL.filter} value={filterSource} onChange={e => setFilterSource(e.target.value)}>
             <option value="">Все источники</option>
@@ -637,24 +637,24 @@ export default function ClientsPage() {
           <button style={SL.addBtn} onClick={() => setEditClient('new')}>+ Клиент</button>
           {role === 'admin' && <button style={SL.outlineBtn} onClick={() => setShowImport(v => !v)}>↓ Fitbase</button>}
         </div>
-        {showImport && role === 'admin' && <div style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0' }}><FitbaseImport onDone={load} /></div>}
+        {showImport && role === 'admin' && <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}><FitbaseImport onDone={load} /></div>}
         {/* List */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {loading && <div style={{ padding: 16, color: '#94a3b8', fontSize: 13 }}>Загрузка…</div>}
-          {!loading && !clients.length && <div style={{ padding: 16, color: '#94a3b8', fontSize: 13 }}>Клиенты не найдены</div>}
+          {loading && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
+          {!loading && !clients.length && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Клиенты не найдены</div>}
           {clients.map(c => (
-            <div key={c.id} style={{ ...SL.row, background: selectedId === c.id ? 'rgba(2,189,182,0.06)' : '#fff', borderLeft: selectedId === c.id ? '3px solid #02BDB6' : '3px solid transparent' }}
+            <div key={c.id} style={{ ...SL.row, background: selectedId === c.id ? 'rgba(2,189,182,0.06)' : 'var(--surface)', borderLeft: selectedId === c.id ? '3px solid var(--primary)' : '3px solid transparent' }}
               onClick={() => setSelectedId(selectedId === c.id ? null : c.id)}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
                   {maskPhone(c.phone)}
                   {c.birth_date && <span style={{ marginLeft: 8 }}>{fmtDate(c.birth_date)}</span>}
                 </div>
                 {(c.ad_source_id || c.profile_complete) && (
                   <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
                     {c.ad_source_id && <span style={SL.chip}>{sourceMap.get(c.ad_source_id) ?? '?'}</span>}
-                    {c.profile_complete && <span style={{ ...SL.chip, background: '#dcfce7', color: '#16a34a' }}>✓</span>}
+                    {c.profile_complete && <span style={{ ...SL.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>✓</span>}
                   </div>
                 )}
               </div>
@@ -662,25 +662,25 @@ export default function ClientsPage() {
           ))}
         </div>
         {clients.length < total && !loading && (
-          <div style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
             <button style={{ ...SL.outlineBtn, width: '100%', fontSize: 12 }} onClick={loadMore}>
               Показать ещё ({total - clients.length})
             </button>
           </div>
         )}
-        <div style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9', fontSize: 12, color: '#94a3b8' }}>
+        <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)' }}>
           {clients.length} из {total} клиентов
         </div>
       </div>
 
       {/* Right: card */}
       {selectedId && (
-        <div className="clients-detail" style={{ flex: 1, overflow: 'auto', background: '#f8fafc' }}>
-          <div style={{ padding: '8px 12px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: 8, background: '#fff', flexWrap: 'wrap' }}>
-            <button className="clients-back-btn" style={{ background: 'none', border: 'none', color: '#263CD9', cursor: 'pointer', fontSize: 14, fontWeight: 600, padding: '0 4px', fontFamily: 'inherit' }}
+        <div className="clients-detail" style={{ flex: 1, overflow: 'auto', background: 'var(--surface-2)' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, background: 'var(--surface)', flexWrap: 'wrap' }}>
+            <button className="clients-back-btn" style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, fontWeight: 600, padding: '0 4px', fontFamily: 'inherit' }}
               onClick={() => setSelectedId(null)}>← Список</button>
             <button style={SL.outlineBtn} onClick={() => openEdit(selectedId)}>✎ Редактировать</button>
-            {role === 'admin' && <button style={{ ...SL.outlineBtn, color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => archiveClient(selectedId)}>Архивировать</button>}
+            {role === 'admin' && <button style={{ ...SL.outlineBtn, color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => archiveClient(selectedId)}>Архивировать</button>}
           </div>
           <ClientCard clientId={selectedId} adSources={adSources} role={role} onEdit={() => openEdit(selectedId)} onClose={() => setSelectedId(null)} />
         </div>
@@ -693,31 +693,31 @@ export default function ClientsPage() {
 
 const SF: Record<string, React.CSSProperties> = {
   header:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  iconBtn:   { background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#64748b', padding: '2px 6px' },
-  errBox:    { background: '#fef2f2', color: '#ef4444', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
+  iconBtn:   { background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-2)', padding: '2px 6px' },
+  errBox:    { background: 'var(--danger-soft)', color: 'var(--danger)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
   grid:      { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' },
-  label:     { display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4, marginTop: 12 },
-  inp:       { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
-  outlineBtn: { padding: '8px 14px', background: 'none', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#374151', fontWeight: 500 },
-  cancelBtn: { padding: '9px 18px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  saveBtn:   { padding: '9px 24px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  label:     { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4, marginTop: 12 },
+  inp:       { width: '100%', padding: '9px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
+  outlineBtn: { padding: '8px 14px', background: 'none', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)', fontWeight: 500 },
+  cancelBtn: { padding: '9px 18px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  saveBtn:   { padding: '9px 24px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
 };
 
 const SL: Record<string, React.CSSProperties> = {
-  search:  { flex: 1, minWidth: 160, padding: '7px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
-  filter:  { padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', outline: 'none' },
-  addBtn:  { padding: '7px 16px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-  outlineBtn: { padding: '7px 12px', background: 'none', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: '#374151' },
-  row:     { padding: '10px 14px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', transition: 'background 0.1s' },
-  chip:    { display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 11, background: '#f1f5f9', color: '#64748b', fontWeight: 500 },
+  search:  { flex: 1, minWidth: 160, padding: '7px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
+  filter:  { padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', outline: 'none' },
+  addBtn:  { padding: '7px 16px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+  outlineBtn: { padding: '7px 12px', background: 'none', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' },
+  row:     { padding: '10px 14px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.1s' },
+  chip:    { display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 11, background: 'var(--surface-2)', color: 'var(--text-2)', fontWeight: 500 },
 };
 
 const SC: Record<string, React.CSSProperties> = {
-  header:  { padding: '14px 20px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  header:  { padding: '14px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   row:     { display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid #f8fafc', fontSize: 13 },
-  key:     { color: '#64748b', minWidth: 140, flexShrink: 0, fontSize: 13 },
-  val:     { color: '#1a202c', fontWeight: 500 },
-  chip:    { display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, background: '#dcfce7', color: '#16a34a', fontWeight: 600 },
-  editBtn: { padding: '6px 14px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-  closeBtn: { padding: '6px 10px', background: 'none', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', color: '#64748b' },
+  key:     { color: 'var(--text-2)', minWidth: 140, flexShrink: 0, fontSize: 13 },
+  val:     { color: 'var(--text)', fontWeight: 500 },
+  chip:    { display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, background: 'var(--success-soft)', color: 'var(--success)', fontWeight: 600 },
+  editBtn: { padding: '6px 14px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+  closeBtn: { padding: '6px 10px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-2)' },
 };

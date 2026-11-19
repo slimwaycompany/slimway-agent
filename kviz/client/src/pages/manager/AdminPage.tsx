@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 
 interface Template {
   id: string;
@@ -248,7 +248,7 @@ export default function AdminPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4, marginTop: 12 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4, marginTop: 12 }}>{label}</label>
       {children}
     </div>
   );
@@ -257,37 +257,37 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const tabBtnSt = (active: boolean): React.CSSProperties => ({
   padding: '10px 20px', border: 'none', background: 'none', fontFamily: 'inherit',
   fontSize: 14, fontWeight: active ? 700 : 400,
-  color: active ? '#02BDB6' : '#64748b',
-  borderBottom: active ? '2px solid #02BDB6' : '2px solid transparent',
+  color: active ? 'var(--primary)' : 'var(--text-2)',
+  borderBottom: active ? '2px solid var(--primary)' : '2px solid transparent',
   cursor: 'pointer',
 });
 
 const rowSt = (active: boolean): React.CSSProperties => ({
-  background: active ? '#fff' : '#f1f5f9',
+  background: active ? 'var(--surface)' : 'var(--surface-2)',
   borderRadius: 10, padding: '10px 12px', marginBottom: 8,
   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
   boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
 });
 
 const s: Record<string, React.CSSProperties> = {
-  root:     { height: '100vh', overflow: 'auto', background: '#f8fafc', fontFamily: "'Manrope',system-ui,sans-serif" },
-  center:   { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#64748b', fontFamily: 'system-ui,sans-serif' },
-  header:   { padding: '14px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10 },
-  back:     { fontSize: 13, color: '#263CD9', textDecoration: 'none' },
+  root:     { height: '100vh', overflow: 'auto', background: 'var(--surface-2)', fontFamily: "'Manrope',system-ui,sans-serif" },
+  center:   { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-2)', fontFamily: 'system-ui,sans-serif' },
+  header:   { padding: '14px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10 },
+  back:     { fontSize: 13, color: 'var(--accent)', textDecoration: 'none' },
   title:    { fontSize: 16, fontWeight: 700 },
-  tabsBar:  { display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#fff' },
+  tabsBar:  { display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface)' },
   section:  { padding: '12px 12px 32px' },
-  addBtn:   { marginBottom: 12, padding: '8px 16px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  rowTitle: { fontSize: 14, fontWeight: 600, color: '#1a202c' },
-  rowMeta:  { fontSize: 12, color: '#64748b', marginTop: 2 },
-  editBtn:  { padding: '5px 12px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 },
+  addBtn:   { marginBottom: 12, padding: '8px 16px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  rowTitle: { fontSize: 14, fontWeight: 600, color: 'var(--text)' },
+  rowMeta:  { fontSize: 12, color: 'var(--text-2)', marginTop: 2 },
+  editBtn:  { padding: '5px 12px', background: 'none', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 },
   overlay:  { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-  modal:    { background: '#fff', borderRadius: 16, padding: 24, width: 'min(440px,96vw)', maxHeight: '90vh', overflow: 'auto' },
+  modal:    { background: 'var(--surface)', borderRadius: 16, padding: 24, width: 'min(440px,96vw)', maxHeight: '90vh', overflow: 'auto' },
   mh3:      { fontSize: 16, fontWeight: 700, margin: '0 0 16px' },
-  inp:      { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
+  inp:      { width: '100%', padding: '9px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
   chk:      { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginTop: 12, cursor: 'pointer' },
   mBtns:    { display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' },
-  cancelBtn:{ padding: '8px 16px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  saveBtn:  { padding: '8px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  errBox:   { background: '#fef2f2', color: '#ef4444', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
+  cancelBtn:{ padding: '8px 16px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  saveBtn:  { padding: '8px 18px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  errBox:   { background: 'var(--danger-soft)', color: 'var(--danger)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
 };

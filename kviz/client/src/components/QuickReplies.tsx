@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { SCRIPTS, DONT_SAY } from '../config/scripts';
 import { Answers } from '../config/qualify';
 import ScriptItem from './ScriptItem';
@@ -58,7 +58,7 @@ export default function QuickReplies({ answers, usedScripts, onMark }: {
             </div>
             <div className="qr-list">
               {scripts.length === 0 && (
-                <p style={{ color: '#9ca3af', padding: '12px 0', fontSize: 14 }}>Нет скриптов</p>
+                <p style={{ color: 'var(--text-3)', padding: '12px 0', fontSize: 14 }}>Нет скриптов</p>
               )}
               {scripts.map(s => (
                 <ScriptItem key={s.id} script={s} answers={answers}

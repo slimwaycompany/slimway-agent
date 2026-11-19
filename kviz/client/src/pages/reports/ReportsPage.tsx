@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+﻿import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import Modal from '../../components/ui/Modal';
@@ -293,7 +293,7 @@ function ShiftsSection() {
     <div style={s.section}>
       <div style={s.filterRow}>
         <input type="date" style={s.dateInp} value={shiftFrom} onChange={e => setShiftFrom(e.target.value)} />
-        <span style={{ color: '#64748b' }}>—</span>
+        <span style={{ color: 'var(--text-2)' }}>—</span>
         <input type="date" style={s.dateInp} value={shiftTo} onChange={e => setShiftTo(e.target.value)} />
         <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
         {shifts.length > 0 && (
@@ -333,7 +333,7 @@ function ShiftsSection() {
           {monthlyTotals.map(mt => (
             <div key={mt.month + mt.name} style={s.totalRow}>
               <span>{mt.month} · {mt.name}</span>
-              <span style={{ fontWeight: 700, color: '#02BDB6' }}>{mt.hours.toFixed(1)} ч</span>
+              <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{mt.hours.toFixed(1)} ч</span>
             </div>
           ))}
         </div>
@@ -404,11 +404,11 @@ function TasksSection({ isAdmin }: { isAdmin: boolean }) {
     <div style={s.section}>
       <div style={s.filterRow}>
         <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
-        <span style={{ color: '#64748b' }}>—</span>
+        <span style={{ color: 'var(--text-2)' }}>—</span>
         <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
         <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
         {isAdmin && (
-          <button style={{ ...s.csvBtn, background: showAll ? '#263CD9' : undefined, color: showAll ? '#fff' : undefined, borderColor: showAll ? '#263CD9' : undefined }}
+          <button style={{ ...s.csvBtn, background: showAll ? 'var(--accent)' : undefined, color: showAll ? 'var(--surface)' : undefined, borderColor: showAll ? 'var(--accent)' : undefined }}
             onClick={() => setShowAll(v => !v)}>
             {showAll ? 'Все' : 'Мои'}
           </button>
@@ -491,14 +491,14 @@ function StudioSection({ isAdmin }: { isAdmin: boolean }) {
       {totals && (
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
           {[
-            { label: 'Сантиметров убрали', val: totals.cm_lost.toFixed(1), unit: 'см', color: '#02BDB6' },
-            { label: 'Килограммов сбросили', val: totals.kg_lost.toFixed(1), unit: 'кг', color: '#263CD9' },
-            { label: 'Жира сожгли', val: totals.fat_kg_lost.toFixed(1), unit: 'кг жира', color: '#22c55e' },
-            { label: 'Клиенток с результатом', val: String(totals.clients), unit: '', color: '#f59e0b' },
+            { label: 'Сантиметров убрали', val: totals.cm_lost.toFixed(1), unit: 'см', color: 'var(--primary)' },
+            { label: 'Килограммов сбросили', val: totals.kg_lost.toFixed(1), unit: 'кг', color: 'var(--accent)' },
+            { label: 'Жира сожгли', val: totals.fat_kg_lost.toFixed(1), unit: 'кг жира', color: 'var(--success)' },
+            { label: 'Клиенток с результатом', val: String(totals.clients), unit: '', color: 'var(--warning)' },
           ].map(c => (
-            <div key={c.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 18px', flex: '1 1 140px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderTop: `3px solid ${c.color}` }}>
+            <div key={c.label} style={{ background: 'var(--surface)', borderRadius: 12, padding: '14px 18px', flex: '1 1 140px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderTop: `3px solid ${c.color}` }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: c.color }}>{c.val} <span style={{ fontSize: 13 }}>{c.unit}</span></div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{c.label}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>{c.label}</div>
             </div>
           ))}
         </div>
@@ -518,24 +518,24 @@ function StudioSection({ isAdmin }: { isAdmin: boolean }) {
       {studio.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f1f5f9' }}>
+            <thead><tr style={{ background: 'var(--surface-2)' }}>
               {['Клиент','Телефон','−см','−кг','−жир кг','Отправил','Дата'].map(h => (
-                <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {studio.map(row => (
                 <tr key={row.id} onClick={() => navigate(`/reports/client/${row.client_id}`, { state: { fromReports: true } })}
-                  style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                  style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                   onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                  <td style={{ padding: '6px 10px', fontWeight: 600, color: '#263CD9' }}>{row.body_clients?.name ?? '—'}</td>
-                  <td style={{ padding: '6px 10px', color: '#64748b' }}>{row.body_clients?.phone ?? '—'}</td>
-                  <td style={{ padding: '6px 10px', color: '#02BDB6', fontWeight: 700 }}>{row.cm_lost > 0 ? `−${row.cm_lost.toFixed(1)}` : '—'}</td>
-                  <td style={{ padding: '6px 10px', color: '#263CD9', fontWeight: 700 }}>{row.kg_lost > 0 ? `−${row.kg_lost.toFixed(1)}` : '—'}</td>
-                  <td style={{ padding: '6px 10px', color: '#22c55e', fontWeight: 700 }}>{row.fat_kg_lost != null && row.fat_kg_lost > 0 ? `−${row.fat_kg_lost.toFixed(1)}` : '—'}</td>
-                  <td style={{ padding: '6px 10px', color: '#64748b' }}>{row.sent_by}</td>
-                  <td style={{ padding: '6px 10px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--accent)' }}>{row.body_clients?.name ?? '—'}</td>
+                  <td style={{ padding: '6px 10px', color: 'var(--text-2)' }}>{row.body_clients?.phone ?? '—'}</td>
+                  <td style={{ padding: '6px 10px', color: 'var(--primary)', fontWeight: 700 }}>{row.cm_lost > 0 ? `−${row.cm_lost.toFixed(1)}` : '—'}</td>
+                  <td style={{ padding: '6px 10px', color: 'var(--accent)', fontWeight: 700 }}>{row.kg_lost > 0 ? `−${row.kg_lost.toFixed(1)}` : '—'}</td>
+                  <td style={{ padding: '6px 10px', color: 'var(--success)', fontWeight: 700 }}>{row.fat_kg_lost != null && row.fat_kg_lost > 0 ? `−${row.fat_kg_lost.toFixed(1)}` : '—'}</td>
+                  <td style={{ padding: '6px 10px', color: 'var(--text-2)' }}>{row.sent_by}</td>
+                  <td style={{ padding: '6px 10px', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
                     {new Date(row.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                   </td>
                 </tr>
@@ -549,7 +549,7 @@ function StudioSection({ isAdmin }: { isAdmin: boolean }) {
       {fullscreen && tvUrl && (
         <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
           <button onClick={() => setFullscreen(false)}
-            style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 14, zIndex: 1 }}>
+            style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', color: 'var(--surface)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 14, zIndex: 1 }}>
             ✕ Закрыть
           </button>
           <iframe src={tvUrl.replace(window.location.origin, '')} style={{ flex: 1, border: 'none', width: '100%' }} title="Результаты студии" />
@@ -681,7 +681,7 @@ function SalesSection() {
     if (values.length === 0) return null;
     return (
       <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>{label}</div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {values.map(v => (
             <button key={v} style={{ ...s.chip, ...(active.has(v) ? s.chipActive : {}) }} onClick={() => onToggle(v)}>{v}</button>
@@ -700,14 +700,14 @@ function SalesSection() {
           </button>
         ))}
         <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
-        <span style={{ color: '#64748b' }}>—</span>
+        <span style={{ color: 'var(--text-2)' }}>—</span>
         <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
         <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
-        <button style={{ ...s.csvBtn, background: '#02BDB6', color: '#fff', border: 'none' }}
+        <button style={{ ...s.csvBtn, background: 'var(--primary)', color: 'var(--surface)', border: 'none' }}
           onClick={syncFB} disabled={syncing}>{syncing ? '...' : '↺ Обновить FB'}</button>
         {data && <button style={s.csvBtn} onClick={exportXLSX}>Excel</button>}
       </div>
-      {syncMsg && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{syncMsg}</div>}
+      {syncMsg && <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 8 }}>{syncMsg}</div>}
 
       {!data && !loading && <div style={s.empty}>Выберите период и нажмите «Загрузить»</div>}
       {loading && <div style={s.empty}>Загрузка…</div>}
@@ -715,7 +715,7 @@ function SalesSection() {
       {data && (
         <>
           {/* Filters */}
-          <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px', marginBottom: 16, border: '1px solid #e2e8f0' }}>
+          <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '10px 12px', marginBottom: 16, border: '1px solid var(--border)' }}>
             <ChipRow label="Кассир"    values={avail.cashiers}   active={filterCashier}   onToggle={v => toggleFilter(filterCashier,   v, setFilterCashier)} />
             <ChipRow label="Менеджер"  values={avail.managers}   active={filterManager}   onToggle={v => toggleFilter(filterManager,   v, setFilterManager)} />
             <ChipRow label="Товар"     values={avail.items}      active={filterItem}      onToggle={v => toggleFilter(filterItem,      v, setFilterItem)} />
@@ -731,14 +731,14 @@ function SalesSection() {
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             {[
-              { label: 'Продажи нал.', val: filteredTotals.cash_sale, color: '#02BDB6' },
-              { label: 'Продажи карта', val: filteredTotals.card_sale, color: '#263CD9' },
-              { label: 'Возвраты', val: -(filteredTotals.cash_refund + filteredTotals.card_refund), color: '#ef4444' },
-              { label: 'Итого чисто', val: filteredTotals.cash_sale + filteredTotals.card_sale - filteredTotals.cash_refund - filteredTotals.card_refund, color: '#22c55e' },
-              { label: 'Показано операций', val: filteredOps.length, color: '#64748b' },
+              { label: 'Продажи нал.', val: filteredTotals.cash_sale, color: 'var(--primary)' },
+              { label: 'Продажи карта', val: filteredTotals.card_sale, color: 'var(--accent)' },
+              { label: 'Возвраты', val: -(filteredTotals.cash_refund + filteredTotals.card_refund), color: 'var(--danger)' },
+              { label: 'Итого чисто', val: filteredTotals.cash_sale + filteredTotals.card_sale - filteredTotals.cash_refund - filteredTotals.card_refund, color: 'var(--success)' },
+              { label: 'Показано операций', val: filteredOps.length, color: 'var(--text-2)' },
             ].map(c => (
-              <div key={c.label} style={{ background: '#fff', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 130 }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>{c.label}</div>
+              <div key={c.label} style={{ background: 'var(--surface)', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 130 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{c.label}</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: c.color }}>{typeof c.val === 'number' && c.label !== 'Показано операций' ? fmt(c.val) + ' ₸' : c.val}</div>
               </div>
             ))}
@@ -747,16 +747,16 @@ function SalesSection() {
           <div style={s.sectionTitle}>Операции ({filteredOps.length})</div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead><tr style={{ background: '#f1f5f9' }}>
+              <thead><tr style={{ background: 'var(--surface-2)' }}>
                 {['Время','Тип','Клиент','Менеджер','Кассир','Товар','Сумма','Оплата'].map(h => (
-                  <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                  <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: 'var(--text-2)', borderBottom: '1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {filteredOps.map(op => (
-                  <tr key={op.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <tr key={op.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '5px 8px' }}>{new Date(op.pay_ts).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</td>
-                    <td style={{ padding: '5px 8px', color: op.is_refund ? '#ef4444' : '#22c55e' }}>{op.is_refund ? 'Возврат' : 'Продажа'}</td>
+                    <td style={{ padding: '5px 8px', color: op.is_refund ? 'var(--danger)' : 'var(--success)' }}>{op.is_refund ? 'Возврат' : 'Продажа'}</td>
                     <td style={{ padding: '5px 8px' }}>{op.client || '—'}</td>
                     <td style={{ padding: '5px 8px' }}>{op.manager}</td>
                     <td style={{ padding: '5px 8px' }}>{op.cashier}</td>
@@ -852,10 +852,10 @@ function SettingsSection() {
   }
 
   const SS: Record<string, React.CSSProperties> = {
-    block:  { background: '#fff', borderRadius: 12, padding: '16px 20px', marginBottom: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
-    title:  { fontWeight: 700, fontSize: 15, marginBottom: 12, color: '#1a202c' },
+    block:  { background: 'var(--surface)', borderRadius: 12, padding: '16px 20px', marginBottom: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+    title:  { fontWeight: 700, fontSize: 15, marginBottom: 12, color: 'var(--text)' },
     btn:    { padding: '10px 20px', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit', border: 'none', opacity: loading ? 0.7 : 1, width: '100%', marginBottom: 8 },
-    tblKey: { padding: '4px 0', color: '#6b7280', fontSize: 13 },
+    tblKey: { padding: '4px 0', color: 'var(--text-2)', fontSize: 13 },
     tblVal: { padding: '4px 0', fontWeight: 700, fontSize: 13 },
   };
 
@@ -866,10 +866,10 @@ function SettingsSection() {
       {/* Import CSV */}
       <div style={SS.block}>
         <div style={SS.title}>Импорт InBody CSV</div>
-        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
           Загрузите <b>inbody270_data.csv</b> из LookinBody Web. Файл читается только в браузере.
         </div>
-        <button style={{ ...SS.btn, background: '#02BDB6', color: '#fff' }} onClick={() => fileRef.current?.click()} disabled={loading}>
+        <button style={{ ...SS.btn, background: 'var(--primary)', color: 'var(--surface)' }} onClick={() => fileRef.current?.click()} disabled={loading}>
           {loading && !preview && !result ? 'Обработка…' : 'Выбрать файл CSV…'}
         </button>
         <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleFile} />
@@ -879,11 +879,11 @@ function SettingsSection() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 {[
-                  ['Всего строк', preview.total, '#374151'],
-                  ['Новых', preview.new, '#16a34a'],
-                  ['Дублей', preview.duplicates, '#9ca3af'],
-                  ['С клиентом', preview.linked, '#2563eb'],
-                  ['Без клиента', preview.unlinked, preview.unlinked > 0 ? '#f59e0b' : '#9ca3af'],
+                  ['Всего строк', preview.total, 'var(--text)'],
+                  ['Новых', preview.new, 'var(--success)'],
+                  ['Дублей', preview.duplicates, 'var(--text-3)'],
+                  ['С клиентом', preview.linked, 'var(--info)'],
+                  ['Без клиента', preview.unlinked, preview.unlinked > 0 ? 'var(--warning)' : 'var(--text-3)'],
                 ].map(([label, val, color]) => (
                   <tr key={String(label)}>
                     <td style={SS.tblKey}>{label}</td>
@@ -893,35 +893,35 @@ function SettingsSection() {
               </tbody>
             </table>
             {preview.unlinked_ids.length > 0 && (
-              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>
                 Без клиента (ID): {preview.unlinked_ids.join(', ')}{preview.unlinked_ids.length === 20 ? ' …' : ''}
               </div>
             )}
             {preview.new > 0 ? (
-              <button style={{ ...SS.btn, background: '#263CD9', color: '#fff', marginTop: 12 }} onClick={doImport} disabled={loading}>
+              <button style={{ ...SS.btn, background: 'var(--accent)', color: 'var(--surface)', marginTop: 12 }} onClick={doImport} disabled={loading}>
                 {loading ? 'Импорт…' : `Импортировать ${preview.new} новых`}
               </button>
             ) : (
-              <div style={{ marginTop: 10, fontSize: 14, color: '#16a34a' }}>Все строки уже в базе</div>
+              <div style={{ marginTop: 10, fontSize: 14, color: 'var(--success)' }}>Все строки уже в базе</div>
             )}
           </div>
         )}
 
         {result && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 16px', marginTop: 12 }}>
-            <div style={{ fontWeight: 700, color: '#166534', marginBottom: 8 }}>✓ Импорт завершён</div>
+          <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 10, padding: '12px 16px', marginTop: 12 }}>
+            <div style={{ fontWeight: 700, color: 'var(--success)', marginBottom: 8 }}>✓ Импорт завершён</div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 {[
-                  ['Добавлено', result.added, '#16a34a'],
-                  ['Пропущено', result.skipped, '#9ca3af'],
-                  ['Без клиента', result.without_client, result.without_client > 0 ? '#f59e0b' : '#9ca3af'],
+                  ['Добавлено', result.added, 'var(--success)'],
+                  ['Пропущено', result.skipped, 'var(--text-3)'],
+                  ['Без клиента', result.without_client, result.without_client > 0 ? 'var(--warning)' : 'var(--text-3)'],
                 ].map(([l, v, c]) => (
                   <tr key={String(l)}><td style={SS.tblKey}>{l}</td><td style={{ ...SS.tblVal, color: String(c) }}>{v}</td></tr>
                 ))}
               </tbody>
             </table>
-            <button style={{ ...SS.btn, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', marginTop: 12 }}
+            <button style={{ ...SS.btn, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', marginTop: 12 }}
               onClick={() => { setRows(null); setPreview(null); setResult(null); }}>
               Загрузить ещё
             </button>
@@ -932,14 +932,14 @@ function SettingsSection() {
       {/* Recalculate */}
       <div style={SS.block}>
         <div style={SS.title}>Пересчёт InBody</div>
-        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
           Пересчитывает числовые поля из сохранённого raw CSV для всех тестов.
         </div>
-        <button style={{ ...SS.btn, background: '#f8fafc', color: '#374151', border: '1px solid #e2e6ea' }} onClick={doRecalculate} disabled={loading}>
+        <button style={{ ...SS.btn, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)' }} onClick={doRecalculate} disabled={loading}>
           Пересчитать InBody (исправить CSV)
         </button>
         {recalc && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 14px', fontSize: 14, color: '#166534' }}>
+          <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 8, padding: '8px 14px', fontSize: 14, color: 'var(--success)' }}>
             ✓ Пересчитано тестов: <b>{recalc.updated}</b>
           </div>
         )}
@@ -949,7 +949,7 @@ function SettingsSection() {
       <div style={SS.block}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={SS.title}>InBody без клиента</div>
-          <button style={{ padding: '6px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+          <button style={{ padding: '6px 14px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
             onClick={loadUnlinked} disabled={loading}>
             {unlinked === null ? 'Загрузить' : '↺ Обновить'}
           </button>
@@ -958,15 +958,15 @@ function SettingsSection() {
         {unlinked !== null && unlinked.length === 0 && <div style={s.empty}>Все тесты привязаны к клиентам</div>}
         {unlinked !== null && unlinked.length > 0 && (
           <div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 8 }}>
               Тесты InBody без соответствующего клиента в базе. Привязать можно из карточки клиента.
             </div>
             {unlinked.map(t => (
-              <div key={t.id} style={{ padding: '7px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-                <span style={{ fontWeight: 600, color: '#263CD9' }}>{t.inbody_id}</span>
-                <span style={{ color: '#6b7280', marginLeft: 10 }}>{t.tested_at?.slice(0, 10) ?? '—'}</span>
-                {t.phone && <span style={{ color: '#64748b', marginLeft: 10 }}>{t.phone}</span>}
-                {t.weight != null && <span style={{ color: '#94a3b8', marginLeft: 10 }}>{t.weight} кг</span>}
+              <div key={t.id} style={{ padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{t.inbody_id}</span>
+                <span style={{ color: 'var(--text-2)', marginLeft: 10 }}>{t.tested_at?.slice(0, 10) ?? '—'}</span>
+                {t.phone && <span style={{ color: 'var(--text-2)', marginLeft: 10 }}>{t.phone}</span>}
+                {t.weight != null && <span style={{ color: 'var(--text-3)', marginLeft: 10 }}>{t.weight} кг</span>}
               </div>
             ))}
           </div>
@@ -1020,7 +1020,7 @@ function PeriodFilter({ period, setPeriod, customFrom, setCustomFrom, customTo, 
       {period === 'custom' && (
         <>
           <input type="date" style={s.dateInp} value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
-          <span style={{ color: '#64748b' }}>—</span>
+          <span style={{ color: 'var(--text-2)' }}>—</span>
           <input type="date" style={s.dateInp} value={customTo} onChange={e => setCustomTo(e.target.value)} />
         </>
       )}
@@ -1094,13 +1094,13 @@ function MeasuresSection() {
       {loading && <div style={s.empty}>Загрузка…</div>}
       {!loading && clients.length === 0 && <div style={s.empty}>Пока нет замеров</div>}
       {!loading && filtered.map(c => (
-        <button key={c.clientId} style={{ ...s.colItem, width: '100%', borderRadius: 10, marginBottom: 6, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        <button key={c.clientId} style={{ ...s.colItem, width: '100%', borderRadius: 10, marginBottom: 6, background: 'var(--surface)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           onClick={() => navigate(`/reports/client/${c.clientId}`, { state: { fromReports: true } })}>
           <div style={{ textAlign: 'left' }}>
             <div style={s.rowTitle}>{c.name}</div>
             <div style={s.rowMeta}>{c.phone ?? ''}{c.phone ? ' · ' : ''}{c.count} замер{c.count === 1 ? '' : c.count < 5 ? 'а' : 'ов'} · последний {new Date(c.lastDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}</div>
           </div>
-          {c.cmLost != null && c.cmLost > 0 && <div style={{ color: '#02BDB6', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>−{c.cmLost.toFixed(1)} см</div>}
+          {c.cmLost != null && c.cmLost > 0 && <div style={{ color: 'var(--primary)', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>−{c.cmLost.toFixed(1)} см</div>}
         </button>
       ))}
     </div>
@@ -1154,14 +1154,14 @@ function ClientDetailPanel({ clientId, name, onClose }: { clientId: string; name
           <div style={{ flex: '2 1 320px', overflowX: 'auto' }}>
             <div style={s.sectionTitle}>Замеры ({measurements.length})</div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead><tr style={{ background: '#f1f5f9' }}>
+              <thead><tr style={{ background: 'var(--surface-2)' }}>
                 {['№','Дата','Вес','Сумма см','Талия','Живот','Ягодицы'].map(h => (
-                  <th key={h} style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={h} style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: 'var(--text-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {measurements.map(m => (
-                  <tr key={m.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <tr key={m.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '5px 8px' }}>{m.measure_no}</td>
                     <td style={{ padding: '5px 8px', whiteSpace: 'nowrap' }}>{new Date(m.measured_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}</td>
                     <td style={{ padding: '5px 8px' }}>{m.weight != null ? `${m.weight} кг` : '—'}</td>
@@ -1175,9 +1175,9 @@ function ClientDetailPanel({ clientId, name, onClose }: { clientId: string; name
             </table>
 
             {cmDelta != null && (
-              <div style={{ marginTop: 10, fontSize: 13, color: '#64748b' }}>
-                Изменение: <b style={{ color: cmDelta < 0 ? '#02BDB6' : '#f59e0b' }}>{cmDelta < 0 ? `−${Math.abs(cmDelta).toFixed(1)}` : `+${cmDelta.toFixed(1)}`} см</b>
-                {kgDelta != null && <>, <b style={{ color: kgDelta < 0 ? '#22c55e' : '#f59e0b' }}>{kgDelta < 0 ? `−${Math.abs(kgDelta).toFixed(1)}` : `+${kgDelta.toFixed(1)}`} кг</b></>}
+              <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-2)' }}>
+                Изменение: <b style={{ color: cmDelta < 0 ? 'var(--primary)' : 'var(--warning)' }}>{cmDelta < 0 ? `−${Math.abs(cmDelta).toFixed(1)}` : `+${cmDelta.toFixed(1)}`} см</b>
+                {kgDelta != null && <>, <b style={{ color: kgDelta < 0 ? 'var(--success)' : 'var(--warning)' }}>{kgDelta < 0 ? `−${Math.abs(kgDelta).toFixed(1)}` : `+${kgDelta.toFixed(1)}`} кг</b></>}
               </div>
             )}
           </div>
@@ -1186,18 +1186,18 @@ function ClientDetailPanel({ clientId, name, onClose }: { clientId: string; name
           <div style={{ flex: '1 1 200px' }}>
             <div style={s.sectionTitle}>Результат студии</div>
             {result ? (
-              <div style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {[
-                  { label: '−см', val: result.cm_lost > 0 ? `${result.cm_lost.toFixed(1)} см` : '—', color: '#02BDB6' },
-                  { label: '−кг', val: result.kg_lost > 0 ? `${result.kg_lost.toFixed(1)} кг` : '—', color: '#263CD9' },
-                  { label: '−жир кг', val: result.fat_kg_lost != null && result.fat_kg_lost > 0 ? `${result.fat_kg_lost.toFixed(1)} кг` : '—', color: '#22c55e' },
+                  { label: '−см', val: result.cm_lost > 0 ? `${result.cm_lost.toFixed(1)} см` : '—', color: 'var(--primary)' },
+                  { label: '−кг', val: result.kg_lost > 0 ? `${result.kg_lost.toFixed(1)} кг` : '—', color: 'var(--accent)' },
+                  { label: '−жир кг', val: result.fat_kg_lost != null && result.fat_kg_lost > 0 ? `${result.fat_kg_lost.toFixed(1)} кг` : '—', color: 'var(--success)' },
                 ].map(({ label, val, color }) => (
                   <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <span style={{ fontSize: 13, color: '#64748b' }}>{label}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{label}</span>
                     <span style={{ fontSize: 20, fontWeight: 800, color }}>{val}</span>
                   </div>
                 ))}
-                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
                   {result.sent_by} · {new Date(result.sent_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                 </div>
               </div>
@@ -1256,7 +1256,7 @@ function InBodySection() {
   function fmtDelta(v: number | null, inverted = false) {
     if (v == null) return '—';
     const good = inverted ? v < 0 : v > 0;
-    const color = good ? '#22c55e' : v === 0 ? '#94a3b8' : '#f59e0b';
+    const color = good ? 'var(--success)' : v === 0 ? 'var(--text-3)' : 'var(--warning)';
     return <span style={{ color, fontWeight: 700 }}>{v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}</span>;
   }
 
@@ -1274,13 +1274,13 @@ function InBodySection() {
       {totals && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
           {[
-            { label: 'Тестов', val: totals.tests, color: '#64748b' },
-            { label: 'Клиентов', val: totals.clients, color: '#263CD9' },
-            { label: 'Жира потеряно', val: `${totals.bfm_lost.toFixed(1)} кг`, color: '#22c55e' },
-            { label: 'Мышц набрано', val: `${totals.smm_gained.toFixed(1)} кг`, color: '#02BDB6' },
+            { label: 'Тестов', val: totals.tests, color: 'var(--text-2)' },
+            { label: 'Клиентов', val: totals.clients, color: 'var(--accent)' },
+            { label: 'Жира потеряно', val: `${totals.bfm_lost.toFixed(1)} кг`, color: 'var(--success)' },
+            { label: 'Мышц набрано', val: `${totals.smm_gained.toFixed(1)} кг`, color: 'var(--primary)' },
           ].map(c => (
-            <div key={c.label} style={{ background: '#fff', borderRadius: 10, padding: '8px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 110 }}>
-              <div style={{ fontSize: 11, color: '#64748b' }}>{c.label}</div>
+            <div key={c.label} style={{ background: 'var(--surface)', borderRadius: 10, padding: '8px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 110 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-2)' }}>{c.label}</div>
               <div style={{ fontSize: 17, fontWeight: 700, color: c.color }}>{c.val}</div>
             </div>
           ))}
@@ -1290,29 +1290,29 @@ function InBodySection() {
       {filtered.length > 0 && !loading && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead><tr style={{ background: '#f1f5f9' }}>
+            <thead><tr style={{ background: 'var(--surface-2)' }}>
               {['Клиент','Тестов','1й тест','Посл.','Δ вес','Δ жир','Δ мышцы','Балл'].map(h => (
-                <th key={h} style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                <th key={h} style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: 'var(--text-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {filtered.map(r => (
                 <tr key={r.phone_digits} onClick={() => r.client_id && navigate(`/reports/client/${r.client_id}`, { state: { fromReports: true } })}
-                  style={{ borderBottom: '1px solid #f1f5f9', cursor: r.client_id ? 'pointer' : 'default' }}>
+                  style={{ borderBottom: '1px solid var(--border)', cursor: r.client_id ? 'pointer' : 'default' }}>
                   <td style={{ padding: '5px 8px' }}>
-                    <div style={{ fontWeight: 600, color: r.client_id ? '#263CD9' : '#1a202c' }}>{r.name}</div>
-                    {r.phone && <div style={{ fontSize: 11, color: '#94a3b8' }}>{r.phone}</div>}
-                    {!r.client_id && <div style={{ fontSize: 10, color: '#f59e0b' }}>не найден в базе</div>}
+                    <div style={{ fontWeight: 600, color: r.client_id ? 'var(--accent)' : 'var(--text)' }}>{r.name}</div>
+                    {r.phone && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{r.phone}</div>}
+                    {!r.client_id && <div style={{ fontSize: 10, color: 'var(--warning)' }}>не найден в базе</div>}
                   </td>
                   <td style={{ padding: '5px 8px', fontWeight: 700 }}>{r.count}</td>
-                  <td style={{ padding: '5px 8px', color: '#64748b', whiteSpace: 'nowrap' }}>{r.first_date}</td>
-                  <td style={{ padding: '5px 8px', color: '#64748b', whiteSpace: 'nowrap' }}>{r.last_date}</td>
+                  <td style={{ padding: '5px 8px', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{r.first_date}</td>
+                  <td style={{ padding: '5px 8px', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{r.last_date}</td>
                   <td style={{ padding: '5px 8px' }}>{fmtDelta(r.weight_delta, true)}</td>
                   <td style={{ padding: '5px 8px' }}>{fmtDelta(r.bfm_delta, true)}</td>
                   <td style={{ padding: '5px 8px' }}>{fmtDelta(r.smm_delta, false)}</td>
                   <td style={{ padding: '5px 8px' }}>
                     {r.score_first != null && r.score_last != null
-                      ? <span>{r.score_first} → <b style={{ color: r.score_last > r.score_first ? '#22c55e' : '#f59e0b' }}>{r.score_last}</b></span>
+                      ? <span>{r.score_first} → <b style={{ color: r.score_last > r.score_first ? 'var(--success)' : 'var(--warning)' }}>{r.score_last}</b></span>
                       : r.score_last ?? '—'}
                   </td>
                 </tr>
@@ -1348,9 +1348,9 @@ function DrillModal({ title, items, onClose }: { title: string; items: DrillItem
         </div>
         {items.length === 0 && <div style={s.empty}>Нет данных</div>}
         {items.map((it, i) => (
-          <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+          <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
             <div style={{ fontWeight: 600 }}>{it.name ?? '—'}</div>
-            <div style={{ color: '#64748b', marginTop: 2 }}>
+            <div style={{ color: 'var(--text-2)', marginTop: 2 }}>
               {[it.item, it.source, it.resource, it.manager, it.date, it.amount != null ? Math.round(it.amount).toLocaleString('ru') + ' ₸' : null].filter(Boolean).join(' · ')}
             </div>
           </div>
@@ -1364,9 +1364,9 @@ function SalesDrillModal({ title, step, onClose }: { title: string; step: Funnel
   const [tab, setTab] = useState<0|1|2>(0);
   const fmt = (n: number) => Math.round(n).toLocaleString('ru');
   const cols = [
-    { label: 'Покупки', items: step.items, count: step.count, amount: step.amount ?? 0, color: '#263CD9' },
-    { label: 'Чистые возвраты', items: step.refund_items ?? [], count: step.refund_count ?? 0, amount: step.refund_amount ?? 0, color: '#ef4444' },
-    { label: 'Тест', items: step.test_items ?? [], count: step.test_count ?? 0, amount: step.test_amount ?? 0, color: '#f59e0b' },
+    { label: 'Покупки', items: step.items, count: step.count, amount: step.amount ?? 0, color: 'var(--accent)' },
+    { label: 'Чистые возвраты', items: step.refund_items ?? [], count: step.refund_count ?? 0, amount: step.refund_amount ?? 0, color: 'var(--danger)' },
+    { label: 'Тест', items: step.test_items ?? [], count: step.test_count ?? 0, amount: step.test_amount ?? 0, color: 'var(--warning)' },
   ];
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 480;
   const items = cols[tab].items;
@@ -1389,16 +1389,16 @@ function SalesDrillModal({ title, step, onClose }: { title: string; step: Funnel
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
             {cols.map((c, i) => (
-              <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 10px', borderTop: `3px solid ${c.color}` }}>
-                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{c.label}</div>
+              <div key={i} style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '8px 10px', borderTop: `3px solid ${c.color}` }}>
+                <div style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600 }}>{c.label}</div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.count}</div>
-                <div style={{ fontSize: 11, color: '#374151' }}>{fmt(c.amount)} ₸</div>
+                <div style={{ fontSize: 11, color: 'var(--text)' }}>{fmt(c.amount)} ₸</div>
               </div>
             ))}
           </div>
         )}
         {!isNarrow && (
-          <div style={{ fontSize: 12, color: '#374151', marginBottom: 10, padding: '6px 10px', background: '#f0fdf4', borderRadius: 6 }}>
+          <div style={{ fontSize: 12, color: 'var(--text)', marginBottom: 10, padding: '6px 10px', background: 'var(--success-soft)', borderRadius: 6 }}>
             Итог: {fmt(step.amount ?? 0)} − {fmt(step.refund_amount ?? 0)} = <b>{fmt((step.amount ?? 0) - (step.refund_amount ?? 0))} ₸</b>
           </div>
         )}
@@ -1412,9 +1412,9 @@ function SalesDrillModal({ title, step, onClose }: { title: string; step: Funnel
         </div>
         {items.length === 0 && <div style={s.empty}>Нет данных</div>}
         {items.map((it, i) => (
-          <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+          <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
             <div style={{ fontWeight: 600 }}>{it.name ?? '—'}</div>
-            <div style={{ color: '#64748b', marginTop: 1 }}>
+            <div style={{ color: 'var(--text-2)', marginTop: 1 }}>
               {[it.item, it.date, it.amount != null ? fmt(it.amount) + ' ₸' : null].filter(Boolean).join(' · ')}
             </div>
           </div>
@@ -1434,12 +1434,12 @@ function FunnelView({ steps }: { steps: Array<{ label: string; step: FunnelStep 
           const pct = step.pct != null ? step.pct : (i === 0 ? 100 : steps[i - 1].step.count > 0 ? Math.round(100 * step.count / steps[i - 1].step.count) : 0);
           return (
             <button key={label} onClick={() => setDrill({ label, items: step.items })}
-              style={{ flex: '1 1 130px', minWidth: 120, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{i + 1}. {label}</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: '#02BDB6' }}>{step.count}</div>
-              {step.amount != null && <div style={{ fontSize: 12, color: '#263CD9', fontWeight: 600 }}>{fmt(step.amount)} ₸</div>}
-              {step.trial_sold_count != null && <div style={{ fontSize: 11, color: '#64748b' }}>Продано услуг: {step.trial_sold_count}</div>}
-              <div style={{ fontSize: 12, color: i === 0 ? '#94a3b8' : pct >= 50 ? '#22c55e' : pct >= 20 ? '#f59e0b' : '#ef4444' }}>
+              style={{ flex: '1 1 130px', minWidth: 120, background: 'var(--surface)', border: '1.5px solid var(--input-border)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>{i + 1}. {label}</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary)' }}>{step.count}</div>
+              {step.amount != null && <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>{fmt(step.amount)} ₸</div>}
+              {step.trial_sold_count != null && <div style={{ fontSize: 11, color: 'var(--text-2)' }}>Продано услуг: {step.trial_sold_count}</div>}
+              <div style={{ fontSize: 12, color: i === 0 ? 'var(--text-3)' : pct >= 50 ? 'var(--success)' : pct >= 20 ? 'var(--warning)' : 'var(--danger)' }}>
                 {i === 0 ? '100%' : `${pct}% от пред.`}
               </div>
             </button>
@@ -1470,7 +1470,7 @@ function useFunnelFilters(availSources: string[]) {
       <button style={{ ...s.chip, ...(from === weekAgoStr && to === todayStr ? s.chipActive : {}) }} onClick={() => { setFrom(weekAgoStr); setTo(todayStr); }}>Неделя</button>
       <button style={{ ...s.chip, ...(from === monthAgoStr && to === todayStr ? s.chipActive : {}) }} onClick={() => { setFrom(monthAgoStr); setTo(todayStr); }}>Месяц</button>
       <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={s.dateInp} />
-      <span style={{ color: '#94a3b8' }}>—</span>
+      <span style={{ color: 'var(--text-3)' }}>—</span>
       <input type="date" value={to} onChange={e => setTo(e.target.value)} style={s.dateInp} />
     </div>
   );
@@ -1556,28 +1556,28 @@ function CrossConvPanel({ data, totalNet }: { data: Record<string, FunnelStep>; 
     : to === 'renewals' ? (data.renewals?.count ?? 0) : (data[to]?.count ?? 0);
   const pct  = fromCount > 0 ? Math.round(100 * toCount / fromCount) : 0;
   const norm = CONV_NORMS[`${from}→${to}`];
-  const color = norm ? (pct >= norm[0] ? '#22c55e' : '#ef4444') : '#02BDB6';
+  const color = norm ? (pct >= norm[0] ? 'var(--success)' : 'var(--danger)') : 'var(--primary)';
   return (
-    <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Сквозная конверсия</div>
+    <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 16px', marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid var(--border)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Сквозная конверсия</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <select value={from} onChange={e => setFrom(e.target.value as ConvStageFrom)} style={{ ...s.dateInp, padding: '5px 8px', fontSize: 12 }}>
           {CONV_STAGES_FROM.map(st => <option key={st} value={st}>{CONV_LABELS_FROM[st]}</option>)}
         </select>
-        <span style={{ color: '#94a3b8', fontWeight: 700 }}>→</span>
+        <span style={{ color: 'var(--text-3)', fontWeight: 700 }}>→</span>
         <select value={to} onChange={e => setTo(e.target.value as ConvStageTo)} style={{ ...s.dateInp, padding: '5px 8px', fontSize: 12 }}>
           {CONV_STAGES_TO.map(st => <option key={st} value={st}>{CONV_LABELS_TO[st]}</option>)}
         </select>
         <div style={{ fontSize: 28, fontWeight: 800, color, marginLeft: 4 }}>{pct}%</div>
-        <div style={{ fontSize: 12, color: '#94a3b8' }}>{toCount} из {fromCount}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{toCount} из {fromCount}</div>
         {norm && <div style={{ fontSize: 12, color: color, fontWeight: 600 }}>норма {norm[0]}–{norm[1]}%{pct >= norm[0] ? ' ✓' : ' ↓'}</div>}
       </div>
-      <div style={{ height: 6, background: '#f1f5f9', borderRadius: 4, marginTop: 8, position: 'relative' }}>
+      <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 4, marginTop: 8, position: 'relative' }}>
         <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: color, borderRadius: 4, transition: 'width 0.3s' }} />
-        {norm && <div style={{ position: 'absolute', left: `${norm[0]}%`, top: 0, bottom: 0, width: 2, background: '#94a3b8', borderRadius: 1 }} />}
+        {norm && <div style={{ position: 'absolute', left: `${norm[0]}%`, top: 0, bottom: 0, width: 2, background: 'var(--text-3)', borderRadius: 1 }} />}
       </div>
       {totalNet && totalNet.test_count > 0 && (
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>Тестов (куп. и сразу вернули): {totalNet.test_count} шт</div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>Тестов (куп. и сразу вернули): {totalNet.test_count} шт</div>
       )}
     </div>
   );
@@ -1594,8 +1594,8 @@ function CollapsibleTable({ title, storageKey, children }: { title: string; stor
   };
   return (
     <div style={{ marginTop: 14 }}>
-      <button onClick={toggle} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: '0 0 6px', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: '#374151', width: '100%', textAlign: 'left' }}>
-        <span style={{ fontSize: 10, color: '#94a3b8' }}>{open ? '▾' : '▸'}</span>
+      <button onClick={toggle} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: '0 0 6px', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'var(--text)', width: '100%', textAlign: 'left' }}>
+        <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{open ? '▾' : '▸'}</span>
         {title}
       </button>
       {open && children}
@@ -1633,8 +1633,8 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
       <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} />
       <Tooltip formatter={(v: number) => Math.round(v).toLocaleString('ru') + ' ₸'} />
       <Legend wrapperStyle={{ fontSize: 11 }} />
-      <Bar dataKey="Новые" fill="#263CD9" stackId="a" />
-      <Bar dataKey="Продления" fill="#02BDB6" stackId="a" radius={[3,3,0,0]} />
+      <Bar dataKey="Новые" fill="var(--accent)" stackId="a" />
+      <Bar dataKey="Продления" fill="var(--primary)" stackId="a" radius={[3,3,0,0]} />
     </BarChart>
   ) : tab === 'Источники' ? (
     <BarChart data={srcData} margin={{ top: 4, right: 8, left: 0, bottom: 20 }}>
@@ -1642,8 +1642,8 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
       <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
       <YAxis tick={{ fontSize: 10 }} />
       <Tooltip />
-      <Bar dataKey="Лидов" fill="#263CD9" />
-      <Bar dataKey="Продажи" fill="#02BDB6" radius={[3,3,0,0]} />
+      <Bar dataKey="Лидов" fill="var(--accent)" />
+      <Bar dataKey="Продажи" fill="var(--primary)" radius={[3,3,0,0]} />
     </BarChart>
   ) : tab === 'Где проседаем' ? (
     <BarChart data={funnelData} layout="vertical" margin={{ top: 4, right: 16, left: 60, bottom: 4 }}>
@@ -1651,7 +1651,7 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
       <XAxis type="number" tick={{ fontSize: 10 }} />
       <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={60} />
       <Tooltip />
-      <Bar dataKey="count" fill="#02BDB6" radius={[0,3,3,0]} />
+      <Bar dataKey="count" fill="var(--primary)" radius={[0,3,3,0]} />
     </BarChart>
   ) : (
     <BarChart data={cshData} margin={{ top: 4, right: 8, left: 0, bottom: 20 }}>
@@ -1659,12 +1659,12 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
       <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
       <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} />
       <Tooltip formatter={(v: number) => Math.round(v).toLocaleString('ru') + ' ₸'} />
-      <Bar dataKey="Итог" fill="#02BDB6" radius={[3,3,0,0]} />
+      <Bar dataKey="Итог" fill="var(--primary)" radius={[3,3,0,0]} />
     </BarChart>
   );
 
   return (
-    <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' }}>
+    <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
         {CHART_TABS.map(t => (
           <button key={t} onClick={() => setTab(t)}
@@ -1690,10 +1690,10 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
     { key: 'visited', label: 'Пришли' },
   ];
   const moneySteps: Array<{ key: string; label: string; color: string }> = [
-    { key: 'sales', label: 'Новые', color: '#263CD9' },
-    { key: 'renewals', label: 'Продления', color: '#02BDB6' },
-    { key: 'goods', label: 'Товары/услуги', color: '#f59e0b' },
-    { key: 'total_net', label: 'Итог касса', color: '#22c55e' },
+    { key: 'sales', label: 'Новые', color: 'var(--accent)' },
+    { key: 'renewals', label: 'Продления', color: 'var(--primary)' },
+    { key: 'goods', label: 'Товары/услуги', color: 'var(--warning)' },
+    { key: 'total_net', label: 'Итог касса', color: 'var(--success)' },
   ];
 
   const totalSalesAmt = totalNet?.sales_amount ?? 0;
@@ -1707,7 +1707,7 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
   return (
     <>
       <div style={{ marginBottom: 6 }}>
-        <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Воронка</div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Воронка</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {funnelSteps.map(({ key, label }, i) => {
             const step = data[key];
@@ -1716,16 +1716,16 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
             const pct = i === 0 ? 100 : prev > 0 ? Math.round(100 * step.count / prev) : 0;
             return (
               <button key={key} onClick={() => {}}
-                style={{ flex: '1 1 100px', minWidth: 90, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '10px 12px', cursor: 'default', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>{label}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: '#02BDB6' }}>{step.count}</div>
-                {step.trial_sold_count != null && <div style={{ fontSize: 10, color: '#64748b' }}>услуг: {step.trial_sold_count}</div>}
-                <div style={{ fontSize: 11, color: i === 0 ? '#94a3b8' : pct >= 50 ? '#22c55e' : pct >= 20 ? '#f59e0b' : '#ef4444' }}>
+                style={{ flex: '1 1 100px', minWidth: 90, background: 'var(--surface)', border: '1.5px solid var(--input-border)', borderRadius: 12, padding: '10px 12px', cursor: 'default', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--primary)' }}>{step.count}</div>
+                {step.trial_sold_count != null && <div style={{ fontSize: 10, color: 'var(--text-2)' }}>услуг: {step.trial_sold_count}</div>}
+                <div style={{ fontSize: 11, color: i === 0 ? 'var(--text-3)' : pct >= 50 ? 'var(--success)' : pct >= 20 ? 'var(--warning)' : 'var(--danger)' }}>
                   {i === 0 ? '100%' : `${pct}% от пред.`}
                 </div>
                 {key === 'in_work' && step.alive_count != null && (
                   <button onClick={e => { e.stopPropagation(); setAliveDrill(step.alive_items ?? []); }}
-                    style={{ fontSize: 10, color: '#02BDB6', marginTop: 3, cursor: 'pointer', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>
+                    style={{ fontSize: 10, color: 'var(--primary)', marginTop: 3, cursor: 'pointer', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>
                     Живые: {step.alive_count}
                   </button>
                 )}
@@ -1738,19 +1738,19 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
       {aliveDrill && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={() => setAliveDrill(null)}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 20, maxWidth: 640, width: '90%', maxHeight: '80vh', overflow: 'auto' }}
+          <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 20, maxWidth: 640, width: '90%', maxHeight: '80vh', overflow: 'auto' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div style={{ fontWeight: 700 }}>Живые лиды — {aliveDrill.length} шт</div>
               <button onClick={() => setAliveDrill(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
             </div>
             <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
-              <thead><tr style={{ background: '#f1f5f9' }}>
-                {['Клиент','Воронка','Этап','Менеджер'].map(h => <th key={h} style={{ padding: '4px 8px', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>)}
+              <thead><tr style={{ background: 'var(--surface-2)' }}>
+                {['Клиент','Воронка','Этап','Менеджер'].map(h => <th key={h} style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--text-2)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {aliveDrill.map((l, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '3px 8px', fontWeight: 600 }}>{l.name ?? '—'}</td>
                     <td style={{ padding: '3px 8px' }}>{l.funnel ?? '—'}</td>
                     <td style={{ padding: '3px 8px' }}>{l.stage ?? '—'}</td>
@@ -1764,17 +1764,17 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
       )}
 
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Деньги</div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Деньги</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {moneySteps.map(({ key, label, color }) => {
             if (key === 'total_net') {
               return (
-                <div key={key} style={{ flex: '1 1 130px', minWidth: 120, background: '#fff', border: `1.5px solid ${color}30`, borderRadius: 12, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', borderTop: `3px solid ${color}` }}>
-                  <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>Итог касса</div>
+                <div key={key} style={{ flex: '1 1 130px', minWidth: 120, background: 'var(--surface)', border: `1.5px solid ${color}30`, borderRadius: 12, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', borderTop: `3px solid ${color}` }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 3 }}>Итог касса</div>
                   <div style={{ fontSize: 22, fontWeight: 800, color }}>{fmt(totalNetAmt)} ₸</div>
-                  <div style={{ fontSize: 10, color: '#64748b' }}>продажи {fmt(totalSalesAmt)} ₸</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-2)' }}>продажи {fmt(totalSalesAmt)} ₸</div>
                   {refundAmt > 0 && (
-                    <div style={{ fontSize: 10, color: '#ef4444', marginTop: 1 }}>
+                    <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 1 }}>
                       возвраты −{fmt(refundAmt)} ₸{(totalNet?.test_count ?? 0) > 0 ? ` (тест ${totalNet!.test_count})` : ''}
                     </div>
                   )}
@@ -1790,17 +1790,17 @@ function FactDayCards({ data, totalNet }: { data: Record<string, FunnelStep>; to
               const ret = data['returned'];
               if (ret && ret.count > 0) {
                 amt += (ret.amount ?? 0);
-                subNote = <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>из них вернулись: {ret.count} / {fmt(ret.amount ?? 0)} ₸</div>;
+                subNote = <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>из них вернулись: {ret.count} / {fmt(ret.amount ?? 0)} ₸</div>;
               }
             }
             const pct = moneyPct(amt);
             return (
               <button key={key} onClick={hasDrill ? () => setSalesDrill({ label, step }) : undefined}
-                style={{ flex: '1 1 130px', minWidth: 120, background: '#fff', border: `1.5px solid ${color}30`, borderRadius: 12, padding: '10px 12px', cursor: hasDrill ? 'pointer' : 'default', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', borderTop: `3px solid ${color}` }}>
-                <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>{label}</div>
+                style={{ flex: '1 1 130px', minWidth: 120, background: 'var(--surface)', border: `1.5px solid ${color}30`, borderRadius: 12, padding: '10px 12px', cursor: hasDrill ? 'pointer' : 'default', textAlign: 'left', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', borderTop: `3px solid ${color}` }}>
+                <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color }}>{step.count} шт</div>
                 <div style={{ fontSize: 12, color, fontWeight: 600 }}>{fmt(amt)} ₸</div>
-                {pct > 0 && <div style={{ fontSize: 10, color: '#94a3b8' }}>{pct}% выручки</div>}
+                {pct > 0 && <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{pct}% выручки</div>}
                 {subNote}
               </button>
             );
@@ -1853,11 +1853,11 @@ function FactDaySection({ onOpenDailyMetrics }: { onOpenDailyMetrics?: (month: s
   useEffect(() => { load(); }, [load]);
 
   const fmt = (n: number) => Math.round(n).toLocaleString('ru');
-  const TH: React.CSSProperties = { padding: '4px 8px', textAlign: 'right', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12 };
+  const TH: React.CSSProperties = { padding: '4px 8px', textAlign: 'right', color: 'var(--text-2)', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12 };
   const THL: React.CSSProperties = { ...TH, textAlign: 'left' };
   const TD: React.CSSProperties = { padding: '3px 8px', fontSize: 12, textAlign: 'right' };
   const TDL: React.CSSProperties = { ...TD, textAlign: 'left' };
-  const rowBg = (i: number): React.CSSProperties => ({ background: i % 2 === 1 ? '#f8fafc' : '' });
+  const rowBg = (i: number): React.CSSProperties => ({ background: i % 2 === 1 ? 'var(--surface-2)' : '' });
 
   function toggleAllCollapsed() {
     const next = !allCollapsed;
@@ -1869,7 +1869,7 @@ function FactDaySection({ onOpenDailyMetrics }: { onOpenDailyMetrics?: (month: s
     <div style={s.section}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <button style={s.csvBtn} onClick={doSync} disabled={syncing}>{syncing ? 'Запуск…' : '↺ Обновить Fitbase'}</button>
-        {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
+        {syncMsg && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{syncMsg}</span>}
         {onOpenDailyMetrics && (
           <button style={s.csvBtn} onClick={() => onOpenDailyMetrics(from.slice(0, 7))}>📅 Метрики по дням</button>
         )}
@@ -1905,7 +1905,7 @@ function FactDaySection({ onOpenDailyMetrics }: { onOpenDailyMetrics?: (month: s
                 <CollapsibleTable title="По источникам" storageKey="fd-src">
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480, width: '100%' }}>
-                      <thead><tr style={{ background: '#f1f5f9' }}>
+                      <thead><tr style={{ background: 'var(--surface-2)' }}>
                         <th style={THL}>Источник</th>
                         {['Лидов','Живые','Записи','Пришли','Новые','Продл.','Итог','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
                       </tr></thead>
@@ -1914,24 +1914,24 @@ function FactDaySection({ onOpenDailyMetrics }: { onOpenDailyMetrics?: (month: s
                           <tr key={r.source} style={rowBg(i)}>
                             <td style={TDL}>{r.source}</td>
                             <td style={{ ...TD, fontWeight: 700 }}>{r.leads || '—'}</td>
-                            <td style={{ ...TD, color: '#02BDB6' }}>{r.alive_count || '—'}</td>
+                            <td style={{ ...TD, color: 'var(--primary)' }}>{r.alive_count || '—'}</td>
                             <td style={TD}>{r.trial_booked || '—'}</td>
                             <td style={TD}>{r.visited || '—'}</td>
-                            <td style={{ ...TD, color: r.new_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
-                            <td style={{ ...TD, color: r.renewal_amount > 0 ? '#02BDB6' : '#94a3b8' }}>{r.renewal_amount > 0 ? fmt(r.renewal_amount) : '—'}</td>
-                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)}</td>
-                            <td style={{ ...TD, color: r.lead_to_buy_pct >= 20 ? '#22c55e' : '#94a3b8' }}>{r.lead_to_buy_pct > 0 ? r.lead_to_buy_pct + '%' : '—'}</td>
+                            <td style={{ ...TD, color: r.new_amount > 0 ? 'var(--accent)' : 'var(--text-3)' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
+                            <td style={{ ...TD, color: r.renewal_amount > 0 ? 'var(--primary)' : 'var(--text-3)' }}>{r.renewal_amount > 0 ? fmt(r.renewal_amount) : '—'}</td>
+                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? 'var(--primary)' : r.net_amount < 0 ? 'var(--danger)' : 'var(--text-3)' }}>{fmt(r.net_amount)}</td>
+                            <td style={{ ...TD, color: r.lead_to_buy_pct >= 20 ? 'var(--success)' : 'var(--text-3)' }}>{r.lead_to_buy_pct > 0 ? r.lead_to_buy_pct + '%' : '—'}</td>
                           </tr>
                         ))}
-                        <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc', fontWeight: 700 }}>
+                        <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--surface-2)', fontWeight: 700 }}>
                           <td style={TDL}>Итого</td>
                           <td style={TD}>{bySrc.reduce((s, r) => s + r.leads, 0)}</td>
-                          <td style={{ ...TD, color: '#02BDB6' }}>{bySrc.reduce((s, r) => s + (r.alive_count ?? 0), 0)}</td>
+                          <td style={{ ...TD, color: 'var(--primary)' }}>{bySrc.reduce((s, r) => s + (r.alive_count ?? 0), 0)}</td>
                           <td style={TD}>{bySrc.reduce((s, r) => s + r.trial_booked, 0)}</td>
                           <td style={TD}>{bySrc.reduce((s, r) => s + r.visited, 0)}</td>
-                          <td style={{ ...TD, color: '#263CD9' }}>{fmt(bySrc.reduce((s, r) => s + r.new_amount, 0))}</td>
-                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(bySrc.reduce((s, r) => s + r.renewal_amount, 0))}</td>
-                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(bySrc.reduce((s, r) => s + r.net_amount, 0))}</td>
+                          <td style={{ ...TD, color: 'var(--accent)' }}>{fmt(bySrc.reduce((s, r) => s + r.new_amount, 0))}</td>
+                          <td style={{ ...TD, color: 'var(--primary)' }}>{fmt(bySrc.reduce((s, r) => s + r.renewal_amount, 0))}</td>
+                          <td style={{ ...TD, color: 'var(--primary)' }}>{fmt(bySrc.reduce((s, r) => s + r.net_amount, 0))}</td>
                           <td style={TD}></td>
                         </tr>
                       </tbody>
@@ -1944,7 +1944,7 @@ function FactDaySection({ onOpenDailyMetrics }: { onOpenDailyMetrics?: (month: s
                 <CollapsibleTable title="По менеджерам" storageKey="fd-mgr">
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 480, width: '100%' }}>
-                      <thead><tr style={{ background: '#f1f5f9' }}>
+                      <thead><tr style={{ background: 'var(--surface-2)' }}>
                         <th style={THL}>Менеджер</th>
                         {['Лидов','Живые','Записи','Пришли','Новые','Продл.','Итог','Л→П%'].map(h => <th key={h} style={TH}>{h}</th>)}
                       </tr></thead>
@@ -1952,33 +1952,33 @@ function FactDaySection({ onOpenDailyMetrics }: { onOpenDailyMetrics?: (month: s
                         {byMgr.map((r, i) => (
                           <tr key={r.manager} style={{ ...rowBg(i), cursor: 'pointer' }}
                             onClick={() => setMgrDrill({ label: r.manager, items: r.items ?? [] })}
-                            onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--info-soft)')}
                             onMouseLeave={e => (e.currentTarget.style.background = rowBg(i).background ?? '')}>
-                            <td style={{ ...TDL, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
+                            <td style={{ ...TDL, fontWeight: 600, color: 'var(--accent)' }}>{r.manager}</td>
                             <td style={{ ...TD, fontWeight: 700 }}>{r.leads || '—'}</td>
-                            <td style={{ ...TD, color: '#02BDB6' }}>{r.alive_count || '—'}</td>
+                            <td style={{ ...TD, color: 'var(--primary)' }}>{r.alive_count || '—'}</td>
                             <td style={TD}>{r.trial_booked || '—'}</td>
                             <td style={TD}>{r.visited || '—'}</td>
-                            <td style={{ ...TD, color: r.new_amount > 0 ? '#263CD9' : '#94a3b8' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
-                            <td style={{ ...TD, color: r.renewal_amount > 0 ? '#02BDB6' : '#94a3b8' }}>{r.renewal_amount > 0 ? fmt(r.renewal_amount) : '—'}</td>
-                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)}</td>
-                            <td style={{ ...TD, color: r.lead_to_buy_pct >= 20 ? '#22c55e' : '#94a3b8' }}>{r.lead_to_buy_pct > 0 ? r.lead_to_buy_pct + '%' : '—'}</td>
+                            <td style={{ ...TD, color: r.new_amount > 0 ? 'var(--accent)' : 'var(--text-3)' }}>{r.new_amount > 0 ? fmt(r.new_amount) : '—'}</td>
+                            <td style={{ ...TD, color: r.renewal_amount > 0 ? 'var(--primary)' : 'var(--text-3)' }}>{r.renewal_amount > 0 ? fmt(r.renewal_amount) : '—'}</td>
+                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? 'var(--primary)' : r.net_amount < 0 ? 'var(--danger)' : 'var(--text-3)' }}>{fmt(r.net_amount)}</td>
+                            <td style={{ ...TD, color: r.lead_to_buy_pct >= 20 ? 'var(--success)' : 'var(--text-3)' }}>{r.lead_to_buy_pct > 0 ? r.lead_to_buy_pct + '%' : '—'}</td>
                           </tr>
                         ))}
-                        <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc', fontWeight: 700 }}>
+                        <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--surface-2)', fontWeight: 700 }}>
                           <td style={TDL}>Итого</td>
                           <td style={TD}>{byMgr.reduce((s, r) => s + r.leads, 0)}</td>
-                          <td style={{ ...TD, color: '#02BDB6' }}>{byMgr.reduce((s, r) => s + (r.alive_count ?? 0), 0)}</td>
+                          <td style={{ ...TD, color: 'var(--primary)' }}>{byMgr.reduce((s, r) => s + (r.alive_count ?? 0), 0)}</td>
                           <td style={TD}>{byMgr.reduce((s, r) => s + r.trial_booked, 0)}</td>
                           <td style={TD}>{byMgr.reduce((s, r) => s + r.visited, 0)}</td>
-                          <td style={{ ...TD, color: '#263CD9' }}>{fmt(byMgr.reduce((s, r) => s + r.new_amount, 0))}</td>
-                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(byMgr.reduce((s, r) => s + r.renewal_amount, 0))}</td>
-                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(byMgr.reduce((s, r) => s + r.net_amount, 0))}</td>
+                          <td style={{ ...TD, color: 'var(--accent)' }}>{fmt(byMgr.reduce((s, r) => s + r.new_amount, 0))}</td>
+                          <td style={{ ...TD, color: 'var(--primary)' }}>{fmt(byMgr.reduce((s, r) => s + r.renewal_amount, 0))}</td>
+                          <td style={{ ...TD, color: 'var(--primary)' }}>{fmt(byMgr.reduce((s, r) => s + r.net_amount, 0))}</td>
                           <td style={TD}></td>
                         </tr>
                       </tbody>
                     </table>
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>Клик по строке — детализация лидов</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>Клик по строке — детализация лидов</div>
                   </div>
                 </CollapsibleTable>
               )}
@@ -1987,7 +1987,7 @@ function FactDaySection({ onOpenDailyMetrics }: { onOpenDailyMetrics?: (month: s
                 <CollapsibleTable title="По кассирам" storageKey="fd-csh">
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 280, width: '100%' }}>
-                      <thead><tr style={{ background: '#f1f5f9' }}>
+                      <thead><tr style={{ background: 'var(--surface-2)' }}>
                         <th style={THL}>Кассир</th>
                         {['Продаж','Продажи','Возвраты','Итог'].map(h => <th key={h} style={TH}>{h}</th>)}
                       </tr></thead>
@@ -1997,16 +1997,16 @@ function FactDaySection({ onOpenDailyMetrics }: { onOpenDailyMetrics?: (month: s
                             <td style={{ ...TDL, fontWeight: 600 }}>{r.cashier}</td>
                             <td style={TD}>{r.sales_count || '—'}</td>
                             <td style={TD}>{r.sales_amount > 0 ? fmt(r.sales_amount) : '—'}</td>
-                            <td style={{ ...TD, color: r.refund_amount > 0 ? '#ef4444' : '#94a3b8' }}>{r.refund_amount > 0 ? fmt(r.refund_amount) : '—'}</td>
-                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? '#02BDB6' : r.net_amount < 0 ? '#ef4444' : '#94a3b8' }}>{fmt(r.net_amount)}</td>
+                            <td style={{ ...TD, color: r.refund_amount > 0 ? 'var(--danger)' : 'var(--text-3)' }}>{r.refund_amount > 0 ? fmt(r.refund_amount) : '—'}</td>
+                            <td style={{ ...TD, fontWeight: 700, color: r.net_amount > 0 ? 'var(--primary)' : r.net_amount < 0 ? 'var(--danger)' : 'var(--text-3)' }}>{fmt(r.net_amount)}</td>
                           </tr>
                         ))}
-                        <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc', fontWeight: 700 }}>
+                        <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--surface-2)', fontWeight: 700 }}>
                           <td style={TDL}>Итого</td>
                           <td style={TD}>{byCsh.reduce((s, r) => s + r.sales_count, 0)}</td>
                           <td style={TD}>{fmt(byCsh.reduce((s, r) => s + r.sales_amount, 0))}</td>
-                          <td style={{ ...TD, color: '#ef4444' }}>{fmt(byCsh.reduce((s, r) => s + r.refund_amount, 0))}</td>
-                          <td style={{ ...TD, color: '#02BDB6' }}>{fmt(byCsh.reduce((s, r) => s + r.net_amount, 0))}</td>
+                          <td style={{ ...TD, color: 'var(--danger)' }}>{fmt(byCsh.reduce((s, r) => s + r.refund_amount, 0))}</td>
+                          <td style={{ ...TD, color: 'var(--primary)' }}>{fmt(byCsh.reduce((s, r) => s + r.net_amount, 0))}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -2063,14 +2063,14 @@ function DayRhythmSection() {
 
   useEffect(() => { load(); }, [load]);
 
-  const TH: React.CSSProperties = { padding: '4px 10px 4px 0', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' };
+  const TH: React.CSSProperties = { padding: '4px 10px 4px 0', textAlign: 'left', color: 'var(--text-2)', fontWeight: 600, whiteSpace: 'nowrap' };
   const TD: React.CSSProperties = { padding: '3px 10px 3px 0', fontSize: 13 };
 
   return (
     <div style={s.section}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <button style={s.csvBtn} onClick={doSync} disabled={syncing}>{syncing ? 'Запуск…' : '↺ Обновить Fitbase'}</button>
-        {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
+        {syncMsg && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{syncMsg}</span>}
       </div>
       {filterBar}
       <div style={{ marginBottom: 10 }}>
@@ -2088,18 +2088,18 @@ function DayRhythmSection() {
               <div style={s.sectionTitle}>По источникам</div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 460 }}>
-                  <thead><tr style={{ background: '#f8fafc' }}>
+                  <thead><tr style={{ background: 'var(--surface-2)' }}>
                     {['Источник','Лидов','Квалиф.','Записи','Пришли','Купили'].map(h => <th key={h} style={TH}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {bySrc.map(r => (
-                      <tr key={r.source} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <tr key={r.source} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={TD}>{r.source}</td>
                         <td style={{ ...TD, fontWeight: 700 }}>{r.leads}</td>
                         <td style={TD}>{r.qualified}</td>
                         <td style={TD}>{r.booked}</td>
                         <td style={TD}>{r.visited}</td>
-                        <td style={{ ...TD, color: r.bought > 0 ? '#22c55e' : '#94a3b8', fontWeight: r.bought > 0 ? 700 : 400 }}>{r.bought}</td>
+                        <td style={{ ...TD, color: r.bought > 0 ? 'var(--success)' : 'var(--text-3)', fontWeight: r.bought > 0 ? 700 : 400 }}>{r.bought}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2112,26 +2112,26 @@ function DayRhythmSection() {
               <div style={s.sectionTitle}>По менеджерам</div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 460 }}>
-                  <thead><tr style={{ background: '#f8fafc' }}>
+                  <thead><tr style={{ background: 'var(--surface-2)' }}>
                     {['Менеджер','Лидов','Квалиф.','Записи','Пришли','Купили'].map(h => <th key={h} style={TH}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {byMgr.map(r => (
-                      <tr key={r.manager} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                      <tr key={r.manager} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
                         onClick={() => setMgrDrill({ label: r.manager, items: [] })}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                        <td style={{ ...TD, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
+                        <td style={{ ...TD, fontWeight: 600, color: 'var(--accent)' }}>{r.manager}</td>
                         <td style={TD}>{r.leads}</td>
                         <td style={TD}>{r.qualified}</td>
                         <td style={TD}>{r.booked}</td>
                         <td style={TD}>{r.visited}</td>
-                        <td style={{ ...TD, color: r.bought > 0 ? '#22c55e' : '#94a3b8', fontWeight: r.bought > 0 ? 700 : 400 }}>{r.bought}</td>
+                        <td style={{ ...TD, color: r.bought > 0 ? 'var(--success)' : 'var(--text-3)', fontWeight: r.bought > 0 ? 700 : 400 }}>{r.bought}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Клик по строке — список лидов (уточните период)</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Клик по строке — список лидов (уточните период)</div>
               </div>
             </div>
           )}
@@ -2163,12 +2163,12 @@ function MigrateInBodySection() {
   return (
     <div style={{ ...s.section, maxWidth: 480 }}>
       <div style={s.sectionTitle}>Перенести клиентов InBody в отчёт (без дублей)</div>
-      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14 }}>
+      <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14 }}>
         Для каждого телефона из inbody_tests: если клиент уже есть — пропустить; если нет — создать из кэша Fitbase или по номеру.
       </div>
       {error && <div style={s.errBox}>{error}</div>}
       {result && (
-        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14 }}>
+        <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14 }}>
           Добавлено: <b>{result.added}</b> · Уже были: <b>{result.already}</b>
         </div>
       )}
@@ -2222,19 +2222,19 @@ function RenewalsSection() {
   useEffect(() => { load(); }, [load]);
 
   const fmt = (n: number) => Math.round(n).toLocaleString('ru');
-  const TH: React.CSSProperties = { padding: '4px 8px 4px 0', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12 };
+  const TH: React.CSSProperties = { padding: '4px 8px 4px 0', textAlign: 'left', color: 'var(--text-2)', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12 };
   const TD: React.CSSProperties = { padding: '3px 8px 3px 0', fontSize: 12 };
-  const CARD_COLORS: Record<string, string> = { new: '#263CD9', renewal: '#02BDB6', returned: '#94a3b8' };
+  const CARD_COLORS: Record<string, string> = { new: 'var(--accent)', renewal: 'var(--primary)', returned: 'var(--text-3)' };
 
   return (
     <div style={s.section}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <button style={s.csvBtn} onClick={doSync} disabled={syncing}>{syncing ? 'Запуск…' : '↺ Обновить Fitbase'}</button>
-        {syncMsg && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncMsg}</span>}
+        {syncMsg && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{syncMsg}</span>}
       </div>
       <div style={s.filterRow}>
         <input type="date" style={s.dateInp} value={from} onChange={e => setFrom(e.target.value)} />
-        <span style={{ color: '#64748b' }}>—</span>
+        <span style={{ color: 'var(--text-2)' }}>—</span>
         <input type="date" style={s.dateInp} value={to} onChange={e => setTo(e.target.value)} />
         <button style={s.loadBtn} onClick={load} disabled={loading}>{loading ? '...' : 'Загрузить'}</button>
       </div>
@@ -2256,10 +2256,10 @@ function RenewalsSection() {
       {cards && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
           {(['new', 'renewal', 'returned'] as const).map(k => (
-            <div key={k} style={{ background: '#fff', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 120, borderTop: `3px solid ${CARD_COLORS[k]}` }}>
-              <div style={{ fontSize: 11, color: '#64748b' }}>{RENEWAL_LABELS[k]}</div>
+            <div key={k} style={{ background: 'var(--surface)', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', minWidth: 120, borderTop: `3px solid ${CARD_COLORS[k]}` }}>
+              <div style={{ fontSize: 11, color: 'var(--text-2)' }}>{RENEWAL_LABELS[k]}</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: CARD_COLORS[k] }}>{(cards as Record<string,number>)[k]}</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>{fmt((cards as Record<string,number>)[k + '_amt'])} ₸</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmt((cards as Record<string,number>)[k + '_amt'])} ₸</div>
             </div>
           ))}
         </div>
@@ -2270,24 +2270,24 @@ function RenewalsSection() {
       {rows.length > 0 && (
         <div style={{ overflowX: 'auto', marginBottom: 20 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr style={{ background: '#f1f5f9' }}>
+            <thead><tr style={{ background: 'var(--surface-2)' }}>
               {['Клиент','Абонемент','Дата','Предыдущий','Оконч.','Дней','Тип','Менеджер','Кассир','Сумма'].map(h => (
                 <th key={h} style={TH}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ ...TD, fontWeight: 600 }}>{r.client_name ?? '—'}</td>
                   <td style={{ ...TD, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.contract_name ?? '—'}</td>
                   <td style={{ ...TD, whiteSpace: 'nowrap' }}>{r.purchase_date ?? '—'}</td>
-                  <td style={{ ...TD, color: '#64748b', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.prev_name ?? '—'}</td>
-                  <td style={{ ...TD, whiteSpace: 'nowrap', color: '#64748b' }}>{r.prev_end ?? '—'}</td>
+                  <td style={{ ...TD, color: 'var(--text-2)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.prev_name ?? '—'}</td>
+                  <td style={{ ...TD, whiteSpace: 'nowrap', color: 'var(--text-2)' }}>{r.prev_end ?? '—'}</td>
                   <td style={TD}>{r.days_between ?? '—'}</td>
-                  <td style={{ ...TD, color: CARD_COLORS[r.type] ?? '#374151', fontWeight: 600 }}>{RENEWAL_LABELS[r.type] ?? r.type}</td>
+                  <td style={{ ...TD, color: CARD_COLORS[r.type] ?? 'var(--text)', fontWeight: 600 }}>{RENEWAL_LABELS[r.type] ?? r.type}</td>
                   <td style={TD}>{r.manager ?? '—'}</td>
                   <td style={TD}>{r.cashier ?? '—'}</td>
-                  <td style={{ ...TD, fontWeight: 700, color: '#263CD9' }}>{fmt(r.amount)} ₸</td>
+                  <td style={{ ...TD, fontWeight: 700, color: 'var(--accent)' }}>{fmt(r.amount)} ₸</td>
                 </tr>
               ))}
             </tbody>
@@ -2300,16 +2300,16 @@ function RenewalsSection() {
           <div style={s.sectionTitle}>По менеджерам</div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 400 }}>
-              <thead><tr style={{ background: '#f8fafc' }}>
+              <thead><tr style={{ background: 'var(--surface-2)' }}>
                 {['Менеджер','Всего','Сумма','Продлений','Сумма продл.','Доля'].map(h => <th key={h} style={TH}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {byMgr.map(r => (
-                  <tr key={r.manager} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ ...TD, fontWeight: 600, color: '#263CD9' }}>{r.manager}</td>
+                  <tr key={r.manager} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ ...TD, fontWeight: 600, color: 'var(--accent)' }}>{r.manager}</td>
                     <td style={TD}>{r.count}</td>
                     <td style={TD}>{fmt(r.amount)} ₸</td>
-                    <td style={{ ...TD, color: '#02BDB6', fontWeight: 700 }}>{r.renewal_count}</td>
+                    <td style={{ ...TD, color: 'var(--primary)', fontWeight: 700 }}>{r.renewal_count}</td>
                     <td style={TD}>{fmt(r.renewal_amount)} ₸</td>
                     <td style={TD}>{r.count > 0 ? Math.round(100 * r.renewal_count / r.count) + '%' : '—'}</td>
                   </tr>
@@ -2345,7 +2345,7 @@ interface DailyResp {
 const DOW_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTH_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
-const SELLER_COLORS = ['#f59e0b','#8b5cf6','#ec4899','#f97316','#06b6d4','#84cc16','#ef4444'];
+const SELLER_COLORS = ['var(--warning)','var(--accent)','#ec4899','#f97316','#06b6d4','#84cc16','var(--danger)'];
 
 function DailyMetricsSection() {
   const todayStr = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
@@ -2475,7 +2475,7 @@ function DailyMetricsSection() {
   const fmt  = (n: number | null | undefined) => n != null ? Math.round(n).toLocaleString('ru') : '—';
   const fmtT = (n: number | null | undefined) => n != null ? Math.round(n).toLocaleString('ru') + ' ₸' : '—';
 
-  if (loading && !data) return <div style={{ ...s.section, color: '#64748b', fontSize: 13 }}>Загрузка…</div>;
+  if (loading && !data) return <div style={{ ...s.section, color: 'var(--text-2)', fontSize: 13 }}>Загрузка…</div>;
 
   const days  = data?.days ?? [];
   const tots  = data?.totals ?? {} as Record<string, number>;
@@ -2492,25 +2492,25 @@ function DailyMetricsSection() {
   const [yr, mo] = month.split('-').map(Number);
   const monthLabel = `${MONTH_RU[mo - 1]} ${yr}`;
 
-  const TH_LABEL: React.CSSProperties = { padding: '5px 8px', fontSize: 11, fontWeight: 700, color: '#374151', textAlign: 'left', position: 'sticky', left: 0, top: 0, zIndex: 4, background: '#f8fafc', minWidth: 140, maxWidth: 140, boxShadow: '2px 0 4px rgba(0,0,0,0.06)', borderBottom: '1px solid #e2e8f0' };
-  const TH_DAY: React.CSSProperties  = { padding: '3px 4px', fontSize: 11, fontWeight: 600, textAlign: 'center', position: 'sticky', top: 0, zIndex: 1, background: '#f8fafc', minWidth: 46, maxWidth: 46, cursor: 'pointer', borderBottom: '1px solid #e2e8f0' };
-  const TH_TOT: React.CSSProperties  = { padding: '3px 6px', fontSize: 11, fontWeight: 700, textAlign: 'right', position: 'sticky', top: 0, right: 0, zIndex: 2, background: '#f8fafc', minWidth: 72, boxShadow: '-2px 0 4px rgba(0,0,0,0.04)', borderBottom: '1px solid #e2e8f0' };
-  const TD_LABEL: React.CSSProperties = { padding: '3px 8px', fontSize: 12, fontWeight: 600, color: '#374151', position: 'sticky', left: 0, background: '#fff', boxShadow: '2px 0 4px rgba(0,0,0,0.04)', zIndex: 1, whiteSpace: 'nowrap' };
+  const TH_LABEL: React.CSSProperties = { padding: '5px 8px', fontSize: 11, fontWeight: 700, color: 'var(--text)', textAlign: 'left', position: 'sticky', left: 0, top: 0, zIndex: 4, background: 'var(--surface-2)', minWidth: 140, maxWidth: 140, boxShadow: '2px 0 4px rgba(0,0,0,0.06)', borderBottom: '1px solid var(--border)' };
+  const TH_DAY: React.CSSProperties  = { padding: '3px 4px', fontSize: 11, fontWeight: 600, textAlign: 'center', position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface-2)', minWidth: 46, maxWidth: 46, cursor: 'pointer', borderBottom: '1px solid var(--border)' };
+  const TH_TOT: React.CSSProperties  = { padding: '3px 6px', fontSize: 11, fontWeight: 700, textAlign: 'right', position: 'sticky', top: 0, right: 0, zIndex: 2, background: 'var(--surface-2)', minWidth: 72, boxShadow: '-2px 0 4px rgba(0,0,0,0.04)', borderBottom: '1px solid var(--border)' };
+  const TD_LABEL: React.CSSProperties = { padding: '3px 8px', fontSize: 12, fontWeight: 600, color: 'var(--text)', position: 'sticky', left: 0, background: 'var(--surface)', boxShadow: '2px 0 4px rgba(0,0,0,0.04)', zIndex: 1, whiteSpace: 'nowrap' };
   const TD: React.CSSProperties      = { padding: '2px 4px', fontSize: 12, textAlign: 'right', whiteSpace: 'nowrap' };
-  const TD_TOT: React.CSSProperties  = { padding: '2px 6px', fontSize: 12, fontWeight: 700, textAlign: 'right', position: 'sticky', right: 0, background: '#fff', boxShadow: '-2px 0 4px rgba(0,0,0,0.04)', zIndex: 1, whiteSpace: 'nowrap' };
-  const SEC_HD: React.CSSProperties  = { background: '#f1f5f9', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.07em', padding: '4px 8px', position: 'sticky', left: 0 };
+  const TD_TOT: React.CSSProperties  = { padding: '2px 6px', fontSize: 12, fontWeight: 700, textAlign: 'right', position: 'sticky', right: 0, background: 'var(--surface)', boxShadow: '-2px 0 4px rgba(0,0,0,0.04)', zIndex: 1, whiteSpace: 'nowrap' };
+  const SEC_HD: React.CSSProperties  = { background: 'var(--surface-2)', fontSize: 10, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase' as const, letterSpacing: '0.07em', padding: '4px 8px', position: 'sticky', left: 0 };
 
   function dayBg(d: DayItem): React.CSSProperties {
-    if (d.date === todayStr) return { background: '#eff6ff' };
-    if (d.is_day_off) return { background: '#f8fafc' };
+    if (d.date === todayStr) return { background: 'var(--info-soft)' };
+    if (d.is_day_off) return { background: 'var(--surface-2)' };
     return {};
   }
 
   function numStyle(v: number, colorKey?: string): React.CSSProperties {
     const base: React.CSSProperties = { ...TD };
-    if (v === 0) base.color = '#d1d5db';
-    else if (colorKey === 'sales') base.color = '#059669';
-    else if (colorKey === 'leads') base.color = '#263CD9';
+    if (v === 0) base.color = 'var(--border)';
+    else if (colorKey === 'sales') base.color = 'var(--success)';
+    else if (colorKey === 'leads') base.color = 'var(--accent)';
     return base;
   }
 
@@ -2534,7 +2534,7 @@ function DailyMetricsSection() {
     return (
       <tr key={label}>
         <td style={TD_LABEL}>{label}</td>
-        {days.map(d => <td key={d.date} style={{ ...TD, textAlign: 'center', ...dayBg(d), color: '#374151', fontSize: 11 }}>{render(d)}</td>)}
+        {days.map(d => <td key={d.date} style={{ ...TD, textAlign: 'center', ...dayBg(d), color: 'var(--text)', fontSize: 11 }}>{render(d)}</td>)}
         <td style={TD_TOT}>—</td>
       </tr>
     );
@@ -2551,8 +2551,8 @@ function DailyMetricsSection() {
     const isToday = d.date === todayStr;
     return (
       <g transform={`translate(${x},${y})`}>
-        <text x={0} y={0} dy={12} textAnchor="middle" fontSize={9} fill={isToday ? '#263CD9' : isOff ? '#94a3b8' : '#64748b'}>{d.date.slice(8)}</text>
-        <text x={0} y={0} dy={22} textAnchor="middle" fontSize={8} fill={isOff ? '#b0b8c8' : '#9ca3af'}>{dow}</text>
+        <text x={0} y={0} dy={12} textAnchor="middle" fontSize={9} fill={isToday ? 'var(--accent)' : isOff ? 'var(--text-3)' : 'var(--text-2)'}>{d.date.slice(8)}</text>
+        <text x={0} y={0} dy={22} textAnchor="middle" fontSize={8} fill={isOff ? '#b0b8c8' : 'var(--text-3)'}>{dow}</text>
       </g>
     );
   };
@@ -2564,14 +2564,14 @@ function DailyMetricsSection() {
     if (!d) return null;
     const planVal = d.sales_plan;
     return (
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.date.split('-').reverse().slice(0,2).join('.')} {DOW_RU[new Date(d.date).getDay()]}</div>
         {payload.map((p: { name: string; value: number | null; color: string }) => {
           if (p.value == null) return null;
           const isFact = p.name.startsWith('Факт') || p.name.startsWith('ф_');
           const belowPlan = isFact && p.value < planVal;
           return (
-            <div key={p.name} style={{ color: belowPlan ? '#ef4444' : p.color, marginTop: 2 }}>
+            <div key={p.name} style={{ color: belowPlan ? 'var(--danger)' : p.color, marginTop: 2 }}>
               {p.name}: {Math.round(p.value).toLocaleString('ru')} ₸
             </div>
           );
@@ -2587,14 +2587,14 @@ function DailyMetricsSection() {
     if (!d) return null;
     const planVal = d.leads_plan;
     return (
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.date.split('-').reverse().slice(0,2).join('.')} {DOW_RU[new Date(d.date).getDay()]}</div>
         {payload.map((p: { name: string; value: number | null; color: string }) => {
           if (p.value == null) return null;
           const isFact = p.name === 'Лиды факт';
           const belowPlan = isFact && p.value < planVal;
           return (
-            <div key={p.name} style={{ color: belowPlan ? '#ef4444' : p.color, marginTop: 2 }}>{p.name}: {p.value}</div>
+            <div key={p.name} style={{ color: belowPlan ? 'var(--danger)' : p.color, marginTop: 2 }}>{p.name}: {p.value}</div>
           );
         })}
       </div>
@@ -2628,22 +2628,22 @@ function DailyMetricsSection() {
 
   // Chart line definitions
   const MONEY_LINES: { key: string; name: string; color: string; dashed?: boolean; yAxisId?: string }[] = [
-    { key: 'sales_fact', name: 'Факт продаж', color: '#02BDB6' },
+    { key: 'sales_fact', name: 'Факт продаж', color: 'var(--primary)' },
     { key: 'sales_plan', name: 'План продаж', color: '#8892C8', dashed: true },
     ...allCashiers.flatMap((cashier, i) => [
       { key: `f_${cashier}`, name: `ф_${cashier}`, color: SELLER_COLORS[i % SELLER_COLORS.length] },
       { key: `p_${cashier}`, name: `пл_${cashier}`, color: SELLER_COLORS[i % SELLER_COLORS.length], dashed: true },
     ]),
-    { key: 'budget',    name: 'Бюджет',        color: '#94a3b8', yAxisId: 'right' },
-    { key: 'lead_cost', name: 'Стоимость лида', color: '#f59e0b', yAxisId: 'right' },
+    { key: 'budget',    name: 'Бюджет',        color: 'var(--text-3)', yAxisId: 'right' },
+    { key: 'lead_cost', name: 'Стоимость лида', color: 'var(--warning)', yAxisId: 'right' },
   ];
   const COUNT_LINES: { key: string; name: string; color: string; dashed?: boolean }[] = [
-    { key: 'leads_fact',   name: 'Лиды факт',    color: '#263CD9' },
-    { key: 'leads_plan',   name: 'Лиды план',     color: '#94a3b8', dashed: true },
-    { key: 'qual_fact',    name: 'Квал',          color: '#02BDB6' },
-    { key: 'booked_fact',  name: 'Записаны',      color: '#8b5cf6' },
-    { key: 'visited_fact', name: 'Пришли',        color: '#f59e0b' },
-    { key: 'bought_fact',  name: 'Купили',        color: '#22c55e' },
+    { key: 'leads_fact',   name: 'Лиды факт',    color: 'var(--accent)' },
+    { key: 'leads_plan',   name: 'Лиды план',     color: 'var(--text-3)', dashed: true },
+    { key: 'qual_fact',    name: 'Квал',          color: 'var(--primary)' },
+    { key: 'booked_fact',  name: 'Записаны',      color: 'var(--accent)' },
+    { key: 'visited_fact', name: 'Пришли',        color: 'var(--warning)' },
+    { key: 'bought_fact',  name: 'Купили',        color: 'var(--success)' },
     { key: 'orders_count', name: 'Кол-во продаж', color: '#ec4899' },
   ];
 
@@ -2664,19 +2664,19 @@ function DailyMetricsSection() {
         <button style={s.csvBtn} onClick={() => setShowPlanEdit(v => !v)}>
           {data?.month_plan?.sales_plan ? `📋 План: ${fmt(data.month_plan.sales_plan)} ₸` : '📋 Задать план'}
         </button>
-        {loading && <span style={{ fontSize: 12, color: '#6b7280' }}>Загрузка…</span>}
+        {loading && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>Загрузка…</span>}
       </div>
 
       {/* Month plan + seller plans */}
       {showPlanEdit && (
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
             <div>
-              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Лиды в месяц (план)</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Лиды в месяц (план)</div>
               <input type="number" value={planLeads} onChange={e => setPlanLeads(e.target.value)} style={{ ...s.dateInp, width: 120 }} placeholder="—" />
             </div>
             <div>
-              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Выручка в месяц ₸ (план)</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Выручка в месяц ₸ (план)</div>
               <input type="number" value={planSales} onChange={e => setPlanSales(e.target.value)} style={{ ...s.dateInp, width: 160 }} placeholder="—" />
             </div>
             <button style={s.saveBtn} onClick={savePlan} disabled={planSaving}>{planSaving ? 'Сохранение…' : 'Сохранить план'}</button>
@@ -2685,11 +2685,11 @@ function DailyMetricsSection() {
           {/* Per-seller plans */}
           {staff.length > 0 && (
             <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>План продавца на месяц ₸</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>План продавца на месяц ₸</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                 {[...new Set([...staff, ...Object.keys(sellerPlans)])].sort().map(seller => (
                   <div key={seller} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>{seller}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{seller}</div>
                     <input
                       type="number"
                       value={spEdits[seller] ?? (sellerPlans[seller] ? String(sellerPlans[seller]) : '')}
@@ -2718,7 +2718,7 @@ function DailyMetricsSection() {
                 {days.map(d => {
                   const dow = DOW_RU[new Date(d.date).getDay()];
                   return (
-                    <th key={d.date} style={{ ...TH_DAY, ...dayBg(d), color: d.is_day_off ? '#94a3b8' : d.date === todayStr ? '#263CD9' : '#374151' }}
+                    <th key={d.date} style={{ ...TH_DAY, ...dayBg(d), color: d.is_day_off ? 'var(--text-3)' : d.date === todayStr ? 'var(--accent)' : 'var(--text)' }}
                       onClick={() => openDayEdit(d)} title="Настроить день">
                       <div>{d.date.slice(8)}</div>
                       <div style={{ fontSize: 9, fontWeight: 400 }}>{dow}</div>
@@ -2747,17 +2747,17 @@ function DailyMetricsSection() {
                 const sellerColor = SELLER_COLORS[ci % SELLER_COLORS.length];
                 return (
                   <tr key={`csh-${cashier}`}>
-                    <td style={{ ...TD_LABEL, fontWeight: 400, fontSize: 11, paddingLeft: 20, color: '#64748b' }}>{cashier || '(без кассира)'}</td>
+                    <td style={{ ...TD_LABEL, fontWeight: 400, fontSize: 11, paddingLeft: 20, color: 'var(--text-2)' }}>{cashier || '(без кассира)'}</td>
                     {days.map(d => {
                       const v = d.by_cashier[cashier] ?? 0;
                       const bg = dayPlan != null && !d.is_day_off
-                        ? (v >= dayPlan ? { background: '#f0fdf4' } : { background: '#fff5f5' })
+                        ? (v >= dayPlan ? { background: 'var(--success-soft)' } : { background: 'var(--danger-soft)' })
                         : {};
                       return (
                         <td key={d.date} style={{ ...TD, fontSize: 11, ...dayBg(d), ...bg }}>
-                          {v !== 0 && <div style={{ color: v > 0 ? sellerColor : '#ef4444' }}>{fmtT(v)}</div>}
+                          {v !== 0 && <div style={{ color: v > 0 ? sellerColor : 'var(--danger)' }}>{fmtT(v)}</div>}
                           {dayPlan != null && !d.is_day_off && (
-                            <div style={{ fontSize: 9, color: '#94a3b8' }}>{fmtT(dayPlan)}</div>
+                            <div style={{ fontSize: 9, color: 'var(--text-3)' }}>{fmtT(dayPlan)}</div>
                           )}
                         </td>
                       );
@@ -2781,20 +2781,20 @@ function DailyMetricsSection() {
         <>
           {/* Money chart */}
           <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Деньги, ₸</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Деньги, ₸</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
               {MONEY_LINES.map(l => (
-                <label key={l.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', padding: '2px 6px', borderRadius: 6, background: moneyChecks.includes(l.key) ? '#f0fdf4' : '#f8fafc', border: `1px solid ${moneyChecks.includes(l.key) ? l.color : '#e2e8f0'}` }}>
+                <label key={l.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', padding: '2px 6px', borderRadius: 6, background: moneyChecks.includes(l.key) ? 'var(--success-soft)' : 'var(--surface-2)', border: `1px solid ${moneyChecks.includes(l.key) ? l.color : 'var(--border)'}` }}>
                   <input type="checkbox" checked={moneyChecks.includes(l.key)} onChange={() => toggleMoney(l.key)} style={{ accentColor: l.color, marginRight: 2 }} />
                   <span style={{ color: l.color }}>{l.name}</span>
-                  {l.yAxisId === 'right' && <span style={{ fontSize: 10, color: '#94a3b8' }}>(R)</span>}
+                  {l.yAxisId === 'right' && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>(R)</span>}
                 </label>
               ))}
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartBase} margin={{ top: 4, right: 48, left: 0, bottom: 28 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                {offDays.map((od, i) => <ReferenceArea key={i} x1={od.x1} x2={od.x2} fill="#f1f5f9" fillOpacity={0.8} />)}
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                {offDays.map((od, i) => <ReferenceArea key={i} x1={od.x1} x2={od.x2} fill="var(--surface-2)" fillOpacity={0.8} />)}
                 <XAxis dataKey="idx" type="number" domain={[1, days.length]} ticks={days.map((_, i) => i + 1)} tick={<DayTick />} tickLine={false} height={32} />
                 <YAxis yAxisId="left" tick={{ fontSize: 9 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} width={40} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 9 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} width={40} label={{ value: '₸', angle: -90, position: 'insideRight', fontSize: 10 }} />
@@ -2808,10 +2808,10 @@ function DailyMetricsSection() {
 
           {/* Count chart */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Штуки</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Штуки</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
               {COUNT_LINES.map(l => (
-                <label key={l.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', padding: '2px 6px', borderRadius: 6, background: countChecks.includes(l.key) ? '#f0fdf4' : '#f8fafc', border: `1px solid ${countChecks.includes(l.key) ? l.color : '#e2e8f0'}` }}>
+                <label key={l.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', padding: '2px 6px', borderRadius: 6, background: countChecks.includes(l.key) ? 'var(--success-soft)' : 'var(--surface-2)', border: `1px solid ${countChecks.includes(l.key) ? l.color : 'var(--border)'}` }}>
                   <input type="checkbox" checked={countChecks.includes(l.key)} onChange={() => toggleCount(l.key)} style={{ accentColor: l.color, marginRight: 2 }} />
                   <span style={{ color: l.color }}>{l.name}</span>
                 </label>
@@ -2819,8 +2819,8 @@ function DailyMetricsSection() {
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={chartBase} margin={{ top: 4, right: 8, left: 0, bottom: 28 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                {offDays.map((od, i) => <ReferenceArea key={i} x1={od.x1} x2={od.x2} fill="#f1f5f9" fillOpacity={0.8} />)}
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                {offDays.map((od, i) => <ReferenceArea key={i} x1={od.x1} x2={od.x2} fill="var(--surface-2)" fillOpacity={0.8} />)}
                 <XAxis dataKey="idx" type="number" domain={[1, days.length]} ticks={days.map((_, i) => i + 1)} tick={<DayTick />} tickLine={false} height={32} />
                 <YAxis tick={{ fontSize: 9 }} width={30} />
                 <Tooltip content={<CountTooltip />} />
@@ -3014,9 +3014,9 @@ function PayrollSection() {
   const closed = data?.closed ?? false;
   const monthLabel = MONTH_NAMES[parseInt(month.slice(5,7)) - 1] + ' ' + month.slice(0,4);
 
-  const thSt: React.CSSProperties = { padding: '6px 8px', border: '1px solid #e2e8f0', fontWeight: 700, fontSize: 11, color: '#374151', whiteSpace: 'nowrap', background: '#f1f5f9', textAlign: 'center' };
-  const th2St: React.CSSProperties = { ...thSt, fontWeight: 600, fontSize: 10, color: '#64748b', background: '#f8fafc' };
-  const tdSt: React.CSSProperties = { padding: '5px 7px', border: '1px solid #e2e8f0', fontSize: 12, textAlign: 'right', verticalAlign: 'middle' };
+  const thSt: React.CSSProperties = { padding: '6px 8px', border: '1px solid var(--border)', fontWeight: 700, fontSize: 11, color: 'var(--text)', whiteSpace: 'nowrap', background: 'var(--surface-2)', textAlign: 'center' };
+  const th2St: React.CSSProperties = { ...thSt, fontWeight: 600, fontSize: 10, color: 'var(--text-2)', background: 'var(--surface-2)' };
+  const tdSt: React.CSSProperties = { padding: '5px 7px', border: '1px solid var(--border)', fontSize: 12, textAlign: 'right', verticalAlign: 'middle' };
   const tdLSt: React.CSSProperties = { ...tdSt, textAlign: 'left' };
 
   function renderCell(employee: string, field: string, value: string|number|null, locked: boolean) {
@@ -3025,7 +3025,7 @@ function PayrollSection() {
       return (
         <input
           autoFocus
-          style={{ width: 64, fontSize: 12, padding: '2px 4px', border: '1px solid #02BDB6', borderRadius: 4, textAlign: 'right', fontFamily: 'inherit' }}
+          style={{ width: 64, fontSize: 12, padding: '2px 4px', border: '1px solid var(--primary)', borderRadius: 4, textAlign: 'right', fontFamily: 'inherit' }}
           value={editCell!.value}
           onChange={e => setEditCell({ ...editCell!, value: e.target.value })}
           onKeyDown={e => { if (e.key === 'Enter') saveCell(); if (e.key === 'Escape') setEditCell(null); }}
@@ -3036,8 +3036,8 @@ function PayrollSection() {
     const display = value === null || value === '' ? '—' : String(value);
     return (
       <span
-        style={{ cursor: locked ? 'default' : 'pointer', padding: '1px 3px', borderRadius: 3, color: locked ? undefined : '#263CD9', fontSize: 12,
-          borderBottom: locked ? undefined : '1px dotted #263CD9' }}
+        style={{ cursor: locked ? 'default' : 'pointer', padding: '1px 3px', borderRadius: 3, color: locked ? undefined : 'var(--accent)', fontSize: 12,
+          borderBottom: locked ? undefined : '1px dotted var(--accent)' }}
         onClick={() => { if (!locked) setEditCell({ employee, field, value: value == null ? '' : String(value) }); }}
       >{display}</span>
     );
@@ -3053,16 +3053,16 @@ function PayrollSection() {
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, flexWrap:'wrap' }}>
         <div style={{ display:'flex', alignItems:'center', gap:2 }}>
-          <button style={{ background:'none', border:'1px solid #e2e8f0', borderRadius:6, width:28, height:28, cursor:'pointer', fontSize:16, fontFamily:'inherit' }} onClick={() => navMonth(-1)}>‹</button>
+          <button style={{ background:'none', border:'1px solid var(--border)', borderRadius:6, width:28, height:28, cursor:'pointer', fontSize:16, fontFamily:'inherit' }} onClick={() => navMonth(-1)}>‹</button>
           <span style={{ fontWeight:700, fontSize:15, minWidth:150, textAlign:'center' }}>{monthLabel}</span>
-          <button style={{ background:'none', border:'1px solid #e2e8f0', borderRadius:6, width:28, height:28, cursor:'pointer', fontSize:16, fontFamily:'inherit' }} onClick={() => navMonth(1)}>›</button>
+          <button style={{ background:'none', border:'1px solid var(--border)', borderRadius:6, width:28, height:28, cursor:'pointer', fontSize:16, fontFamily:'inherit' }} onClick={() => navMonth(1)}>›</button>
         </div>
         {data && (
           closed
-            ? <span style={{ background:'#fef3c7', color:'#92400e', borderRadius:6, padding:'3px 10px', fontSize:12, fontWeight:600 }}>
+            ? <span style={{ background:'var(--warning-soft)', color:'var(--warning)', borderRadius:6, padding:'3px 10px', fontSize:12, fontWeight:600 }}>
                 Закрыт {fmtDate(data.closed_at!.slice(0,10))} · {data.closed_by}
               </span>
-            : <span style={{ background:'#d1fae5', color:'#065f46', borderRadius:6, padding:'3px 10px', fontSize:12, fontWeight:600 }}>Открыт</span>
+            : <span style={{ background:'var(--success-soft)', color:'var(--success)', borderRadius:6, padding:'3px 10px', fontSize:12, fontWeight:600 }}>Открыт</span>
         )}
         {data && !closed && <button style={s.saveBtn} onClick={() => setConfirming('close')} disabled={saving}>Закрыть месяц</button>}
         {data && closed && <button style={s.cancelBtn} onClick={() => setConfirming('reopen')} disabled={saving}>Открыть заново</button>}
@@ -3070,15 +3070,15 @@ function PayrollSection() {
       </div>
 
       {err && <div style={s.errBox}>{err}</div>}
-      {loading && <div style={{ color:'#6b7280', fontSize:13 }}>Загрузка…</div>}
+      {loading && <div style={{ color:'var(--text-2)', fontSize:13 }}>Загрузка…</div>}
 
       {data && data.overall_plan_amount != null && (
-        <div style={{ background: data.overall_plan_achieved ? '#f0fdf4' : '#fff5f5', border: `1px solid ${data.overall_plan_achieved ? '#86efac' : '#fca5a5'}`, borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 13, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ background: data.overall_plan_achieved ? 'var(--success-soft)' : 'var(--danger-soft)', border: `1px solid ${data.overall_plan_achieved ? 'var(--success)' : 'var(--danger)'}`, borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 13, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 700 }}>Общий план студии:</span>
-          <span style={{ color: data.overall_plan_achieved ? '#15803d' : '#dc2626', fontWeight: 700 }}>
+          <span style={{ color: data.overall_plan_achieved ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
             {fmt(data.overall_plan_fact ?? 0)} / {fmt(data.overall_plan_amount)} ₸
           </span>
-          <span style={{ color: data.overall_plan_achieved ? '#15803d' : '#dc2626' }}>
+          <span style={{ color: data.overall_plan_achieved ? 'var(--success)' : 'var(--danger)' }}>
             {data.overall_plan_achieved ? '✓ выполнен (бонусы начислены)' : '✗ не выполнен (бонусы не начислены)'}
           </span>
         </div>
@@ -3087,7 +3087,7 @@ function PayrollSection() {
       {data && (
         <>
           <div style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
-            <label style={{ display:'flex', gap:6, alignItems:'center', fontSize:12, cursor:'pointer', color:'#64748b' }}>
+            <label style={{ display:'flex', gap:6, alignItems:'center', fontSize:12, cursor:'pointer', color:'var(--text-2)' }}>
               <input type="checkbox" checked={showHidden} onChange={e => { setShowHidden(e.target.checked); try { localStorage.setItem('payroll-show-hidden', e.target.checked ? '1' : '0'); } catch {} }} />
               Показать скрытых сотрудников
             </label>
@@ -3119,37 +3119,37 @@ function PayrollSection() {
               </thead>
               <tbody>
                 {data.rows.filter(r => showHidden || !r.hidden).map(row => (
-                  <tr key={row.employee} style={{ background: row.is_draft ? '#fffbeb' : '#fff', opacity: row.hidden ? 0.6 : 1 }}>
+                  <tr key={row.employee} style={{ background: row.is_draft ? 'var(--warning-soft)' : 'var(--surface)', opacity: row.hidden ? 0.6 : 1 }}>
                     <td style={tdLSt}>
                       {row.display_name || row.employee}
-                      {row.hidden && <span style={{ color:'#94a3b8', fontSize:10, marginLeft:4 }} title="Скрыт в отчётах">👁</span>}
-                      {row.is_draft && <span style={{ color:'#f59e0b', fontSize:10, marginLeft:4 }} title="Настройки из предыдущего месяца">●</span>}
+                      {row.hidden && <span style={{ color:'var(--text-3)', fontSize:10, marginLeft:4 }} title="Скрыт в отчётах">👁</span>}
+                      {row.is_draft && <span style={{ color:'var(--warning)', fontSize:10, marginLeft:4 }} title="Настройки из предыдущего месяца">●</span>}
                     </td>
                     {/* Смены */}
                     <td style={tdSt}>
                       {renderCell(row.employee, 'shifts_count', row.settings.shifts_count, closed)}
                       {row.settings.shifts_count == null && (
-                        <span style={{ color:'#9ca3af', fontSize:10, marginLeft:3 }} title="Подсчитано из «На смене»">({row.shifts_from_schedule})</span>
+                        <span style={{ color:'var(--text-3)', fontSize:10, marginLeft:3 }} title="Подсчитано из «На смене»">({row.shifts_from_schedule})</span>
                       )}
                     </td>
                     <td style={tdSt}>{renderCell(row.employee, 'shift_rate', row.settings.shift_rate, closed)}</td>
                     <td style={tdSt}>{fmt(row.shifts_amt)}</td>
                     {/* Новые */}
-                    <td style={{ ...tdSt, color:'#263CD9', cursor:'pointer', textDecoration:'underline dotted' }}
+                    <td style={{ ...tdSt, color:'var(--accent)', cursor:'pointer', textDecoration:'underline dotted' }}
                       onClick={() => setDrill({ employee: row.employee, label:'Новые', items: row.new_items })}>
                       {fmt(row.new_sales)}
                     </td>
                     <td style={tdSt}>{renderCell(row.employee, 'new_sales_pct', row.settings.new_sales_pct, closed)}</td>
                     <td style={tdSt}>{fmt(row.new_pct_amt)}</td>
                     {/* Продления */}
-                    <td style={{ ...tdSt, color:'#263CD9', cursor:'pointer', textDecoration:'underline dotted' }}
+                    <td style={{ ...tdSt, color:'var(--accent)', cursor:'pointer', textDecoration:'underline dotted' }}
                       onClick={() => setDrill({ employee: row.employee, label:'Продления', items: row.renewal_items })}>
                       {fmt(row.renewals)}
                     </td>
                     <td style={tdSt}>{renderCell(row.employee, 'renewal_pct', row.settings.renewal_pct, closed)}</td>
                     <td style={tdSt}>{fmt(row.renewal_pct_amt)}</td>
                     {/* Товары */}
-                    <td style={{ ...tdSt, color:'#263CD9', cursor:'pointer', textDecoration:'underline dotted' }}
+                    <td style={{ ...tdSt, color:'var(--accent)', cursor:'pointer', textDecoration:'underline dotted' }}
                       onClick={() => setDrill({ employee: row.employee, label:'Товары', items: row.goods_items })}>
                       {fmt(row.goods)}
                     </td>
@@ -3157,8 +3157,8 @@ function PayrollSection() {
                     <td style={tdSt}>{fmt(row.goods_pct_amt)}</td>
                     {/* План */}
                     <td style={tdSt}>
-                      <span style={{ color: row.plan_amount != null ? (row.plan_achieved ? '#16a34a' : '#dc2626') : undefined }}>{fmt(row.fact_sales)}</span>
-                      {row.plan_amount != null && <span style={{ color:'#9ca3af' }}>/{fmt(row.plan_amount)}</span>}
+                      <span style={{ color: row.plan_amount != null ? (row.plan_achieved ? 'var(--success)' : 'var(--danger)') : undefined }}>{fmt(row.fact_sales)}</span>
+                      {row.plan_amount != null && <span style={{ color:'var(--text-3)' }}>/{fmt(row.plan_amount)}</span>}
                     </td>
                     <td style={tdSt}>{row.plan_pct != null ? `${row.plan_pct}%` : '—'}</td>
                     <td style={tdSt}>
@@ -3170,16 +3170,16 @@ function PayrollSection() {
                           }} />
                         <span>{renderCell(row.employee, 'plan_bonus', row.settings.plan_bonus, closed)}</span>
                       </label>
-                      {row.plan_bonus_amt > 0 && <span style={{ color:'#16a34a', fontSize:10 }}> ✓</span>}
+                      {row.plan_bonus_amt > 0 && <span style={{ color:'var(--success)', fontSize:10 }}> ✓</span>}
                     </td>
                     <td style={tdSt}>{renderCell(row.employee, 'premium', row.settings.premium, closed)}</td>
                     <td style={tdSt}>{renderCell(row.employee, 'deduction', row.settings.deduction, closed)}</td>
                     <td style={{ ...tdSt, fontWeight:700 }}>{fmt(row.total_earned)}</td>
                     <td style={tdSt}>{renderCell(row.employee, 'advance', row.settings.advance, closed)}</td>
-                    <td style={{ ...tdSt, fontWeight:700, color:'#02BDB6' }}>{fmt(row.to_pay)}</td>
+                    <td style={{ ...tdSt, fontWeight:700, color:'var(--primary)' }}>{fmt(row.to_pay)}</td>
                   </tr>
                 ))}
-                <tr style={{ background:'#f1f5f9', fontWeight:700 }}>
+                <tr style={{ background:'var(--surface-2)', fontWeight:700 }}>
                   <td style={tdLSt}>Итого</td>
                   <td style={tdSt} colSpan={2}></td>
                   <td style={tdSt}>{fmt(data.totals.shifts_amt)}</td>
@@ -3191,7 +3191,7 @@ function PayrollSection() {
                   <td style={tdSt} colSpan={7}></td>
                   <td style={tdSt}>{fmt(data.totals.total_earned)}</td>
                   <td style={tdSt}></td>
-                  <td style={{ ...tdSt, color:'#02BDB6' }}>{fmt(data.totals.to_pay)}</td>
+                  <td style={{ ...tdSt, color:'var(--primary)' }}>{fmt(data.totals.to_pay)}</td>
                 </tr>
               </tbody>
             </table>
@@ -3200,26 +3200,26 @@ function PayrollSection() {
           {/* Mobile cards */}
           <div className="pr-cards">
             {data.rows.filter(r => showHidden || !r.hidden).map(row => (
-              <div key={row.employee} style={{ background:'#fff', borderRadius:10, padding:'12px 14px', marginBottom:8, boxShadow:'0 1px 3px rgba(0,0,0,0.06)', opacity: row.hidden ? 0.6 : 1 }}>
+              <div key={row.employee} style={{ background:'var(--surface)', borderRadius:10, padding:'12px 14px', marginBottom:8, boxShadow:'0 1px 3px rgba(0,0,0,0.06)', opacity: row.hidden ? 0.6 : 1 }}>
                 <div style={{ fontWeight:700, fontSize:14, marginBottom:6 }}>
                   {row.display_name || row.employee}
-                  {row.hidden && <span style={{ color:'#94a3b8', fontSize:10, marginLeft:4 }}>👁</span>}
-                  {row.is_draft && <span style={{ color:'#f59e0b', fontSize:10, marginLeft:4 }}>● черновик</span>}
+                  {row.hidden && <span style={{ color:'var(--text-3)', fontSize:10, marginLeft:4 }}>👁</span>}
+                  {row.is_draft && <span style={{ color:'var(--warning)', fontSize:10, marginLeft:4 }}>● черновик</span>}
                 </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'3px 12px', fontSize:12, color:'#374151' }}>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'3px 12px', fontSize:12, color:'var(--text)' }}>
                   <span>Смены: {row.settings.shifts_count ?? row.shifts_from_schedule} × {fmt(row.settings.shift_rate)} = <b>{fmt(row.shifts_amt)}</b></span>
                   <span>Новые: {fmt(row.new_sales)} · {row.settings.new_sales_pct}% · <b>{fmt(row.new_pct_amt)}</b></span>
                   <span>Продл.: {fmt(row.renewals)} · {row.settings.renewal_pct}% · <b>{fmt(row.renewal_pct_amt)}</b></span>
                   <span>Товары: {fmt(row.goods)} · {row.settings.goods_pct}% · <b>{fmt(row.goods_pct_amt)}</b></span>
                   <span>
                     Бонус план: {row.plan_bonus_on ? '✓' : '—'}
-                    {row.plan_bonus_amt > 0 && <b style={{ color:'#16a34a' }}> +{fmt(row.plan_bonus_amt)}</b>}
+                    {row.plan_bonus_amt > 0 && <b style={{ color:'var(--success)' }}> +{fmt(row.plan_bonus_amt)}</b>}
                   </span>
                   <span>Премия: {fmt(row.settings.premium)} · Удерж.: {fmt(row.settings.deduction)}</span>
                   <span style={{ fontWeight:700 }}>Итого: {fmt(row.total_earned)} ₸</span>
-                  <span style={{ fontWeight:700, color:'#02BDB6' }}>К выплате: {fmt(row.to_pay)} ₸</span>
+                  <span style={{ fontWeight:700, color:'var(--primary)' }}>К выплате: {fmt(row.to_pay)} ₸</span>
                 </div>
-                {row.settings.note && <div style={{ color:'#64748b', fontSize:11, marginTop:4 }}>{row.settings.note}</div>}
+                {row.settings.note && <div style={{ color:'var(--text-2)', fontSize:11, marginTop:4 }}>{row.settings.note}</div>}
               </div>
             ))}
           </div>
@@ -3232,16 +3232,16 @@ function PayrollSection() {
           <div style={s.modal}>
             <div style={{ fontWeight:700, fontSize:15, marginBottom:12 }}>{drill.employee} — {drill.label}</div>
             {drill.items.length === 0
-              ? <div style={{ color:'#9ca3af', fontSize:13 }}>Нет операций</div>
+              ? <div style={{ color:'var(--text-3)', fontSize:13 }}>Нет операций</div>
               : drill.items.map((it, i) => (
-                  <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:'1px solid #f1f5f9', fontSize:13, gap:8 }}>
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:'1px solid var(--border)', fontSize:13, gap:8 }}>
                     <span>
-                      {it.is_refund && <span style={{ color:'#dc2626', marginRight:4 }}>↩</span>}
+                      {it.is_refund && <span style={{ color:'var(--danger)', marginRight:4 }}>↩</span>}
                       {it.name ?? '—'}
-                      {it.date && <span style={{ color:'#9ca3af', fontSize:11, marginLeft:4 }}>{fmtDate(it.date)}</span>}
-                      {it.is_refund && it.orig_date && <span style={{ color:'#9ca3af', fontSize:11 }}> (прод. {fmtDate(it.orig_date)})</span>}
+                      {it.date && <span style={{ color:'var(--text-3)', fontSize:11, marginLeft:4 }}>{fmtDate(it.date)}</span>}
+                      {it.is_refund && it.orig_date && <span style={{ color:'var(--text-3)', fontSize:11 }}> (прод. {fmtDate(it.orig_date)})</span>}
                     </span>
-                    <span style={{ fontWeight:600, color: it.amount < 0 ? '#dc2626' : '#059669', whiteSpace:'nowrap' }}>
+                    <span style={{ fontWeight:600, color: it.amount < 0 ? 'var(--danger)' : 'var(--success)', whiteSpace:'nowrap' }}>
                       {it.amount >= 0 ? '+' : ''}{fmt(it.amount)} ₸
                     </span>
                   </div>
@@ -3257,7 +3257,7 @@ function PayrollSection() {
         <div style={s.overlay}>
           <div style={{ ...s.modal, maxWidth:340 }}>
             <div style={s.mh3}>{confirming === 'close' ? 'Закрыть месяц?' : 'Открыть заново?'}</div>
-            <div style={{ color:'#6b7280', fontSize:13, marginBottom:20 }}>
+            <div style={{ color:'var(--text-2)', fontSize:13, marginBottom:20 }}>
               {confirming === 'close'
                 ? 'Данные зафиксируются. Редактирование заблокируется.'
                 : 'Месяц будет открыт снова. Редактирование разблокируется.'}
@@ -3323,41 +3323,41 @@ function TbuSection() {
     name: p.label, revenue: p.revenue, tbu: p.tbu ?? 0, result: p.result,
   })) ?? [];
 
-  const thSt: React.CSSProperties = { padding:'6px 8px', border:'1px solid #e2e8f0', fontWeight:700, fontSize:11, color:'#374151', whiteSpace:'nowrap', background:'#f1f5f9', textAlign:'center' };
-  const tdSt: React.CSSProperties = { padding:'5px 7px', border:'1px solid #e2e8f0', fontSize:12, textAlign:'right', verticalAlign:'middle' };
+  const thSt: React.CSSProperties = { padding:'6px 8px', border:'1px solid var(--border)', fontWeight:700, fontSize:11, color:'var(--text)', whiteSpace:'nowrap', background:'var(--surface-2)', textAlign:'center' };
+  const tdSt: React.CSSProperties = { padding:'5px 7px', border:'1px solid var(--border)', fontSize:12, textAlign:'right', verticalAlign:'middle' };
   const tdLSt: React.CSSProperties = { ...tdSt, textAlign:'left' };
 
   const tiles = last ? [
     { label:'Выручка',           val: fmt(last.revenue) + ' ₸' },
     { label:'Маржинальный доход',val: fmt(last.marginal_income) + ' ₸' },
     { label:'СКД',               val: fmt(last.skd) + ' ₸' },
-    { label:'Итог',              val: fmt(last.result) + ' ₸', color: last.result >= 0 ? '#16a34a' : '#dc2626' },
+    { label:'Итог',              val: fmt(last.result) + ' ₸', color: last.result >= 0 ? 'var(--success)' : 'var(--danger)' },
     { label:'ТБУ',               val: last.tbu != null ? fmt(last.tbu) + ' ₸' : '—' },
     { label:'Выполнение ТБУ',    val: last.tbu_pct != null ? `${last.tbu_pct}%` : '—',
-      color: last.tbu_pct != null ? (last.tbu_pct >= 100 ? '#16a34a' : last.tbu_pct >= 80 ? '#f59e0b' : '#dc2626') : undefined },
+      color: last.tbu_pct != null ? (last.tbu_pct >= 100 ? 'var(--success)' : last.tbu_pct >= 80 ? 'var(--warning)' : 'var(--danger)') : undefined },
   ] : [];
 
   return (
     <div style={s.section}>
       {/* Controls */}
       <div style={{ marginBottom:16, display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
-        <div style={{ display:'flex', border:'1px solid #e2e8f0', borderRadius:8, overflow:'hidden' }}>
+        <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
           {(['week','month'] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontFamily:'inherit', fontSize:13, background: mode===m ? '#02BDB6' : '#fff', color: mode===m ? '#fff' : '#374151', fontWeight: mode===m ? 700 : 400 }}>
+            <button key={m} onClick={() => setMode(m)} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontFamily:'inherit', fontSize:13, background: mode===m ? 'var(--primary)' : 'var(--surface)', color: mode===m ? 'var(--surface)' : 'var(--text)', fontWeight: mode===m ? 700 : 400 }}>
               {m === 'week' ? 'По неделям' : 'По месяцам'}
             </button>
           ))}
         </div>
-        <div style={{ display:'flex', border:'1px solid #e2e8f0', borderRadius:8, overflow:'hidden' }}>
+        <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
           {(['max','current'] as const).map(sm => (
-            <button key={sm} onClick={() => setSalary(sm)} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontFamily:'inherit', fontSize:13, background: salary===sm ? '#263CD9' : '#fff', color: salary===sm ? '#fff' : '#374151', fontWeight: salary===sm ? 700 : 400 }}>
+            <button key={sm} onClick={() => setSalary(sm)} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontFamily:'inherit', fontSize:13, background: salary===sm ? 'var(--accent)' : 'var(--surface)', color: salary===sm ? 'var(--surface)' : 'var(--text)', fontWeight: salary===sm ? 700 : 400 }}>
               {sm === 'max' ? 'Макс. зарплата' : 'Факт зарплаты'}
             </button>
           ))}
         </div>
-        <button onClick={load} style={{ padding:'6px 12px', border:'1px solid #e2e8f0', borderRadius:8, background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>↻</button>
-        {loading && <span style={{ fontSize:12, color:'#9ca3af' }}>Загрузка…</span>}
-        {err && <span style={{ fontSize:12, color:'#dc2626' }}>{err}</span>}
+        <button onClick={load} style={{ padding:'6px 12px', border:'1px solid var(--border)', borderRadius:8, background:'var(--surface)', cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>↻</button>
+        {loading && <span style={{ fontSize:12, color:'var(--text-3)' }}>Загрузка…</span>}
+        {err && <span style={{ fontSize:12, color:'var(--danger)' }}>{err}</span>}
       </div>
 
       {last && (
@@ -3365,17 +3365,17 @@ function TbuSection() {
           {/* Tiles */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:10, marginBottom:20 }}>
             {tiles.map(t => (
-              <div key={t.label} style={{ background:'#fff', borderRadius:10, padding:'12px 14px', boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
-                <div style={{ fontSize:11, color:'#64748b', marginBottom:4 }}>{t.label}</div>
-                <div style={{ fontSize:16, fontWeight:700, color: t.color ?? '#1a202c' }}>{t.val}</div>
-                {t.label === 'Выручка' && <div style={{ fontSize:10, color:'#9ca3af' }}>{last.label}</div>}
+              <div key={t.label} style={{ background:'var(--surface)', borderRadius:10, padding:'12px 14px', boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
+                <div style={{ fontSize:11, color:'var(--text-2)', marginBottom:4 }}>{t.label}</div>
+                <div style={{ fontSize:16, fontWeight:700, color: t.color ?? 'var(--text)' }}>{t.val}</div>
+                {t.label === 'Выручка' && <div style={{ fontSize:10, color:'var(--text-3)' }}>{last.label}</div>}
               </div>
             ))}
           </div>
 
           {/* Waterfall */}
-          <div style={{ background:'#fff', borderRadius:12, padding:'16px', marginBottom:20, boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
-            <div style={{ fontWeight:700, fontSize:13, marginBottom:12, color:'#374151' }}>Каскад — {last.label}</div>
+          <div style={{ background:'var(--surface)', borderRadius:12, padding:'16px', marginBottom:20, boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div style={{ fontWeight:700, fontSize:13, marginBottom:12, color:'var(--text)' }}>Каскад — {last.label}</div>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={wfData} margin={{ top:0, right:10, left:10, bottom:50 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -3385,7 +3385,7 @@ function TbuSection() {
                 <Bar dataKey="base" stackId="w" fill="transparent" isAnimationActive={false} />
                 <Bar dataKey="delta" stackId="w" radius={[3,3,0,0]} isAnimationActive={false}>
                   {wfData.map((entry, i) => (
-                    <Cell key={i} fill={entry.is_milestone ? '#02BDB6' : entry.negative ? '#ef4444' : '#22c55e'} />
+                    <Cell key={i} fill={entry.is_milestone ? 'var(--primary)' : entry.negative ? 'var(--danger)' : 'var(--success)'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -3394,8 +3394,8 @@ function TbuSection() {
 
           {/* Trend chart */}
           {trendData.length > 1 && (
-            <div style={{ background:'#fff', borderRadius:12, padding:'16px', marginBottom:20, boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
-              <div style={{ fontWeight:700, fontSize:13, marginBottom:12, color:'#374151' }}>Динамика</div>
+            <div style={{ background:'var(--surface)', borderRadius:12, padding:'16px', marginBottom:20, boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div style={{ fontWeight:700, fontSize:13, marginBottom:12, color:'var(--text)' }}>Динамика</div>
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={trendData} margin={{ top:0, right:10, left:10, bottom:30 }}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -3403,9 +3403,9 @@ function TbuSection() {
                   <YAxis tickFormatter={v => `${Math.round((v as number)/1000)}к`} tick={{ fontSize:10 }} />
                   <Tooltip formatter={(v: unknown) => fmt(v as number) + ' ₸'} />
                   <Legend />
-                  <Line dataKey="revenue" name="Выручка" stroke="#02BDB6" strokeWidth={2} dot={false} />
-                  <Line dataKey="tbu"     name="ТБУ"     stroke="#dc2626" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                  <Line dataKey="result"  name="Итог"    stroke="#263CD9" strokeWidth={2} dot={false} />
+                  <Line dataKey="revenue" name="Выручка" stroke="var(--primary)" strokeWidth={2} dot={false} />
+                  <Line dataKey="tbu"     name="ТБУ"     stroke="var(--danger)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                  <Line dataKey="result"  name="Итог"    stroke="var(--accent)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -3415,7 +3415,7 @@ function TbuSection() {
 
       {/* Table */}
       {data && (
-        <div style={{ background:'#fff', borderRadius:12, boxShadow:'0 1px 3px rgba(0,0,0,0.06)', overflow:'auto' }}>
+        <div style={{ background:'var(--surface)', borderRadius:12, boxShadow:'0 1px 3px rgba(0,0,0,0.06)', overflow:'auto' }}>
           <table style={{ borderCollapse:'collapse', fontSize:12, minWidth: data.periods.length * 100 + 200 }}>
             <thead>
               <tr>
@@ -3425,8 +3425,8 @@ function TbuSection() {
             </thead>
             <tbody>
               {data.table_rows.map(row => (
-                <tr key={row.id} style={{ background: row.is_milestone ? '#f0fdf4' : '#fff', fontWeight: row.is_milestone ? 700 : 400 }}>
-                  <td style={{ ...tdLSt, position:'sticky', left:0, background: row.is_milestone ? '#f0fdf4' : '#fff', zIndex:1, paddingLeft: 8 + row.indent * 16 }}>
+                <tr key={row.id} style={{ background: row.is_milestone ? 'var(--success-soft)' : 'var(--surface)', fontWeight: row.is_milestone ? 700 : 400 }}>
+                  <td style={{ ...tdLSt, position:'sticky', left:0, background: row.is_milestone ? 'var(--success-soft)' : 'var(--surface)', zIndex:1, paddingLeft: 8 + row.indent * 16 }}>
                     {row.name}
                   </td>
                   {data.periods.map((p, pi) => {
@@ -3438,7 +3438,7 @@ function TbuSection() {
                       return (
                         <td key={p.from} style={{ ...tdSt, padding:'2px 4px' }}>
                           <input type="number" value={draft !== undefined ? draft : (val ?? '')}
-                            style={{ width:80, fontSize:11, padding:'2px 4px', border:'1px solid #e2e8f0', borderRadius:4, textAlign:'right' as const, fontFamily:'inherit' }}
+                            style={{ width:80, fontSize:11, padding:'2px 4px', border:'1px solid var(--border)', borderRadius:4, textAlign:'right' as const, fontFamily:'inherit' }}
                             onChange={e => setEditing(prev => ({ ...prev, [edKey]: e.target.value }))}
                             onBlur={() => {
                               if (draft !== undefined) {
@@ -3457,7 +3457,7 @@ function TbuSection() {
                       );
                     }
                     return (
-                      <td key={p.from} style={{ ...tdSt, color: val != null && val < 0 ? '#dc2626' : undefined }}>
+                      <td key={p.from} style={{ ...tdSt, color: val != null && val < 0 ? 'var(--danger)' : undefined }}>
                         {val != null ? fmt(val) : '—'}
                       </td>
                     );
@@ -3475,7 +3475,7 @@ function TbuSection() {
 function MField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4, marginTop: 12 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4, marginTop: 12 }}>{label}</label>
       {children}
     </div>
   );
@@ -3484,54 +3484,54 @@ function MField({ label, children }: { label: string; children: React.ReactNode 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
 const shiftRowSt = (sh: ShiftRecord): React.CSSProperties => ({
-  background: sh.ended_at && !sh.sheet_synced_end ? '#fef9f9' : '#fff',
+  background: sh.ended_at && !sh.sheet_synced_end ? '#fef9f9' : 'var(--surface)',
   borderRadius: 10, padding: '10px 12px', marginBottom: 8,
   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8,
   boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-  borderLeft: `4px solid ${sh.status === 'open' ? '#22c55e' : sh.status === 'auto_closed' ? '#f59e0b' : '#94a3b8'}`,
+  borderLeft: `4px solid ${sh.status === 'open' ? 'var(--success)' : sh.status === 'auto_closed' ? 'var(--warning)' : 'var(--text-3)'}`,
 });
 
 const s: Record<string, React.CSSProperties> = {
-  root:         { height: '100vh', overflow: 'auto', background: '#f8fafc', fontFamily: "'Manrope',system-ui,sans-serif", display: 'flex', flexDirection: 'column' },
-  header:       { padding: '10px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 10, flexShrink: 0 },
+  root:         { height: '100vh', overflow: 'auto', background: 'var(--surface-2)', fontFamily: "'Manrope',system-ui,sans-serif", display: 'flex', flexDirection: 'column' },
+  header:       { padding: '10px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 10, flexShrink: 0 },
   title:        { fontSize: 16, fontWeight: 700 },
-  backBtn:      { background: 'none', border: 'none', color: '#263CD9', cursor: 'pointer', fontWeight: 600, fontSize: 14, padding: '4px 0', fontFamily: 'inherit' },
+  backBtn:      { background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontWeight: 600, fontSize: 14, padding: '4px 0', fontFamily: 'inherit' },
   board:        { display: 'flex', alignItems: 'flex-start', padding: 0, overflowX: 'auto' },
-  column:       { minWidth: 180, flex: '1 0 180px', borderRight: '1px solid #e2e8f0', paddingBottom: 24 },
-  colTitle:     { padding: '12px 16px 8px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.06em' },
-  colItem:      { display: 'block', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid #f1f5f9', textAlign: 'left' as const, padding: '9px 16px', cursor: 'pointer', fontFamily: 'inherit' },
-  colItemLabel: { display: 'block', fontSize: 14, fontWeight: 600, color: '#1a202c' },
-  colItemDesc:  { display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 },
+  column:       { minWidth: 180, flex: '1 0 180px', borderRight: '1px solid var(--border)', paddingBottom: 24 },
+  colTitle:     { padding: '12px 16px 8px', fontSize: 11, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase' as const, letterSpacing: '0.06em' },
+  colItem:      { display: 'block', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', textAlign: 'left' as const, padding: '9px 16px', cursor: 'pointer', fontFamily: 'inherit' },
+  colItemLabel: { display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--text)' },
+  colItemDesc:  { display: 'block', fontSize: 12, color: 'var(--text-3)', marginTop: 2 },
   section:      { padding: '12px 12px 32px' },
   filterRow:    { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 },
-  dateInp:      { padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
-  loadBtn:      { padding: '8px 16px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  csvBtn:       { padding: '8px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  chip:         { padding: '3px 10px', border: '1px solid #e2e8f0', borderRadius: 20, fontSize: 12, cursor: 'pointer', background: '#fff', fontFamily: 'inherit', color: '#374151' },
-  chipActive:   { background: '#02BDB6', color: '#fff', border: '1px solid #02BDB6' },
-  empty:        { color: '#94a3b8', fontSize: 13, padding: '12px 0' },
-  rowTitle:     { fontSize: 14, fontWeight: 600, color: '#1a202c' },
-  rowMeta:      { fontSize: 12, color: '#64748b', marginTop: 2 },
-  muted:        { fontWeight: 400, color: '#64748b' },
-  warn:         { color: '#ef4444', marginLeft: 6 },
-  editBtn:      { padding: '5px 12px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 },
-  sectionTitle: { fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 },
-  totalRow:     { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9' },
-  taskRow:      { background: '#fff', borderRadius: 10, padding: '8px 12px', marginBottom: 6, display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
-  taskDate:     { fontSize: 12, fontWeight: 600, color: '#64748b', width: 60, flexShrink: 0, paddingTop: 2 },
-  personChip:   { background: '#e0f2fe', color: '#0369a1', borderRadius: 8, padding: '4px 10px', fontSize: 13, fontWeight: 600 },
-  studioRow:    { background: '#fff', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
+  dateInp:      { padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
+  loadBtn:      { padding: '8px 16px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  csvBtn:       { padding: '8px 14px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  chip:         { padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 20, fontSize: 12, cursor: 'pointer', background: 'var(--surface)', fontFamily: 'inherit', color: 'var(--text)' },
+  chipActive:   { background: 'var(--primary)', color: 'var(--surface)', border: '1px solid var(--primary)' },
+  empty:        { color: 'var(--text-3)', fontSize: 13, padding: '12px 0' },
+  rowTitle:     { fontSize: 14, fontWeight: 600, color: 'var(--text)' },
+  rowMeta:      { fontSize: 12, color: 'var(--text-2)', marginTop: 2 },
+  muted:        { fontWeight: 400, color: 'var(--text-2)' },
+  warn:         { color: 'var(--danger)', marginLeft: 6 },
+  editBtn:      { padding: '5px 12px', background: 'none', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 },
+  sectionTitle: { fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 8 },
+  totalRow:     { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid var(--border)' },
+  taskRow:      { background: 'var(--surface)', borderRadius: 10, padding: '8px 12px', marginBottom: 6, display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
+  taskDate:     { fontSize: 12, fontWeight: 600, color: 'var(--text-2)', width: 60, flexShrink: 0, paddingTop: 2 },
+  personChip:   { background: 'var(--info-soft)', color: 'var(--info)', borderRadius: 8, padding: '4px 10px', fontSize: 13, fontWeight: 600 },
+  studioRow:    { background: 'var(--surface)', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
   studioField:  { display: 'flex', gap: 6, fontSize: 13, padding: '1px 0' },
-  studioKey:    { color: '#64748b', flexShrink: 0 },
-  studioVal:    { color: '#1a202c' },
+  studioKey:    { color: 'var(--text-2)', flexShrink: 0 },
+  studioVal:    { color: 'var(--text)' },
   overlay:      { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-  modal:        { background: '#fff', borderRadius: 16, padding: 24, width: 'min(440px,96vw)', maxHeight: '90vh', overflow: 'auto' },
+  modal:        { background: 'var(--surface)', borderRadius: 16, padding: 24, width: 'min(440px,96vw)', maxHeight: '90vh', overflow: 'auto' },
   mh3:          { fontSize: 16, fontWeight: 700, margin: '0 0 16px' },
-  inp:          { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
+  inp:          { width: '100%', padding: '9px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
   mBtns:        { display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' },
-  cancelBtn:    { padding: '8px 16px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  saveBtn:      { padding: '8px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  errBox:       { background: '#fef2f2', color: '#ef4444', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
+  cancelBtn:    { padding: '8px 16px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  saveBtn:      { padding: '8px 18px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  errBox:       { background: 'var(--danger-soft)', color: 'var(--danger)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3632,32 +3632,32 @@ function Control2Section() {
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          style={{ padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit' }} />
-        <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+          style={{ padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit' }} />
+        <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
           {(['call_center', 'consultant'] as const).map(r => (
             <button key={r} onClick={() => setRole(r)}
-              style={{ padding: '7px 14px', border: 'none', background: role === r ? '#02BDB6' : '#fff', color: role === r ? '#fff' : '#374151', fontWeight: role === r ? 700 : 400, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>
+              style={{ padding: '7px 14px', border: 'none', background: role === r ? 'var(--primary)' : 'var(--surface)', color: role === r ? 'var(--surface)' : 'var(--text)', fontWeight: role === r ? 700 : 400, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>
               {r === 'call_center' ? 'Call center' : 'Консультант'}
             </button>
           ))}
         </div>
-        <button onClick={load} style={{ padding: '7px 14px', background: '#263CD9', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+        <button onClick={load} style={{ padding: '7px 14px', background: 'var(--accent)', color: 'var(--surface)', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
           Обновить
         </button>
       </div>
 
-      {err && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{err}</div>}
-      {loading && <div style={{ color: '#94a3b8', fontSize: 14, padding: '12px 0' }}>Загрузка…</div>}
+      {err && <div style={{ background: 'var(--danger-soft)', border: '1px solid var(--danger)', borderRadius: 8, padding: '8px 12px', color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
+      {loading && <div style={{ color: 'var(--text-3)', fontSize: 14, padding: '12px 0' }}>Загрузка…</div>}
 
       {!loading && pay.length === 0 && !err && (
-        <div style={{ color: '#94a3b8', fontSize: 14 }}>Нет данных за {date} ({roleLabel})</div>
+        <div style={{ color: 'var(--text-3)', fontSize: 14 }}>Нет данных за {date} ({roleLabel})</div>
       )}
 
       {!loading && pay.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+              <tr style={{ background: 'var(--surface-2)', borderBottom: '2px solid var(--border)' }}>
                 <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700 }}>Сотрудник</th>
                 <th style={{ padding: '8px 10px', textAlign: 'center' }}>Нарушений</th>
                 <th style={{ padding: '8px 10px', textAlign: 'right' }}>Фикс</th>
@@ -3668,11 +3668,11 @@ function Control2Section() {
             </thead>
             <tbody>
               {pay.map(row => (
-                <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <tr key={row.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '7px 10px', fontWeight: 600 }}>{row.user_name}</td>
                   <td style={{ padding: '7px 10px', textAlign: 'center' }}>{row.violated_points}</td>
                   <td style={{ padding: '7px 10px', textAlign: 'right' }}>{fmtMoney(row.fixed_pay)}</td>
-                  <td style={{ padding: '7px 10px', textAlign: 'right', color: row.variable_pay < (row.total_pay - row.fixed_pay) ? '#ef4444' : '#16a34a' }}>{fmtMoney(row.variable_pay)}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'right', color: row.variable_pay < (row.total_pay - row.fixed_pay) ? 'var(--danger)' : 'var(--success)' }}>{fmtMoney(row.variable_pay)}</td>
                   <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>{fmtMoney(row.total_pay)}</td>
                   <td style={{ padding: '7px 10px', textAlign: 'center' }}>{row.is_final ? '✅' : '🟡'}</td>
                 </tr>
@@ -3687,15 +3687,15 @@ function Control2Section() {
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Нарушения</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {(points as unknown as Array<Record<string, unknown>>).map((v) => (
-              <div key={String(v.id)} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px' }}>
+              <div key={String(v.id)} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
                   <span style={{ fontWeight: 600, fontSize: 13 }}>{String(v.owner_name)}</span>
-                  <span style={{ background: '#f1f5f9', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>{String(v.point_key)}</span>
-                  <span style={{ background: '#fef9c3', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>{String(v.check_key)}</span>
+                  <span style={{ background: 'var(--surface-2)', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>{String(v.point_key)}</span>
+                  <span style={{ background: 'var(--warning-soft)', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>{String(v.check_key)}</span>
                   <span style={{ marginLeft: 'auto', fontSize: 12 }}>{RESULT_ICONS[String(v.status)] ?? String(v.status)}</span>
                 </div>
-                <div style={{ fontSize: 12, color: '#374151' }}>{String(v.details)}</div>
-                {v.how_to_fix && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{String(v.how_to_fix)}</div>}
+                <div style={{ fontSize: 12, color: 'var(--text)' }}>{String(v.details)}</div>
+                {v.how_to_fix && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>{String(v.how_to_fix)}</div>}
               </div>
             ))}
           </div>
@@ -3830,7 +3830,7 @@ function ControlSection() {
     const totalVio   = scores.reduce((s, x) => s + x.violations, 0);
     const result     = anyFail ? 'fail' : anyPending ? 'pending' : anyFixed ? 'fixed' : anyNR ? 'not_reviewed' : anyOff ? 'off' : 'ok';
     const icon = RESULT_ICON[result] ?? '—';
-    const bgColor = result === 'fail' ? '#fef2f2' : result === 'pending' ? '#fffbeb' : result === 'ok' || result === 'fixed' ? '#f0fdf4' : '#f8fafc';
+    const bgColor = result === 'fail' ? 'var(--danger-soft)' : result === 'pending' ? 'var(--warning-soft)' : result === 'ok' || result === 'fixed' ? 'var(--success-soft)' : 'var(--surface-2)';
     const isFirst = scores[0].date === from || period === 'day';
     return (
       <td style={{ ...cs.cell, background: bgColor, cursor: 'pointer' }}
@@ -3838,8 +3838,8 @@ function ControlSection() {
         onClick={() => openCell(scores[0].date, scores[scores.length - 1].date, ps.person, stdNum)}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
           <span style={{ fontSize: 16 }}>{icon}</span>
-          <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>{fmtAmt(totalAmt)}</span>
-          {totalVio > 0 && <span style={{ fontSize: 10, color: '#94a3b8' }}>{totalVio} нар.</span>}
+          <span style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600 }}>{fmtAmt(totalAmt)}</span>
+          {totalVio > 0 && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{totalVio} нар.</span>}
         </div>
       </td>
     );
@@ -3876,25 +3876,25 @@ function ControlSection() {
               <tr key={ps.person} style={cs.tr}>
                 <td style={{ ...cs.td, fontWeight: 600, textAlign: 'left' }}>{ps.person}</td>
                 {[1,2,3,4,5].map(n => <CellBtn key={n} ps={ps} stdNum={n} />)}
-                <td style={{ ...cs.td, textAlign: 'right', fontWeight: 700, color: '#02BDB6' }}>{fmtAmt(ps.total_earned)}</td>
-                <td style={{ ...cs.td, textAlign: 'right', color: '#64748b' }}>{fmtAmt(shiftCount * 15000)}</td>
+                <td style={{ ...cs.td, textAlign: 'right', fontWeight: 700, color: 'var(--primary)' }}>{fmtAmt(ps.total_earned)}</td>
+                <td style={{ ...cs.td, textAlign: 'right', color: 'var(--text-2)' }}>{fmtAmt(shiftCount * 15000)}</td>
               </tr>
             );
           })}
           {noShiftRow && (
-            <tr style={{ background: '#f8fafc' }}>
-              <td style={{ ...cs.td, fontWeight: 500, color: '#94a3b8', textAlign: 'left' }}>Без смены</td>
+            <tr style={{ background: 'var(--surface-2)' }}>
+              <td style={{ ...cs.td, fontWeight: 500, color: 'var(--text-3)', textAlign: 'left' }}>Без смены</td>
               {[1,2,3,4,5].map(n => <CellBtn key={n} ps={noShiftRow} stdNum={n} />)}
-              <td colSpan={2} style={{ ...cs.td, color: '#94a3b8', fontSize: 12 }}>нарушения без смены</td>
+              <td colSpan={2} style={{ ...cs.td, color: 'var(--text-3)', fontSize: 12 }}>нарушения без смены</td>
             </tr>
           )}
           {!allPersons.length && !loading && (
-            <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: '#94a3b8' }}>Нет данных за период</td></tr>
+            <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--text-3)' }}>Нет данных за период</td></tr>
           )}
         </tbody>
       </table>
       {/* Legend */}
-      <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-3)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <span>✅ выполнено</span><span>🔄 исправлено</span><span>🟡 ждёт исправления</span>
         <span>⚠️ нарушение</span><span>⚪ не проверено</span><span>▫️ нет данных</span><span>— отключено</span>
       </div>
@@ -3913,12 +3913,12 @@ function ControlSection() {
         });
         return (
           <div key={ps.person} style={{ ...cs.card, opacity: isNoShiftCard ? 0.7 : 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8, color: isNoShiftCard ? '#94a3b8' : undefined }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8, color: isNoShiftCard ? 'var(--text-3)' : undefined }}>
               {isNoShiftCard ? 'Без смены' : ps.person}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
               {scores.map(({ n, result }) => (
-                <button key={n} style={{ ...cs.stdChip, background: result === 'fail' ? '#fef2f2' : result === 'pending' ? '#fffbeb' : result === 'ok' || result === 'fixed' ? '#f0fdf4' : '#f8fafc' }}
+                <button key={n} style={{ ...cs.stdChip, background: result === 'fail' ? 'var(--danger-soft)' : result === 'pending' ? 'var(--warning-soft)' : result === 'ok' || result === 'fixed' ? 'var(--success-soft)' : 'var(--surface-2)' }}
                   onClick={() => openCell(from, to, ps.person, n)}>
                   <span style={{ fontSize: 13 }}>{RESULT_ICON[result] ?? '—'}</span>
                   <span style={{ fontSize: 11 }}>{STD_NAMES[n]}</span>
@@ -3927,8 +3927,8 @@ function ControlSection() {
             </div>
             {!isNoShiftCard && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                <span style={{ color: '#64748b' }}>По новой схеме</span>
-                <span style={{ fontWeight: 700, color: '#02BDB6' }}>{fmtAmt(ps.total_earned)}</span>
+                <span style={{ color: 'var(--text-2)' }}>По новой схеме</span>
+                <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{fmtAmt(ps.total_earned)}</span>
               </div>
             )}
           </div>
@@ -3972,12 +3972,12 @@ function ControlSection() {
         {(['day','week','month','custom'] as const).map(p => (
           <button key={p} onClick={() => setPeriod(p)}
             style={{ padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
-              background: period === p ? '#02BDB6' : '#f1f5f9', color: period === p ? '#fff' : '#1a202c' }}>
+              background: period === p ? 'var(--primary)' : 'var(--surface-2)', color: period === p ? 'var(--surface)' : 'var(--text)' }}>
             {{ day: 'День', week: 'Неделя', month: 'Месяц', custom: 'Свой' }[p]}
           </button>
         ))}
         <button onClick={() => setShowHidden(h => !h)}
-          style={{ marginLeft: 'auto', padding: '6px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
+          style={{ marginLeft: 'auto', padding: '6px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
           {showHidden ? '👁 Скрыть' : '👁 Скрытые'}
         </button>
       </div>
@@ -3994,14 +3994,14 @@ function ControlSection() {
         {period === 'week' && (
           <>
             <button style={cs.navBtn} onClick={() => shiftWeek(-1)}>←</button>
-            <span style={{ fontSize: 13, color: '#475569' }}>{fmtDate(from)} — {fmtDate(to)}</span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{fmtDate(from)} — {fmtDate(to)}</span>
             <button style={cs.navBtn} onClick={() => shiftWeek(1)}>→</button>
           </>
         )}
         {period === 'month' && (
           <>
             <button style={cs.navBtn} onClick={() => shiftMonth(-1)}>←</button>
-            <span style={{ fontSize: 13, color: '#475569' }}>{from.slice(0, 7)}</span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{from.slice(0, 7)}</span>
             <button style={cs.navBtn} onClick={() => shiftMonth(1)}>→</button>
           </>
         )}
@@ -4013,14 +4013,14 @@ function ControlSection() {
           </>
         )}
         {shiftInfo && (
-          <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>
-            На смене: {shiftInfo.names.join(', ')} · <span style={{ color: '#94a3b8' }}>{shiftInfo.source}</span>
+          <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-2)' }}>
+            На смене: {shiftInfo.names.join(', ')} · <span style={{ color: 'var(--text-3)' }}>{shiftInfo.source}</span>
           </span>
         )}
       </div>
 
-      {err && <div style={{ color: '#ef4444', marginBottom: 10, fontSize: 13 }}>{err}</div>}
-      {loading && <div style={{ color: '#94a3b8', padding: 20 }}>Загрузка…</div>}
+      {err && <div style={{ color: 'var(--danger)', marginBottom: 10, fontSize: 13 }}>{err}</div>}
+      {loading && <div style={{ color: 'var(--text-3)', padding: 20 }}>Загрузка…</div>}
 
       {/* Table (desktop/tablet) / cards (mobile) */}
       <div className="control-desktop">{tableView}</div>
@@ -4033,21 +4033,21 @@ function ControlSection() {
           onClose={() => setCellModal(null)}
           wide
         >
-          {vioLoading && <div style={{ color: '#94a3b8' }}>Загрузка…</div>}
-          {!vioLoading && !vioList.length && <div style={{ color: '#94a3b8', padding: 10 }}>Нарушений нет</div>}
+          {vioLoading && <div style={{ color: 'var(--text-3)' }}>Загрузка…</div>}
+          {!vioLoading && !vioList.length && <div style={{ color: 'var(--text-3)', padding: 10 }}>Нарушений нет</div>}
           {vioList.map(v => (
-            <div key={v.id} style={{ background: v.status === 'waived' ? '#f8fafc' : '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+            <div key={v.id} style={{ background: v.status === 'waived' ? 'var(--surface-2)' : 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{v.entity_label}</span>
-                <span style={{ fontSize: 12, color: { open: '#f59e0b', fixed: '#16a34a', waived: '#94a3b8', failed: '#ef4444' }[v.status] ?? '#64748b' }}>
+                <span style={{ fontSize: 12, color: { open: 'var(--warning)', fixed: 'var(--success)', waived: 'var(--text-3)', failed: 'var(--danger)' }[v.status] ?? 'var(--text-2)' }}>
                   {{ open: '🟡 Открыто', fixed: '✅ Исправлено', waived: '⚪ Снято', failed: '❌ Просрочено' }[v.status] ?? v.status}
                 </span>
               </div>
-              <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>{v.details}</div>
-              <div style={{ fontSize: 12, color: '#02BDB6', marginBottom: 6 }}>Как исправить: {v.how_to_fix}</div>
-              {v.fix_deadline && <div style={{ fontSize: 11, color: '#94a3b8' }}>Срок: {isoToLocalDate(v.fix_deadline)}</div>}
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>{v.details}</div>
+              <div style={{ fontSize: 12, color: 'var(--primary)', marginBottom: 6 }}>Как исправить: {v.how_to_fix}</div>
+              {v.fix_deadline && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Срок: {isoToLocalDate(v.fix_deadline)}</div>}
               {v.status === 'open' && waiveId !== v.id && (
-                <button style={{ marginTop: 8, fontSize: 12, padding: '4px 10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer' }}
+                <button style={{ marginTop: 8, fontSize: 12, padding: '4px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
                   onClick={() => { setWaiveId(v.id); setWaiveReason(''); }}>
                   Не по вине менеджера
                 </button>
@@ -4057,7 +4057,7 @@ function ControlSection() {
                   <input value={waiveReason} onChange={e => setWaiveReason(e.target.value)}
                     placeholder="Причина снятия…" style={{ ...cs.dateInp, flex: 1 }} />
                   <button style={cs.saveBtn} onClick={() => doWaive(v.id)}>Снять</button>
-                  <button style={{ padding: '4px 8px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setWaiveId(null)}>✕</button>
+                  <button style={{ padding: '4px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 }} onClick={() => setWaiveId(null)}>✕</button>
                 </div>
               )}
             </div>
@@ -4073,24 +4073,24 @@ function ControlSection() {
               <h3 style={{ margin: 0, fontSize: 15 }}>Качество диалогов №2 — {qrModal.person} — {isoToLocalDate(qrModal.date)}</h3>
               <button style={cs.closeBtn} onClick={() => setQrModal(null)}>✕</button>
             </div>
-            {qrLoading && <div style={{ color: '#94a3b8' }}>Загрузка…</div>}
-            {!qrLoading && !qrList.length && <div style={{ color: '#94a3b8', padding: 10 }}>Нет диалогов для проверки</div>}
+            {qrLoading && <div style={{ color: 'var(--text-3)' }}>Загрузка…</div>}
+            {!qrLoading && !qrList.length && <div style={{ color: 'var(--text-3)', padding: 10 }}>Нет диалогов для проверки</div>}
             {qrList.map(qr => (
-              <div key={qr.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+              <div key={qr.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span style={{ fontWeight: 600, fontSize: 13 }}>{qr.client_key}</span>
-                  <span style={{ fontSize: 11, background: qr.pick_reason === 'flagged' ? '#fef2f2' : '#f0fdf4', color: qr.pick_reason === 'flagged' ? '#ef4444' : '#16a34a', padding: '2px 8px', borderRadius: 6 }}>
+                  <span style={{ fontSize: 11, background: qr.pick_reason === 'flagged' ? 'var(--danger-soft)' : 'var(--success-soft)', color: qr.pick_reason === 'flagged' ? 'var(--danger)' : 'var(--success)', padding: '2px 8px', borderRadius: 6 }}>
                     {qr.pick_reason === 'flagged' ? '🚩 С флагом' : '🎲 Случайный'}
                   </span>
                 </div>
                 {/* Flags */}
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, fontSize: 11 }}>
-                  {qr.flag_no_facts && <span style={{ background: '#fef9c3', padding: '1px 6px', borderRadius: 4 }}>нет фактов</span>}
-                  {qr.flag_no_outcome && <span style={{ background: '#fef9c3', padding: '1px 6px', borderRadius: 4 }}>нет итога</span>}
-                  {qr.flag_abandoned && <span style={{ background: '#fef9c3', padding: '1px 6px', borderRadius: 4 }}>брошен</span>}
+                  {qr.flag_no_facts && <span style={{ background: 'var(--warning-soft)', padding: '1px 6px', borderRadius: 4 }}>нет фактов</span>}
+                  {qr.flag_no_outcome && <span style={{ background: 'var(--warning-soft)', padding: '1px 6px', borderRadius: 4 }}>нет итога</span>}
+                  {qr.flag_abandoned && <span style={{ background: 'var(--warning-soft)', padding: '1px 6px', borderRadius: 4 }}>брошен</span>}
                 </div>
                 {qr.reviewed_at ? (
-                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
                     Проверено {qr.reviewed_by} · {isoToLocalDate(qr.reviewed_at)}:&nbsp;
                     {[qr.c1_needs?'✓':'✗','потреб.',qr.c2_presented?'✓':'✗','презент.',qr.c3_objections?'✓':'✗','возраж.',qr.c4_outcome?'✓':'✗','итог'].join(' ')}
                     {qr.comment && <span> · {qr.comment}</span>}
@@ -4109,11 +4109,11 @@ function ControlSection() {
                         placeholder="Комментарий…" style={{ ...cs.dateInp, width: '100%', marginBottom: 8 }} />
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button style={cs.saveBtn} onClick={() => saveQR(qr.id)}>Сохранить</button>
-                        <button style={{ padding: '6px 12px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 13 }} onClick={() => setQrEdit(null)}>Отмена</button>
+                        <button style={{ padding: '6px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13 }} onClick={() => setQrEdit(null)}>Отмена</button>
                       </div>
                     </div>
                   ) : (
-                    <button style={{ fontSize: 12, padding: '4px 10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, cursor: 'pointer' }}
+                    <button style={{ fontSize: 12, padding: '4px 10px', background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 6, cursor: 'pointer' }}
                       onClick={() => { setQrEdit(qr.id); setQrForm({ c1: false, c2: false, c3: false, c4: false, comment: '' }); }}>
                       Проверить диалог
                     </button>
@@ -4143,16 +4143,16 @@ function ControlSection() {
 
 const cs = {
   table:   { width: '100%', borderCollapse: 'collapse' as const, fontSize: 13 },
-  th:      { padding: '8px 10px', background: '#f8fafc', borderBottom: '2px solid #e2e8f0', fontWeight: 700, fontSize: 12, textAlign: 'center' as const, whiteSpace: 'nowrap' as const },
-  td:      { padding: '8px 10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' as const },
-  cell:    { padding: '6px 8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' as const },
-  tr:      { background: '#fff' },
-  card:    { background: '#fff', borderRadius: 12, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' },
-  stdChip: { padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 2, minWidth: 56 },
+  th:      { padding: '8px 10px', background: 'var(--surface-2)', borderBottom: '2px solid var(--border)', fontWeight: 700, fontSize: 12, textAlign: 'center' as const, whiteSpace: 'nowrap' as const },
+  td:      { padding: '8px 10px', borderBottom: '1px solid var(--border)', textAlign: 'center' as const },
+  cell:    { padding: '6px 8px', borderBottom: '1px solid var(--border)', textAlign: 'center' as const },
+  tr:      { background: 'var(--surface)' },
+  card:    { background: 'var(--surface)', borderRadius: 12, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' },
+  stdChip: { padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 2, minWidth: 56 },
   overlay: { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 200, overflowY: 'auto' as const, padding: '20px 10px' },
-  modal:   { background: '#fff', borderRadius: 16, padding: 20, width: 'min(500px,96vw)', maxHeight: '85vh', overflow: 'auto' as const },
-  closeBtn: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#64748b', padding: '0 4px' },
-  saveBtn: { padding: '6px 14px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' },
-  dateInp: { padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
-  navBtn:  { padding: '6px 10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 700 },
+  modal:   { background: 'var(--surface)', borderRadius: 16, padding: 20, width: 'min(500px,96vw)', maxHeight: '85vh', overflow: 'auto' as const },
+  closeBtn: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--text-2)', padding: '0 4px' },
+  saveBtn: { padding: '6px 14px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' },
+  dateInp: { padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
+  navBtn:  { padding: '6px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 700 },
 };

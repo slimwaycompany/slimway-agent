@@ -1,4 +1,4 @@
-type ConfirmHandler = (msg: string) => Promise<boolean>;
+﻿type ConfirmHandler = (msg: string) => Promise<boolean>;
 
 let _handler: ConfirmHandler | null = null;
 

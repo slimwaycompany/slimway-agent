@@ -1,4 +1,4 @@
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+﻿import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
 interface Props {
   children?: React.ReactNode;
@@ -16,7 +16,7 @@ export function MeasureLayout({ children }: Props) {
   if (isLanding) {
     return (
       <div style={{ minHeight: '100vh', background: '#f7f8fc', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ background: '#fff', borderBottom: '1px solid #e2e6ea', padding: '0 24px', height: 56, display: 'flex', alignItems: 'center' }}>
+        <div style={{ background: '#fff', borderBottom: '1px solid var(--border)', padding: '0 24px', height: 56, display: 'flex', alignItems: 'center' }}>
           <span style={{ fontWeight: 700, fontSize: 17, color: '#1a1a2e' }}>📏 Замеры</span>
         </div>
         <div className="measure-home">
@@ -46,7 +46,7 @@ export function MeasureLayout({ children }: Props) {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f7f8fc' }}>
-      <div style={{ background: '#fff', borderBottom: '1px solid #e2e6ea', padding: '0 16px', position: 'sticky', top: 0, zIndex: 50 }}>
+      <div style={{ background: '#fff', borderBottom: '1px solid var(--border)', padding: '0 16px', position: 'sticky', top: 0, zIndex: 50 }}>
         <div style={{ maxWidth: 560, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 8, height: 48 }}>
           <button onClick={handleBack} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#02BDB6', padding: '4px 0', fontFamily: 'inherit', fontWeight: 600 }}>
             ← Назад

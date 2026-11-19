@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { EARLY_CLOSE_REASONS } from '../config/qualify';
 
 interface Props {

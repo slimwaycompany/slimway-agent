@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useRef, useState } from 'react';
 import TvScreen from './TvScreen';
 import SlideTemplate from './SlideTemplate';
 import type { ScreenEl, ScreenElImage, ScreenElShape, ScreenElType, ScreenLayout, SlideTemplate as SlideTemplateType, SlideTemplates, SlotChild, SlotChildImage, SlotChildShape, SlotChildText, TemplateKind, TemplateTopEl, TplElSlotClient, TplElSlotImage } from '../../lib/tvScreenLayout';
@@ -1096,7 +1096,7 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
                     padding: '7px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4,
                     background: isSel && !selectedChildId ? 'rgba(2,189,182,.18)' : 'transparent',
                     color: isSel && !selectedChildId ? '#02BDB6' : '#94a3b8',
-                    borderLeft: isSel && !selectedChildId ? '2px solid #02BDB6' : '2px solid transparent',
+                    borderLeft: isSel && !selectedChildId ? '2px solid var(--primary)' : '2px solid transparent',
                     fontWeight: isSel && !selectedChildId ? 700 : 400,
                     opacity: el.visible === false ? 0.5 : 1,
                   }}
@@ -1174,7 +1174,7 @@ export default function TvScreenEditor({ mode = 'screen', slideId, initialFrame 
                 padding: '7px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4,
                 background: selectedId === el.id ? 'rgba(2,189,182,.18)' : layerOverId === el.id ? 'rgba(2,189,182,.08)' : 'transparent',
                 color: selectedId === el.id ? '#02BDB6' : '#94a3b8',
-                borderLeft: selectedId === el.id ? '2px solid #02BDB6' : '2px solid transparent',
+                borderLeft: selectedId === el.id ? '2px solid var(--primary)' : '2px solid transparent',
                 fontWeight: selectedId === el.id ? 700 : 400,
                 opacity: el.visible === false ? 0.5 : 1,
               }}

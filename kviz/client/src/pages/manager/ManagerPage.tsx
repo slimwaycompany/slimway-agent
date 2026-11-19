@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import CashClosing from './CashClosing';
 import LeadDrawer from '../crm/LeadDrawer';
 import MyMonthPage from './MyMonthPage';
@@ -55,10 +55,10 @@ interface Shift {
 }
 
 const STATUS_COLOR: Record<Task['status'], string> = {
-  done:    '#22c55e',
-  current: '#f59e0b',
-  overdue: '#ef4444',
-  pending: '#94a3b8',
+  done:    'var(--success)',
+  current: 'var(--warning)',
+  overdue: 'var(--danger)',
+  pending: 'var(--text-3)',
 };
 
 const STATUS_LABEL: Record<Task['status'], string> = {
@@ -296,7 +296,7 @@ export default function ManagerPage() {
 
   // Sub-tab strip
   const tabStrip = (
-    <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+    <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
       {(['checklist', 'mymonth'] as const).map(tab => (
         <button
           key={tab}
@@ -304,8 +304,8 @@ export default function ManagerPage() {
           style={{
             padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
             fontSize: 13, fontWeight: subTab === tab ? 700 : 500,
-            color: subTab === tab ? '#02BDB6' : '#64748b',
-            borderBottom: subTab === tab ? '2px solid #02BDB6' : '2px solid transparent',
+            color: subTab === tab ? 'var(--primary)' : 'var(--text-2)',
+            borderBottom: subTab === tab ? '2px solid var(--primary)' : '2px solid transparent',
             fontFamily: 'inherit', transition: 'all .15s',
           }}
         >
@@ -337,7 +337,7 @@ export default function ManagerPage() {
     <div style={s.root}>
       {tabStrip}
       {toast && (
-        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1e293b', color: '#fff', padding: '10px 20px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, pointerEvents: 'none', boxShadow: '0 4px 16px rgba(0,0,0,.25)' }}>
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'var(--text)', color: 'var(--surface)', padding: '10px 20px', borderRadius: 10, fontSize: 14, fontWeight: 500, zIndex: 9999, pointerEvents: 'none', boxShadow: '0 4px 16px rgba(0,0,0,.25)' }}>
           {toast}
         </div>
       )}
@@ -348,8 +348,8 @@ export default function ManagerPage() {
           </div>
           <div style={s.statsRow}>
             <span style={s.statAll}>Всего: {stats.total}</span>
-            <span style={{ ...s.statAll, color: '#22c55e' }}>Выполнено: {stats.done}</span>
-            {stats.overdue > 0 && <span style={{ ...s.statAll, color: '#ef4444' }}>Просрочено: {stats.overdue}</span>}
+            <span style={{ ...s.statAll, color: 'var(--success)' }}>Выполнено: {stats.done}</span>
+            {stats.overdue > 0 && <span style={{ ...s.statAll, color: 'var(--danger)' }}>Просрочено: {stats.overdue}</span>}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
@@ -442,12 +442,12 @@ export default function ManagerPage() {
               <button style={s.iconBtn} onClick={closeCheckinModal}>✕</button>
             </div>
             {checkinOk ? (
-              <div style={{ textAlign: 'center', color: '#16a34a', fontSize: 15, fontWeight: 700, padding: '20px 0' }}>✓ Отметка принята</div>
+              <div style={{ textAlign: 'center', color: 'var(--success)', fontSize: 15, fontWeight: 700, padding: '20px 0' }}>✓ Отметка принята</div>
             ) : checkinOpen === 'out' ? (
               /* Departure: no camera, just confirm */
               <>
-                {checkinErr && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{checkinErr}</div>}
-                <div style={{ fontSize: 14, color: '#374151', marginBottom: 20 }}>Завершить смену?</div>
+                {checkinErr && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 8 }}>{checkinErr}</div>}
+                <div style={{ fontSize: 14, color: 'var(--text)', marginBottom: 20 }}>Завершить смену?</div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button style={s.btnCancelEnd} onClick={closeCheckinModal}>Отмена</button>
                   <button style={s.btnStartShift} disabled={checkinBusy} onClick={() => void submitCheckin(null)}>
@@ -458,7 +458,7 @@ export default function ManagerPage() {
             ) : (
               /* Arrival: camera + photo */
               <>
-                {checkinErr && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{checkinErr}</div>}
+                {checkinErr && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 8 }}>{checkinErr}</div>}
                 {!checkinPhoto ? (
                   <>
                     <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', borderRadius: 8, background: '#000', display: 'block' }} />
@@ -472,12 +472,12 @@ export default function ManagerPage() {
                     <img src={checkinPhoto} alt="" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
                     {requireRole && (
                       <div style={{ marginTop: 12 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: '#374151' }}>Укажите роль:</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text)' }}>Укажите роль:</div>
                         <div style={{ display: 'flex', gap: 8 }}>
                           {(['call_center', 'consultant'] as const).map(r => (
                             <button key={r} onClick={() => setCheckinRole(r)}
-                              style={{ flex: 1, padding: '8px', borderRadius: 8, border: `2px solid ${checkinRole === r ? '#02BDB6' : '#e2e8f0'}`,
-                                background: checkinRole === r ? '#e0faf9' : '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>
+                              style={{ flex: 1, padding: '8px', borderRadius: 8, border: `2px solid ${checkinRole === r ? 'var(--primary)' : 'var(--border)'}`,
+                                background: checkinRole === r ? 'var(--primary-soft)' : 'var(--surface)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>
                               {r === 'call_center' ? 'Call Center' : 'Консультант'}
                             </button>
                           ))}
@@ -531,7 +531,7 @@ export default function ManagerPage() {
               <div style={s.doneInfo}>✓ Готово</div>
             )}
             {!task.done && task.scope === 'personal' && (
-              <div style={{ ...s.doneInfo, color: '#94a3b8' }}>личная задача</div>
+              <div style={{ ...s.doneInfo, color: 'var(--text-3)' }}>личная задача</div>
             )}
 
             {task.stories_today && task.stories_today.length > 0 && (
@@ -607,15 +607,15 @@ function TrialsTodaySection() {
   };
 
   return (
-    <div style={{ margin: '0 0 12px', padding: '10px 16px', background: '#f0fdf4', borderRadius: 10, borderLeft: '3px solid #16a34a' }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>
+    <div style={{ margin: '0 0 12px', padding: '10px 16px', background: 'var(--success-soft)', borderRadius: 10, borderLeft: '3px solid var(--success)' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>
         🧪 Пробные сегодня
       </div>
       {trials.map(t => (
-        <div key={t.fitbase_visit_id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#1a202c', marginBottom: 4 }}>
+        <div key={t.fitbase_visit_id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: 'var(--text)', marginBottom: 4 }}>
           <span style={{ fontWeight: 600, minWidth: 42 }}>{t.visit_time}</span>
           <span style={{ flex: 1 }}>{t.client_name ?? '—'}</span>
-          <span style={{ color: t.confirmed ? '#16a34a' : '#64748b', fontSize: 12 }}>{remLabel(t)}</span>
+          <span style={{ color: t.confirmed ? 'var(--success)' : 'var(--text-2)', fontSize: 12 }}>{remLabel(t)}</span>
         </div>
       ))}
     </div>
@@ -730,23 +730,23 @@ function LeadTasksSection() {
         {group.map(t => {
           const name = leadDisplayName(t);
           return (
-            <div key={t.id} style={{ background: t.is_overdue ? '#fff0f4' : '#fff', borderRadius: 10, border: `1px solid ${t.is_overdue ? '#fca5a5' : '#e2e8f0'}`, padding: '9px 12px', marginBottom: 5, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <div key={t.id} style={{ background: t.is_overdue ? 'var(--danger-soft)' : 'var(--surface)', borderRadius: 10, border: `1px solid ${t.is_overdue ? 'var(--danger)' : 'var(--border)'}`, padding: '9px 12px', marginBottom: 5, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: '#1a202c', marginBottom: 2, wordBreak: 'break-word' }}>{t.description}</div>
+                <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 2, wordBreak: 'break-word' }}>{t.description}</div>
                 {name && (
                   <div
-                    style={{ fontSize: 11, color: '#263CD9', cursor: 'pointer', textDecoration: 'underline', marginBottom: 2 }}
+                    style={{ fontSize: 11, color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline', marginBottom: 2 }}
                     onClick={() => t.lead_id && setOpenLeadId(t.lead_id)}
                   >
                     Заявка: {name}
                   </div>
                 )}
-                {t.due_at && <div style={{ fontSize: 11, color: t.is_overdue ? '#ef4444' : '#94a3b8' }}>{t.due_at.slice(0, 10).split('-').reverse().join('.')}{t.is_overdue ? ' — просрочено' : ''}</div>}
+                {t.due_at && <div style={{ fontSize: 11, color: t.is_overdue ? 'var(--danger)' : 'var(--text-3)' }}>{t.due_at.slice(0, 10).split('-').reverse().join('.')}{t.is_overdue ? ' — просрочено' : ''}</div>}
               </div>
               <button
                 disabled={busy[t.id]}
                 onClick={() => markDone(t)}
-                style={{ padding: '4px 10px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+                style={{ padding: '4px 10px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
                 {busy[t.id] ? '...' : 'Готово'}
               </button>
             </div>
@@ -759,21 +759,21 @@ function LeadTasksSection() {
   return (
     <div style={{ margin: '0 0 16px', padding: '12px 16px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase' as const, letterSpacing: '0.04em', flex: 1 }}>Задачи по заявкам</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' as const, letterSpacing: '0.04em', flex: 1 }}>Задачи по заявкам</span>
         {isAdmin && appUsers.length > 0 && (
           <select
             value={filterUser}
             onChange={e => handleFilterChange(e.target.value)}
-            style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: '#fff' }}
+            style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: 'var(--surface)' }}
           >
             <option value="all">Все</option>
             {appUsers.map(u => <option key={u.id} value={u.id}>{u.display_name}</option>)}
           </select>
         )}
       </div>
-      {renderGroup('Просрочено', '#ef4444', overdue)}
-      {renderGroup('Сегодня', '#f59e0b', dueToday)}
-      {renderGroup('Дальше', '#64748b', later)}
+      {renderGroup('Просрочено', 'var(--danger)', overdue)}
+      {renderGroup('Сегодня', 'var(--warning)', dueToday)}
+      {renderGroup('Дальше', 'var(--text-2)', later)}
 
       {openLeadId && (
         <LeadDrawer
@@ -789,52 +789,52 @@ function LeadTasksSection() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  root:          { height: '100vh', overflow: 'auto', background: '#f8fafc', fontFamily: "'Manrope',system-ui,sans-serif" },
-  center:        { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#64748b', fontFamily: 'system-ui,sans-serif' },
-  header:        { padding: '14px 16px 10px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'sticky', top: 0, zIndex: 10 },
-  dateLabel:     { fontSize: 15, fontWeight: 700, color: '#1a202c' },
+  root:          { height: '100vh', overflow: 'auto', background: 'var(--surface-2)', fontFamily: "'Manrope',system-ui,sans-serif" },
+  center:        { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-2)', fontFamily: 'system-ui,sans-serif' },
+  header:        { padding: '14px 16px 10px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'sticky', top: 0, zIndex: 10 },
+  dateLabel:     { fontSize: 15, fontWeight: 700, color: 'var(--text)' },
   statsRow:      { display: 'flex', gap: 12, marginTop: 4 },
-  statAll:       { fontSize: 13, color: '#64748b' },
-  adminLink:     { fontSize: 13, color: '#263CD9', textDecoration: 'none', flexShrink: 0 },
-  btnCashClose:  { padding: '5px 12px', background: '#263CD9', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const },
-  shiftBlock:    { background: '#fff', padding: '12px 16px', borderBottom: '1px solid #e2e8f0' },
-  shiftActive:   { fontSize: 15, fontWeight: 700, color: '#02BDB6', marginBottom: 8 },
-  shiftInactive: { fontSize: 14, fontWeight: 600, color: '#64748b', marginBottom: 8 },
+  statAll:       { fontSize: 13, color: 'var(--text-2)' },
+  adminLink:     { fontSize: 13, color: 'var(--accent)', textDecoration: 'none', flexShrink: 0 },
+  btnCashClose:  { padding: '5px 12px', background: 'var(--accent)', color: 'var(--surface)', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const },
+  shiftBlock:    { background: 'var(--surface)', padding: '12px 16px', borderBottom: '1px solid var(--border)' },
+  shiftActive:   { fontSize: 15, fontWeight: 700, color: 'var(--primary)', marginBottom: 8 },
+  shiftInactive: { fontSize: 14, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 },
   shiftForm:     { display: 'flex', flexDirection: 'column', gap: 8 },
-  shiftInput:    { padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
-  shiftSelect:   { padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' },
-  btnStartShift: { padding: '8px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', alignSelf: 'flex-start' },
-  btnEndShift:   { padding: '7px 16px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  btnEndConfirm: { padding: '7px 16px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  btnCancelEnd:  { padding: '7px 14px', background: 'none', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 8, fontWeight: 500, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  onShift:       { fontSize: 12, color: '#64748b', marginTop: 8 },
-  shiftErr:      { fontSize: 12, color: '#ef4444', marginTop: 4 },
-  weekReels:     { background: '#fff', padding: '10px 16px', borderBottom: '1px solid #e2e8f0' },
-  weekReelsHdr:  { fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 },
+  shiftInput:    { padding: '8px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' },
+  shiftSelect:   { padding: '8px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)' },
+  btnStartShift: { padding: '8px 18px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', alignSelf: 'flex-start' },
+  btnEndShift:   { padding: '7px 16px', background: 'var(--danger)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  btnEndConfirm: { padding: '7px 16px', background: 'var(--danger)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  btnCancelEnd:  { padding: '7px 14px', background: 'none', color: 'var(--text-2)', border: '1px solid var(--border)', borderRadius: 8, fontWeight: 500, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  onShift:       { fontSize: 12, color: 'var(--text-2)', marginTop: 8 },
+  shiftErr:      { fontSize: 12, color: 'var(--danger)', marginTop: 4 },
+  weekReels:     { background: 'var(--surface)', padding: '10px 16px', borderBottom: '1px solid var(--border)' },
+  weekReelsHdr:  { fontSize: 12, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 },
   reelRow:       { display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' },
-  reelDay:       { fontSize: 12, fontWeight: 700, color: '#64748b', width: 22, flexShrink: 0 },
-  reelTitle:     { fontSize: 13, color: '#1a202c', flex: 1 },
+  reelDay:       { fontSize: 12, fontWeight: 700, color: 'var(--text-2)', width: 22, flexShrink: 0 },
+  reelTitle:     { fontSize: 13, color: 'var(--text)', flex: 1 },
   list:          { padding: '12px 12px 32px' },
-  card:          { background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+  card:          { background: 'var(--surface)', borderRadius: 12, padding: '12px 14px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
   cardTop:       { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  slot:          { fontSize: 13, fontWeight: 700, color: '#64748b', fontVariantNumeric: 'tabular-nums' },
-  badge:         { fontSize: 11, fontWeight: 700, color: '#fff', borderRadius: 6, padding: '2px 8px' },
-  title:         { fontSize: 15, fontWeight: 600, color: '#1a202c', marginBottom: 4 },
-  hint:          { fontSize: 13, color: '#64748b', marginBottom: 6 },
-  doneInfo:      { fontSize: 12, color: '#22c55e', fontWeight: 500, marginBottom: 6 },
-  stories:       { background: '#f0fdf4', borderRadius: 8, padding: '8px 10px', marginBottom: 8 },
-  storiesHdr:    { fontSize: 12, fontWeight: 600, color: '#15803d', marginBottom: 4 },
+  slot:          { fontSize: 13, fontWeight: 700, color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' },
+  badge:         { fontSize: 11, fontWeight: 700, color: 'var(--surface)', borderRadius: 6, padding: '2px 8px' },
+  title:         { fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 4 },
+  hint:          { fontSize: 13, color: 'var(--text-2)', marginBottom: 6 },
+  doneInfo:      { fontSize: 12, color: 'var(--success)', fontWeight: 500, marginBottom: 6 },
+  stories:       { background: 'var(--success-soft)', borderRadius: 8, padding: '8px 10px', marginBottom: 8 },
+  storiesHdr:    { fontSize: 12, fontWeight: 600, color: 'var(--success)', marginBottom: 4 },
   storyRow:      { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', gap: 8 },
-  storyIdea:     { fontSize: 13, color: '#1a202c', flex: 1 },
-  copyBtn:       { fontSize: 11, fontWeight: 600, color: '#263CD9', background: 'none', border: '1px solid #263CD9', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' },
+  storyIdea:     { fontSize: 13, color: 'var(--text)', flex: 1 },
+  copyBtn:       { fontSize: 11, fontWeight: 600, color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' },
   actions:       { display: 'flex', gap: 8, marginTop: 8 },
-  btnDone:       { padding: '7px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  btnCancel:     { padding: '7px 16px', background: 'none', color: '#ef4444', border: '1px solid #ef4444', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  checkinBlock:  { background: '#fff', padding: '10px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 12 },
-  checkinLabel:  { fontSize: 12, color: '#64748b', fontWeight: 600, flex: 1 },
-  btnCheckinIn:  { padding: '8px 20px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  btnCheckinOut: { padding: '8px 20px', background: '#f8fafc', color: '#374151', border: '1.5px solid #e2e8f0', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  btnDone:       { padding: '7px 18px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  btnCancel:     { padding: '7px 16px', background: 'none', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  checkinBlock:  { background: 'var(--surface)', padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 },
+  checkinLabel:  { fontSize: 12, color: 'var(--text-2)', fontWeight: 600, flex: 1 },
+  btnCheckinIn:  { padding: '8px 20px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  btnCheckinOut: { padding: '8px 20px', background: 'var(--surface-2)', color: 'var(--text)', border: '1.5px solid var(--input-border)', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
   ciOverlay:     { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 },
-  ciModal:       { background: '#fff', borderRadius: 16, padding: 24, width: 'min(400px,95vw)', maxHeight: '90dvh', overflow: 'auto', boxShadow: '0 8px 40px rgba(0,0,0,.25)' },
-  iconBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#64748b', padding: '2px 6px' },
+  ciModal:       { background: 'var(--surface)', borderRadius: 16, padding: 24, width: 'min(400px,95vw)', maxHeight: '90dvh', overflow: 'auto', boxShadow: '0 8px 40px rgba(0,0,0,.25)' },
+  iconBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--text-2)', padding: '2px 6px' },
 };

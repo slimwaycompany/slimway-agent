@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 const CIRC_KEYS = ['neck','chest','arm_l','arm_r','waist','belly','glutes','thigh_l','thigh_r','shin_l','shin_r'] as const;
@@ -61,12 +61,12 @@ function BodyPanel({ m, prev }: { m: Msr | null | undefined; prev: Msr | null | 
         const pval = prev?.[pt.key] != null ? Number(prev[pt.key]) : null;
         const delta = pval != null ? val - pval : null;
         const isLoss = delta != null && delta < 0;
-        const bg = tapped === pt.key ? '#263CD9' : isLoss ? '#16a34a' : '#94a3b8';
+        const bg = tapped === pt.key ? 'var(--accent)' : isLoss ? 'var(--success)' : 'var(--text-3)';
         return (
           <button key={pt.key}
             onClick={() => setTapped(tapped === pt.key ? null : pt.key)}
             style={{ position: 'absolute', left: `${pt.x}%`, top: `${pt.y}%`,
-              transform: 'translate(-50%, -50%)', background: bg, color: '#fff',
+              transform: 'translate(-50%, -50%)', background: bg, color: 'var(--surface)',
               border: 'none', borderRadius: 6, fontSize: 9, padding: '2px 4px', cursor: 'pointer',
               whiteSpace: 'nowrap', fontWeight: 700, lineHeight: 1.3,
               boxShadow: '0 1px 4px rgba(0,0,0,0.25)', zIndex: 2 }}
@@ -91,11 +91,11 @@ function IBChart({ ibs }: { ibs: IBTest[] }) {
   const d = pts.map((_, i) => `${i === 0 ? 'M' : 'L'}${tx(i).toFixed(1)},${ty(vals[i]).toFixed(1)}`).join(' ');
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }}>
-      <path d={d} fill="none" stroke="#263CD9" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      <path d={d} fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
       {pts.map((ib, i) => (
         <g key={i}>
-          <circle cx={tx(i)} cy={ty(vals[i])} r={i === pts.length - 1 ? 5 : 3} fill="#263CD9" stroke="#fff" strokeWidth={1.5} />
-          <text x={tx(i)} y={H - 2} textAnchor="middle" fontSize={7} fill="#9ca3af">{fmtDate(ib.tested_at).slice(0, 5)}</text>
+          <circle cx={tx(i)} cy={ty(vals[i])} r={i === pts.length - 1 ? 5 : 3} fill="var(--accent)" stroke="var(--surface)" strokeWidth={1.5} />
+          <text x={tx(i)} y={H - 2} textAnchor="middle" fontSize={7} fill="var(--text-3)">{fmtDate(ib.tested_at).slice(0, 5)}</text>
         </g>
       ))}
     </svg>
@@ -118,17 +118,17 @@ export default function SharePage() {
   }, [token]);
 
   if (error) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,sans-serif', background: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,sans-serif', background: 'var(--surface-2)' }}>
       <div style={{ textAlign: 'center', padding: 32 }}>
         <div style={{ fontSize: 48 }}>🔗</div>
         <div style={{ fontWeight: 700, fontSize: 18, margin: '12px 0 8px' }}>Ссылка недействительна</div>
-        <div style={{ color: '#6b7280', fontSize: 14 }}>{error}</div>
+        <div style={{ color: 'var(--text-2)', fontSize: 14 }}>{error}</div>
       </div>
     </div>
   );
   if (!data) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,sans-serif' }}>
-      <div style={{ color: '#9ca3af' }}>Загрузка…</div>
+      <div style={{ color: 'var(--text-3)' }}>Загрузка…</div>
     </div>
   );
 
@@ -152,12 +152,12 @@ export default function SharePage() {
   const dateAfter  = last?.measured_at  ?? ibLast?.tested_at  ?? null;
 
   const CS = {
-    background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0',
+    background: 'var(--surface)', borderRadius: 16, border: '1px solid var(--border)',
     boxShadow: '0 2px 8px rgba(2,189,182,0.06)', marginBottom: 12, overflow: 'hidden',
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: 'Inter,sans-serif', color: '#1e293b', paddingBottom: 32 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--surface-2)', fontFamily: 'Inter,sans-serif', color: 'var(--text)', paddingBottom: 32 }}>
       <style>{`
         * { box-sizing: border-box; }
         .sp-figure-desktop { display: flex !important; }
@@ -177,7 +177,7 @@ export default function SharePage() {
       <div style={{ background: 'linear-gradient(135deg,#02BDB6,#263CD9)', padding: '20px 20px 24px' }}>
         <img src="/img/logo.png" alt="SlimWay" style={{ height: 28, borderRadius: 6, marginBottom: 10, display: 'block' }}
           onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-        <div style={{ color: '#fff', fontWeight: 700, fontSize: 22 }}>{data.name}</div>
+        <div style={{ color: 'var(--surface)', fontWeight: 700, fontSize: 22 }}>{data.name}</div>
         {dateBefore && dateAfter && dateBefore !== dateAfter && (
           <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 4 }}>
             {fmtDate(dateBefore)} → {fmtDate(dateAfter)}
@@ -187,31 +187,31 @@ export default function SharePage() {
 
       <div style={{ maxWidth: 600, margin: '0 auto', padding: '0 16px' }}>
         {/* Hero */}
-        <div style={{ background: '#fff', borderRadius: '0 0 20px 20px', padding: '20px 12px', marginBottom: 16,
+        <div style={{ background: 'var(--surface)', borderRadius: '0 0 20px 20px', padding: '20px 12px', marginBottom: 16,
           boxShadow: '0 4px 20px rgba(2,189,182,0.12)', display: 'flex' }}>
           {[
-            { val: cmLost  > 0 ? cmLost  : null, unit: 'сантиметров', color: '#02BDB6' },
-            { val: kgLost  > 0 ? kgLost  : null, unit: 'килограммов', color: '#263CD9' },
-            { val: fatLost != null && fatLost > 0 ? fatLost : null, unit: 'кг жира', color: '#ef4444' },
+            { val: cmLost  > 0 ? cmLost  : null, unit: 'сантиметров', color: 'var(--primary)' },
+            { val: kgLost  > 0 ? kgLost  : null, unit: 'килограммов', color: 'var(--accent)' },
+            { val: fatLost != null && fatLost > 0 ? fatLost : null, unit: 'кг жира', color: 'var(--danger)' },
           ].map(({ val, unit, color }, i) => (
             <div key={i} style={{ flex: 1, textAlign: 'center', padding: '0 4px' }}>
-              <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: val != null ? color : '#cbd5e1' }}>
+              <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: val != null ? color : 'var(--border)' }}>
                 {val != null ? `−${val.toFixed(1)}` : '—'}
               </div>
-              <div style={{ fontSize: 11, marginTop: 4, color: val != null ? '#6b7280' : '#cbd5e1' }}>{unit}</div>
+              <div style={{ fontSize: 11, marginTop: 4, color: val != null ? 'var(--text-2)' : 'var(--border)' }}>{unit}</div>
             </div>
           ))}
         </div>
 
         {/* Tabs — sticky on mobile */}
-        <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f1f5f9', paddingBottom: 8 }}>
-          <div style={{ display: 'flex', gap: 4, background: '#e2e8f0', borderRadius: 14, padding: 4 }}>
+        <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-2)', paddingBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 4, background: 'var(--border)', borderRadius: 14, padding: 4 }}>
             {(['figure','zones','inbody'] as const).map((id, i) => (
               <button key={id} onClick={() => setTab(id)} style={{
                 flex: 1, padding: '10px 4px', border: 'none', cursor: 'pointer',
                 fontWeight: 600, fontSize: 14, borderRadius: 10, transition: 'all 0.15s',
-                background: tab === id ? '#02BDB6' : 'transparent',
-                color: tab === id ? '#fff' : '#374151',
+                background: tab === id ? 'var(--primary)' : 'transparent',
+                color: tab === id ? 'var(--surface)' : 'var(--text)',
               }}>
                 {(['Фигура','Замеры','InBody'] as const)[i]}
               </button>
@@ -222,13 +222,13 @@ export default function SharePage() {
         {/* ── Фигура ── */}
         {tab === 'figure' && (
           ms.length < 2
-            ? <div style={CS}><div style={{ padding: '32px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>Пока недостаточно данных</div></div>
+            ? <div style={CS}><div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-3)', fontSize: 14 }}>Пока недостаточно данных</div></div>
             : <div style={CS}>
                 <div style={{ padding: '12px 8px' }}>
                   <div className="sp-figure-desktop" style={{ gap: 8, justifyContent: 'center' }}>
                     {[{ m: first, prev: null, label: 'До' }, { m: last, prev: first, label: 'После' }].map(({ m, prev, label }) => (
                       <div key={label} style={{ flex: 1 }}>
-                        <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#6b7280',
+                        <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-2)',
                           textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{label}</div>
                         <BodyPanel m={m} prev={prev} />
                       </div>
@@ -239,8 +239,8 @@ export default function SharePage() {
                       {(['before','after'] as const).map(mode => (
                         <button key={mode} onClick={() => setMView(mode)} style={{
                           padding: '6px 24px', borderRadius: 20, border: 'none', cursor: 'pointer',
-                          background: mView === mode ? '#02BDB6' : '#f1f5f9',
-                          color: mView === mode ? '#fff' : '#374151', fontWeight: 600, fontSize: 13,
+                          background: mView === mode ? 'var(--primary)' : 'var(--surface-2)',
+                          color: mView === mode ? 'var(--surface)' : 'var(--text)', fontWeight: 600, fontSize: 13,
                         }}>
                           {mode === 'before' ? 'До' : 'После'}
                         </button>
@@ -261,7 +261,7 @@ export default function SharePage() {
                   <thead>
                     <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
                       {['Зона','Было','Стало','Разница'].map((h, i) => (
-                        <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '10px 16px', color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
+                        <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '10px 16px', color: 'var(--text-2)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -271,11 +271,11 @@ export default function SharePage() {
                       const av = last?.[k] != null  ? Number(last[k])  : null;
                       if (bv == null && av == null) return null;
                       const d = bv != null && av != null && ms.length >= 2 ? av - bv : null;
-                      const dc = d == null ? '#9ca3af' : d < 0 ? '#16a34a' : d > 0 ? '#f59e0b' : '#9ca3af';
+                      const dc = d == null ? 'var(--text-3)' : d < 0 ? 'var(--success)' : d > 0 ? 'var(--warning)' : 'var(--text-3)';
                       return (
                         <tr key={k} style={{ borderTop: '1px solid #f8fafc', background: d != null && d < 0 ? 'rgba(22,163,74,0.03)' : 'transparent' }}>
                           <td style={{ padding: '8px 16px', fontWeight: 600 }}>{ZONE_LABELS[k]}</td>
-                          <td style={{ textAlign: 'right', padding: '8px 16px', color: '#6b7280' }}>{bv != null ? bv.toFixed(1) : '—'}</td>
+                          <td style={{ textAlign: 'right', padding: '8px 16px', color: 'var(--text-2)' }}>{bv != null ? bv.toFixed(1) : '—'}</td>
                           <td style={{ textAlign: 'right', padding: '8px 16px' }}>{av != null ? av.toFixed(1) : '—'}</td>
                           <td style={{ textAlign: 'right', padding: '8px 16px', color: dc, fontWeight: 700 }}>
                             {d == null ? '—' : (d < 0 ? '−' : '+') + Math.abs(d).toFixed(1)}
@@ -294,13 +294,13 @@ export default function SharePage() {
                   const av = last?.[k] != null  ? Number(last[k])  : null;
                   if (bv == null && av == null) return null;
                   const d = bv != null && av != null && ms.length >= 2 ? av - bv : null;
-                  const dc = d == null ? '#9ca3af' : d < 0 ? '#16a34a' : d > 0 ? '#f59e0b' : '#9ca3af';
+                  const dc = d == null ? 'var(--text-3)' : d < 0 ? 'var(--success)' : d > 0 ? 'var(--warning)' : 'var(--text-3)';
                   return (
                     <div key={k} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px',
-                      borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none',
+                      borderTop: idx > 0 ? '1px solid var(--border)' : 'none',
                       background: d != null && d < 0 ? 'rgba(22,163,74,0.03)' : 'transparent' }}>
                       <div style={{ flex: 1, fontWeight: 600, fontSize: 15 }}>{ZONE_LABELS[k]}</div>
-                      <div style={{ color: '#6b7280', fontSize: 13, marginRight: 10 }}>
+                      <div style={{ color: 'var(--text-2)', fontSize: 13, marginRight: 10 }}>
                         {bv != null ? bv.toFixed(1) : '—'} → {av != null ? av.toFixed(1) : '—'}
                       </div>
                       <div style={{ color: dc, fontWeight: 700, fontSize: 15, minWidth: 44, textAlign: 'right' }}>
@@ -317,13 +317,13 @@ export default function SharePage() {
         {/* ── InBody ── */}
         {tab === 'inbody' && (
           ibs.length === 0
-            ? <div style={CS}><div style={{ padding: '32px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>Нет данных InBody</div></div>
+            ? <div style={CS}><div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-3)', fontSize: 14 }}>Нет данных InBody</div></div>
             : <>
                 <div style={{ display: 'grid', gridTemplateColumns: ibs.length >= 2 ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 12 }}>
                   {(ibs.length >= 2 ? [{ ib: ibFirst!, comp: ibFirst }, { ib: ibLast!, comp: ibFirst }] : [{ ib: ibLast!, comp: null }]).map(({ ib, comp }, i) => (
-                    <div key={i} style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: '14px 16px',
+                    <div key={i} style={{ background: 'var(--surface)', borderRadius: 16, border: '1px solid var(--border)', padding: '14px 16px',
                       boxShadow: i > 0 ? '0 2px 10px rgba(2,189,182,0.1)' : 'none' }}>
-                      <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
                         {ibs.length === 1 ? 'Тест' : (i === 0 ? 'Первый' : 'Последний')} · {fmtDate(ib.tested_at)}
                       </div>
                       {IB_METRICS.map(({ label, field, unit, goodDown }) => {
@@ -332,10 +332,10 @@ export default function SharePage() {
                         const prevVal = i > 0 && comp ? comp[field] : null;
                         const delta = prevVal != null ? val - prevVal : null;
                         const arrow = delta == null ? '' : delta < 0 ? ' ↓' : delta > 0 ? ' ↑' : '';
-                        const arrowColor = delta == null ? '' : (goodDown ? delta < 0 : delta > 0) ? '#16a34a' : '#f59e0b';
+                        const arrowColor = delta == null ? '' : (goodDown ? delta < 0 : delta > 0) ? 'var(--success)' : 'var(--warning)';
                         return (
                           <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <span style={{ fontSize: 12, color: '#6b7280' }}>{label}</span>
+                            <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{label}</span>
                             <span style={{ fontWeight: 700, fontSize: 14 }}>
                               {val}{unit}{arrow && <span style={{ color: arrowColor, fontSize: 12 }}>{arrow}</span>}
                             </span>
@@ -348,7 +348,7 @@ export default function SharePage() {
                 {ibs.length >= 3 && (
                   <div style={CS}>
                     <div style={{ padding: '12px 12px 8px' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 6 }}>Вес — динамика</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>Вес — динамика</div>
                       <IBChart ibs={ibs} />
                     </div>
                   </div>
@@ -356,7 +356,7 @@ export default function SharePage() {
               </>
         )}
 
-        <div style={{ textAlign: 'center', fontSize: 12, color: '#94a3b8', paddingTop: 8 }}>
+        <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-3)', paddingTop: 8 }}>
           SlimWay — студия коррекции фигуры
         </div>
       </div>

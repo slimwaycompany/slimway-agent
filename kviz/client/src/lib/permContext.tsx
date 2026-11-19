@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+﻿import { createContext, useContext } from 'react';
 
 export interface PermEntry { level: 'view' | 'edit'; see_all: boolean }
 

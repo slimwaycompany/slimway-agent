@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+﻿import { useEffect, useRef, useState, type ReactNode } from 'react';
 import smIcon  from '../../assets/tv/sm.png';
 import kgIcon  from '../../assets/tv/kg.png';
 import fatIcon from '../../assets/tv/fat.png';
@@ -197,7 +197,7 @@ export default function TvScreen({
           overflow: el.type === 'text' ? undefined : 'hidden',
           opacity: isEditor && hidden ? 0.25 : undefined,
           ...(onElementClick ? {
-            outline: selectedId === el.id ? '2px solid #02BDB6' : undefined,
+            outline: selectedId === el.id ? '2px solid var(--primary)' : undefined,
             cursor: 'pointer',
           } : {}),
         };

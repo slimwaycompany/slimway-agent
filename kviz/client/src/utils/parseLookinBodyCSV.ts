@@ -1,4 +1,4 @@
-export interface InBodyCSVRow {
+﻿export interface InBodyCSVRow {
   inbody_id: string;
   tested_at: string;
   phone: string | null;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useContext } from 'react';
+﻿import { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import { toast } from '../../lib/toast';
 import { PermContext } from '../../lib/permContext';
 import { showConfirm } from '../../lib/confirm';
@@ -43,7 +43,7 @@ function fmtPrice(n: number) { return n.toLocaleString('ru-RU') + ' ₸'; }
 
 const PHASE_LABELS: Record<string, string> = { active: 'Активная', finishing: 'Завершающая' };
 const STATUS_LABELS: Record<string, string> = { working: 'Работает', repair: 'В ремонте', disabled: 'Отключен', broken: 'Неисправен' };
-const STATUS_COLORS: Record<string, string> = { working: '#16a34a', repair: '#f59e0b', disabled: '#94a3b8', broken: '#ef4444' };
+const STATUS_COLORS: Record<string, string> = { working: 'var(--success)', repair: 'var(--warning)', disabled: 'var(--text-3)', broken: 'var(--danger)' };
 const PM_KIND_LABELS: Record<string, string> = { cash: 'нал', cashless: 'безнал', deposit: 'депозит', bonus: 'бонус' };
 
 // ── Shared UI ──────────────────────────────────────────────────────────────────
@@ -190,7 +190,7 @@ function DevicesSection() {
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: STATUS_COLORS[d.status] ?? '#94a3b8', padding: '2px 7px', borderRadius: 6, background: '#f8fafc', border: `1px solid ${STATUS_COLORS[d.status] ?? '#e2e8f0'}` }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: STATUS_COLORS[d.status] ?? 'var(--text-3)', padding: '2px 7px', borderRadius: 6, background: 'var(--surface-2)', border: `1px solid ${STATUS_COLORS[d.status] ?? 'var(--border)'}` }}>
                   {STATUS_LABELS[d.status] ?? d.status}
                 </span>
                 <div style={S.rowActions}>
@@ -404,7 +404,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
                 <div>
                   <span style={{ fontWeight: 600 }}>{p.name}</span>
                   {!p.is_active && <span style={S.badge}>архив</span>}
-                  {p.is_promo  && <span style={{ ...S.badge, background: '#fef3c7', color: '#92400e' }}>Акция</span>}
+                  {p.is_promo  && <span style={{ ...S.badge, background: 'var(--warning-soft)', color: 'var(--warning)' }}>Акция</span>}
                   <span style={S.meta}>{fmtPrice(p.price)}{p.validity_days ? ` · ${p.validity_days} дн` : ''}</span>
                 </div>
                 <div style={S.rowActions}>
@@ -421,7 +421,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
                   )}
                 </div>
               </div>
-              {compStr && <span style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{compStr}</span>}
+              {compStr && <span style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>{compStr}</span>}
             </div>
           );
         })}
@@ -472,7 +472,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
                 <button type="button" style={{ ...S.addBtn, fontSize: 12, padding: '3px 10px' }} onClick={addItem}>+ Аппарат</button>
               </div>
               {localItems.length === 0 && (
-                <div style={{ color: '#94a3b8', fontSize: 13 }}>
+                <div style={{ color: 'var(--text-3)', fontSize: 13 }}>
                   {kind === 'abonement' ? 'Добавьте хотя бы 1 аппарат' : 'Нет аппаратов (необязательно)'}
                 </div>
               )}
@@ -560,7 +560,7 @@ function SuppliersSection() {
               {r.phone && <span style={S.meta}>{r.phone}</span>}
               {r.link && (
                 <span style={S.meta}>
-                  <a href={r.link} target="_blank" rel="noopener noreferrer" style={{ color: '#02BDB6' }}>{r.link.length > 40 ? r.link.slice(0, 40) + '…' : r.link}</a>
+                  <a href={r.link} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{r.link.length > 40 ? r.link.slice(0, 40) + '…' : r.link}</a>
                 </span>
               )}
             </div>
@@ -710,9 +710,9 @@ function ProductsSection() {
               </div>
             </div>
             {showSupplies === p.id && (
-              <div style={{ paddingLeft: 12, paddingBottom: 8, fontSize: 12, color: '#64748b' }}>
+              <div style={{ paddingLeft: 12, paddingBottom: 8, fontSize: 12, color: 'var(--text-2)' }}>
                 {supplies.map(s => (
-                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
+                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
                     <span>{s.supplied_at.slice(0, 10)} · {s.quantity} шт · {fmtPrice(s.purchase_price)}/шт · ост. {s.remaining}</span>
                     <button style={{ ...S.delBtn, fontSize: 11, padding: '2px 6px' }}
                       onClick={() => setConfirm({ message: `Удалить поставку от ${s.supplied_at.slice(0, 10)}?`, action: () => deleteSupply(s.id) })}>
@@ -760,7 +760,7 @@ function ProductsSection() {
               </select>
             </Field>
             {addingNewSup && (
-              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+              <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Новый поставщик</div>
                 <Field label="Название *"><input style={S.inp} value={newSupName} onChange={e => setNewSupName(e.target.value)} /></Field>
                 <Field label="Телефон"><input style={S.inp} value={newSupPhone} onChange={e => setNewSupPhone(e.target.value)} /></Field>
@@ -950,9 +950,9 @@ function PaymentMethodsSection() {
           <div key={r.id} style={{ ...S.row, opacity: r.is_active ? 1 : 0.6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 600 }}>{r.name}</span>
-              {r.is_system && <span style={{ ...S.badge, background: '#dbeafe', color: '#1d4ed8' }}>системный</span>}
+              {r.is_system && <span style={{ ...S.badge, background: 'var(--info-soft)', color: 'var(--info)' }}>системный</span>}
               {!r.is_active && !r.is_system && <span style={S.badge}>архив</span>}
-              <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 5, background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+              <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 5, background: 'var(--surface-2)', color: 'var(--text-2)', fontWeight: 600 }}>
                 {PM_KIND_LABELS[r.kind] ?? r.kind}
               </span>
             </div>
@@ -978,7 +978,7 @@ function PaymentMethodsSection() {
             {/* system entries: only toggle active */}
             {edit !== 'new' && (edit as PaymentMethod).is_system ? (
               <>
-                <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>Системный вид оплаты — можно только включить или отключить.</div>
+                <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>Системный вид оплаты — можно только включить или отключить.</div>
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, marginBottom: 16 }}>
                   <input type="checkbox" name="is_active" defaultChecked={(edit as PaymentMethod).is_active} /> Активен
                 </label>
@@ -1063,7 +1063,7 @@ function AdSourcesSection() {
             <div>
               <span style={{ fontWeight: 600 }}>{r.name}</span>
               {!r.is_active && <span style={S.badge}>архив</span>}
-              {r.requires_referrer && <span style={{ ...S.badge, background: '#fef3c7', color: '#92400e' }}>с реферером</span>}
+              {r.requires_referrer && <span style={{ ...S.badge, background: 'var(--warning-soft)', color: 'var(--warning)' }}>с реферером</span>}
             </div>
             <div style={S.rowActions}>
               <button style={S.editBtn} onClick={() => setEdit(r)}>✎</button>
@@ -1178,10 +1178,10 @@ function InBodySettingsSection() {
   }
 
   const SS: Record<string, React.CSSProperties> = {
-    block: { background: '#fff', borderRadius: 12, padding: '16px 20px', marginBottom: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
-    title: { fontWeight: 700, fontSize: 15, marginBottom: 12, color: '#1a202c' },
+    block: { background: 'var(--surface)', borderRadius: 12, padding: '16px 20px', marginBottom: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+    title: { fontWeight: 700, fontSize: 15, marginBottom: 12, color: 'var(--text)' },
     btn: { padding: '10px 20px', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit', border: 'none', opacity: loading ? 0.7 : 1, width: '100%', marginBottom: 8 },
-    tblKey: { padding: '4px 0', color: '#6b7280', fontSize: 13 },
+    tblKey: { padding: '4px 0', color: 'var(--text-2)', fontSize: 13 },
     tblVal: { padding: '4px 0', fontWeight: 700, fontSize: 13 },
   };
 
@@ -1190,8 +1190,8 @@ function InBodySettingsSection() {
       {error && <div style={{ ...S.errBox, marginBottom: 16 }}>{error}</div>}
       <div style={SS.block}>
         <div style={SS.title}>Импорт InBody CSV</div>
-        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>Загрузите <b>inbody270_data.csv</b> из LookinBody Web.</div>
-        <button style={{ ...SS.btn, background: '#02BDB6', color: '#fff' }} onClick={() => fileRef.current?.click()} disabled={loading}>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>Загрузите <b>inbody270_data.csv</b> из LookinBody Web.</div>
+        <button style={{ ...SS.btn, background: 'var(--primary)', color: 'var(--on-primary)' }} onClick={() => fileRef.current?.click()} disabled={loading}>
           {loading && !preview && !result ? 'Обработка…' : 'Выбрать файл CSV…'}
         </button>
         <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleFile} />
@@ -1199,51 +1199,51 @@ function InBodySettingsSection() {
           <div style={{ marginTop: 12 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
-                {[['Всего строк', preview.total, '#374151'], ['Новых', preview.new, '#16a34a'], ['Дублей', preview.duplicates, '#9ca3af'], ['С клиентом', preview.linked, '#2563eb'], ['Без клиента', preview.unlinked, preview.unlinked > 0 ? '#f59e0b' : '#9ca3af']].map(([label, val, color]) => (
+                {[['Всего строк', preview.total, 'var(--text)'], ['Новых', preview.new, 'var(--success)'], ['Дублей', preview.duplicates, 'var(--text-3)'], ['С клиентом', preview.linked, 'var(--info)'], ['Без клиента', preview.unlinked, preview.unlinked > 0 ? 'var(--warning)' : 'var(--text-3)']].map(([label, val, color]) => (
                   <tr key={String(label)}><td style={SS.tblKey}>{label}</td><td style={{ ...SS.tblVal, color: String(color) }}>{val}</td></tr>
                 ))}
               </tbody>
             </table>
             {preview.new > 0 && (
-              <button style={{ ...SS.btn, background: '#263CD9', color: '#fff', marginTop: 12 }} onClick={doImport} disabled={loading}>
+              <button style={{ ...SS.btn, background: 'var(--accent)', color: 'var(--on-primary)', marginTop: 12 }} onClick={doImport} disabled={loading}>
                 {loading ? 'Импорт…' : `Импортировать ${preview.new} новых`}
               </button>
             )}
           </div>
         )}
         {result && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 16px', marginTop: 12 }}>
-            <div style={{ fontWeight: 700, color: '#166534', marginBottom: 8 }}>✓ Импорт завершён</div>
+          <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 10, padding: '12px 16px', marginTop: 12 }}>
+            <div style={{ fontWeight: 700, color: 'var(--success)', marginBottom: 8 }}>✓ Импорт завершён</div>
             <table style={{ borderCollapse: 'collapse' }}>
               <tbody>
-                {[['Добавлено', result.added, '#16a34a'], ['Пропущено', result.skipped, '#9ca3af'], ['Без клиента', result.without_client, '#f59e0b']].map(([l, v, c]) => (
+                {[['Добавлено', result.added, 'var(--success)'], ['Пропущено', result.skipped, 'var(--text-3)'], ['Без клиента', result.without_client, 'var(--warning)']].map(([l, v, c]) => (
                   <tr key={String(l)}><td style={SS.tblKey}>{l}</td><td style={{ ...SS.tblVal, color: String(c) }}>{v}</td></tr>
                 ))}
               </tbody>
             </table>
-            <button style={{ ...SS.btn, background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', marginTop: 12 }} onClick={() => { setRows(null); setPreview(null); setResult(null); }}>Загрузить ещё</button>
+            <button style={{ ...SS.btn, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', marginTop: 12 }} onClick={() => { setRows(null); setPreview(null); setResult(null); }}>Загрузить ещё</button>
           </div>
         )}
       </div>
       <div style={SS.block}>
         <div style={SS.title}>Пересчёт InBody</div>
-        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>Пересчитывает числовые поля из raw CSV для всех тестов.</div>
-        <button style={{ ...SS.btn, background: '#f8fafc', color: '#374151', border: '1px solid #e2e6ea' }} onClick={doRecalculate} disabled={loading}>Пересчитать InBody</button>
-        {recalc && <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 14px', fontSize: 14, color: '#166534' }}>✓ Пересчитано: <b>{recalc.updated}</b></div>}
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>Пересчитывает числовые поля из raw CSV для всех тестов.</div>
+        <button style={{ ...SS.btn, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)' }} onClick={doRecalculate} disabled={loading}>Пересчитать InBody</button>
+        {recalc && <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 8, padding: '8px 14px', fontSize: 14, color: 'var(--success)' }}>✓ Пересчитано: <b>{recalc.updated}</b></div>}
       </div>
       <div style={SS.block}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={SS.title}>InBody без клиента</div>
-          <button style={{ padding: '6px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e6ea', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }} onClick={loadUnlinked} disabled={loading}>{unlinked === null ? 'Загрузить' : '↺ Обновить'}</button>
+          <button style={{ padding: '6px 14px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }} onClick={loadUnlinked} disabled={loading}>{unlinked === null ? 'Загрузить' : '↺ Обновить'}</button>
         </div>
         {unlinked !== null && unlinked.length > 0 && unlinked.map(t => (
-          <div key={t.id} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-            <span style={{ fontWeight: 600, color: '#263CD9' }}>{t.inbody_id}</span>
-            <span style={{ color: '#6b7280', marginLeft: 10 }}>{t.tested_at?.slice(0, 10)}</span>
-            {t.phone && <span style={{ color: '#64748b', marginLeft: 10 }}>{t.phone}</span>}
+          <div key={t.id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+            <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{t.inbody_id}</span>
+            <span style={{ color: 'var(--text-2)', marginLeft: 10 }}>{t.tested_at?.slice(0, 10)}</span>
+            {t.phone && <span style={{ color: 'var(--text-2)', marginLeft: 10 }}>{t.phone}</span>}
           </div>
         ))}
-        {unlinked !== null && !unlinked.length && <div style={{ color: '#94a3b8', fontSize: 13 }}>Все тесты привязаны</div>}
+        {unlinked !== null && !unlinked.length && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Все тесты привязаны</div>}
       </div>
     </div>
   );
@@ -1265,9 +1265,9 @@ function MigrateSection() {
   return (
     <div style={{ ...S.section, maxWidth: 480 }}>
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Перенести клиентов InBody в отчёт</div>
-      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14 }}>Для каждого телефона из inbody_tests: если клиент уже есть — пропустить; если нет — создать.</div>
+      <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14 }}>Для каждого телефона из inbody_tests: если клиент уже есть — пропустить; если нет — создать.</div>
       {error && <div style={S.errBox}>{error}</div>}
-      {result && <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14 }}>Добавлено: <b>{result.added}</b> · Уже были: <b>{result.already}</b></div>}
+      {result && <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14 }}>Добавлено: <b>{result.added}</b> · Уже были: <b>{result.already}</b></div>}
       <button style={S.saveBtn} onClick={migrate} disabled={loading}>{loading ? 'Переносим…' : 'Перенести клиентов InBody'}</button>
     </div>
   );
@@ -1301,9 +1301,9 @@ function BulkResultsSection() {
     <div style={{ ...S.section, maxWidth: 520 }}>
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Выгрузить все результаты в общий</div>
       {error && <div style={S.errBox}>{error}</div>}
-      {result && <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14 }}>Добавлено: <b>{result.added}</b> · Обновлено: <b>{result.updated}</b></div>}
+      {result && <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14 }}>Добавлено: <b>{result.added}</b> · Обновлено: <b>{result.updated}</b></div>}
       {preview && (
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ background: 'var(--info-soft)', border: '1px solid var(--info)', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Предпросмотр</div>
           <div style={{ fontSize: 13 }}>Добавится: <b>{preview.will_add}</b> · Обновится: <b>{preview.will_update}</b></div>
           <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
@@ -1343,7 +1343,7 @@ function MissionSection() {
   return (
     <div style={{ ...S.section, maxWidth: 480 }}>
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Миссия студии</div>
-      {loading && <div style={{ color: '#94a3b8', fontSize: 13 }}>Загрузка…</div>}
+      {loading && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
       {!loading && <>
         {error && <div style={S.errBox}>{error}</div>}
         <textarea style={{ ...S.inp, height: 120, resize: 'vertical', marginBottom: 12 }} value={mission} maxLength={500} onChange={e => setMission(e.target.value)} placeholder="Текст миссии студии (до 500 символов)" />
@@ -1395,14 +1395,14 @@ function FinanceSection() {
     <div style={{ ...S.section, padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* TBU panel */}
       {tbu?.tbu_month != null && (
-        <div style={{ padding: '10px 20px', background: 'linear-gradient(135deg,#f0fdf4,#ecfdf5)', borderBottom: '1px solid #d1fae5', display: 'flex', gap: 24, alignItems: 'center', flexShrink: 0 }}>
-          <span style={{ fontSize: 12, color: '#065f46', fontWeight: 700 }}>ТБУ:</span>
-          <span style={{ fontWeight: 800, fontSize: 16, color: '#059669' }}>{Math.round(tbu.tbu_month).toLocaleString('ru')} ₸/мес</span>
-          {tbu.tbu_week != null && <span style={{ fontSize: 12, color: '#6b7280' }}>неделя: {Math.round(tbu.tbu_week).toLocaleString('ru')} ₸</span>}
+        <div style={{ padding: '10px 20px', background: 'var(--success-soft)', borderBottom: '1px solid var(--success)', display: 'flex', gap: 24, alignItems: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 700 }}>ТБУ:</span>
+          <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--success)' }}>{Math.round(tbu.tbu_month).toLocaleString('ru')} ₸/мес</span>
+          {tbu.tbu_week != null && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>неделя: {Math.round(tbu.tbu_week).toLocaleString('ru')} ₸</span>}
         </div>
       )}
       {/* Tab bar */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '8px 20px 0', background: '#fff', flexShrink: 0 }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '8px 20px 0', background: 'var(--surface)', flexShrink: 0 }}>
         {(['staff','expenses','norms'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ ...S.subNavBtn, ...(tab === t ? S.subNavActive : {}), marginRight: 6, borderRadius: '8px 8px 0 0', borderBottom: tab === t ? 'none' : undefined }}>
             {t === 'staff' ? 'Сотрудники' : t === 'expenses' ? 'Статьи расходов' : 'Нормативы'}
@@ -1413,8 +1413,8 @@ function FinanceSection() {
         {tab === 'staff'    && <FinStaffTab />}
         {tab === 'expenses' && <FinExpensesTab />}
         {tab === 'norms'    && (
-          <div style={{ color: '#6b7280', fontSize: 14, paddingTop: 20 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#374151' }}>Нормативы</div>
+          <div style={{ color: 'var(--text-2)', fontSize: 14, paddingTop: 20 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>Нормативы</div>
             Плановые ставки для отчёта ТБУ. Будет добавлено позже.
           </div>
         )}
@@ -1590,8 +1590,8 @@ function FinExpensesTab() {
       {groups.map(g => (
         <div key={g.id} style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <span style={{ fontWeight: 700, fontSize: 13, color: '#374151' }}>{g.name}</span>
-            <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', borderRadius: 4, padding: '1px 6px' }}>{LEVEL_LABELS[g.level] ?? g.level}</span>
+            <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{g.name}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-3)', background: 'var(--surface-2)', borderRadius: 4, padding: '1px 6px' }}>{LEVEL_LABELS[g.level] ?? g.level}</span>
             <button style={S.editBtn} onClick={() => openGroup(g)}>Изм.</button>
             <button style={S.delBtn} onClick={() => setConfirmDel({ type: 'group', id: g.id, name: g.name })}>Удалить</button>
             <button style={{ ...S.addBtn, fontSize: 12, padding: '3px 10px' }} onClick={() => openItem('new', g.id)}>+ Статья</button>
@@ -1618,7 +1618,7 @@ function FinExpensesTab() {
           </div>
         </div>
       ))}
-      {groups.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Нет групп расходов</div>}
+      {groups.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет групп расходов</div>}
 
       {/* Group modal */}
       {editGroup !== null && (
@@ -1742,17 +1742,17 @@ function FunnelsSection() {
         <button style={S.addBtn} onClick={createFunnel}>+ Воронка</button>
       </div>
       {funnels.map(f => (
-        <div key={f.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 12, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 8, background: '#f8fafc' }}>
-            <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: '#1a202c' }}>{f.name}</span>
+        <div key={f.id} style={{ background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 12, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 8, background: 'var(--surface-2)' }}>
+            <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{f.name}</span>
             <button style={{ ...S.editBtn, fontSize: 11 }} onClick={() => toggleFunnelActive(f)}>{f.is_active ? 'Активна' : 'Неактивна'}</button>
           </div>
           <div style={{ padding: '8px 14px' }}>
             {f.stages.sort((a, b) => a.sort - b.sort).map(s => (
               <div key={s.id} style={{ ...S.row, opacity: s.is_archived ? 0.5 : 1 }}>
-                <span style={{ fontSize: 13, color: '#374151' }}>{s.name}</span>
+                <span style={{ fontSize: 13, color: 'var(--text)' }}>{s.name}</span>
                 <div style={S.rowActions}>
-                  <span style={{ fontSize: 11, color: '#94a3b8', padding: '2px 6px' }}>{s.kind}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-3)', padding: '2px 6px' }}>{s.kind}</span>
                   {s.kind === 'normal' && (
                     <button style={S.editBtn} onClick={() => toggleStageArchived(s)}>{s.is_archived ? 'Восстановить' : 'В архив'}</button>
                   )}
@@ -1812,7 +1812,7 @@ function LeadTagsSection() {
       <div style={S.list}>
         {tags.map(t => (
           <div key={t.id} style={S.row}>
-            <span style={{ fontSize: 13, color: '#374151' }}>{t.name}{t.is_system && <span style={S.badge}>системный</span>}</span>
+            <span style={{ fontSize: 13, color: 'var(--text)' }}>{t.name}{t.is_system && <span style={S.badge}>системный</span>}</span>
             {!t.is_system && <button style={S.delBtn} onClick={() => del(t)}>Удалить</button>}
           </div>
         ))}
@@ -1880,7 +1880,7 @@ function TaskTypesSection() {
               </>
             ) : (
               <>
-                <span style={{ fontSize: 13, color: '#374151' }}>{t.name}</span>
+                <span style={{ fontSize: 13, color: 'var(--text)' }}>{t.name}</span>
                 <div style={S.rowActions}>
                   <button style={S.editBtn} onClick={() => { setEditing(t); setEditName(t.name); }}>Изменить</button>
                   <button style={S.delBtn}  onClick={() => del(t.id, t.name)}>Удалить</button>
@@ -1953,7 +1953,7 @@ function LostReasonsSection() {
               </>
             ) : (
               <>
-                <span style={{ fontSize: 13, color: '#374151' }}>{r.name}</span>
+                <span style={{ fontSize: 13, color: 'var(--text)' }}>{r.name}</span>
                 <div style={S.rowActions}>
                   <button style={S.editBtn} onClick={() => { setEditing(r); setEditName(r.name); }}>Изменить</button>
                   <button style={S.delBtn}  onClick={() => del(r.id, r.name)}>Удалить</button>
@@ -2006,7 +2006,7 @@ function FbUsersSection() {
   return (
     <div style={S.section}>
       {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
-      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
+      <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
         Сопоставьте менеджеров Fitbase с сотрудниками приложения.
       </div>
       <div style={S.list}>
@@ -2014,9 +2014,9 @@ function FbUsersSection() {
           const mapped = mapping.find(m => m.fitbase_full_name === name);
           return (
             <div key={name} style={S.row}>
-              <span style={{ fontSize: 13, color: '#374151', flex: 1 }}>{name}</span>
+              <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{name}</span>
               <select
-                style={{ padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer' }}
+                style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer' }}
                 value={mapped?.user_id ?? ''}
                 onChange={e => setMap(name, e.target.value)}
               >
@@ -2101,7 +2101,7 @@ function ScriptMaterialsSub() {
               </div>
             </div>
             {editing === item.key && (
-              <div style={{ padding: '10px 14px', background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
+              <div style={{ padding: '10px 14px', background: 'var(--surface-2)', borderTop: '1px solid var(--border)' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                   <Field label="Тип">
                     <select style={{ ...S.inp, padding: '7px 8px' }} value={draft.kind ?? 'link'} onChange={e => setDraft(d => ({ ...d, kind: e.target.value }))}>
@@ -2191,16 +2191,16 @@ function ScriptPromoSub() {
         <button style={S.editBtn} onClick={() => { setEditPromo(true); setErr(''); }}>✎ Изменить</button>
       </div>
       {promo ? (
-        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 16 }}>
+        <div style={{ background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', padding: '12px 16px', marginBottom: 16 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{promo.name}</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>
             {promo.valid_from ? promo.valid_from.slice(0, 10) : '—'} → {promo.valid_to ? promo.valid_to.slice(0, 10) : '∞'}
-            {' · '}{promo.is_active ? <span style={{ color: '#16a34a', fontWeight: 600 }}>Активна</span> : <span style={{ color: '#94a3b8' }}>Неактивна</span>}
+            {' · '}{promo.is_active ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>Активна</span> : <span style={{ color: 'var(--text-3)' }}>Неактивна</span>}
           </div>
-          {promo.rule_text && <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>{promo.rule_text}</div>}
+          {promo.rule_text && <div style={{ fontSize: 12, color: 'var(--text)', marginTop: 6 }}>{promo.rule_text}</div>}
         </div>
       ) : (
-        <div style={{ ...S.empty, marginBottom: 16, background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0' }}>Акция не настроена</div>
+        <div style={{ ...S.empty, marginBottom: 16, background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)' }}>Акция не настроена</div>
       )}
 
       <div style={{ ...S.subheader, marginTop: 16 }}>
@@ -2346,14 +2346,14 @@ function TokenStatusBlock() {
     <div style={{ marginBottom: 20 }}>
       <div style={{ fontWeight: 600, marginBottom: 8 }}>EasyChat-токен</div>
       {status == null
-        ? <span style={{ color: '#94a3b8' }}>загрузка…</span>
+        ? <span style={{ color: 'var(--text-3)' }}>загрузка…</span>
         : status.has_token
-          ? <span style={{ color: '#16a34a' }}>✅ есть, обновлён {fmtDate(status.updated_at)}{status.updated_by ? ` (${status.updated_by})` : ''}</span>
-          : <span style={{ color: '#ef4444' }}>❌ не задан</span>
+          ? <span style={{ color: 'var(--success)' }}>✅ есть, обновлён {fmtDate(status.updated_at)}{status.updated_by ? ` (${status.updated_by})` : ''}</span>
+          : <span style={{ color: 'var(--danger)' }}>❌ не задан</span>
       }
       <button style={{ ...S.csvBtn, marginLeft: 12, fontSize: 12 }} onClick={() => setShowHint(!showHint)}>Обновить</button>
       {showHint && (
-        <div style={{ marginTop: 8, padding: '8px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, color: '#475569' }}>
+        <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--text-2)' }}>
           Откройте расширение «Скриптолог SlimWay» в Chrome, пока открыт чат EasyChat.<br/>
           Если токен не обновился — перезагрузите расширение: <b>chrome://extensions → ↺</b> рядом со «Скриптолог SlimWay».
         </div>
@@ -2394,21 +2394,21 @@ function NameMapEditor({ value, onChange }: { value: Record<string, string>; onC
   }
   return (
     <div style={{ marginBottom: 12 }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 6 }}>
         Карта имён (Fitbase → отображаемое)
       </label>
       {entries.map(([k, v], i) => (
         <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-          <input style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+          <input style={{ flex: 1, padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 12 }}
             placeholder="Имя в Fitbase" value={k} onChange={e => set(i, e.target.value, v)} />
-          <span style={{ alignSelf: 'center', color: '#94a3b8', fontSize: 14 }}>→</span>
-          <input style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+          <span style={{ alignSelf: 'center', color: 'var(--text-3)', fontSize: 14 }}>→</span>
+          <input style={{ flex: 1, padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 12 }}
             placeholder="Отображаемое" value={v} onChange={e => set(i, k, e.target.value)} />
-          <button style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: 13 }}
+          <button style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: 'var(--danger-soft)', color: 'var(--danger)', cursor: 'pointer', fontSize: 13 }}
             onClick={() => remove(i)}>✕</button>
         </div>
       ))}
-      <button style={{ marginTop: 4, padding: '4px 10px', border: '1px dashed #cbd5e1', borderRadius: 6, background: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12 }}
+      <button style={{ marginTop: 4, padding: '4px 10px', border: '1px dashed var(--border)', borderRadius: 6, background: 'none', color: 'var(--text-2)', cursor: 'pointer', fontSize: 12 }}
         onClick={() => onChange({ ...value, '': '' })}>+ Добавить</button>
     </div>
   );
@@ -2478,10 +2478,10 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 function NumField({ label, value, onChange, min, max }: { label: string; value: number; onChange: (v: number) => void; min?: number; max?: number }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 3 }}>{label}</label>
       <input type="number" value={value} min={min} max={max}
         onChange={e => onChange(Number(e.target.value))}
-        style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+        style={{ width: '100%', padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
     </div>
   );
 }
@@ -2489,9 +2489,9 @@ function NumField({ label, value, onChange, min, max }: { label: string; value: 
 function TimeField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 3 }}>{label}</label>
       <input type="time" value={value} onChange={e => onChange(e.target.value)}
-        style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+        style={{ width: '100%', padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
     </div>
   );
 }
@@ -2528,8 +2528,8 @@ function ControlLinesSection() {
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
     fontSize: 13, fontWeight: active ? 700 : 500,
-    color: active ? '#02BDB6' : '#64748b',
-    borderBottom: active ? '2px solid #02BDB6' : '2px solid transparent',
+    color: active ? 'var(--primary)' : 'var(--text-2)',
+    borderBottom: active ? '2px solid var(--primary)' : '2px solid transparent',
   });
 
   async function loadVersions(r: C2Role) {
@@ -2599,7 +2599,7 @@ function ControlLinesSection() {
 
   return (
     <div style={S.section}>
-      <div style={{ borderBottom: '1px solid #e2e8f0', display: 'flex', marginBottom: 20 }}>
+      <div style={{ borderBottom: '1px solid var(--border)', display: 'flex', marginBottom: 20 }}>
         {(['call_center', 'consultant'] as C2Role[]).map(r => (
           <button key={r} style={tabStyle(role === r)} onClick={() => { setRole(r); setDraft(null); setErr(''); setOk(''); }}>
             {ROLE_LABELS[r]}
@@ -2608,18 +2608,18 @@ function ControlLinesSection() {
       </div>
 
       {/* Version list */}
-      {loading && <div style={{ color: '#94a3b8', padding: '12px 0' }}>Загрузка…</div>}
+      {loading && <div style={{ color: 'var(--text-3)', padding: '12px 0' }}>Загрузка…</div>}
       {!loading && versions.length === 0 && (
-        <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 12 }}>Версий нет — будет создана версия по умолчанию при первом запуске движка.</div>
+        <div style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 12 }}>Версий нет — будет создана версия по умолчанию при первом запуске движка.</div>
       )}
       {!loading && versions.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>Версии</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Версии</div>
           {versions.map((v, i) => (
-            <div key={v.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '7px 10px', background: i === 0 ? '#f0fdf4' : '#f8fafc', borderRadius: 7, marginBottom: 6, border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+            <div key={v.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '7px 10px', background: i === 0 ? 'var(--success-soft)' : 'var(--surface-2)', borderRadius: 7, marginBottom: 6, border: '1px solid var(--border)', flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 600, fontSize: 13 }}>с {v.effective_from}</span>
-              {i === 0 && <span style={{ background: '#02BDB6', color: '#fff', fontSize: 11, borderRadius: 4, padding: '1px 7px' }}>текущая</span>}
-              <span style={{ color: '#64748b', fontSize: 12 }}>
+              {i === 0 && <span style={{ background: 'var(--primary)', color: 'var(--on-primary)', fontSize: 11, borderRadius: 4, padding: '1px 7px' }}>текущая</span>}
+              <span style={{ color: 'var(--text-2)', fontSize: 12 }}>
                 фикс {fmtMoney(v.config.fixed_pay)} · перем. {fmtMoney(v.config.max_variable)} · {FORMULA_LABELS[v.config.formula]}
               </span>
               <button style={{ ...S.editBtn, marginLeft: 'auto' }} onClick={() => startEdit(v)}>Редактировать</button>
@@ -2632,17 +2632,17 @@ function ControlLinesSection() {
 
       {/* Draft editor */}
       {draft && (
-        <div style={{ marginTop: 20, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 20 }}>
+        <div style={{ marginTop: 20, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Редактор черновика</div>
 
           {err && <div style={S.errBox}>{err}</div>}
-          {ok  && <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: '#15803d', marginBottom: 12 }}>{ok}</div>}
+          {ok  && <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: 'var(--success)', marginBottom: 12 }}>{ok}</div>}
 
           {/* Money fields */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
             {([['fixed_pay', 'Фикс (₸)'], ['max_variable', 'Макс. переменная (₸)'], ['point_price', 'Цена пункта (₸)']] as [keyof LineConfig, string][]).map(([k, label]) => (
               <div key={k} style={{ flex: '1 1 140px', minWidth: 120 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>{label}</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 3 }}>{label}</label>
                 <input type="number" min={0} style={{ ...S.inp, width: '100%' }}
                   value={String(draft[k])}
                   onChange={e => setDraftField(k as 'fixed_pay', Number(e.target.value))} />
@@ -2653,7 +2653,7 @@ function ControlLinesSection() {
           {/* Formula */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
             <div style={{ flex: '1 1 180px' }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Формула</label>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 3 }}>Формула</label>
               <select style={{ ...S.inp, width: '100%' }} value={draft.formula} onChange={e => setDraftField('formula', e.target.value as 'forgive_then_all' | 'per_point')}>
                 <option value="forgive_then_all">Прощение + полный вычет</option>
                 <option value="per_point">По пунктам</option>
@@ -2661,21 +2661,21 @@ function ControlLinesSection() {
             </div>
             {draft.formula === 'forgive_then_all' && (
               <div style={{ flex: '1 1 120px', minWidth: 100 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Прощается нарушений</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 3 }}>Прощается нарушений</label>
                 <input type="number" min={0} max={10} style={{ ...S.inp, width: '100%' }}
                   value={String(draft.forgive_count)}
                   onChange={e => setDraftField('forgive_count', Number(e.target.value))} />
               </div>
             )}
             <div style={{ flex: '1 1 180px' }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Итог окончателен</label>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 3 }}>Итог окончателен</label>
               <select style={{ ...S.inp, width: '100%' }} value={draft.finalize} onChange={e => setDraftField('finalize', e.target.value as 'next_morning' | 'after_review')}>
                 <option value="next_morning">Утром следующего дня</option>
                 <option value="after_review">После проверки ОКК</option>
               </select>
             </div>
             <div style={{ flex: '1 1 140px', minWidth: 100 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Авто-зачёт ОКК (дней)</label>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 3 }}>Авто-зачёт ОКК (дней)</label>
               <input type="number" min={1} max={30} style={{ ...S.inp, width: '100%' }}
                 value={String(draft.review_auto_days)}
                 onChange={e => setDraftField('review_auto_days', Number(e.target.value))} />
@@ -2684,24 +2684,24 @@ function ControlLinesSection() {
 
           {/* Points list */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>Пункты</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Пункты</div>
             {draft.points.map((pt, pi) => (
-              <div key={pt.key} style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '10px 14px', marginBottom: 8 }}>
+              <div key={pt.key} style={{ background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)', padding: '10px 14px', marginBottom: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <input type="checkbox" checked={pt.enabled} onChange={() => togglePoint(pi)}
-                    style={{ width: 16, height: 16, accentColor: '#02BDB6', cursor: 'pointer' }} />
+                    style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }} />
                   <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{pt.title}</span>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>#{pt.order}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>#{pt.order}</span>
                 </div>
-                {pt.description && <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 6px 24px' }}>{pt.description}</div>}
+                {pt.description && <div style={{ fontSize: 12, color: 'var(--text-2)', margin: '4px 0 6px 24px' }}>{pt.description}</div>}
                 <div style={{ marginLeft: 24 }}>
                   {pt.checks.map((ch, ci) => (
                     <div key={ch.key} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
                       <input type="checkbox" checked={ch.enabled} onChange={() => toggleCheck(pi, ci)}
-                        style={{ width: 14, height: 14, accentColor: '#263CD9', cursor: 'pointer' }} />
-                      <span style={{ fontSize: 12, color: '#374151' }}>{ch.type}</span>
+                        style={{ width: 14, height: 14, accentcolor: 'var(--accent)', cursor: 'pointer' }} />
+                      <span style={{ fontSize: 12, color: 'var(--text)' }}>{ch.type}</span>
                       {Object.keys(ch.params).length > 0 && (
-                        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
                           ({Object.entries(ch.params).map(([k, v]) => `${k}=${v}`).join(', ')})
                         </span>
                       )}
@@ -2713,15 +2713,15 @@ function ControlLinesSection() {
           </div>
 
           {/* Save with date */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
             <div style={{ flex: 1, minWidth: 160 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>Действует с даты</label>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 3 }}>Действует с даты</label>
               <input type="date" style={{ ...S.inp, width: '100%' }} value={savingDate} onChange={e => setSavingDate(e.target.value)} />
             </div>
             <button style={{ ...S.addBtn, minWidth: 160 }} disabled={saving} onClick={save}>
               {saving ? 'Сохранение…' : 'Сохранить с даты…'}
             </button>
-            <button style={{ ...S.delBtn, background: 'none', color: '#64748b', border: '1px solid #e2e8f0' }} onClick={() => { setDraft(null); setErr(''); setOk(''); }}>
+            <button style={{ ...S.delBtn, background: 'none', color: 'var(--text-2)', border: '1px solid var(--border)' }} onClick={() => { setDraft(null); setErr(''); setOk(''); }}>
               Отмена
             </button>
           </div>
@@ -2759,18 +2759,18 @@ function ControlSettingsSection() {
     if (!success) { setErr(data.error || 'Ошибка'); } else setOk(true);
   }
 
-  if (!cfg) return <div style={S.section}><div style={{ color: '#94a3b8', padding: 24 }}>Загрузка…</div></div>;
+  if (!cfg) return <div style={S.section}><div style={{ color: 'var(--text-3)', padding: 24 }}>Загрузка…</div></div>;
 
   function patch(p: Partial<ControlCfg>) { setCfg(prev => prev ? { ...prev, ...p } : prev); setOk(false); }
 
-  const grpStyle: React.CSSProperties = { background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: '14px 16px', marginBottom: 16 };
-  const grpTitle: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 12 };
+  const grpStyle: React.CSSProperties = { background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', padding: '14px 16px', marginBottom: 16 };
+  const grpTitle: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12 };
   const twoCol: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' };
 
   return (
     <div style={{ ...S.section, maxWidth: 640 }}>
       {err && <div style={S.errBox}>{err}</div>}
-      {ok  && <div style={{ ...S.errBox, background: '#f0fdf4', color: '#16a34a' }}>Сохранено</div>}
+      {ok  && <div style={{ ...S.errBox, background: 'var(--success-soft)', color: 'var(--success)' }}>Сохранено</div>}
 
       {/* General */}
       <div style={grpStyle}>
@@ -2817,7 +2817,7 @@ function ControlSettingsSection() {
         <ToggleRow label="Включён" checked={cfg.s3_enabled} onChange={v => patch({ s3_enabled: v })} />
         <NumField label="Макс. дней до срока задачи" value={cfg.s3_task_max_days} onChange={v => patch({ s3_task_max_days: v })} min={1} max={30} />
         <div style={{ marginBottom: 12 }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Этапы «Записан» (мультивыбор)</label>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 6 }}>Этапы «Записан» (мультивыбор)</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {stages.map(st => (
               <label key={st.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
@@ -2828,7 +2828,7 @@ function ControlSettingsSection() {
                 {st.name}
               </label>
             ))}
-            {!stages.length && <span style={{ fontSize: 12, color: '#94a3b8' }}>Этапы не загружены</span>}
+            {!stages.length && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Этапы не загружены</span>}
           </div>
         </div>
         <div style={twoCol}>
@@ -2836,13 +2836,13 @@ function ControlSettingsSection() {
           <NumField label="Минут после пробного (s3_after)" value={cfg.s3_after_minutes ?? 30} onChange={v => patch({ s3_after_minutes: v })} min={1} max={120} />
         </div>
         <div style={{ marginBottom: 8 }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Стоп-слова в именах (через запятую)</label>
-          <input style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 13, boxSizing: 'border-box' }}
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 4 }}>Стоп-слова в именах (через запятую)</label>
+          <input style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 13, boxSizing: 'border-box' }}
             value={(cfg.name_stop_words ?? []).join(', ')}
             onChange={e => patch({ name_stop_words: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} />
         </div>
         <NameMapEditor value={cfg.staff_name_map ?? {}} onChange={v => patch({ staff_name_map: v })} />
-        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Проверки</div>
+        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Проверки</div>
         <CheckList checks={S3_CHECKS} labels={S3_LABELS} value={cfg.s3_checks} onChange={v => patch({ s3_checks: v })} />
       </div>
 
@@ -2858,7 +2858,7 @@ function ControlSettingsSection() {
           <NumField label="Дней без визитов" value={cfg.s4_no_visit_days} onChange={v => patch({ s4_no_visit_days: v })} min={1} max={60} />
           <NumField label="Дней до повторной проверки" value={cfg.s4_retry_days} onChange={v => patch({ s4_retry_days: v })} min={1} max={30} />
         </div>
-        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Проверки</div>
+        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Проверки</div>
         <CheckList checks={S4_CHECKS} labels={S4_LABELS} value={cfg.s4_checks} onChange={v => patch({ s4_checks: v })} />
       </div>
 
@@ -2867,7 +2867,7 @@ function ControlSettingsSection() {
         <div style={grpTitle}>№5 Посещения</div>
         <ToggleRow label="Включён" checked={cfg.s5_enabled} onChange={v => patch({ s5_enabled: v })} />
         <NumField label="Минут на отметку после начала сеанса" value={cfg.s5_mark_minutes} onChange={v => patch({ s5_mark_minutes: v })} min={5} max={240} />
-        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Проверки</div>
+        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Проверки</div>
         <CheckList checks={S5_CHECKS} labels={S5_LABELS} value={cfg.s5_checks} onChange={v => patch({ s5_checks: v })} />
       </div>
 
@@ -2878,7 +2878,7 @@ function ControlSettingsSection() {
         <NumField label="Опоздание = приход позднее чем за N мин до смены" value={cfg.arrive_before_minutes ?? 15} onChange={v => patch({ arrive_before_minutes: v })} min={0} max={120} />
         {positions.length > 0 && (
           <div style={{ marginBottom: 10 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 6 }}>
               Скрыть кнопку «Пришла» на мобильных для должностей
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -2941,28 +2941,28 @@ function ControlScheduleSection() {
     <div style={S.section}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
         <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-          style={{ padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14 }} />
-        <span style={{ color: '#64748b' }}>—</span>
+          style={{ padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 14 }} />
+        <span style={{ color: 'var(--text-2)' }}>—</span>
         <input type="date" value={to} onChange={e => setTo(e.target.value)}
-          style={{ padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14 }} />
+          style={{ padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 14 }} />
         <button style={S.editBtn} onClick={load} disabled={loading}>{loading ? '…' : 'Показать'}</button>
         <button style={S.addBtn} onClick={sync} disabled={syncing}>{syncing ? 'Синхронизация…' : 'Синхронизировать с таблицей'}</button>
       </div>
-      {msg && <div style={{ marginBottom: 8, fontSize: 13, color: msg.startsWith('С') ? '#16a34a' : '#ef4444' }}>{msg}</div>}
+      {msg && <div style={{ marginBottom: 8, fontSize: 13, color: msg.startsWith('С') ? 'var(--success)' : 'var(--danger)' }}>{msg}</div>}
       <div style={S.list}>
-        <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 90px 90px 90px 90px 60px', gap: 0, background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '8px 12px', fontSize: 12, fontWeight: 700, color: '#64748b' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 90px 90px 90px 90px 60px', gap: 0, background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', padding: '8px 12px', fontSize: 12, fontWeight: 700, color: 'var(--text-2)' }}>
           <span>Дата</span><span>Сотрудник</span><span>План (нач)</span><span>План (кон)</span><span>Факт (нач)</span><span>Факт (кон)</span><span>Роль</span>
         </div>
         {rows.length === 0 && !loading && <div style={S.empty}>Нет данных за период</div>}
         {rows.map((r, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 90px 90px 90px 90px 60px', gap: 0, padding: '8px 12px', borderBottom: '1px solid #f1f5f9', fontSize: 13, alignItems: 'center' }}>
-            <span style={{ color: '#64748b' }}>{String(r.shift_date)}</span>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 90px 90px 90px 90px 60px', gap: 0, padding: '8px 12px', borderBottom: '1px solid var(--border)', fontSize: 13, alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-2)' }}>{String(r.shift_date)}</span>
             <span style={{ fontWeight: 600 }}>{String(r.user_name)}</span>
             <span>{String(r.plan_start ?? '—')}</span>
             <span>{String(r.plan_end   ?? '—')}</span>
-            <span style={{ color: r.fact_start ? '#16a34a' : '#94a3b8' }}>{String(r.fact_start ?? '—')}</span>
-            <span style={{ color: r.fact_end   ? '#16a34a' : '#94a3b8' }}>{String(r.fact_end   ?? '—')}</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#3b82f6' }}>{roleLabel(r.role)}</span>
+            <span style={{ color: r.fact_start ? 'var(--success)' : 'var(--text-3)' }}>{String(r.fact_start ?? '—')}</span>
+            <span style={{ color: r.fact_end   ? 'var(--success)' : 'var(--text-3)' }}>{String(r.fact_end   ?? '—')}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--info)' }}>{roleLabel(r.role)}</span>
           </div>
         ))}
       </div>
@@ -3004,11 +3004,11 @@ function TrustedDevicesSection() {
 
   return (
     <div style={S.section}>
-      <div style={{ marginBottom: 16, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e' }}>
+      <div style={{ marginBottom: 16, background: 'var(--warning-soft)', border: '1px solid var(--warning)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--warning)' }}>
         Зарегистрируйте компьютеры, с которых сотрудники будут отмечаться. Эта страница должна быть открыта на нужном компьютере — cookie привяжется к этому браузеру.
       </div>
       {err && <div style={S.errBox}>{err}</div>}
-      {msg && <div style={{ ...S.errBox, background: '#f0fdf4', color: '#16a34a' }}>{msg}</div>}
+      {msg && <div style={{ ...S.errBox, background: 'var(--success-soft)', color: 'var(--success)' }}>{msg}</div>}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <input style={{ ...S.inp, flex: 1 }} placeholder="Название компьютера (например: Ресепшн 1)"
           value={name} onChange={e => setName(e.target.value)}
@@ -3024,8 +3024,8 @@ function TrustedDevicesSection() {
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                 {String(d.name)}
-                {d.is_current && <span style={{ fontSize: 11, background: '#dcfce7', color: '#16a34a', padding: '1px 6px', borderRadius: 5, fontWeight: 700 }}>этот компьютер</span>}
-                {!d.is_active && <span style={{ fontSize: 11, background: '#fee2e2', color: '#dc2626', padding: '1px 6px', borderRadius: 5 }}>отключён</span>}
+                {d.is_current && <span style={{ fontSize: 11, background: 'var(--success-soft)', color: 'var(--success)', padding: '1px 6px', borderRadius: 5, fontWeight: 700 }}>этот компьютер</span>}
+                {!d.is_active && <span style={{ fontSize: 11, background: 'var(--danger-soft)', color: 'var(--danger)', padding: '1px 6px', borderRadius: 5 }}>отключён</span>}
               </div>
               <span style={S.meta}>Добавил: {String(d.created_by ?? '—')} · Последний визит: {d.last_seen_at ? new Date(String(d.last_seen_at)).toLocaleString('ru-RU') : '—'}</span>
             </div>
@@ -3077,30 +3077,30 @@ function PbxSection() {
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
     fontSize: 13, fontWeight: active ? 700 : 500,
-    color: active ? '#02BDB6' : '#64748b',
-    borderBottom: active ? '2px solid #02BDB6' : '2px solid transparent',
+    color: active ? 'var(--primary)' : 'var(--text-2)',
+    borderBottom: active ? '2px solid var(--primary)' : '2px solid transparent',
   });
 
   return (
     <div style={S.section}>
-      {!settings && <div style={{ color: '#94a3b8', padding: 24 }}>Загрузка…</div>}
+      {!settings && <div style={{ color: 'var(--text-3)', padding: 24 }}>Загрузка…</div>}
       {settings && (
         <>
-          <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: 16, marginBottom: 16 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Webhook URL для OnlinePBX</div>
             {settings.configured && settings.webhook_url ? (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <code style={{ flex: 1, fontSize: 11, background: '#f8fafc', padding: '6px 10px', borderRadius: 6, wordBreak: 'break-all', border: '1px solid #e2e8f0' }}>{settings.webhook_url}</code>
+                <code style={{ flex: 1, fontSize: 11, background: 'var(--surface-2)', padding: '6px 10px', borderRadius: 6, wordBreak: 'break-all', border: '1px solid var(--border)' }}>{settings.webhook_url}</code>
                 <button style={S.editBtn} onClick={async () => { await navigator.clipboard.writeText(settings.webhook_url!); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
                   {copied ? '✓' : 'Копировать'}
                 </button>
               </div>
             ) : (
-              <div style={{ color: '#ef4444', fontSize: 13 }}>PBX_WEBHOOK_SECRET не задан в Render Environment</div>
+              <div style={{ color: 'var(--danger)', fontSize: 13 }}>PBX_WEBHOOK_SECRET не задан в Render Environment</div>
             )}
           </div>
 
-          <div style={{ borderBottom: '1px solid #e2e8f0', display: 'flex', marginBottom: 16 }}>
+          <div style={{ borderBottom: '1px solid var(--border)', display: 'flex', marginBottom: 16 }}>
             <button style={tabStyle(tab === 'extensions')} onClick={() => setTab('extensions')}>Внутренние номера</button>
             <button style={tabStyle(tab === 'calls')}      onClick={() => setTab('calls')}>Последние звонки</button>
             <button style={tabStyle(tab === 'events')}     onClick={() => setTab('events')}>События</button>
@@ -3120,7 +3120,7 @@ function PbxSection() {
                   <div key={String(e.extension)} style={S.row}>
                     <div>
                       <span style={{ fontWeight: 600 }}>{String(e.extension)}</span>
-                      <span style={{ marginLeft: 8, color: '#374151' }}>{String(e.user_name)}</span>
+                      <span style={{ marginLeft: 8, color: 'var(--text)' }}>{String(e.user_name)}</span>
                     </div>
                     <button style={S.delBtn} onClick={() => delExt(String(e.extension))}>Удалить</button>
                   </div>
@@ -3136,10 +3136,10 @@ function PbxSection() {
                 <div key={i} style={S.row}>
                   <div>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>{String(c.client_phone ?? '—')}</span>
-                    <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>{String(c.direction ?? '')} · {String(c.status ?? '')}</span>
+                    <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-2)' }}>{String(c.direction ?? '')} · {String(c.status ?? '')}</span>
                     {c.user_name && <span style={{ marginLeft: 8, fontSize: 12 }}>{String(c.user_name)}</span>}
                   </div>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{c.started_at ? new Date(String(c.started_at)).toLocaleString('ru-RU') : '—'}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{c.started_at ? new Date(String(c.started_at)).toLocaleString('ru-RU') : '—'}</span>
                 </div>
               ))}
             </div>
@@ -3152,12 +3152,12 @@ function PbxSection() {
                 <div key={i} style={S.row}>
                   <div>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>{String(e.event ?? '—')}</span>
-                    <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>{String(e.call_uuid ?? '')}</span>
+                    <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-2)' }}>{String(e.call_uuid ?? '')}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {e.error && <span style={{ fontSize: 11, color: '#ef4444' }}>{String(e.error)}</span>}
-                    <span style={{ fontSize: 11, background: e.processed ? '#dcfce7' : '#fee2e2', color: e.processed ? '#16a34a' : '#dc2626', padding: '1px 6px', borderRadius: 4 }}>{e.processed ? 'OK' : 'Ошибка'}</span>
-                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{e.received_at ? new Date(String(e.received_at)).toLocaleString('ru-RU') : '—'}</span>
+                    {e.error && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{String(e.error)}</span>}
+                    <span style={{ fontSize: 11, background: e.processed ? 'var(--success-soft)' : 'var(--danger-soft)', color: e.processed ? 'var(--success)' : 'var(--danger)', padding: '1px 6px', borderRadius: 4 }}>{e.processed ? 'OK' : 'Ошибка'}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{e.received_at ? new Date(String(e.received_at)).toLocaleString('ru-RU') : '—'}</span>
                   </div>
                 </div>
               ))}
@@ -3196,7 +3196,7 @@ function AddSlideModal({ results, onAdd, onClose }: {
   const [duration, setDuration] = useState(8);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
-  const INP: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' as const };
+  const INP: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' as const };
 
   async function submit() {
     setSaving(true); setErr('');
@@ -3256,7 +3256,7 @@ function AddSlideModal({ results, onAdd, onClose }: {
         <label style={S.label}>Длительность (сек)</label>
         <input type="number" min={2} max={300} value={duration}
           onChange={e => setDuration(+e.target.value)}
-          style={{ width: 100, padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit' }} />
+          style={{ width: 100, padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 14, fontFamily: 'inherit' }} />
       </div>
       <div style={S.mBtns}>
         <button style={S.cancelBtn} onClick={onClose}>Отмена</button>
@@ -3376,14 +3376,14 @@ function TvSection() {
 
   const resMap = Object.fromEntries(results.map(r => [r.id, r.title]));
   const imgSrc = (path: string | null) => path ? `/kviz/api/tv/media?path=${encodeURIComponent(path)}` : null;
-  const INP: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const };
-  const SEC: React.CSSProperties = { background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 16 };
+  const INP: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const };
+  const SEC: React.CSSProperties = { background: 'var(--surface-2)', borderRadius: 10, padding: 16, marginBottom: 16 };
 
   return (
     <div style={S.section}>
       {/* Header: title + screen editor + TV URL */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1a202c', flex: 1 }}>ТВ-экран — настройки</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', flex: 1 }}>ТВ-экран — настройки</div>
         <button style={S.addBtn} onClick={() => setScreenEditorOpen(true)}>✏️ Редактор экрана</button>
         {tvUrl && (
           <button style={S.csvBtn} onClick={async () => { await navigator.clipboard.writeText(tvUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
@@ -3398,7 +3398,7 @@ function TvSection() {
           <div style={{ fontWeight: 700, fontSize: 14 }}>Слайды ({slides.length}/20)</div>
           {slides.length < 20 && <button style={S.addBtn} onClick={() => setAddSlideOpen(true)}>+ Добавить слайд</button>}
         </div>
-        {slides.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Нет слайдов. Добавьте первый.</div>}
+        {slides.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет слайдов. Добавьте первый.</div>}
         {slides.map((sl, idx) => {
           const isFirst = idx === 0;
           const isLast  = idx === slides.length - 1;
@@ -3408,41 +3408,41 @@ function TvSection() {
             ? [resMap[sl.result_a ?? ''], resMap[sl.result_b ?? '']].filter(Boolean).join(' / ') || '—'
             : '';
           return (
-            <div key={sl.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
+            <div key={sl.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ minWidth: 24, fontSize: 13, fontWeight: 700, color: '#64748b' }}>#{sl.position}</span>
-                <span style={{ fontSize: 11, fontWeight: 600, background: '#eff6ff', color: '#3b82f6', padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap' }}>{KIND_LABELS[sl.kind]}</span>
+                <span style={{ minWidth: 24, fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>#{sl.position}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, background: 'var(--info-soft)', color: 'var(--info)', padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap' }}>{KIND_LABELS[sl.kind]}</span>
                 {sl.kind === 'free' && sl.layout
-                  ? <div style={{ width: 60, height: 38, position: 'relative', overflow: 'hidden', borderRadius: 6, border: '1px solid #e2e8f0', flexShrink: 0 }}>
+                  ? <div style={{ width: 60, height: 38, position: 'relative', overflow: 'hidden', borderRadius: 6, border: '1px solid var(--border)', flexShrink: 0 }}>
                       <FreeSlide layout={sl.layout} mediaUrl={p => imgSrc(p) ?? ''} />
                     </div>
                   : (sl.kind === 'promo' || sl.kind === 'usp') && sl.image_path
-                    ? <img src={imgSrc(sl.image_path)!} alt="" style={{ height: 36, borderRadius: 4, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
-                    : <span style={{ fontSize: 13, color: '#374151', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                    ? <img src={imgSrc(sl.image_path)!} alt="" style={{ height: 36, borderRadius: 4, objectFit: 'cover', border: '1px solid var(--border)' }} />
+                    : <span style={{ fontSize: 13, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
                 }
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', flexShrink: 0, flexWrap: 'wrap' }}>
                   <input type="number" min={2} max={300} value={sl.duration_sec}
                     onChange={e => setSlides(prev => prev.map(s => s.id === sl.id ? { ...s, duration_sec: +e.target.value } : s))}
                     onBlur={e => patchSlide(sl.id, { duration_sec: +e.target.value })}
-                    style={{ width: 54, padding: '4px 6px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                    style={{ width: 54, padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
                     title="Длительность (сек)" />
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>сек</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>сек</span>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>
                     <input type="checkbox" checked={sl.enabled} onChange={e => patchSlide(sl.id, { enabled: e.target.checked })} />
                     показывать
                   </label>
                   {sl.kind === 'free' && (
-                    <button style={{ ...S.editBtn, color: '#263CD9', borderColor: '#c7d2fe' }}
+                    <button style={{ ...S.editBtn, color: 'var(--accent)', borderColor: 'var(--accent)' }}
                       onClick={() => setSlideEditorState({ id: sl.id, layout: migrateFreeLayoutToV2(sl.layout) })}>Редактировать</button>
                   )}
                   <button style={S.iconBtn} disabled={isFirst} onClick={() => patchSlide(sl.id, { position: sl.position - 1 }, true)} title="Выше">↑</button>
                   <button style={S.iconBtn} disabled={isLast}  onClick={() => patchSlide(sl.id, { position: sl.position + 1 }, true)} title="Ниже">↓</button>
-                  <button style={{ ...S.iconBtn, color: '#ef4444' }} onClick={() => setConfirmDelSlide(sl.id)} title="Удалить">✕</button>
+                  <button style={{ ...S.iconBtn, color: 'var(--danger)' }} onClick={() => setConfirmDelSlide(sl.id)} title="Удалить">✕</button>
                 </div>
               </div>
               {(sl.kind === 'promo' || sl.kind === 'usp') && (
                 <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0 }}>Подпись:</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-2)', flexShrink: 0 }}>Подпись:</span>
                   <input
                     value={sl.slide_text ?? ''}
                     maxLength={300}
@@ -3453,7 +3453,7 @@ function TvSection() {
                   />
                 </div>
               )}
-              {slideErr[sl.id] && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{slideErr[sl.id]}</div>}
+              {slideErr[sl.id] && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 6 }}>{slideErr[sl.id]}</div>}
             </div>
           );
         })}
@@ -3472,7 +3472,7 @@ function TvSection() {
               slide_text: firstSlide.slide_text,
             } : null;
             return (
-            <div key={kind} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+            <div key={kind} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ position: 'relative', aspectRatio: String(CAROUSEL_ASPECT), overflow: 'hidden' }}>
                 <TvBackground fx={resolveScreenFx(screenLayout ?? defaultScreenLayout())} staticOnly />
                 <SlideTemplate
@@ -3483,7 +3483,7 @@ function TvSection() {
                 />
               </div>
               <div style={{ padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{TEMPLATE_KIND_LABELS[kind]}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{TEMPLATE_KIND_LABELS[kind]}</span>
                 <button style={S.editBtn} onClick={() => setTemplateEditor({ kind })}>Редактировать</button>
               </div>
             </div>
@@ -3500,12 +3500,12 @@ function TvSection() {
             style={{ ...INP, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addResult()} />
           <button style={S.saveBtn} onClick={addResult} disabled={addingResult || !newResultTitle.trim()}>{addingResult ? '…' : '+ Добавить'}</button>
         </div>
-        {results.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Нет карточек.</div>}
+        {results.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет карточек.</div>}
         {results.map(res => (
-          <div key={res.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+          <div key={res.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, color: '#1a202c' }}>{res.title || '—'}</div>
-              <button style={{ ...S.iconBtn, color: '#ef4444' }} onClick={() => setConfirmDelResult(res.id)}>✕</button>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{res.title || '—'}</div>
+              <button style={{ ...S.iconBtn, color: 'var(--danger)' }} onClick={() => setConfirmDelResult(res.id)}>✕</button>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               {(['before', 'after'] as const).map(side => {
@@ -3514,12 +3514,12 @@ function TvSection() {
                 const uk = `${res.id}-${side}`;
                 return (
                   <div key={side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>{label}</div>
                     {path
-                      ? <img src={imgSrc(path)!} alt={label} style={{ width: 72, height: 96, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
-                      : <div style={{ width: 72, height: 96, background: '#e2e8f0', borderRadius: 8, display: 'grid', placeItems: 'center', fontSize: 22, color: '#94a3b8' }}>📷</div>
+                      ? <img src={imgSrc(path)!} alt={label} style={{ width: 72, height: 96, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                      : <div style={{ width: 72, height: 96, background: 'var(--border)', borderRadius: 8, display: 'grid', placeItems: 'center', fontSize: 22, color: 'var(--text-3)' }}>📷</div>
                     }
-                    <label style={{ fontSize: 11, color: '#263CD9', cursor: 'pointer', fontWeight: 600 }}>
+                    <label style={{ fontSize: 11, color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}>
                       {uploading === uk ? '…' : path ? 'Заменить' : 'Загрузить'}
                       <input type="file" accept="image/jpeg,image/png" style={{ display: 'none' }}
                         disabled={uploading === uk}
@@ -3529,12 +3529,12 @@ function TvSection() {
                 );
               })}
             </div>
-            {resultErr[res.id] && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>{resultErr[res.id]}</div>}
+            {resultErr[res.id] && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 6 }}>{resultErr[res.id]}</div>}
           </div>
         ))}
       </div>
 
-      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 8, paddingTop: 8 }}>
+      <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8 }}>
         <BulkResultsSection />
       </div>
 
@@ -3635,7 +3635,7 @@ function AppearanceSection() {
               <div style={{ height: 10, width: '60%', borderRadius: 4, background: t === 'dark' ? '#151a21' : '#fff', marginBottom: 6 }} />
               <div style={{ height: 7, width: '80%', borderRadius: 3, background: t === 'dark' ? '#1c222b' : '#f1f5f9', marginBottom: 4 }} />
               <div style={{ height: 7, width: '50%', borderRadius: 3, background: t === 'dark' ? '#1c222b' : '#f1f5f9', marginBottom: 8 }} />
-              <div style={{ height: 18, width: 56, borderRadius: 5, background: '#02BDB6' }} />
+              <div style={{ height: 18, width: 56, borderRadius: 5, background: 'var(--primary)' }} />
             </div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
               {t === 'light' ? 'Светлая' : 'Тёмная'}
@@ -3703,7 +3703,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="settings-wrap" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
+    <div className="settings-wrap" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--bg)' }}>
       <div className={`settings-sidebar${mobileContent ? ' settings-sidebar--hidden' : ''}`} style={S.sidebar}>
         <div style={S.sidebarTitle}>Настройки</div>
         {visibleNav.map(n => (
@@ -3714,7 +3714,7 @@ export default function SettingsPage() {
       </div>
       <div className={`settings-content${!mobileContent ? ' settings-content--hidden' : ''}`} style={S.content}>
         <div style={S.contentHeader}>
-          <button className="settings-back-btn" style={{ background: 'none', border: 'none', color: '#263CD9', cursor: 'pointer', fontSize: 14, fontWeight: 600, padding: '0 12px 0 0', fontFamily: 'inherit' }}
+          <button className="settings-back-btn" style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, fontWeight: 600, padding: '0 12px 0 0', fontFamily: 'inherit' }}
             onClick={() => setMobileContent(false)}>← Назад</button>
           {NAV.find(n => n.id === section)?.label}
         </div>
@@ -3730,9 +3730,9 @@ export default function SettingsPage() {
         {section === 'sources'    && <AdSourcesSection />}
         {section === 'classes'    && (
           <div style={S.section}>
-            <div style={{ textAlign: 'center', color: '#94a3b8', paddingTop: 40 }}>
+            <div style={{ textAlign: 'center', color: 'var(--text-3)', paddingTop: 40 }}>
               <div style={{ fontSize: 36, marginBottom: 8 }}>🚧</div>
-              <div style={{ fontSize: 15, color: '#64748b' }}>В разработке</div>
+              <div style={{ fontSize: 15, color: 'var(--text-2)' }}>В разработке</div>
             </div>
           </div>
         )}
@@ -3758,34 +3758,34 @@ export default function SettingsPage() {
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
 const S: Record<string, React.CSSProperties> = {
-  sidebar:       { width: 220, flexShrink: 0, background: '#fff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
-  sidebarTitle:  { padding: '16px 16px 8px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.06em' },
-  navItem:       { display: 'flex', alignItems: 'center', width: '100%', background: 'none', border: 'none', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: '#374151', cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', borderRadius: 0 },
-  navActive:     { background: 'rgba(2,189,182,0.1)', color: '#02BDB6', fontWeight: 700 },
+  sidebar:       { width: 220, flexShrink: 0, background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
+  sidebarTitle:  { padding: '16px 16px 8px', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' as const, letterSpacing: '0.06em' },
+  navItem:       { display: 'flex', alignItems: 'center', width: '100%', background: 'none', border: 'none', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: 'var(--text)', cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', borderRadius: 0 },
+  navActive:     { background: 'var(--primary-soft)', color: 'var(--primary)', fontWeight: 700 },
   content:       { flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' },
-  contentHeader: { padding: '12px 20px', background: '#fff', borderBottom: '1px solid #e2e8f0', fontSize: 16, fontWeight: 700, flexShrink: 0, position: 'sticky' as const, top: 0, zIndex: 1 },
+  contentHeader: { padding: '12px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', fontSize: 16, fontWeight: 700, flexShrink: 0, position: 'sticky' as const, top: 0, zIndex: 1 },
   section:       { padding: '16px 20px 40px', flexGrow: 1 },
   subheader:     { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  subTitle:      { fontSize: 14, fontWeight: 700, color: '#1a202c' },
-  list:          { background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: 8 },
-  row:           { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #f1f5f9', gap: 8 },
+  subTitle:      { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
+  list:          { background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 8 },
+  row:           { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--border)', gap: 8 },
   rowActions:    { display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' as const },
-  meta:          { display: 'block', fontSize: 12, color: '#64748b', marginTop: 2 },
-  badge:         { display: 'inline-block', marginLeft: 6, padding: '1px 6px', fontSize: 11, borderRadius: 6, background: '#fee2e2', color: '#ef4444' },
-  empty:         { padding: '12px 14px', color: '#94a3b8', fontSize: 13 },
-  addBtn:        { padding: '6px 14px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-  editBtn:       { padding: '4px 10px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: '#374151' },
-  delBtn:        { padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: '#ef4444' },
-  iconBtn:       { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#64748b', padding: '2px 6px' },
-  overlay:       { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 },
-  modal:         { background: '#fff', borderRadius: 16, padding: 24, width: 'min(480px,96vw)', maxHeight: '90vh', overflow: 'auto' },
-  label:         { display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 },
-  inp:           { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
+  meta:          { display: 'block', fontSize: 12, color: 'var(--text-2)', marginTop: 2 },
+  badge:         { display: 'inline-block', marginLeft: 6, padding: '1px 6px', fontSize: 11, borderRadius: 6, background: 'var(--danger-soft)', color: 'var(--danger)' },
+  empty:         { padding: '12px 14px', color: 'var(--text-3)', fontSize: 13 },
+  addBtn:        { padding: '6px 14px', background: 'var(--primary)', color: 'var(--on-primary)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+  editBtn:       { padding: '4px 10px', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' },
+  delBtn:        { padding: '4px 10px', background: 'none', border: '1px solid var(--danger)', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--danger)' },
+  iconBtn:       { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text-2)', padding: '2px 6px' },
+  overlay:       { position: 'fixed', inset: 0, background: 'var(--overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 },
+  modal:         { background: 'var(--surface)', borderRadius: 16, padding: 24, width: 'min(480px,96vw)', maxHeight: '90vh', overflow: 'auto' },
+  label:         { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 },
+  inp:           { width: '100%', padding: '9px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: 'var(--input-bg)', color: 'var(--text)' },
   mBtns:         { display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' },
-  cancelBtn:     { padding: '8px 16px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  saveBtn:       { padding: '8px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
-  csvBtn:        { padding: '8px 14px', background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  errBox:        { background: '#fef2f2', color: '#ef4444', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
-  subNavBtn:     { padding: '6px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: '#374151', fontWeight: 500 },
-  subNavActive:  { background: '#02BDB6', color: '#fff', borderColor: '#02BDB6' },
+  cancelBtn:     { padding: '8px 16px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' },
+  saveBtn:       { padding: '8px 18px', background: 'var(--primary)', color: 'var(--on-primary)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' },
+  csvBtn:        { padding: '8px 14px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  errBox:        { background: 'var(--danger-soft)', color: 'var(--danger)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
+  subNavBtn:     { padding: '6px 14px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)', fontWeight: 500 },
+  subNavActive:  { background: 'var(--primary)', color: 'var(--on-primary)', borderColor: 'var(--primary)' },
 };

@@ -1,4 +1,4 @@
-export type PriceFormat = 'vacu' | 'cross' | 'rollshape' | 'vacu_roll' | 'complex';
+﻿export type PriceFormat = 'vacu' | 'cross' | 'rollshape' | 'vacu_roll' | 'complex';
 
 export interface PricePackage {
   sessions: number;

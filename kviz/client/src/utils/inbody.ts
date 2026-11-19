@@ -1,4 +1,4 @@
-// InBody QR string parser.
+﻿// InBody QR string parser.
 // Format documented from physical sheet 2026-10-17 and verified against sample string.
 
 export interface InBodyData {

@@ -1,4 +1,4 @@
-import jsQR from 'jsqr';
+﻿import jsQR from 'jsqr';
 import { BarcodeDetector as BDPolyfill, prepareZXingModule } from 'barcode-detector/ponyfill';
 
 // Serve WASM from our own host, not jsDelivr CDN

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from '../../lib/toast';
 import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost } from '../../api';
@@ -265,14 +265,14 @@ export default function NewMeasurePage() {
     return (
       <MeasureLayout>
         <div style={{ padding: '0 16px 80px', maxWidth: 560, margin: '0 auto' }}>
-          <div style={{ background: 'linear-gradient(135deg,#02BDB6,#263CD9)', borderRadius: 16, padding: '20px 24px', color: '#fff', marginBottom: 20, textAlign: 'center' }}>
+          <div style={{ background: 'linear-gradient(135deg,#02BDB6,#263CD9)', borderRadius: 16, padding: '20px 24px', color: 'var(--surface)', marginBottom: 20, textAlign: 'center' }}>
             <div style={{ fontSize: 32, fontWeight: 700 }}>Замер №{m.measure_no} сохранён</div>
             <div style={{ opacity: 0.85, marginTop: 4 }}>{client.name} · {fmtDate(m.measured_at)}</div>
             {client.fitbase_client_id && (
               <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.15)', borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
                 {fbAtResult
                   ? <span>✓ Отправлено в Fitbase {new Date(fbAtResult).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</span>
-                  : <><button onClick={sendResultFitbase} disabled={fbSendingResult} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, color: '#fff', padding: '3px 10px', cursor: 'pointer', fontSize: 12 }}>{fbSendingResult ? '…' : 'Отправить в Fitbase'}</button>
+                  : <><button onClick={sendResultFitbase} disabled={fbSendingResult} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, color: 'var(--surface)', padding: '3px 10px', cursor: 'pointer', fontSize: 12 }}>{fbSendingResult ? '…' : 'Отправить в Fitbase'}</button>
                     {fbErrorResult && <span style={{ marginLeft: 8, opacity: 0.85 }}>{fbErrorResult}</span>}</>}
               </div>
             )}
@@ -293,11 +293,11 @@ export default function NewMeasurePage() {
                       <td>{f.label}</td>
                       <td>{cur.toFixed(1)}</td>
                       <td>{prv?.toFixed(1) ?? '—'}</td>
-                      <td style={{ color: prv != null ? (cur - prv < 0 ? '#16a34a' : cur - prv > 0 ? '#f59e0b' : '#6b7280') : '#6b7280', fontWeight: 600 }}>
+                      <td style={{ color: prv != null ? (cur - prv < 0 ? 'var(--success)' : cur - prv > 0 ? 'var(--warning)' : 'var(--text-2)') : 'var(--text-2)', fontWeight: 600 }}>
                         {prv != null ? fmtDiff(cur - prv) : '—'}
                       </td>
                       <td>{st?.toFixed(1) ?? '—'}</td>
-                      <td style={{ color: st != null ? (cur - st < 0 ? '#16a34a' : cur - st > 0 ? '#f59e0b' : '#6b7280') : '#6b7280', fontWeight: 600 }}>
+                      <td style={{ color: st != null ? (cur - st < 0 ? 'var(--success)' : cur - st > 0 ? 'var(--warning)' : 'var(--text-2)') : 'var(--text-2)', fontWeight: 600 }}>
                         {st != null ? fmtDiff(cur - st) : '—'}
                       </td>
                     </tr>
@@ -307,10 +307,10 @@ export default function NewMeasurePage() {
             </table>
           </div>
 
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 18px', margin: '16px 0', fontSize: 14 }}>
+          <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 12, padding: '14px 18px', margin: '16px 0', fontSize: 14 }}>
             <strong>Итого обхватов: {total.toFixed(1)} см</strong>
-            {prevTotal !== null && <span style={{ color: total - prevTotal < 0 ? '#16a34a' : '#f59e0b', marginLeft: 8 }}>{fmtDiff(total - prevTotal)} к прошлому</span>}
-            {startTotal !== null && <span style={{ color: total - startTotal < 0 ? '#16a34a' : '#f59e0b', marginLeft: 8 }}>{fmtDiff(total - startTotal)} со старта</span>}
+            {prevTotal !== null && <span style={{ color: total - prevTotal < 0 ? 'var(--success)' : 'var(--warning)', marginLeft: 8 }}>{fmtDiff(total - prevTotal)} к прошлому</span>}
+            {startTotal !== null && <span style={{ color: total - startTotal < 0 ? 'var(--success)' : 'var(--warning)', marginLeft: 8 }}>{fmtDiff(total - startTotal)} со старта</span>}
           </div>
 
           {studioWarn && (
@@ -349,12 +349,12 @@ export default function NewMeasurePage() {
             disabled={syncing} onClick={syncClients}>
             {syncing ? 'Обновляю…' : '🔄 Обновить клиентов из Fitbase'}
           </button>
-          {syncResult && <span style={{ fontSize: 12, color: '#6b7280' }}>{syncResult}</span>}
+          {syncResult && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{syncResult}</span>}
         </div>
 
         {/* Client search */}
         <div style={{ position: 'relative', marginBottom: 16 }}>
-          <label style={{ fontSize: 13, color: '#6b7280', fontWeight: 500, display: 'block', marginBottom: 6 }}>Клиент</label>
+          <label style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 500, display: 'block', marginBottom: 6 }}>Клиент</label>
           <input
             className="field input"
             style={{ width: '100%', padding: '12px 14px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 15 }}
@@ -368,9 +368,9 @@ export default function NewMeasurePage() {
               {suggestions.map((c, i) => (
                 <div key={i} className="measure-dropdown-item" onClick={() => selectSuggestion(c)}>
                   <span style={{ fontWeight: 600 }}>{c.name}</span>
-                  {c.phone && <span style={{ marginLeft: 8, color: '#6b7280', fontSize: 13 }}>{fmtPhone(c.phone)}</span>}
+                  {c.phone && <span style={{ marginLeft: 8, color: 'var(--text-2)', fontSize: 13 }}>{fmtPhone(c.phone)}</span>}
                   <span className={`measure-source-badge ${c.source}`}>{c.source === 'measure' ? 'Замеры' : 'Fitbase'}</span>
-                  {c.measure_count > 0 && <span style={{ marginLeft: 8, fontSize: 12, color: '#9ca3af' }}>замеров: {c.measure_count} · посл. {c.last_measured ? fmtDate(c.last_measured) : '—'}</span>}
+                  {c.measure_count > 0 && <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-3)' }}>замеров: {c.measure_count} · посл. {c.last_measured ? fmtDate(c.last_measured) : '—'}</span>}
                 </div>
               ))}
               <div className="measure-dropdown-item measure-new-client" onClick={() => { setShowDrop(false); setNewClientMode(true); setNewName(query); }}>
@@ -388,24 +388,24 @@ export default function NewMeasurePage() {
 
         {/* New client form */}
         {newClientMode && !selectedClient && (
-          <div style={{ background: '#f9fafb', border: '1px solid #e2e6ea', borderRadius: 12, padding: '16px', marginBottom: 16 }}>
+          <div style={{ background: '#f9fafb', border: '1px solid var(--border)', borderRadius: 12, padding: '16px', marginBottom: 16 }}>
             <div style={{ fontWeight: 600, marginBottom: 12 }}>Новый клиент</div>
             <div className="field"><label>Имя *</label><input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Имя клиента" /></div>
             <div className="field"><label>Телефон *</label><input value={newPhone} onChange={e => { setNewPhone(e.target.value); setPhoneSuggestions([]); }} placeholder="+7..." inputMode="tel" /></div>
             {phoneSuggestions.length > 0 && (
-              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
+              <div style={{ background: 'var(--warning-soft)', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
                 <div style={{ fontSize: 12, color: '#92400e', marginBottom: 6 }}>Найдено совпадение по телефону — выбрать существующего?</div>
                 {phoneSuggestions.map((c, i) => (
                   <div key={i} onClick={() => { setPhoneSuggestions([]); selectSuggestion(c); setNewClientMode(false); }}
-                    style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, background: '#fff', marginBottom: 4, border: '1px solid #e2e6ea' }}>
+                    style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', marginBottom: 4, border: '1px solid var(--border)' }}>
                     <span style={{ fontWeight: 600 }}>{c.name}</span>
-                    {c.phone && <span style={{ color: '#6b7280', fontSize: 13 }}>{fmtPhone(c.phone)}</span>}
+                    {c.phone && <span style={{ color: 'var(--text-2)', fontSize: 13 }}>{fmtPhone(c.phone)}</span>}
                     <span className={`measure-source-badge ${c.source}`}>{c.source === 'measure' ? 'Замеры' : 'Fitbase'}</span>
                   </div>
                 ))}
               </div>
             )}
-            {newClientErr && <div style={{ color: '#dc2626', fontSize: 13, marginTop: 8 }}>{newClientErr}</div>}
+            {newClientErr && <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{newClientErr}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={createNewClient}>Создать</button>
               <button className="btn btn-secondary" onClick={() => setNewClientMode(false)}>Отмена</button>
@@ -417,7 +417,7 @@ export default function NewMeasurePage() {
         {selectedClient && (
           <div style={{ background: 'rgba(2,189,182,0.06)', border: '1px solid rgba(2,189,182,0.3)', borderRadius: 12, padding: '12px 16px', marginBottom: 20 }}>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedClient.name}</div>
-            <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {selectedClient.phone && <span>{fmtPhone(selectedClient.phone)}</span>}
               <span>ID: {shortId(selectedClient.id)}</span>
               <span>Замеров: {selectedClient.measurements.length}</span>
@@ -454,14 +454,14 @@ export default function NewMeasurePage() {
                         onKeyDown={e => handleKeyDown(e, idx)}
                         placeholder={f.optional ? 'необяз.' : ''}
                         style={{ width: 90, padding: '10px 10px', border: '2px solid #e2e6ea', borderRadius: 8, fontSize: 16, textAlign: 'right',
-                          borderColor: v && (isNaN(num) || num < f.min || num > f.max) ? '#dc2626' : '#e2e6ea' }}
+                          borderColor: v && (isNaN(num) || num < f.min || num > f.max) ? 'var(--danger)' : 'var(--border)' }}
                       />
-                      <span style={{ color: '#9ca3af', fontSize: 13, minWidth: 22 }}>{f.unit}</span>
-                      <span style={{ fontSize: 12, color: '#9ca3af', minWidth: 50 }}>
+                      <span style={{ color: 'var(--text-3)', fontSize: 13, minWidth: 22 }}>{f.unit}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-3)', minWidth: 50 }}>
                         {prevVal != null ? prevVal.toFixed(1) : '—'}
                       </span>
                       {diff !== null && (
-                        <span style={{ fontSize: 13, fontWeight: 600, minWidth: 48, color: diff < 0 ? '#16a34a' : diff > 0 ? '#f59e0b' : '#9ca3af' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, minWidth: 48, color: diff < 0 ? 'var(--success)' : diff > 0 ? 'var(--warning)' : 'var(--text-3)' }}>
                           {diff >= 0 ? '+' : '−'}{Math.abs(diff).toFixed(1)}
                         </span>
                       )}
@@ -476,12 +476,12 @@ export default function NewMeasurePage() {
               <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 16px', margin: '16px 0', fontSize: 14 }}>
                 <strong>Сумма обхватов: {sum.toFixed(1)} см</strong>
                 {prevM && (
-                  <span style={{ marginLeft: 10, color: sum - Number(prevM.total_cm) < 0 ? '#16a34a' : '#f59e0b', fontWeight: 600 }}>
+                  <span style={{ marginLeft: 10, color: sum - Number(prevM.total_cm) < 0 ? 'var(--success)' : 'var(--warning)', fontWeight: 600 }}>
                     {fmtDiff(sum - Number(prevM.total_cm))} к прошлому
                   </span>
                 )}
                 {selectedClient.measurements.length > 1 && startM && (
-                  <span style={{ marginLeft: 8, color: sum - Number(startM.total_cm) < 0 ? '#16a34a' : '#f59e0b', fontWeight: 600 }}>
+                  <span style={{ marginLeft: 8, color: sum - Number(startM.total_cm) < 0 ? 'var(--success)' : 'var(--warning)', fontWeight: 600 }}>
                     {fmtDiff(sum - Number(startM.total_cm))} со старта
                   </span>
                 )}
@@ -504,12 +504,12 @@ export default function NewMeasurePage() {
                 {[...selectedClient.measurements].reverse().map(m => {
                   const canEdit = isToday(m.created_at as string);
                   return (
-                    <div key={m.id} style={{ background: '#fff', borderRadius: 10, padding: '10px 14px', marginBottom: 8, border: '1px solid #e2e6ea', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div key={m.id} style={{ background: 'var(--surface)', borderRadius: 10, padding: '10px 14px', marginBottom: 8, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <span style={{ fontWeight: 600 }}>№{m.measure_no}</span>
-                        <span style={{ color: '#6b7280', fontSize: 13, marginLeft: 8 }}>{fmtDate(m.measured_at as string)}</span>
-                        <span style={{ color: '#374151', fontSize: 13, marginLeft: 8 }}>{Number(m.total_cm).toFixed(1)} см</span>
-                        {m.note && <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 8 }}>{m.note as string}</span>}
+                        <span style={{ color: 'var(--text-2)', fontSize: 13, marginLeft: 8 }}>{fmtDate(m.measured_at as string)}</span>
+                        <span style={{ color: 'var(--text)', fontSize: 13, marginLeft: 8 }}>{Number(m.total_cm).toFixed(1)} см</span>
+                        {m.note && <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 8 }}>{m.note as string}</span>}
                       </div>
                       {canEdit && (
                         confirmDelete === m.id
@@ -517,7 +517,7 @@ export default function NewMeasurePage() {
                               <button className="btn btn-danger" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => deleteMeasurement(m.id)}>Удалить</button>
                               <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => setConfirmDelete(null)}>Отмена</button>
                             </div>
-                          : <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px', color: '#dc2626' }} onClick={() => setConfirmDelete(m.id)}>Удалить</button>
+                          : <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--danger)' }} onClick={() => setConfirmDelete(m.id)}>Удалить</button>
                       )}
                     </div>
                   );
@@ -532,7 +532,7 @@ export default function NewMeasurePage() {
           <div className="dialog-overlay" onClick={() => setShowInbodyModal(false)}>
             <div className="dialog" onClick={e => e.stopPropagation()}>
               <h3>📷 Сканировать лист InBody</h3>
-              <p style={{ color: '#6b7280', fontSize: 14, lineHeight: 1.6 }}>
+              <p style={{ color: 'var(--text-2)', fontSize: 14, lineHeight: 1.6 }}>
                 Скоро: данные с листа InBody будут подтягиваться автоматически.
               </p>
               <button className="btn btn-secondary" style={{ marginTop: 20, width: '100%' }} onClick={() => setShowInbodyModal(false)}>Закрыть</button>

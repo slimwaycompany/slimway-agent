@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -137,7 +137,7 @@ function CloseShiftModal({ shift, onDone, onClose }: { shift: Shift; onDone: () 
         <label style={{ ...S.label, marginTop: 12 }}>Фактически в кассе, ₸ *</label>
         <input style={S.inp} type="number" min="0" value={counted} onChange={e => setCounted(e.target.value)} required />
         {diff !== null && counted !== '' && (
-          <div style={{ fontSize: 13, marginTop: 4, color: diff >= 0 ? '#16a34a' : '#ef4444' }}>
+          <div style={{ fontSize: 13, marginTop: 4, color: diff >= 0 ? 'var(--success)' : 'var(--danger)' }}>
             {diff >= 0 ? `Излишек +${fmtMoney(diff)}` : `Недостача ${fmtMoney(-diff)}`}
           </div>
         )}
@@ -146,7 +146,7 @@ function CloseShiftModal({ shift, onDone, onClose }: { shift: Shift; onDone: () 
         {err && <div style={S.err}>{err}</div>}
         <div style={S.modalBtns}>
           <button type="button" style={S.cancelBtn} onClick={onClose}>Отмена</button>
-          <button type="submit" style={{ ...S.saveBtn, background: '#ef4444' }} disabled={saving}>{saving ? '…' : 'Закрыть смену'}</button>
+          <button type="submit" style={{ ...S.saveBtn, background: 'var(--danger)' }} disabled={saving}>{saving ? '…' : 'Закрыть смену'}</button>
         </div>
       </form>
     </div>
@@ -212,7 +212,7 @@ function RefundDialog({ sale, payMethods, onDone, onClose }: {
         {err && <div style={S.err}>{err}</div>}
         <div style={S.modalBtns}>
           <button type="button" style={S.cancelBtn} onClick={onClose}>Отмена</button>
-          <button type="submit" style={{ ...S.saveBtn, background: '#ef4444' }} disabled={saving || !reason}>
+          <button type="submit" style={{ ...S.saveBtn, background: 'var(--danger)' }} disabled={saving || !reason}>
             {saving ? '…' : 'Оформить возврат'}
           </button>
         </div>
@@ -394,9 +394,9 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
       {/* Header */}
-      <div style={{ padding: '8px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ padding: '8px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={S.cancelBtn} onClick={onCancel}>← Назад</button>
         <span style={{ fontSize: 14, fontWeight: 700 }}>Новая продажа</span>
         {/* Client picker */}
@@ -410,16 +410,16 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#1a202c' }}>{client.full_name}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{client.full_name}</span>
               <button type="button" style={S.linkBtn} onClick={() => { setClient(null); setClientSearch(''); }}>✕</button>
             </div>
           )}
           {clientResults.length > 0 && client === null && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,.1)', zIndex: 20 }}>
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,.1)', zIndex: 20 }}>
               {clientResults.map(c => (
-                <div key={c.id} style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f1f5f9' }}
+                <div key={c.id} style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}
                   onMouseDown={() => { setClient(c); setClientSearch(''); setClientResults([]); }}>
-                  {c.full_name} {c.phone && <span style={{ color: '#64748b' }}>{c.phone}</span>}
+                  {c.full_name} {c.phone && <span style={{ color: 'var(--text-2)' }}>{c.phone}</span>}
                 </div>
               ))}
             </div>
@@ -428,11 +428,11 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
         {/* Balance */}
         {balanceInfo && (
           <div style={{ display: 'flex', gap: 8, fontSize: 13 }}>
-            <span style={{ color: '#64748b' }}>Депозит: <b style={{ color: '#02BDB6' }}>{fmtMoney(balanceInfo.deposit)}</b></span>
-            <span style={{ color: '#64748b' }}>Бонусы: <b style={{ color: '#263CD9' }}>{balanceInfo.bonus} б</b></span>
+            <span style={{ color: 'var(--text-2)' }}>Депозит: <b style={{ color: 'var(--primary)' }}>{fmtMoney(balanceInfo.deposit)}</b></span>
+            <span style={{ color: 'var(--text-2)' }}>Бонусы: <b style={{ color: 'var(--accent)' }}>{balanceInfo.bonus} б</b></span>
           </div>
         )}
-        {showProfileWarn && <span style={{ fontSize: 12, color: '#f59e0b', background: '#fffbeb', padding: '2px 8px', borderRadius: 4 }}>⚠ Анкета не заполнена</span>}
+        {showProfileWarn && <span style={{ fontSize: 12, color: 'var(--warning)', background: 'var(--warning-soft)', padding: '2px 8px', borderRadius: 4 }}>⚠ Анкета не заполнена</span>}
         {/* Manager */}
         <select style={{ ...S.inp, width: 160 }} value={manager} onChange={e => setManager(e.target.value)}>
           {users.map(u => <option key={u.display_name} value={u.display_name}>{u.display_name}</option>)}
@@ -441,8 +441,8 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
 
       <div className="kassa-sale-body" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left: catalog */}
-        <div className="kassa-sale-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid #e2e8f0', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', gap: 4, padding: '8px 12px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+        <div className="kassa-sale-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', gap: 4, padding: '8px 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
             {TABS.map(t => (
               <button key={t.key} type="button" disabled={t.disabled}
                 style={{ ...S.tabBtn, ...(tab === t.key ? S.tabBtnActive : {}), opacity: t.disabled ? 0.4 : 1 }}
@@ -456,19 +456,19 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
               <div key={p.id} style={S.catalogCard}
                 onClick={() => { if (!isGuest && client !== null) addPlan(p); }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
                   {p.validity_days ? `${p.validity_days} дн.` : '∞'} · {p.items.map(i => `${i.device_type_code} ×${i.sessions}`).join(', ')}
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#02BDB6', marginTop: 4 }}>{fmtMoney(p.price)}</div>
-                {(isGuest || client === null) && <div style={{ fontSize: 11, color: '#94a3b8' }}>Нужен клиент</div>}
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--primary)', marginTop: 4 }}>{fmtMoney(p.price)}</div>
+                {(isGuest || client === null) && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Нужен клиент</div>}
               </div>
             ))}
             {tab === 'product' && activeProducts.map(p => (
               <div key={p.id} style={{ ...S.catalogCard, opacity: p.stock <= 0 ? 0.5 : 1 }}
                 onClick={() => { if (p.stock > 0) addProduct(p); }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
-                <div style={{ fontSize: 12, color: p.stock <= 0 ? '#ef4444' : '#64748b' }}>На складе: {p.stock}</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#02BDB6', marginTop: 4 }}>{p.retail_price !== null ? fmtMoney(p.retail_price) : '—'}</div>
+                <div style={{ fontSize: 12, color: p.stock <= 0 ? 'var(--danger)' : 'var(--text-2)' }}>На складе: {p.stock}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--primary)', marginTop: 4 }}>{p.retail_price !== null ? fmtMoney(p.retail_price) : '—'}</div>
               </div>
             ))}
             {tab === 'deposit' && !isGuest && client !== null && (
@@ -482,7 +482,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
                     }
                   }}
                 />
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Нажмите Enter для добавления</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>Нажмите Enter для добавления</div>
               </div>
             )}
             {tab === 'bonus' && role === 'admin' && clientId && (
@@ -506,12 +506,12 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
         </div>
 
         {/* Right: cart + payments */}
-        <div className="kassa-sale-right" style={{ width: 380, display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
+        <div className="kassa-sale-right" style={{ width: 380, display: 'flex', flexDirection: 'column', background: 'var(--surface)', overflow: 'hidden' }}>
           <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Корзина</div>
-            {cart.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Добавьте товары или абонементы</div>}
+            {cart.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Добавьте товары или абонементы</div>}
             {cart.map(item => (
-              <div key={item.key} style={{ marginBottom: 8, padding: 8, background: '#f8fafc', borderRadius: 8 }}>
+              <div key={item.key} style={{ marginBottom: 8, padding: 8, background: 'var(--surface-2)', borderRadius: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>
                     {item.type === 'plan' ? item.plan.name : item.type === 'product' ? item.product.name : 'Пополнение депозита'}
@@ -523,7 +523,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
                     <button style={S.qtyBtn} onClick={() => setProductQty(item.key, item.qty - 1)}>−</button>
                     <span style={{ fontSize: 13, minWidth: 20, textAlign: 'center' }}>{item.qty}</span>
                     <button style={S.qtyBtn} onClick={() => setProductQty(item.key, item.qty + 1)}>+</button>
-                    <span style={{ fontSize: 13, color: '#64748b', marginLeft: 4 }}>× {fmtMoney(item.price)}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)', marginLeft: 4 }}>× {fmtMoney(item.price)}</span>
                   </div>
                 )}
                 {item.type === 'plan' && (
@@ -543,7 +543,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
                     )}
                   </div>
                 )}
-                <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 700, color: '#02BDB6', marginTop: 4 }}>
+                <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 700, color: 'var(--primary)', marginTop: 4 }}>
                   {fmtMoney(cartItemTotal(item))}
                 </div>
               </div>
@@ -551,7 +551,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
           </div>
 
           {/* Discount */}
-          <div style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
             <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Скидка</div>
             <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
               {(['none', 'promo', ...(role === 'admin' ? ['admin'] : [])] as typeof discountKind[]).map(k => (
@@ -568,8 +568,8 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
                 <button type="button" style={S.saveBtn} onClick={validatePromo}>Проверить</button>
               </div>
             )}
-            {promoErr && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 2 }}>{promoErr}</div>}
-            {promoData && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 2 }}>✓ {promoData.discount_type === 'percent' ? promoData.discount_value + '%' : fmtMoney(promoData.discount_value)}</div>}
+            {promoErr && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 2 }}>{promoErr}</div>}
+            {promoData && <div style={{ fontSize: 12, color: 'var(--success)', marginTop: 2 }}>✓ {promoData.discount_type === 'percent' ? promoData.discount_value + '%' : fmtMoney(promoData.discount_value)}</div>}
             {discountKind === 'admin' && (
               <div style={{ display: 'flex', gap: 4 }}>
                 <select style={S.inp} value={adminDiscType} onChange={e => setAdminDiscType(e.target.value as 'percent' | 'fixed')}>
@@ -582,15 +582,15 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
           </div>
 
           {/* Totals */}
-          <div style={{ padding: '6px 12px', borderTop: '1px solid #f1f5f9', fontSize: 13 }}>
+          <div style={{ padding: '6px 12px', borderTop: '1px solid var(--border)', fontSize: 13 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Итого:</span><span style={{ fontWeight: 700 }}>{fmtMoney(subtotal)}</span></div>
-            {discount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}><span>Скидка:</span><span>−{fmtMoney(discount)}</span></div>}
-            {depositItems.length > 0 && <div style={{ fontSize: 11, color: '#64748b' }}>* на депозит скидка не применяется</div>}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 15, marginTop: 4 }}><span>К оплате:</span><span style={{ color: '#263CD9' }}>{fmtMoney(total)}</span></div>
+            {discount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)' }}><span>Скидка:</span><span>−{fmtMoney(discount)}</span></div>}
+            {depositItems.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-2)' }}>* на депозит скидка не применяется</div>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 15, marginTop: 4 }}><span>К оплате:</span><span style={{ color: 'var(--accent)' }}>{fmtMoney(total)}</span></div>
           </div>
 
           {/* Payments */}
-          <div style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
             <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Оплата</div>
             {payments.map((p, i) => (
               <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
@@ -607,14 +607,14 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <button type="button" style={S.linkBtn} onClick={() => setPayments(ps => [...ps, { methodId: '', amount: '' }])}>+ ещё</button>
-              <span style={{ fontSize: 12, color: remaining === 0 ? '#16a34a' : remaining > 0 ? '#ef4444' : '#f59e0b' }}>
+              <span style={{ fontSize: 12, color: remaining === 0 ? 'var(--success)' : remaining > 0 ? 'var(--danger)' : 'var(--warning)' }}>
                 {remaining > 0 ? `Осталось: ${fmtMoney(remaining)}` : remaining < 0 ? `Лишнее: ${fmtMoney(-remaining)}` : '✓ Сходится'}
               </span>
             </div>
           </div>
 
           {err && <div style={{ padding: '4px 12px' }}><div style={S.err}>{err}</div></div>}
-          <div className="kassa-sale-submit" style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9' }}>
+          <div className="kassa-sale-submit" style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
             <button type="button" style={{ ...S.saveBtn, width: '100%', padding: '12px', fontSize: 15 }}
               disabled={saving || cart.length === 0} onClick={submit}>
               {saving ? '…' : `Оформить${total > 0 ? ' · ' + fmtMoney(total) : ''}`}
@@ -653,33 +653,33 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
   }
 
   return (
-    <div className="kassa-shift-open" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
+    <div className="kassa-shift-open" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
       {/* Left: shift info */}
-      <div className="kassa-shift-sidebar" style={{ width: 280, background: '#fff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0' }}>
+      <div className="kassa-shift-sidebar" style={{ width: 280, background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Смена открыта</div>
           <div style={S.infoRow}><span style={S.infoKey}>Дата</span><span>{shift.shift_date}</span></div>
           <div style={S.infoRow}><span style={S.infoKey}>Открыл</span><span>{shift.opened_by}</span></div>
           <div style={S.infoRow}><span style={S.infoKey}>Время</span><span>{fmtDT(shift.opened_at)}</span></div>
           <div style={S.infoRow}><span style={S.infoKey}>Открытие</span><span>{fmtMoney(shift.opening_cash)}</span></div>
         </div>
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button style={{ ...S.saveBtn, width: '100%' }} onClick={onNewSale}>+ Новая продажа</button>
           <button style={{ ...S.outlineBtn, width: '100%' }} onClick={() => setShowMovement(true)}>Внесение / Изъятие</button>
-          <button style={{ ...S.outlineBtn, width: '100%', color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => setShowClose(true)}>Закрыть смену</button>
+          <button style={{ ...S.outlineBtn, width: '100%', color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => setShowClose(true)}>Закрыть смену</button>
         </div>
         <div className="kassa-shift-sidebar-movements" style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>ДВИЖЕНИЯ НАЛИЧНЫХ</div>
-          {movements.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>Нет движений</div>}
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>ДВИЖЕНИЯ НАЛИЧНЫХ</div>
+          {movements.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Нет движений</div>}
           {movements.map(m => (
-            <div key={m.id} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 12 }}>
+            <div key={m.id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: m.type === 'in' ? '#16a34a' : '#ef4444', fontWeight: 600 }}>
+                <span style={{ color: m.type === 'in' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
                   {m.type === 'in' ? '+' : '−'}{fmtMoney(m.amount)}
                 </span>
-                <span style={{ color: '#94a3b8' }}>{fmtDT(m.created_at)}</span>
+                <span style={{ color: 'var(--text-3)' }}>{fmtDT(m.created_at)}</span>
               </div>
-              <div style={{ color: '#64748b' }}>{m.comment} · {m.created_by}</div>
+              <div style={{ color: 'var(--text-2)' }}>{m.comment} · {m.created_by}</div>
             </div>
           ))}
         </div>
@@ -688,24 +688,24 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
       {/* Right: sales list */}
       <div className="kassa-shift-sales" style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Продажи в смене</div>
-        {sales.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>Продажи не найдены</div>}
+        {sales.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Продажи не найдены</div>}
         {sales.map(sale => (
-          <div key={sale.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: '10px 14px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div key={sale.id} style={{ background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', padding: '10px 14px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14 }}>
                 #{sale.number} · {fmtMoney(sale.total)}
-                {sale.status !== 'completed' && <span style={{ marginLeft: 6, fontSize: 11, background: '#fef2f2', color: '#ef4444', padding: '1px 5px', borderRadius: 4 }}>{sale.status}</span>}
+                {sale.status !== 'completed' && <span style={{ marginLeft: 6, fontSize: 11, background: 'var(--danger-soft)', color: 'var(--danger)', padding: '1px 5px', borderRadius: 4 }}>{sale.status}</span>}
               </div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
                 {sale.cashier}{sale.manager && sale.manager !== sale.cashier ? ` · Менеджер: ${sale.manager}` : ''} · {fmtDT(sale.created_at)}
               </div>
-              <div style={{ fontSize: 12, color: '#94a3b8' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
                 {sale.crm_sale_payments.map(p => fmtMoney(p.amount)).join(' + ')}
                 {sale.discount_kind !== 'none' && ` · скидка (${sale.discount_kind})`}
               </div>
             </div>
             {role === 'admin' && sale.status === 'completed' && (
-              <button style={{ ...S.outlineBtn, fontSize: 12, color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => openRefund(sale.id)}>Возврат</button>
+              <button style={{ ...S.outlineBtn, fontSize: 12, color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => openRefund(sale.id)}>Возврат</button>
             )}
           </div>
         ))}
@@ -740,11 +740,11 @@ function ShiftClosed({ role, onOpened }: { role: string; onOpened: () => void })
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
-      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: '32px 40px', textAlign: 'center', maxWidth: 360 }}>
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, border: '1px solid var(--border)', padding: '32px 40px', textAlign: 'center', maxWidth: 360 }}>
         <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
         <h2 style={{ margin: '0 0 8px', fontSize: 20 }}>Смена закрыта</h2>
-        <p style={{ color: '#64748b', fontSize: 14, margin: '0 0 20px' }}>Откройте смену, чтобы начать работу с кассой</p>
+        <p style={{ color: 'var(--text-2)', fontSize: 14, margin: '0 0 20px' }}>Откройте смену, чтобы начать работу с кассой</p>
         {role === 'admin' && (
           <div style={{ marginBottom: 14, textAlign: 'left' }}>
             <label style={S.label}>Остаток на открытие (₸)</label>
@@ -793,14 +793,14 @@ export default function KassaPage() {
 
   useEffect(() => { loadState(); }, []);
 
-  if (screen === 'loading') return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Manrope',system-ui,sans-serif", color: '#94a3b8' }}>Загрузка…</div>;
+  if (screen === 'loading') return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Manrope',system-ui,sans-serif", color: 'var(--text-3)' }}>Загрузка…</div>;
 
   if (screen === 'done') return (
-    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
-      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: '32px 40px', textAlign: 'center', maxWidth: 360 }}>
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, border: '1px solid var(--border)', padding: '32px 40px', textAlign: 'center', maxWidth: 360 }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
         <h2 style={{ margin: '0 0 8px', fontSize: 20 }}>Продажа оформлена</h2>
-        {lastSaleNum && <p style={{ color: '#64748b', fontSize: 14, margin: '0 0 20px' }}>Чек #{lastSaleNum}</p>}
+        {lastSaleNum && <p style={{ color: 'var(--text-2)', fontSize: 14, margin: '0 0 20px' }}>Чек #{lastSaleNum}</p>}
         <button style={{ ...S.saveBtn, width: '100%', padding: '12px' }} onClick={() => setScreen('open')}>Вернуться в смену</button>
         <button style={{ ...S.cancelBtn, width: '100%', marginTop: 8 }} onClick={() => setScreen('sale')}>Ещё продажа</button>
       </div>
@@ -832,21 +832,21 @@ export default function KassaPage() {
 
 const S: Record<string, React.CSSProperties> = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-  modal:   { background: '#fff', borderRadius: 14, padding: '20px 24px', width: '90%', maxWidth: 420, maxHeight: '90vh', overflowY: 'auto' },
+  modal:   { background: 'var(--surface)', borderRadius: 14, padding: '20px 24px', width: '90%', maxWidth: 420, maxHeight: '90vh', overflowY: 'auto' },
   modalTitle: { margin: '0 0 14px', fontSize: 16, fontWeight: 700 },
   modalBtns: { display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' },
-  label:   { display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4, marginTop: 8 },
-  inp:     { width: '100%', padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
-  err:     { background: '#fef2f2', color: '#ef4444', padding: '7px 10px', borderRadius: 8, fontSize: 13 },
-  saveBtn: { padding: '8px 18px', background: '#02BDB6', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
-  cancelBtn: { padding: '8px 14px', background: 'none', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#374151' },
-  outlineBtn: { padding: '7px 12px', background: 'none', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#374151' },
-  tabBtn:  { padding: '5px 12px', background: '#f1f5f9', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: '#374151', fontWeight: 500 },
-  tabBtnActive: { background: '#02BDB6', color: '#fff', fontWeight: 700 },
-  linkBtn: { background: 'none', border: 'none', color: '#02BDB6', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', padding: '2px 4px' },
-  removeBtn: { background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', padding: '2px 4px', flexShrink: 0 },
-  qtyBtn:  { padding: '2px 8px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' },
-  catalogCard: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 8, cursor: 'pointer', transition: 'box-shadow 0.1s' },
-  infoRow: { display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', color: '#374151' },
-  infoKey: { color: '#94a3b8', marginRight: 8 },
+  label:   { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4, marginTop: 8 },
+  inp:     { width: '100%', padding: '8px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const },
+  err:     { background: 'var(--danger-soft)', color: 'var(--danger)', padding: '7px 10px', borderRadius: 8, fontSize: 13 },
+  saveBtn: { padding: '8px 18px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  cancelBtn: { padding: '8px 14px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' },
+  outlineBtn: { padding: '7px 12px', background: 'none', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' },
+  tabBtn:  { padding: '5px 12px', background: 'var(--surface-2)', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)', fontWeight: 500 },
+  tabBtnActive: { background: 'var(--primary)', color: 'var(--surface)', fontWeight: 700 },
+  linkBtn: { background: 'none', border: 'none', color: 'var(--primary)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', padding: '2px 4px' },
+  removeBtn: { background: 'none', border: 'none', color: 'var(--text-3)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', padding: '2px 4px', flexShrink: 0 },
+  qtyBtn:  { padding: '2px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' },
+  catalogCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 8, cursor: 'pointer', transition: 'box-shadow 0.1s' },
+  infoRow: { display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', color: 'var(--text)' },
+  infoKey: { color: 'var(--text-3)', marginRight: 8 },
 };

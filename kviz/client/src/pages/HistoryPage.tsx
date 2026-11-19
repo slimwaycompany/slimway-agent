@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiGet } from '../api';
 import { TEMP_BADGES, TEMP_COLORS, EARLY_CLOSE_REASONS } from '../config/qualify';
@@ -65,7 +65,7 @@ export default function HistoryPage() {
           placeholder="Имя или телефон" style={{ width: 160 }} />
       </div>
 
-      <div style={{ color: '#9ca3af', fontSize: 13, marginBottom: 12 }}>
+      <div style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 12 }}>
         Найдено: {all.length}
       </div>
 
@@ -77,17 +77,17 @@ export default function HistoryPage() {
                 <span className="temp-dot" style={{ background: TEMP_COLORS[s.temperature] }} />
               )}
               <span style={{ fontWeight: 600 }}>{s.client_name ?? 'Без имени'}</span>
-              <span style={{ fontSize: 13, color: '#9ca3af' }}>{s.status === 'draft' ? 'черновик' : ''}</span>
+              <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{s.status === 'draft' ? 'черновик' : ''}</span>
             </div>
-            <div className="meta" style={{ color: '#6b7280', fontSize: 13 }}>{s.consultant}</div>
-            {s.client_phone && <div style={{ fontSize: 12, color: '#9ca3af' }}>{s.client_phone}</div>}
+            <div className="meta" style={{ color: 'var(--text-2)', fontSize: 13 }}>{s.consultant}</div>
+            {s.client_phone && <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{s.client_phone}</div>}
             <div className="meta">
               {fmtDate(s.completed_at ?? s.created_at)}
               {s.temperature && ` · ${TEMP_BADGES[s.temperature]}`}
               {s.score !== undefined && s.score !== null ? ` · ${s.score} пт` : ''}
             </div>
             {s.answers?.closed_early && (
-              <div className="meta" style={{ color: '#9ca3af' }}>
+              <div className="meta" style={{ color: 'var(--text-3)' }}>
                 Закрыта досрочно: {EARLY_CLOSE_REASONS.find(r => r.id === s.answers!.closed_early!.reason)?.label ?? s.answers.closed_early.reason}
               </div>
             )}
@@ -97,7 +97,7 @@ export default function HistoryPage() {
       ))}
 
       {all.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#9ca3af', marginTop: 48 }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-3)', marginTop: 48 }}>
           Квалификаций не найдено
         </div>
       )}

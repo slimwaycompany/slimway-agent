@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiGet } from '../../api';
 import { MeasureLayout } from './MeasureLayout';
@@ -134,8 +134,8 @@ export default function ReportsPage() {
         <div className="filter-bar" style={{ marginBottom: 16 }}>
           <input type="date" value={from} onChange={e => setFrom(e.target.value)} placeholder="От" />
           <input type="date" value={to}   onChange={e => setTo(e.target.value)}   placeholder="До" />
-          <input value={clientQ}    onChange={e => setClientQ(e.target.value)}    placeholder="Клиент" style={{ padding: '8px 12px', border: '1px solid #e2e6ea', borderRadius: 8, fontSize: 14 }} />
-          <input value={consultant} onChange={e => setConsultant(e.target.value)} placeholder="Консультант" style={{ padding: '8px 12px', border: '1px solid #e2e6ea', borderRadius: 8, fontSize: 14 }} />
+          <input value={clientQ}    onChange={e => setClientQ(e.target.value)}    placeholder="Клиент" style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14 }} />
+          <input value={consultant} onChange={e => setConsultant(e.target.value)} placeholder="Консультант" style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14 }} />
           <button className="btn btn-primary" style={{ padding: '8px 18px', fontSize: 14 }} onClick={load}>Обновить</button>
           <button className="btn btn-secondary" style={{ padding: '8px 18px', fontSize: 14 }} onClick={exportExcel}>⬇ Excel</button>
         </div>

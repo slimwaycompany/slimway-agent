@@ -1,4 +1,4 @@
-export const SESSIONS_PER_WEEK_MIN = 2;
+﻿export const SESSIONS_PER_WEEK_MIN = 2;
 export const SESSIONS_PER_WEEK_MAX = 3;
 export const SESSIONS_PER_WEEK = SESSIONS_PER_WEEK_MAX;
 

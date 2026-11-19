@@ -1,4 +1,4 @@
-interface EmptyStateProps { text?: string; }
+﻿interface EmptyStateProps { text?: string; }
 interface ErrorStateProps { text?: string; onRetry?: () => void; }
 interface SkeletonProps { width?: string; height?: string; className?: string; }
 interface LoadingProps { text?: string; }

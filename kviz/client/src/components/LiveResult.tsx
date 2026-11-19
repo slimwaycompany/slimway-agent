@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TEMP_BADGES, TEMP_COLORS, TEMP_TIPS, STEP_TITLES,
@@ -87,9 +87,9 @@ function PriceBlock({ answers, result }: {
           <button key={f} onClick={() => setFmt(f)}
             style={{
               fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1.5px solid', cursor: 'pointer',
-              borderColor: f === fmt ? 'var(--teal)' : '#e2e6ea',
-              background: f === fmt ? 'var(--teal-light)' : '#fff',
-              color: f === fmt ? '#065f5a' : '#374151',
+              borderColor: f === fmt ? 'var(--teal)' : 'var(--border)',
+              background: f === fmt ? 'var(--teal-light)' : 'var(--surface)',
+              color: f === fmt ? '#065f5a' : 'var(--text)',
               fontWeight: f === fmt ? 600 : 400,
             }}>
             {PRICE_NAMES[f]}
@@ -103,8 +103,8 @@ function PriceBlock({ answers, result }: {
             <div key={p.sessions} style={{
               padding: '6px 10px', borderRadius: 8, fontSize: 12,
               background: isSel ? 'var(--teal-light)' : '#f9fafb',
-              border: `1.5px solid ${isSel ? 'var(--teal)' : '#e2e6ea'}`,
-              color: isSel ? '#065f5a' : '#374151',
+              border: `1.5px solid ${isSel ? 'var(--teal)' : 'var(--border)'}`,
+              color: isSel ? '#065f5a' : 'var(--text)',
             }}>
               <div style={{ fontWeight: 600 }}>{p.label}{isSel ? (result.sessions_min > 0 ? ' (под срок)' : ' (популярный)') : ''}</div>
               <div>{fmtPrice(p.price)} · {fmtPrice(p.perSession)}/сеанс</div>
@@ -113,11 +113,11 @@ function PriceBlock({ answers, result }: {
         })}
       </div>
       {single && (
-        <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-2)' }}>
           Разовый: {fmtPrice(single.price)}
         </div>
       )}
-      <div style={{ marginTop: 6, fontSize: 11, color: '#9ca3af', lineHeight: 1.4 }}>
+      <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-3)', lineHeight: 1.4 }}>
         {PRICE_CONDITIONS[0]}
       </div>
     </div>
@@ -132,7 +132,7 @@ export default function LiveResult({ sessionId, answers, readOnly, onCopy }: {
 }) {
   const navigate = useNavigate();
   const result = computeResult(answers);
-  const color = TEMP_COLORS[result.temperature] ?? '#6b7280';
+  const color = TEMP_COLORS[result.temperature] ?? 'var(--text-2)';
 
   const pct = Math.min(100, Math.round((result.score / MAX_SCORE) * 100));
 
@@ -151,7 +151,7 @@ export default function LiveResult({ sessionId, answers, readOnly, onCopy }: {
       {(a0?.name || a0?.phone) && (
         <div className="col-panel" style={{ paddingBottom: 8 }}>
           {a0.name && <div style={{ fontWeight: 600, fontSize: 14 }}>{a0.name}</div>}
-          {a0.phone && <div style={{ fontSize: 13, color: '#6b7280' }}>{a0.phone}</div>}
+          {a0.phone && <div style={{ fontSize: 13, color: 'var(--text-2)' }}>{a0.phone}</div>}
         </div>
       )}
 
@@ -161,12 +161,12 @@ export default function LiveResult({ sessionId, answers, readOnly, onCopy }: {
           {TEMP_BADGES[result.temperature]}
         </div>
         <div className="score-bar-wrap">
-          <div style={{ fontSize: 12, color: '#6b7280' }}>{result.score} из {MAX_SCORE} баллов</div>
+          <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{result.score} из {MAX_SCORE} баллов</div>
           <div className="score-bar-bg">
             <div className="score-bar-fill" style={{ width: `${pct}%`, background: color }} />
           </div>
         </div>
-        <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.4 }}>{TEMP_TIPS[result.temperature]}</p>
+        <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.4 }}>{TEMP_TIPS[result.temperature]}</p>
       </div>
 
       {result.flags.length > 0 && (
@@ -188,7 +188,7 @@ export default function LiveResult({ sessionId, answers, readOnly, onCopy }: {
               </span>
             ))}
           </div>
-          <p style={{ fontSize: 12, color: '#6b7280' }}>{result.format_recommendation}</p>
+          <p style={{ fontSize: 12, color: 'var(--text-2)' }}>{result.format_recommendation}</p>
         </div>
       )}
 
@@ -215,10 +215,10 @@ export default function LiveResult({ sessionId, answers, readOnly, onCopy }: {
             {CALL_OUTCOMES.find(o => o.id === a12.outcome)?.label}
           </p>
           {a12.outcome === 'booked' && a12.visit_date && (
-            <p style={{ fontSize: 12, color: '#6b7280' }}>{a12.visit_date} {a12.visit_time}</p>
+            <p style={{ fontSize: 12, color: 'var(--text-2)' }}>{a12.visit_date} {a12.visit_time}</p>
           )}
           {(a12.outcome === 'callback' || a12.outcome === 'thinking') && a12.callback_date && (
-            <p style={{ fontSize: 12, color: '#6b7280' }}>Перезвон: {a12.callback_date} {a12.callback_time}</p>
+            <p style={{ fontSize: 12, color: 'var(--text-2)' }}>Перезвон: {a12.callback_date} {a12.callback_time}</p>
           )}
         </div>
       )}
@@ -226,7 +226,7 @@ export default function LiveResult({ sessionId, answers, readOnly, onCopy }: {
       {closedEarly && (
         <div className="col-panel">
           <h4>Закрыта досрочно</h4>
-          <p style={{ fontSize: 13, color: '#6b7280' }}>
+          <p style={{ fontSize: 13, color: 'var(--text-2)' }}>
             {EARLY_CLOSE_REASONS.find(r => r.id === closedEarly.reason)?.label ?? closedEarly.reason}
             {closedEarly.comment ? ` — ${closedEarly.comment}` : ''}
           </p>

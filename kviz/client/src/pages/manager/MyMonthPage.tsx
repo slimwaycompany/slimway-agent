@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import LeadDrawer from '../crm/LeadDrawer';
 import { getMotivation } from './motivation';
 
@@ -62,10 +62,10 @@ function fmtDate(d: string): string {
 }
 
 function planColor(pct: number | null): string {
-  if (pct == null) return '#94a3b8';
-  if (pct >= 100) return '#16a34a';
-  if (pct >= 50)  return '#f59e0b';
-  return '#94a3b8';
+  if (pct == null) return 'var(--text-3)';
+  if (pct >= 100) return 'var(--success)';
+  if (pct >= 50)  return 'var(--warning)';
+  return 'var(--text-3)';
 }
 
 function diffArrow(pct: number | null): string | null {
@@ -82,9 +82,9 @@ function Section({ title, badge, badgeRed, children }: { title: string; badge?: 
       <button onClick={() => setOpen(o => !o)} style={s.sectionHead}>
         <span>{title}</span>
         {badge != null && badge > 0 && (
-          <span style={{ ...s.badge, background: badgeRed ? '#ef4444' : '#94a3b8' }}>{badge}</span>
+          <span style={{ ...s.badge, background: badgeRed ? 'var(--danger)' : 'var(--text-3)' }}>{badge}</span>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: 14, color: '#94a3b8' }}>{open ? '▲' : '▼'}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 14, color: 'var(--text-3)' }}>{open ? '▲' : '▼'}</span>
       </button>
       {open && <div style={{ paddingTop: 6 }}>{children}</div>}
     </div>
@@ -107,7 +107,7 @@ function Tile({ title, children, wide }: { title: string; children: React.ReactN
 function ProgressBar({ pct, color }: { pct: number | null; color: string }) {
   const val = Math.min(pct ?? 0, 100);
   return (
-    <div style={{ background: '#e2e8f0', borderRadius: 6, height: 8, marginTop: 6, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--border)', borderRadius: 6, height: 8, marginTop: 6, overflow: 'hidden' }}>
       <div style={{ width: `${val}%`, background: color, height: '100%', borderRadius: 6, transition: 'width .3s' }} />
     </div>
   );
@@ -123,18 +123,18 @@ function ShiftCalendar({ schedule, month }: { schedule: CalDay[]; month: string 
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
         {DOW_SHORT.slice(1).map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#94a3b8' }}>{d}</div>
+          <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text-3)' }}>{d}</div>
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
         {Array.from({ length: offset }).map((_, i) => <div key={`e${i}`} />)}
         {schedule.map(d => {
           const dayNum = Number(d.date.slice(8));
-          let bg = '#f8fafc', color_ = '#1a202c', border = '1px solid #e2e8f0';
-          if (d.is_day_off) { bg = '#f1f5f9'; color_ = '#94a3b8'; }
+          let bg = 'var(--surface-2)', color_ = 'var(--text)', border = '1px solid var(--border)';
+          if (d.is_day_off) { bg = 'var(--surface-2)'; color_ = 'var(--text-3)'; }
           if (d.planned) { bg = '#e0f2fe'; border = '1px solid #93c5fd'; }
           if (d.worked)  { bg = '#d1fae5'; border = '1px solid #6ee7b7'; color_ = '#065f46'; }
-          if (d.is_today) { border = '2px solid #02BDB6'; }
+          if (d.is_today) { border = '2px solid var(--primary)'; }
           return (
             <div key={d.date} style={{ aspectRatio: '1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: bg, border, borderRadius: 6, fontSize: 11, fontWeight: d.is_today ? 700 : 400, color: color_ }}>
               <span>{dayNum}</span>
@@ -145,7 +145,7 @@ function ShiftCalendar({ schedule, month }: { schedule: CalDay[]; month: string 
       </div>
       <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' as const }}>
         <span style={s.legendItem}><span style={{ ...s.legendDot, background: '#e0f2fe', border: '1px solid #93c5fd' }} />Запланировано</span>
-        <span style={s.legendItem}><span style={{ ...s.legendDot, background: '#d1fae5', border: '1px solid #6ee7b7' }} />Отработано</span>
+        <span style={s.legendItem}><span style={{ ...s.legendDot, background: 'var(--success-soft)', border: '1px solid #6ee7b7' }} />Отработано</span>
       </div>
     </div>
   );
@@ -206,7 +206,7 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
   if (data.no_mapping) {
     return (
       <div style={s.center}>
-        <div style={{ maxWidth: 360, textAlign: 'center', color: '#64748b', fontSize: 14, lineHeight: 1.6 }}>
+        <div style={{ maxWidth: 360, textAlign: 'center', color: 'var(--text-2)', fontSize: 14, lineHeight: 1.6 }}>
           Ваш логин не связан с сотрудником Fitbase.<br />
           Обратитесь к администратору для настройки.
         </div>
@@ -223,12 +223,12 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
       {/* Header */}
       <div style={s.header}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1a202c', marginBottom: 2 }}>{data.header.display_name}</div>
-          {motivation && <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>{motivation}</div>}
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{data.header.display_name}</div>
+          {motivation && <div style={{ fontSize: 12, color: 'var(--text-2)', fontStyle: 'italic' }}>{motivation}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           <button onClick={() => setMonth(prevMonth(month))} style={s.navBtn}>‹</button>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#1a202c', minWidth: 120, textAlign: 'center' as const }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', minWidth: 120, textAlign: 'center' as const }}>
             {fmtMonth(month)}{data.closed ? ' 🔒' : ''}
           </span>
           <button onClick={() => setMonth(nextMonth(month))} style={{ ...s.navBtn, opacity: canGoNext ? 1 : 0.3, pointerEvents: canGoNext ? 'auto' : 'none' }}>›</button>
@@ -254,16 +254,16 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
             {plan.plan_amount ? (
               <>
                 <div style={{ fontSize: 20, fontWeight: 700, color }}>{fmt(plan.fact_sales)}</div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>из {fmt(plan.plan_amount)} · {planPct ?? '—'}%</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)' }}>из {fmt(plan.plan_amount)} · {planPct ?? '—'}%</div>
                 <ProgressBar pct={planPct} color={color} />
                 {prev_month.diff_sales_pct != null && (
-                  <div style={{ fontSize: 11, color: (prev_month.diff_sales_pct ?? 0) >= 0 ? '#16a34a' : '#ef4444', marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: (prev_month.diff_sales_pct ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: 4 }}>
                     {diffArrow(prev_month.diff_sales_pct)} к прошлому месяцу
                   </div>
                 )}
               </>
             ) : (
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#1a202c' }}>{fmt(plan.fact_sales)}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>{fmt(plan.fact_sales)}</div>
             )}
           </Tile>
 
@@ -271,62 +271,62 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
           {isCurrent && pace ? (
             <Tile title="Темп">
               {pace.done ? (
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#16a34a' }}>План закрыт 🎉</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--success)' }}>План закрыт 🎉</div>
               ) : plan.plan_amount ? (
                 <>
-                  <div style={{ fontSize: 13, color: '#1a202c', marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 4 }}>
                     Нужно ≈ <strong>{fmt(pace.per_shift_needed)}</strong> за смену
                   </div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Осталось смен: {pace.shifts_left}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)' }}>Осталось смен: {pace.shifts_left}</div>
                 </>
               ) : (
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>Нет плана</div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Нет плана</div>
               )}
             </Tile>
           ) : !isCurrent ? (
             <Tile title="Итог месяца">
               <div style={{ fontSize: 20, fontWeight: 700, color }}>{planPct != null ? `${planPct}%` : '—'}</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>от плана</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>от плана</div>
             </Tile>
           ) : (
-            <Tile title="Темп"><div style={{ fontSize: 12, color: '#94a3b8' }}>Нет данных</div></Tile>
+            <Tile title="Темп"><div style={{ fontSize: 12, color: 'var(--text-3)' }}>Нет данных</div></Tile>
           )}
 
           {/* Studio bonus tile */}
           <Tile title="Студия">
             {studio_bonus.overall_plan_amount ? (
               <>
-                <div style={{ fontSize: 20, fontWeight: 700, color: studio_bonus.achieved ? '#16a34a' : '#f59e0b' }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: studio_bonus.achieved ? 'var(--success)' : 'var(--warning)' }}>
                   {studio_bonus.pct ?? '—'}%
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-2)' }}>
                   {fmt(studio_bonus.overall_plan_fact)} / {fmt(studio_bonus.overall_plan_amount)}
                 </div>
-                <ProgressBar pct={studio_bonus.pct} color={studio_bonus.achieved ? '#16a34a' : '#f59e0b'} />
+                <ProgressBar pct={studio_bonus.pct} color={studio_bonus.achieved ? 'var(--success)' : 'var(--warning)'} />
                 {studio_bonus.plan_bonus_on && (
-                  <div style={{ fontSize: 11, marginTop: 4, color: studio_bonus.achieved ? '#16a34a' : '#94a3b8' }}>
+                  <div style={{ fontSize: 11, marginTop: 4, color: studio_bonus.achieved ? 'var(--success)' : 'var(--text-3)' }}>
                     {studio_bonus.achieved ? `Бонус включён +${fmt(studio_bonus.plan_bonus)}` : `Бонус пока не включён (${fmt(studio_bonus.plan_bonus)})`}
                   </div>
                 )}
               </>
             ) : (
-              <div style={{ fontSize: 12, color: '#94a3b8' }}>Нет плана студии</div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Нет плана студии</div>
             )}
           </Tile>
 
           {/* Earnings tile */}
           <Tile title="Заработок">
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#1a202c' }}>{fmt(earnings.total_earned)}</div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>к выплате: {fmt(earnings.to_pay)}</div>
-            {earnings.is_draft && <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>предварительно</div>}
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>{fmt(earnings.total_earned)}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>к выплате: {fmt(earnings.to_pay)}</div>
+            {earnings.is_draft && <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 2 }}>предварительно</div>}
             {forecast && isCurrent && (
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 4 }}>
                 прогноз: {fmt(forecast.forecast_earned)}
                 {plan.plan_amount && <> · если план: {fmt(forecast.if_plan_earned)}</>}
               </div>
             )}
             {prev_month.diff_earned_pct != null && (
-              <div style={{ fontSize: 11, color: (prev_month.diff_earned_pct ?? 0) >= 0 ? '#16a34a' : '#ef4444', marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: (prev_month.diff_earned_pct ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: 2 }}>
                 {diffArrow(prev_month.diff_earned_pct)} к прошлому месяцу
               </div>
             )}
@@ -341,15 +341,15 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
               <div>Новые: <strong>{sales.new_count}</strong> · {fmt(sales.new_amount)}</div>
               <div>Продления: <strong>{sales.renewal_count}</strong> · {fmt(sales.renewal_amount)}</div>
               {sales.goods_amount > 0 && <div>Товары: {fmt(sales.goods_amount)}</div>}
-              <div style={{ color: '#64748b' }}>Чеков: {sales.order_count} · ср. {fmt(sales.avg_check)}</div>
-              {sales.refund_count > 0 && <div style={{ color: '#ef4444' }}>Возвраты: {sales.refund_count} · -{fmt(sales.refund_amount)}</div>}
+              <div style={{ color: 'var(--text-2)' }}>Чеков: {sales.order_count} · ср. {fmt(sales.avg_check)}</div>
+              {sales.refund_count > 0 && <div style={{ color: 'var(--danger)' }}>Возвраты: {sales.refund_count} · -{fmt(sales.refund_amount)}</div>}
             </div>
           </Tile>
 
           {/* Shifts tile */}
           <Tile title="Смены">
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#1a202c' }}>{shifts.worked}<span style={{ fontSize: 13, fontWeight: 400, color: '#64748b' }}> / {shifts.planned}</span></div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>отработано / по плану</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>{shifts.worked}<span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-2)' }}> / {shifts.planned}</span></div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>отработано / по плану</div>
           </Tile>
 
           {/* Tasks tile */}
@@ -359,7 +359,7 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
               <div>Общих: {tasks.shared_done}</div>
               {tasks.lead_total > 0 && <div>Заявки: <strong>{tasks.lead_done}</strong> / {tasks.lead_total}</div>}
               {tasks.overdue.length > 0 && (
-                <div style={{ color: '#ef4444', fontWeight: 600 }}>Просрочено: {tasks.overdue.length}</div>
+                <div style={{ color: 'var(--danger)', fontWeight: 600 }}>Просрочено: {tasks.overdue.length}</div>
               )}
             </div>
           </Tile>
@@ -382,15 +382,15 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
           {earnings.new_pct_amt > 0 && <div style={s.earningsRow}><span>% с новых</span><span>{fmt(earnings.new_pct_amt)}</span></div>}
           {earnings.renewal_pct_amt > 0 && <div style={s.earningsRow}><span>% с продлений</span><span>{fmt(earnings.renewal_pct_amt)}</span></div>}
           {earnings.goods_pct_amt > 0 && <div style={s.earningsRow}><span>% с товаров</span><span>{fmt(earnings.goods_pct_amt)}</span></div>}
-          {earnings.plan_bonus_amt > 0 && <div style={s.earningsRow}><span>Бонус за план</span><span style={{ color: '#16a34a' }}>{fmt(earnings.plan_bonus_amt)}</span></div>}
-          {earnings.premium > 0 && <div style={s.earningsRow}><span>Премия</span><span style={{ color: '#16a34a' }}>{fmt(earnings.premium)}</span></div>}
-          {earnings.deduction > 0 && <div style={s.earningsRow}><span>Удержание</span><span style={{ color: '#ef4444' }}>-{fmt(earnings.deduction)}</span></div>}
-          <div style={{ ...s.earningsRow, fontWeight: 700, borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 4 }}>
+          {earnings.plan_bonus_amt > 0 && <div style={s.earningsRow}><span>Бонус за план</span><span style={{ color: 'var(--success)' }}>{fmt(earnings.plan_bonus_amt)}</span></div>}
+          {earnings.premium > 0 && <div style={s.earningsRow}><span>Премия</span><span style={{ color: 'var(--success)' }}>{fmt(earnings.premium)}</span></div>}
+          {earnings.deduction > 0 && <div style={s.earningsRow}><span>Удержание</span><span style={{ color: 'var(--danger)' }}>-{fmt(earnings.deduction)}</span></div>}
+          <div style={{ ...s.earningsRow, fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
             <span>Итого</span><span>{fmt(earnings.total_earned)}</span>
           </div>
-          {earnings.advance > 0 && <div style={{ ...s.earningsRow, color: '#64748b' }}><span>Аванс</span><span>-{fmt(earnings.advance)}</span></div>}
+          {earnings.advance > 0 && <div style={{ ...s.earningsRow, color: 'var(--text-2)' }}><span>Аванс</span><span>-{fmt(earnings.advance)}</span></div>}
           {earnings.to_pay !== earnings.total_earned && (
-            <div style={{ ...s.earningsRow, fontWeight: 600, color: '#02BDB6' }}><span>К выплате</span><span>{fmt(earnings.to_pay)}</span></div>
+            <div style={{ ...s.earningsRow, fontWeight: 600, color: 'var(--primary)' }}><span>К выплате</span><span>{fmt(earnings.to_pay)}</span></div>
           )}
         </div>
 
@@ -406,21 +406,21 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
             {tasks.overdue.map(t => (
               <div key={t.id} style={s.listRow}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: '#1a202c' }}>{t.description}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text)' }}>{t.description}</div>
                   {t.lead_name && (
-                    <div style={{ fontSize: 11, color: '#263CD9', cursor: 'pointer', textDecoration: 'underline' }}
+                    <div style={{ fontSize: 11, color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }}
                       onClick={() => t.lead_id && setOpenLeadId(t.lead_id)}>
                       {t.lead_name}
                     </div>
                   )}
-                  {t.due_at && <div style={{ fontSize: 11, color: '#ef4444' }}>{fmtDate(t.due_at)}</div>}
+                  {t.due_at && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{fmtDate(t.due_at)}</div>}
                 </div>
               </div>
             ))}
           </Collapsible>
         )}
         {tasks.overdue.length === 0 && (
-          <div style={{ ...s.listRow, color: '#16a34a', fontSize: 12 }}>Просроченных задач нет — так держать!</div>
+          <div style={{ ...s.listRow, color: 'var(--success)', fontSize: 12 }}>Просроченных задач нет — так держать!</div>
         )}
 
         {/* To call */}
@@ -429,13 +429,13 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
             {clients.to_call.map((c, i) => (
               <div key={i} style={s.listRow}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: '#1a202c' }}>{c.name}</div>
-                  <div style={{ fontSize: 11, color: c.end_date < new Date(Date.now() + 5*3600_000).toISOString().slice(0,10) ? '#ef4444' : '#64748b' }}>
+                  <div style={{ fontSize: 13, color: 'var(--text)' }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: c.end_date < new Date(Date.now() + 5*3600_000).toISOString().slice(0,10) ? 'var(--danger)' : 'var(--text-2)' }}>
                     до {fmtDate(c.end_date)}
                   </div>
                 </div>
                 {c.phone && (
-                  <a href={`tel:${c.phone}`} style={{ fontSize: 12, color: '#02BDB6', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}>
+                  <a href={`tel:${c.phone}`} style={{ fontSize: 12, color: 'var(--primary)', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}>
                     Позвонить
                   </a>
                 )}
@@ -443,7 +443,7 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
             ))}
           </Collapsible>
         ) : (
-          <div style={{ ...s.listRow, color: '#16a34a', fontSize: 12 }}>Нет клиентов для звонка — так держать!</div>
+          <div style={{ ...s.listRow, color: 'var(--success)', fontSize: 12 }}>Нет клиентов для звонка — так держать!</div>
         )}
 
         {/* No-shows */}
@@ -452,8 +452,8 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
             {no_show.items.map((v, i) => (
               <div key={i} style={s.listRow}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: '#1a202c' }}>{v.client_name ?? '—'}</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>{fmtDate(v.visit_date)}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text)' }}>{v.client_name ?? '—'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-2)' }}>{fmtDate(v.visit_date)}</div>
                 </div>
               </div>
             ))}
@@ -461,8 +461,8 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
         )}
 
         {/* Active clients count */}
-        <div style={{ padding: '8px 0', fontSize: 13, color: '#64748b' }}>
-          Активных клиентов: <strong style={{ color: '#1a202c' }}>{clients.active_count}</strong>
+        <div style={{ padding: '8px 0', fontSize: 13, color: 'var(--text-2)' }}>
+          Активных клиентов: <strong style={{ color: 'var(--text)' }}>{clients.active_count}</strong>
         </div>
       </div>
 
@@ -484,9 +484,9 @@ export default function MyMonthPage({ role, sessionUserId }: { role: string; ses
 function ConvStep({ label, count, pct }: { label: string; count: number; pct?: number | null }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      <span style={{ width: 70, color: '#64748b' }}>{label}</span>
+      <span style={{ width: 70, color: 'var(--text-2)' }}>{label}</span>
       <strong>{count}</strong>
-      {pct != null && <span style={{ color: pct >= 50 ? '#16a34a' : '#f59e0b', fontSize: 11 }}>{pct}%</span>}
+      {pct != null && <span style={{ color: pct >= 50 ? 'var(--success)' : 'var(--warning)', fontSize: 11 }}>{pct}%</span>}
     </div>
   );
 }
@@ -497,9 +497,9 @@ function Collapsible({ title, badge, badgeRed, open, setOpen, children }: { titl
       <button onClick={() => setOpen(!open)} style={s.sectionHead}>
         <span>{title}</span>
         {badge != null && badge > 0 && (
-          <span style={{ ...s.badge, background: badgeRed ? '#ef4444' : '#94a3b8' }}>{badge}</span>
+          <span style={{ ...s.badge, background: badgeRed ? 'var(--danger)' : 'var(--text-3)' }}>{badge}</span>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: 14, color: '#94a3b8' }}>{open ? '▲' : '▼'}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 14, color: 'var(--text-3)' }}>{open ? '▲' : '▼'}</span>
       </button>
       {open && <div>{children}</div>}
     </div>
@@ -509,24 +509,24 @@ function Collapsible({ title, badge, badgeRed, open, setOpen, children }: { titl
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  root:        { minHeight: '100dvh', overflow: 'auto', background: '#f8fafc', fontFamily: "'Manrope',system-ui,sans-serif" },
-  center:      { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#64748b', fontFamily: 'system-ui,sans-serif' },
-  header:      { background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '12px 16px', display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: 8, position: 'sticky', top: 0, zIndex: 10 },
-  navBtn:      { width: 32, height: 32, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', flexShrink: 0 },
-  refreshBtn:  { width: 32, height: 32, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#02BDB6' },
-  staffSelect: { width: '100%', padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' },
+  root:        { minHeight: '100dvh', overflow: 'auto', background: 'var(--surface-2)', fontFamily: "'Manrope',system-ui,sans-serif" },
+  center:      { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-2)', fontFamily: 'system-ui,sans-serif' },
+  header:      { background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '12px 16px', display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: 8, position: 'sticky', top: 0, zIndex: 10 },
+  navBtn:      { width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', flexShrink: 0 },
+  refreshBtn:  { width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' },
+  staffSelect: { width: '100%', padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)' },
   content:     { padding: '12px 12px 32px' },
   tileGrid:    { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 12 },
-  tile:        { background: '#fff', borderRadius: 12, padding: '12px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
-  tileTitle:   { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '.05em', marginBottom: 6 },
-  badge:       { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, minWidth: 20, height: 20, padding: '0 6px', fontSize: 11, fontWeight: 700, color: '#fff', marginLeft: 6 },
-  sectionHead: { display: 'flex', alignItems: 'center', width: '100%', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1a202c', fontFamily: 'inherit', marginBottom: 2, gap: 4 },
-  calCard:     { background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
-  cardTitle:   { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '.05em', marginBottom: 10 },
-  listRow:     { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: '#fff', borderBottom: '1px solid #f1f5f9' },
-  earningsBreak: { background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
-  earningsTitle: { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '.05em', marginBottom: 8 },
-  earningsRow: { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '2px 0', color: '#1a202c' },
-  legendItem:  { display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#64748b' },
+  tile:        { background: 'var(--surface)', borderRadius: 12, padding: '12px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+  tileTitle:   { fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' as const, letterSpacing: '.05em', marginBottom: 6 },
+  badge:       { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, minWidth: 20, height: 20, padding: '0 6px', fontSize: 11, fontWeight: 700, color: 'var(--surface)', marginLeft: 6 },
+  sectionHead: { display: 'flex', alignItems: 'center', width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--text)', fontFamily: 'inherit', marginBottom: 2, gap: 4 },
+  calCard:     { background: 'var(--surface)', borderRadius: 12, padding: '12px 14px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+  cardTitle:   { fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' as const, letterSpacing: '.05em', marginBottom: 10 },
+  listRow:     { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' },
+  earningsBreak: { background: 'var(--surface)', borderRadius: 12, padding: '12px 14px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+  earningsTitle: { fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' as const, letterSpacing: '.05em', marginBottom: 8 },
+  earningsRow: { display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '2px 0', color: 'var(--text)' },
+  legendItem:  { display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-2)' },
   legendDot:   { width: 12, height: 12, borderRadius: 3, display: 'inline-block', flexShrink: 0 },
 };
