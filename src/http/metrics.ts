@@ -397,11 +397,15 @@ export function buildMetricsRouter(): Router {
       for (const op of allSalesOps) allCshSet.add((op.cashier as string) || '(без кассира)');
       for (const op of allRefundOps) allCshSet.add((op.cashier as string) || '(без кассира)');
       const by_cashier = [...allCshSet].map(csh => {
-        const cSaleOrds = groupOrders(allSalesOps.filter(op => ((op.cashier as string) || '(без кассира)') === csh));
-        const cRefOrds  = groupOrders(allRefundOps.filter(op => ((op.cashier as string) || '(без кассира)') === csh));
+        const cSaleOrds = groupOrders(allSalesOps.filter(op => ((op.cashier as string) || '(без кассира)') === csh)).filter(o => !isTest(o));
+        const cRefOrds  = groupOrders(allRefundOps.filter(op => ((op.cashier as string) || '(без кассира)') === csh)).filter(o => !isTest(o));
+        const cNewOrds  = cSaleOrds.filter(o => classify(o) === 'new');
+        const cRenOrds  = cSaleOrds.filter(o => classify(o) === 'renewal');
         const cSalesAmt = cSaleOrds.reduce((s, o) => s + o.amount, 0);
         const cRefAmt   = cRefOrds.reduce((s, o) => s + o.amount, 0);
-        return { cashier: csh, sales_count: cSaleOrds.length, sales_amount: cSalesAmt, refund_amount: cRefAmt, net_amount: cSalesAmt - cRefAmt };
+        const cNewAmt   = cNewOrds.reduce((s, o) => s + o.amount, 0);
+        const cRenAmt   = cRenOrds.reduce((s, o) => s + o.amount, 0);
+        return { cashier: csh, sales_count: cSaleOrds.length, sales_amount: cSalesAmt, refund_amount: cRefAmt, net_amount: cSalesAmt - cRefAmt, new_count: cNewOrds.length, renewal_count: cRenOrds.length, new_amount: cNewAmt, renewal_amount: cRenAmt };
       }).sort((a, b) => b.net_amount - a.net_amount);
 
       const srcRows2 = await fetchAll((off, lim) =>
@@ -992,6 +996,148 @@ export function buildMetricsRouter(): Router {
       const { error } = await supabase.from('metrics_day_input').upsert(payload, { onConflict: 'branch_id,day' });
       if (error) { console.error('[day-input] upsert error:', error.message); res.status(500).json({ error: 'Ошибка сохранения данных дня' }); return; }
       res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // Plan-fact slice report (admin only)
+  router.get('/kviz/api/metrics/plan-fact', async (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const BRANCH = '00000000-0000-0000-0000-000000000001';
+      const TOTAL_STEPS = 10;
+      const STEP_DAYS   = 3;
+
+      const yekYesterday = new Date(Date.now() + 5 * 3600_000 - 86400_000).toISOString().slice(0, 10);
+      const dateStr  = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date ?? '')) ? String(req.query.date) : yekYesterday;
+      const dateObj  = new Date(dateStr + 'T00:00:00Z');
+      const year     = dateObj.getUTCFullYear();
+      const monthNum = dateObj.getUTCMonth() + 1;
+      const dom      = dateObj.getUTCDate();
+      const monthStr   = `${year}-${String(monthNum).padStart(2, '0')}`;
+      const monthStart = `${monthStr}-01`;
+      const daysInMonth = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
+      const monthEnd = `${monthStr}-${String(daysInMonth).padStart(2, '0')}`;
+      const stepsDone = Math.floor(dom / STEP_DAYS);
+
+      const [planRes, sellerRes, dayInputRes, finStaffMap] = await Promise.all([
+        supabase.from('metrics_month_plan').select('sales_plan').eq('branch_id', BRANCH).eq('month', monthStart).maybeSingle(),
+        supabase.from('metrics_seller_plan').select('seller,sales_plan').eq('branch_id', BRANCH).eq('month', monthStart),
+        supabase.from('metrics_day_input').select('day,is_day_off').eq('branch_id', BRANCH).gte('day', monthStart).lte('day', monthEnd),
+        getStaffMap(),
+      ]);
+
+      const monthPlan   = planRes.data?.sales_plan != null ? Number(planRes.data.sales_plan) : 0;
+      const sellerPlans = new Map<string, number>();
+      for (const sp of (sellerRes.data ?? [])) sellerPlans.set(sp.seller as string, Number(sp.sales_plan ?? 0));
+
+      const dayOffSet = new Set<string>();
+      for (const di of (dayInputRes.data ?? [])) { if (di.is_day_off) dayOffSet.add(di.day as string); }
+
+      const allMonthDays: string[] = [];
+      for (let d = 1; d <= daysInMonth; d++) allMonthDays.push(`${monthStr}-${String(d).padStart(2, '0')}`);
+      const workingDays  = allMonthDays.filter(d => !dayOffSet.has(d));
+      const wdElapsed    = workingDays.filter(d => d <= dateStr).length;
+      const wdRemaining  = workingDays.filter(d => d > dateStr).length;
+
+      const clm = await buildClientLeadMap();
+
+      const allOps = await fetchAll((off, lim) =>
+        supabase.from('fitbase_operations')
+          .select('fitbase_id,op_type,amount,manager,cashier,item,raw,client_name,op_date')
+          .gte('op_date', monthStart).lte('op_date', dateStr).range(off, off + lim - 1)
+      );
+
+      const pfSaleOps   = allOps.filter(op => (op.op_type as string) !== 'refund' && Number(op.amount) > 0);
+      const pfRefundOps = allOps.filter(op => (op.op_type as string) === 'refund' || Number(op.amount) < 0);
+      const pfSaleOrd   = groupOrders(pfSaleOps);
+      const pfRefOrd    = groupOrders(pfRefundOps);
+
+      const purCids = [...new Set(pfSaleOps.map(op => opCid(op)).filter((x): x is number => x != null))];
+      const cbc = new Map<number, ContractRecord[]>();
+      if (purCids.length > 0) {
+        const cr = await fetchAll((off, lim) =>
+          supabase.from('fitbase_contracts').select('fitbase_id,client_fitbase_id,name,payment_date,end_date,status,price')
+            .in('client_fitbase_id', purCids).range(off, off + lim - 1)
+        );
+        for (const c of cr) {
+          const cid = Number(c.client_fitbase_id);
+          if (!cbc.has(cid)) cbc.set(cid, []);
+          cbc.get(cid)!.push(c as unknown as ContractRecord);
+        }
+      }
+
+      const oKey = (o: OrderRow) => o.cid != null && o.itemId != null && o.date ? `${o.cid}:${o.itemId}:${o.date}` : null;
+      const skSet = new Set<string>(); for (const o of pfSaleOrd) { const k = oKey(o); if (k) skSet.add(k); }
+      const tkSet = new Set<string>(); for (const o of pfRefOrd)  { const k = oKey(o); if (k && skSet.has(k)) tkSet.add(k); }
+      const isTst = (o: OrderRow) => { const k = oKey(o); return k != null && tkSet.has(k); };
+
+      const cleanSale = pfSaleOrd.filter(o => !isTst(o));
+      const cleanRef  = pfRefOrd.filter(o => !isTst(o));
+      const cls = (o: OrderRow) => classifyPurchase(o, cbc);
+
+      const hidden = new Set<string>();
+      for (const [name, info] of finStaffMap.entries()) { if (info.hidden) hidden.add(name); }
+
+      const deptStep = monthPlan > 0 ? monthPlan / TOTAL_STEPS : 0;
+
+      function computeFact(filterFn: (o: OrderRow) => boolean) {
+        const ms = cleanSale.filter(filterFn);
+        const mr = cleanRef.filter(filterFn);
+        const mn = ms.filter(o => cls(o) === 'new');
+        const mk = ms.filter(o => cls(o) === 'renewal');
+        const sa = ms.reduce((s, o) => s + o.amount, 0);
+        const ra = mr.reduce((s, o) => s + o.amount, 0);
+        const stepFacts: (number | null)[] = [];
+        for (let i = 0; i < TOTAL_STEPS; i++) {
+          const ss = `${monthStr}-${String(i * STEP_DAYS + 1).padStart(2, '0')}`;
+          const se = `${monthStr}-${String(Math.min((i + 1) * STEP_DAYS, daysInMonth)).padStart(2, '0')}`;
+          if (se > dateStr) { stepFacts.push(null); continue; }
+          stepFacts.push(
+            ms.filter(o => o.date && o.date >= ss && o.date <= se).reduce((s, o) => s + o.amount, 0) -
+            mr.filter(o => o.date && o.date >= ss && o.date <= se).reduce((s, o) => s + o.amount, 0)
+          );
+        }
+        return { fact: sa - ra, newAmt: mn.reduce((s,o)=>s+o.amount,0), renewAmt: mk.reduce((s,o)=>s+o.amount,0), newCnt: mn.length, renewCnt: mk.length, stepFacts };
+      }
+
+      function buildRow(plan: number, stepPlan: number, f: ReturnType<typeof computeFact>) {
+        const pod = stepsDone * stepPlan;
+        const pct = pod > 0 ? Math.round(100 * f.fact / pod) : (f.fact > 0 ? 100 : 0);
+        const dev = f.fact - pod;
+        const pom = plan > 0 ? Math.round(100 * f.fact / plan) : 0;
+        const fct = wdElapsed > 0 ? Math.round(f.fact / wdElapsed * workingDays.length) : 0;
+        const fcp = plan > 0 ? Math.round(100 * fct / plan) : 0;
+        const npd = wdRemaining > 0 ? Math.round((plan - f.fact) / wdRemaining) : 0;
+        const st  = pct >= 100 ? 'в плане' : pct >= 90 ? 'почти' : 'отстаёт';
+        let cum = 0;
+        const sr: (number|null)[] = f.stepFacts.map((sf, i) => { if (sf === null) return null; cum += sf; return cum - (i+1)*stepPlan; });
+        return { plan, step_plan: stepPlan, plan_on_date: pod, fact: f.fact, new_amount: f.newAmt, renewal_amount: f.renewAmt, new_count: f.newCnt, renewal_count: f.renewCnt, pct_of_step: pct, deviation: dev, pct_of_month: pom, forecast: fct, forecast_pct: fcp, needed_per_day: npd, status: st, steps: f.stepFacts, steps_running: sr };
+      }
+
+      const allMgrSet = new Set<string>();
+      for (const o of cleanSale) allMgrSet.add(clMgr(o.cid, clm));
+
+      const managers = [...allMgrSet]
+        .filter(m => !hidden.has(m) && m !== '(без менеджера)')
+        .map(mgr => {
+          const pp = sellerPlans.get(mgr) ?? 0;
+          const sp = pp > 0 ? pp / TOTAL_STEPS : 0;
+          return { name: mgr, ...buildRow(pp, sp, computeFact(o => clMgr(o.cid, clm) === mgr)) };
+        })
+        .sort((a, b) => b.fact - a.fact);
+
+      const deptRow = buildRow(monthPlan, deptStep, computeFact(() => true));
+
+      const spVals = [...sellerPlans.values()].filter(v => v > 0);
+      const personalStepPlan = spVals.length > 0 ? spVals.reduce((a,b)=>a+b,0) / spVals.length / TOTAL_STEPS : 0;
+
+      res.json({
+        date: dateStr, month: monthStr, steps_done: stepsDone, total_steps: TOTAL_STEPS, step_days: STEP_DAYS,
+        month_plan: monthPlan, dept_step_plan: deptStep, personal_step_plan: personalStepPlan,
+        working_days_month: workingDays.length, working_days_elapsed: wdElapsed, working_days_remaining: wdRemaining,
+        managers, dept: deptRow, has_hidden_sellers: [...allMgrSet].some(m => hidden.has(m)),
+        seller_plans: Object.fromEntries(sellerPlans),
+      });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

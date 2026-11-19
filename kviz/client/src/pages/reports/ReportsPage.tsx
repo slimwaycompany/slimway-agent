@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import Modal from '../../components/ui/Modal';
 import { toast } from '../../lib/toast';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea, Cell } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea, Cell, LabelList } from 'recharts';
 import OccupancySection from './OccupancySection';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
 
@@ -32,7 +32,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu' | 'control' | 'control2';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu' | 'control' | 'control2' | 'plan-fact';
 
 interface TbuPeriod {
   label: string; from: string; to: string;
@@ -102,10 +102,11 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
   {
     title: 'Продажи', adminOnly: true,
     items: [
-      { id: 'sales',    label: 'Отчёт по продажам', desc: 'Операции Fitbase, разбивка', adminOnly: true },
-      { id: 'renewals', label: 'Продления',           desc: 'Новые, продления, вернулись', adminOnly: true },
-      { id: 'payroll',  label: 'Зарплата',            desc: 'Расчёт зарплаты сотрудников', adminOnly: true },
-      { id: 'tbu',      label: 'ТБУ',                desc: 'Точка безубыточности, каскад', adminOnly: true },
+      { id: 'sales',      label: 'Отчёт по продажам', desc: 'Операции Fitbase, разбивка',      adminOnly: true },
+      { id: 'renewals',   label: 'Продления',          desc: 'Новые, продления, вернулись',      adminOnly: true },
+      { id: 'plan-fact',  label: 'План-факт (срез)',   desc: 'Срез на дату, план по шагам',      adminOnly: true },
+      { id: 'payroll',    label: 'Зарплата',           desc: 'Расчёт зарплаты сотрудников',      adminOnly: true },
+      { id: 'tbu',        label: 'ТБУ',               desc: 'Точка безубыточности, каскад',     adminOnly: true },
     ],
   },
   {
@@ -231,6 +232,7 @@ export default function ReportsPage() {
       {section === 'tbu'            && isAdmin && <TbuSection />}
       {section === 'control'         && isAdmin && <ControlSection />}
       {section === 'control2'        && isAdmin && <Control2Section />}
+      {section === 'plan-fact'       && isAdmin && <PlanFactSection />}
     </div>
   );
 }
@@ -1526,7 +1528,10 @@ function useSyncButton() {
 
 interface FdSrcRow { source: string; leads: number; in_work: number; alive_count: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number }
 interface FdMgrRow { manager: string; leads: number; in_work: number; alive_count: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number; items?: DrillItem[] }
-interface FdCshRow { cashier: string; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number }
+interface FdCshRow { cashier: string; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number; new_count: number; renewal_count: number; new_amount: number; renewal_amount: number }
+interface PlanFactMgr { name: string; personal_plan: number; step_plan: number; plan_on_date: number; fact: number; new_amount: number; renewal_amount: number; new_count: number; renewal_count: number; pct_of_step: number; deviation: number; pct_of_month: number; forecast: number; forecast_pct: number; needed_per_day: number; status: string; steps: (number|null)[]; steps_running: (number|null)[] }
+interface PlanFactDept { plan: number; step_plan: number; plan_on_date: number; fact: number; new_amount: number; renewal_amount: number; new_count: number; renewal_count: number; pct_of_step: number; deviation: number; pct_of_month: number; forecast: number; forecast_pct: number; needed_per_day: number; status: string; steps: (number|null)[]; steps_running: (number|null)[] }
+interface PlanFactData { date: string; month: string; steps_done: number; total_steps: number; step_days: number; month_plan: number; dept_step_plan: number; personal_step_plan: number; working_days_month: number; working_days_elapsed: number; working_days_remaining: number; managers: PlanFactMgr[]; dept: PlanFactDept; has_hidden_sellers: boolean; seller_plans: Record<string,number> }
 
 const FD_STEP_ORDER = ['leads','in_work','trial_booked','visited','sales','renewals'] as const;
 const FD_LABELS: Record<string, string> = {
@@ -1610,10 +1615,14 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
   const [tab, setTab] = useState<ChartTab>('Менеджеры');
   const fmtK = (v: number) => v >= 1000 ? Math.round(v / 1000) + 'к' : String(Math.round(v));
 
+  const fmtAmt  = (v: number) => v ? Math.round(v).toLocaleString('ru') + ' ₸' : '';
+  const fmtCnt  = (v: number) => v ? v + ' шт' : '';
+
   const mgrData = byMgr.slice(0, 8).map(r => ({
-    name: r.manager.split(' ').slice(0, 2).join(' '),
-    'Новые': r.new_amount,
-    'Продления': r.renewal_amount,
+    name: r.manager.split(' ')[0] ?? r.manager,
+    'Итог ₸': r.net_amount,
+    'Новые': r.new_count,
+    'Продл.': r.renewal_count,
   }));
   const srcData = bySrc.slice(0, 8).map(r => ({
     name: r.source.length > 18 ? r.source.slice(0, 18) + '…' : r.source,
@@ -1623,20 +1632,33 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
   const funnelData = FD_STEP_ORDER.map(k => ({ name: FD_LABELS[k] ?? k, count: data[k]?.count ?? 0 }));
   const cshData = byCsh.slice(0, 8).map(r => ({
     name: r.cashier.split(' ')[0] ?? r.cashier,
-    'Итог': r.net_amount,
+    'Итог ₸': r.net_amount,
+    'Новые': r.new_count,
+    'Продл.': r.renewal_count,
   }));
 
-  const chart = tab === 'Менеджеры' ? (
-    <BarChart data={mgrData} margin={{ top: 4, right: 8, left: 0, bottom: 20 }}>
+  const dualBarChart = (chartData: typeof mgrData) => (
+    <BarChart data={chartData} margin={{ top: 24, right: 36, left: 0, bottom: 20 }}>
       <CartesianGrid strokeDasharray="3 3" vertical={false} />
       <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
-      <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} />
-      <Tooltip formatter={(v: number) => Math.round(v).toLocaleString('ru') + ' ₸'} />
-      <Legend wrapperStyle={{ fontSize: 11 }} />
-      <Bar dataKey="Новые" fill="var(--accent)" stackId="a" />
-      <Bar dataKey="Продления" fill="var(--primary)" stackId="a" radius={[3,3,0,0]} />
+      <YAxis yAxisId="amt" orientation="left" tickFormatter={fmtK} tick={{ fontSize: 9 }} width={40} />
+      <YAxis yAxisId="cnt" orientation="right" allowDecimals={false} tick={{ fontSize: 9 }} width={22} />
+      <Tooltip formatter={(v: number, n: string) => n === 'Итог ₸' ? Math.round(v).toLocaleString('ru') + ' ₸' : v + ' шт'} />
+      <Legend wrapperStyle={{ fontSize: 10 }} />
+      <Bar dataKey="Итог ₸" fill="#1A1A1A" yAxisId="amt" radius={[2,2,0,0]}>
+        <LabelList dataKey="Итог ₸" position="top" style={{ fontSize: 8, fill: '#555555' }} formatter={fmtAmt} />
+      </Bar>
+      <Bar dataKey="Новые" fill="#1E7B34" yAxisId="cnt">
+        <LabelList dataKey="Новые" position="top" style={{ fontSize: 8, fill: '#1E7B34' }} formatter={fmtCnt} />
+      </Bar>
+      <Bar dataKey="Продл." fill="#6B4F1D" yAxisId="cnt" radius={[2,2,0,0]}>
+        <LabelList dataKey="Продл." position="top" style={{ fontSize: 8, fill: '#6B4F1D' }} formatter={fmtCnt} />
+      </Bar>
     </BarChart>
-  ) : tab === 'Источники' ? (
+  );
+
+  const chart = tab === 'Менеджеры' ? dualBarChart(mgrData)
+  : tab === 'Источники' ? (
     <BarChart data={srcData} margin={{ top: 4, right: 8, left: 0, bottom: 20 }}>
       <CartesianGrid strokeDasharray="3 3" vertical={false} />
       <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
@@ -1653,15 +1675,7 @@ function ChartsPanel({ byMgr, bySrc, byCsh, data }: { byMgr: FdMgrRow[]; bySrc: 
       <Tooltip />
       <Bar dataKey="count" fill="var(--primary)" radius={[0,3,3,0]} />
     </BarChart>
-  ) : (
-    <BarChart data={cshData} margin={{ top: 4, right: 8, left: 0, bottom: 20 }}>
-      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-      <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
-      <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} />
-      <Tooltip formatter={(v: number) => Math.round(v).toLocaleString('ru') + ' ₸'} />
-      <Bar dataKey="Итог" fill="var(--primary)" radius={[3,3,0,0]} />
-    </BarChart>
-  );
+  ) : dualBarChart(cshData);
 
   return (
     <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid var(--border)' }}>
@@ -4137,6 +4151,321 @@ function ControlSection() {
           .control-desktop table td:nth-child(n+2) { min-width: 70px; }
         }
       `}</style>
+    </div>
+  );
+}
+
+// ── Plan-fact helpers (pure, outside component) ───────────────────────────────
+
+const PF_MONTH_NAMES = ['ЯНВАРЬ','ФЕВРАЛЬ','МАРТ','АПРЕЛЬ','МАЙ','ИЮНЬ','ИЮЛЬ','АВГУСТ','СЕНТЯБРЬ','ОКТЯБРЬ','НОЯБРЬ','ДЕКАБРЬ'];
+const PF_STEP_HDRS = Array.from({length:10},(_,i)=>`${i*3+1}-${Math.min(i*3+3,30)}`);
+
+function pfStatusStyle(pct: number): React.CSSProperties {
+  if (pct >= 100) return { background: '#C6EFCE', color: '#1E7B34', fontWeight: 600 };
+  if (pct >= 90)  return { background: '#FFEB9C', color: '#6B4F1D', fontWeight: 600 };
+  return { background: '#FFC7CE', color: '#C00000', fontWeight: 600 };
+}
+function pfStepStyle(fact: number|null, stepPlan: number): React.CSSProperties {
+  if (fact === null) return { color: '#ccc' };
+  const p = stepPlan > 0 ? fact / stepPlan : (fact > 0 ? 1 : 0);
+  if (p >= 1)   return { background: '#C6EFCE', color: '#1E7B34' };
+  if (p >= 0.9) return { background: '#FFEB9C', color: '#6B4F1D' };
+  return { background: '#FFC7CE', color: '#C00000' };
+}
+function pfRunStyle(v: number|null): React.CSSProperties {
+  if (v === null) return { color: '#ccc', fontSize: 10 };
+  return { color: v >= 0 ? '#1E7B34' : '#C00000', fontSize: 10 };
+}
+
+function pfRecomputeMgr(m: PlanFactMgr, steps: (number|null)[], d: PlanFactData): PlanFactMgr {
+  const fact = steps.reduce<number>((s,v)=>s+(v??0),0);
+  const pod  = m.plan_on_date;
+  const pct  = pod>0?Math.round(100*fact/pod):(fact>0?100:0);
+  const pom  = m.personal_plan>0?Math.round(100*fact/m.personal_plan):0;
+  const fct  = d.working_days_elapsed>0?Math.round(fact/d.working_days_elapsed*d.working_days_month):0;
+  const fcp  = m.personal_plan>0?Math.round(100*fct/m.personal_plan):0;
+  const npd  = d.working_days_remaining>0?Math.round((m.personal_plan-fact)/d.working_days_remaining):0;
+  const st   = pct>=100?'в плане':pct>=90?'почти':'отстаёт';
+  let cum=0;
+  const sr:(number|null)[]=steps.map((sf,i)=>{if(sf===null)return null;cum+=sf;return cum-(i+1)*m.step_plan;});
+  return {...m,fact,pct_of_step:pct,deviation:fact-pod,pct_of_month:pom,forecast:fct,forecast_pct:fcp,needed_per_day:npd,status:st,steps,steps_running:sr};
+}
+
+function pfRecomputeDept(pvMgrs: PlanFactMgr[], sysMgrs: PlanFactMgr[], d: PlanFactData): PlanFactDept {
+  const dept = d.dept;
+  const steps:(number|null)[] = dept.steps.map((dSys,i)=>{
+    let delta=0;
+    for(const m of pvMgrs){const pv=m.steps[i];const sys=sysMgrs.find(sm=>sm.name===m.name)?.steps[i]??null;delta+=(pv??0)-(sys??0);}
+    if(dSys===null&&delta===0)return null;
+    return (dSys??0)+delta;
+  });
+  const fact=steps.reduce<number>((s,v)=>s+(v??0),0);
+  const pod=dept.plan_on_date;
+  const pct=pod>0?Math.round(100*fact/pod):(fact>0?100:0);
+  const pom=dept.plan>0?Math.round(100*fact/dept.plan):0;
+  const fct=d.working_days_elapsed>0?Math.round(fact/d.working_days_elapsed*d.working_days_month):0;
+  const fcp=dept.plan>0?Math.round(100*fct/dept.plan):0;
+  const npd=d.working_days_remaining>0?Math.round((dept.plan-fact)/d.working_days_remaining):0;
+  const st=pct>=100?'в плане':pct>=90?'почти':'отстаёт';
+  let cum=0;
+  const sr:(number|null)[]=steps.map((sf,i)=>{if(sf===null)return null;cum+=sf;return cum-(i+1)*dept.step_plan;});
+  return {...dept,fact,pct_of_step:pct,deviation:fact-pod,pct_of_month:pom,forecast:fct,forecast_pct:fcp,needed_per_day:npd,status:st,steps,steps_running:sr};
+}
+
+// ── PlanFactSection ────────────────────────────────────────────────────────────
+
+function PlanFactSection() {
+  const yesterday = (() => { const d=new Date(Date.now()+5*3600_000-86400_000); return d.toISOString().slice(0,10); })();
+  const [date, setDate] = useState(yesterday);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState<PlanFactData|null>(null);
+  const [preview, setPreview] = useState(false);
+  const [pvSteps, setPvSteps] = useState<Record<string,(number|null)[]>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/kviz/api/metrics/plan-fact?date=${date}`, {credentials:'include'});
+      if (!r.ok) return;
+      const d: PlanFactData = await r.json();
+      setData(d);
+      setPreview(false);
+      setPvSteps({});
+    } catch {} finally { setLoading(false); }
+  }, [date]);
+  useEffect(() => { load(); }, [load]);
+
+  function enterPreview() {
+    if (!data) return;
+    const steps: Record<string,(number|null)[]> = {};
+    for (const m of data.managers) steps[m.name] = [...m.steps];
+    setPvSteps(steps);
+    setPreview(true);
+  }
+
+  const activeMgrs = useMemo<PlanFactMgr[]>(()=>{
+    if(!data) return [];
+    if(!preview) return data.managers;
+    return data.managers.map(m => pfRecomputeMgr(m, pvSteps[m.name]??m.steps, data));
+  },[data,preview,pvSteps]);
+
+  const activeDept = useMemo<PlanFactDept|null>(()=>{
+    if(!data) return null;
+    if(!preview) return data.dept;
+    return pfRecomputeDept(activeMgrs, data.managers, data);
+  },[data,preview,activeMgrs]);
+
+  const fmt  = (n:number) => Math.round(n).toLocaleString('ru');
+  const fmtT = (n:number) => fmt(n)+' ₸';
+
+  if (!data && !loading) return (
+    <div style={{padding:'32px 0',textAlign:'center',color:'var(--text-3)'}}>Нет данных</div>
+  );
+
+  const monthLabel = data ? PF_MONTH_NAMES[(parseInt(data.month.slice(5,7),10)-1)] + ' ' + data.month.slice(0,4) : '';
+  const dateLabel  = data ? data.date.slice(8)+'.'+data.date.slice(5,7) : '';
+
+  // Table styles
+  const TH0: React.CSSProperties = { padding:'6px 8px', background:'#1A1A1A', color:'#fff', fontWeight:700, fontSize:11, textAlign:'left',  whiteSpace:'nowrap', borderRight:'1px solid #333' };
+  const TH:  React.CSSProperties = { padding:'6px 8px', background:'#1A1A1A', color:'#fff', fontWeight:700, fontSize:11, textAlign:'right', whiteSpace:'nowrap', borderRight:'1px solid #333' };
+  const TD0: React.CSSProperties = { padding:'5px 8px', fontSize:12, textAlign:'left',  borderBottom:'1px solid var(--border)', borderRight:'1px solid var(--border)', whiteSpace:'nowrap' };
+  const TD:  React.CSSProperties = { padding:'5px 8px', fontSize:12, textAlign:'right', borderBottom:'1px solid var(--border)', borderRight:'1px solid var(--border)', whiteSpace:'nowrap' };
+  const DEPT_ROW: React.CSSProperties = { background:'#F2F2F2', fontWeight:700 };
+  const PLAN_ROW: React.CSSProperties = { color:'#555555', fontSize:11 };
+
+  return (
+    <div style={{padding:'0 0 40px'}}>
+      <style>{`@media print{.pf-no-print{display:none!important}.pf-print-only{display:block!important}body{margin:0}}`}</style>
+
+      {/* Header bar */}
+      <div className="pf-no-print" style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:16,background:'var(--surface)',borderRadius:12,padding:'12px 16px',border:'1px solid var(--border)'}}>
+        <label style={{fontSize:12,color:'var(--text-2)'}}>Срез на:</label>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+          style={{padding:'5px 8px',border:'1.5px solid var(--input-border)',borderRadius:8,fontSize:13,fontFamily:'inherit'}} />
+        <button onClick={load} disabled={loading}
+          style={{padding:'5px 12px',background:'var(--primary)',color:'var(--surface)',border:'none',borderRadius:8,fontWeight:600,fontSize:12,cursor:'pointer'}}>
+          {loading ? 'Загрузка…' : 'Обновить'}
+        </button>
+        <button onClick={preview ? ()=>setPreview(false) : enterPreview}
+          style={{padding:'5px 12px',background:preview?'var(--warning)':'var(--surface-2)',color:preview?'#6B4F1D':'var(--text)',border:'1px solid var(--border)',borderRadius:8,fontWeight:600,fontSize:12,cursor:'pointer'}}>
+          {preview ? '✕ Выйти из превью' : '🔍 Превью'}
+        </button>
+        {preview && <button onClick={()=>{const s:Record<string,(number|null)[]>={};data?.managers.forEach(m=>{s[m.name]=[...m.steps];});setPvSteps(s);}}
+          style={{padding:'5px 12px',background:'var(--surface-2)',color:'var(--text-2)',border:'1px solid var(--border)',borderRadius:8,fontSize:12,cursor:'pointer'}}>
+          ↺ Сбросить к системе
+        </button>}
+        <button onClick={()=>window.print()}
+          style={{padding:'5px 12px',background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:8,fontSize:12,cursor:'pointer',marginLeft:'auto'}}>
+          🖨 Печать
+        </button>
+      </div>
+
+      {!data && loading && <div style={{padding:32,textAlign:'center',color:'var(--text-3)'}}>Загрузка…</div>}
+      {data && activeDept && (
+        <div>
+          {/* Preview badge */}
+          {preview && <div style={{background:'#FFEB9C',color:'#6B4F1D',fontWeight:700,fontSize:13,padding:'6px 16px',borderRadius:8,marginBottom:12,display:'inline-block'}}>ПРЕВЬЮ — не сохранено</div>}
+
+          {/* Title */}
+          <div style={{marginBottom:4}}>
+            <div style={{fontWeight:800,fontSize:16,letterSpacing:1,color:'var(--text)'}}>ПЛАН-ФАКТ ПРОДАЖ — {monthLabel}</div>
+            <div style={{fontSize:11,color:'var(--text-2)',marginTop:3}}>
+              Срез на {dateLabel} ({data.steps_done} шагов из {data.total_steps} пройдено) · общий план {fmtT(data.month_plan)} · шаг {data.step_days} дня = {fmtT(data.personal_step_plan)} на менеджера
+            </div>
+            {data.has_hidden_sellers && <div style={{fontSize:11,color:'#6B4F1D',marginTop:2}}>* сумма строк менеджеров может не совпадать с ОТДЕЛОМ (есть скрытые продавцы)</div>}
+          </div>
+
+          {/* Table 1: who is on plan */}
+          <div style={{marginTop:16,marginBottom:20,overflowX:'auto'}}>
+            <div style={{fontWeight:700,fontSize:12,marginBottom:6,color:'var(--text-2)',textTransform:'uppercase',letterSpacing:0.5}}>1. КТО В ПЛАНЕ</div>
+            <table style={{borderCollapse:'collapse',fontSize:12,minWidth:700}}>
+              <thead>
+                <tr>
+                  {['Менеджер','План на дату','Факт на дату','К шагу %','Отставание','От месяца %','Прогноз','Нужно/день','Статус'].map(h=>(
+                    <th key={h} style={h==='Менеджер'?TH0:TH}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {activeMgrs.map((m,ri)=>(
+                  <tr key={m.name} style={{background:ri%2===1?'var(--surface-2)':''}}>
+                    <td style={TD0}>{m.name}</td>
+                    <td style={TD}>{fmtT(m.plan_on_date)}</td>
+                    <td style={TD}>
+                      {preview
+                        ? <input type="number" value={m.fact} onChange={e=>{const f=parseFloat(e.target.value)||0;const steps=[...(pvSteps[m.name]??m.steps)];const nonNull=steps.filter(v=>v!==null).length||1;const diff=f-steps.reduce<number>((s,v)=>s+(v??0),0);const idx=steps.findLastIndex(v=>v!==null);if(idx>=0){steps[idx]=(steps[idx]??0)+diff;}setPvSteps(p=>({...p,[m.name]:steps}));}} style={{width:90,textAlign:'right',border:'1px solid #ccc',borderRadius:4,padding:'2px 4px',fontSize:11}} />
+                        : fmtT(m.fact)
+                      }
+                    </td>
+                    <td style={{...TD,...pfStatusStyle(m.pct_of_step)}}>{m.pct_of_step}%</td>
+                    <td style={{...TD,color:m.deviation<0?'#C00000':'inherit',fontWeight:m.deviation<0?700:400}}>{m.deviation>=0?'+':''}{fmt(m.deviation)}</td>
+                    <td style={TD}>{m.pct_of_month}%</td>
+                    <td style={TD}>{fmtT(m.forecast)} <span style={{color:'var(--text-3)',fontSize:10}}>({m.forecast_pct}%)</span></td>
+                    <td style={TD}>{fmtT(m.needed_per_day)}</td>
+                    <td style={{...TD,...pfStatusStyle(m.pct_of_step)}}>{m.status.toUpperCase()}</td>
+                  </tr>
+                ))}
+                <tr style={DEPT_ROW}>
+                  <td style={TD0}>ОТДЕЛ</td>
+                  <td style={TD}>{fmtT(activeDept.plan_on_date)}</td>
+                  <td style={TD}>{fmtT(activeDept.fact)}</td>
+                  <td style={{...TD,...pfStatusStyle(activeDept.pct_of_step)}}>{activeDept.pct_of_step}%</td>
+                  <td style={{...TD,color:activeDept.deviation<0?'#C00000':'inherit'}}>{activeDept.deviation>=0?'+':''}{fmt(activeDept.deviation)}</td>
+                  <td style={TD}>{activeDept.pct_of_month}%</td>
+                  <td style={TD}>{fmtT(activeDept.forecast)} <span style={{fontSize:10,fontWeight:400}}>({activeDept.forecast_pct}%)</span></td>
+                  <td style={TD}>{fmtT(activeDept.needed_per_day)}</td>
+                  <td style={{...TD,...pfStatusStyle(activeDept.pct_of_step)}}>{activeDept.status.toUpperCase()}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Table 2: fact by steps */}
+          <div style={{marginBottom:20,overflowX:'auto'}}>
+            <div style={{fontWeight:700,fontSize:12,marginBottom:6,color:'var(--text-2)',textTransform:'uppercase',letterSpacing:0.5}}>2. ФАКТ ПО ШАГАМ (3 дня)</div>
+            <table style={{borderCollapse:'collapse',fontSize:11,minWidth:860}}>
+              <thead>
+                <tr>
+                  <th style={{...TH0,fontSize:10}}>Менеджер</th>
+                  {PF_STEP_HDRS.map(h=><th key={h} style={{...TH,fontSize:10}}>{h}</th>)}
+                  <th style={{...TH,fontSize:10}}>Итого</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Plan row */}
+                <tr style={PLAN_ROW}>
+                  <td style={{...TD0,fontStyle:'italic'}}>План шага</td>
+                  {activeMgrs.length > 0 ? PF_STEP_HDRS.map((_,i)=>(
+                    <td key={i} style={{...TD,fontStyle:'italic'}}>{fmt(activeMgrs[0].step_plan)}</td>
+                  )) : PF_STEP_HDRS.map((_,i)=>(
+                    <td key={i} style={{...TD,fontStyle:'italic'}}>{fmt(data.personal_step_plan)}</td>
+                  ))}
+                  <td style={{...TD,fontWeight:700,fontStyle:'normal'}}>{fmtT(activeMgrs[0]?.personal_plan ?? data.month_plan)}</td>
+                </tr>
+                {activeMgrs.map(m=>(
+                  <React.Fragment key={m.name}>
+                    <tr>
+                      <td style={TD0}>{m.name}</td>
+                      {m.steps.map((sf,i)=>(
+                        <td key={i} style={{...TD,...pfStepStyle(sf, m.step_plan)}}>
+                          {preview && sf !== null
+                            ? <input type="number" value={sf??0} onChange={e=>setPvSteps(p=>{const ns=[...(p[m.name]??m.steps)];ns[i]=parseFloat(e.target.value)||0;return{...p,[m.name]:ns};})}
+                                style={{width:68,textAlign:'right',border:'none',background:'transparent',fontSize:10,padding:0}} />
+                            : sf !== null ? fmt(sf) : '—'}
+                        </td>
+                      ))}
+                      <td style={{...TD,fontWeight:700}}>{fmt(m.fact)}</td>
+                    </tr>
+                    <tr>
+                      <td style={{...TD0,fontSize:10,color:'var(--text-3)'}}>+/- нарастающим</td>
+                      {m.steps_running.map((v,i)=>(
+                        <td key={i} style={{...TD,...pfRunStyle(v)}}>
+                          {v!==null?(v>=0?'+':'')+fmt(v):''}
+                        </td>
+                      ))}
+                      <td style={TD}></td>
+                    </tr>
+                  </React.Fragment>
+                ))}
+                {/* Dept row */}
+                <tr style={DEPT_ROW}>
+                  <td style={TD0}>ОТДЕЛ</td>
+                  {activeDept.steps.map((sf,i)=>(
+                    <td key={i} style={{...TD,...pfStepStyle(sf, activeDept.step_plan)}}>
+                      {sf!==null?fmt(sf):'—'}
+                    </td>
+                  ))}
+                  <td style={{...TD,fontWeight:700}}>{fmt(activeDept.fact)}</td>
+                </tr>
+                <tr style={{...DEPT_ROW,fontWeight:400}}>
+                  <td style={{...TD0,fontSize:10,color:'#555'}}>+/- нарастающим</td>
+                  {activeDept.steps_running.map((v,i)=>(
+                    <td key={i} style={{...TD,...pfRunStyle(v)}}>
+                      {v!==null?(v>=0?'+':'')+fmt(v):''}
+                    </td>
+                  ))}
+                  <td style={TD}></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Preview dynamics chart */}
+          {preview && (() => {
+            const chartData = Array.from({length: data.total_steps}, (_,i)=>{
+              const cumPlan = Math.round((i+1)*activeDept.step_plan);
+              const cumFact = activeDept.steps.slice(0,i+1).reduce<number>((s,v)=>s+(v??0),0);
+              return { step: PF_STEP_HDRS[i], 'План': cumPlan, 'Факт': activeDept.steps[i]!==null ? Math.round(cumFact) : null };
+            });
+            return (
+              <div style={{marginBottom:20,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 16px'}}>
+                <div style={{fontWeight:600,fontSize:12,marginBottom:8,color:'var(--text-2)'}}>ДИНАМИКА (нарастающий факт vs план)</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart data={chartData} margin={{top:4,right:16,left:0,bottom:4}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="step" tick={{fontSize:10}} />
+                    <YAxis tickFormatter={v=>v>=1000?Math.round(v/1000)+'к':String(v)} tick={{fontSize:9}} width={40} />
+                    <Tooltip formatter={(v:number)=>Math.round(v).toLocaleString('ru')+' ₸'} />
+                    <Legend wrapperStyle={{fontSize:10}} />
+                    <Line type="monotone" dataKey="План" stroke="#BFBFBF" strokeWidth={2} dot={false} strokeDasharray="4 2" />
+                    <Line type="monotone" dataKey="Факт" stroke="#1A1A1A" strokeWidth={2} dot={{r:3}} connectNulls={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          })()}
+
+          {/* Legend */}
+          <div style={{background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:10,padding:'12px 16px',fontSize:12,color:'var(--text-2)',lineHeight:1.6}}>
+            <div style={{fontWeight:700,fontSize:12,color:'var(--text)',marginBottom:6}}>КАК ЧИТАТЬ</div>
+            <div><b>Шаги по 3 дня</b> — месяц разбит на 10 шагов × 3 дня; ячейка шага — сумма продаж (нетто) за эти дни.</div>
+            <div><b>Выполнение к шагу</b> — факт ÷ план за пройденные шаги; <span style={{background:'#C6EFCE',color:'#1E7B34',padding:'0 4px',borderRadius:3}}>≥100% — в плане</span>, <span style={{background:'#FFEB9C',color:'#6B4F1D',padding:'0 4px',borderRadius:3}}>90–99% — почти</span>, <span style={{background:'#FFC7CE',color:'#C00000',padding:'0 4px',borderRadius:3}}>&lt;90% — отстаёт</span>.</div>
+            <div><b>Прогноз на месяц</b> — экстраполяция текущего темпа на оставшиеся рабочие дни (в скобках % от личного плана).</div>
+            <div><b>Нужно в день</b> — (личный план − факт) ÷ оставшиеся рабочие дни.</div>
+            <div style={{marginTop:4,color:'var(--text-3)'}}>Бонус 30 000 ₸ начисляется за выполнение общего плана отдела на 100%. Расчёт — в отчёте «Зарплата».</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
