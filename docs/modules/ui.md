@@ -190,6 +190,11 @@
 
 ## Сделано
 <!-- новые записи сверху -->
+### 19.11.2026 · 957ffa7 · task 71 — меню кружка поверх iframe
+
+- `src/http/shell.ts`: `#top-bar` → `position:relative;z-index:10`; корень: `backdrop-filter` на `#top-bar` создавал stacking context с `z-index:auto=0`; `#panes` шёл после в DOM на том же уровне — его iframes перекрывали `.ua-menu`. `.ua-wrap` с `z-index:50` внутри `#top-bar` не мог «победить» `#panes` — их сравнение шло на уровне `#work-area`, где `#top-bar` имел `auto` (0).
+- `public/shell-app.js`: `uaMenu.click → stopPropagation` — тема-кнопки не закрывают меню; `window.blur → closeMenu` — клик в iframe закрывает меню (iframes не передают клики в родительский document).
+
 ### 19.11.2026 · f7d896f · task 70 — z-index ua-wrap; Profil section в Настройках
 - `src/http/shell.ts`: `z-index:50` на `.ua-wrap` — поверх полосы вкладок в шапке (ранее элемент мог быть перекрыт).
 - `SettingsPage.tsx`: раздел «Профиль» в группе «Моё» — без прав, доступен всем; `ProfileSection` — аватар, имя, роль, кнопка «Выйти из учётки» с `showConfirm`; синонимы 'профиль'/'выйти'.

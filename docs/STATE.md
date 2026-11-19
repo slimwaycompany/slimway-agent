@@ -6,7 +6,7 @@
 
 | Модуль | Файл | Чат в claude.ai | Статус | Обновлено | Последнее изменение |
 |---|---|---|---|---|---|
-| Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 70: фикс TypeError $('logout-btn'), z-index ua-wrap, Esc/logout postMessage |
+| Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 71: меню кружка (#top-bar z-index:10), stopPropagation в ua-menu, window.blur close, logout All-paths cookie |
 | Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 19.11.2026 | task 70: ProfileSection в Настройках (Профиль → Выйти), display_name в PermContext |
 | Агент воронки Fitbase | `modules/agent.md` | Агент и овчарка | 🟢 | 12.11.2026 | task 48: syncVisits date_to fix (Fitbase требует date_to для /schedule-registration) |
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 28.10.2026 | Работает, кабинет агента |
@@ -21,7 +21,7 @@
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | ⚪ | 28.10.2026 | Требования собраны, следующий этап после кассы |
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 18.11.2026 | task 67: syncLeads() создаёт body_clients для заявок с телефоном (try/catch, пакеты 100) |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
-| UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | 🟡 | 19.11.2026 | task 68.2: GroupedNav+SettingsPage 7 групп, always-light экраны, color-scheme, check:mobile переписан; Playwright-прогон (ч.8) ожидает |
+| UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | 🟡 | 19.11.2026 | task 71: меню кружка поверх iframe (#top-bar stacking context fix) |
 | Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 18.11.2026 | task 66: каталог проверок, линейки ролей (версии), движок v2, конструктор в Настройках, API, temp экран |
 | Telegram-бот клиентов | `modules/telegram-bot.md` | Telegram-бот клиентов | 🟡 | 17.11.2026 | task 60: InBody детальный экран — 4 блока (состав/до цели/с прошлого/со старта), навигация ‹/›, ideal_weight |
 

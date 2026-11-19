@@ -38,6 +38,11 @@
 - CSS для safe-area insets, `100dvh`, `font-size:16px` на input.
 
 ## Сделано
+### 19.11.2026 · 957ffa7 · task 71 — меню кружка поверх iframe, закрытие по blur
+
+- `src/http/shell.ts`: `#top-bar` → `position:relative;z-index:10` (корень проблемы: `backdrop-filter` создавал stacking context с `z-index:auto=0`; `#panes` шёл позже в DOM на том же уровне и его iframe-ы перекрывали `.ua-menu`; теперь `#top-bar` z=10 > `#panes` z=auto). `/api/logout`: четыре заголовка `Set-Cookie` — `Path=/` (Secure + plain), `Path=/window`, `Path=/kviz` — гарантированная очистка при любом браузере.
+- `public/shell-app.js`: `uaMenu.addEventListener('click', stopPropagation)` — клик по кнопкам темы внутри меню не закрывает его; `window.addEventListener('blur', closeMenu)` — клик в любой iframe закрывает меню (iframe не передаёт события в родительский document).
+
 ### 19.11.2026 · f7d896f · task 70 — фикс TypeError #logout-btn, кружок профиля, Выйти
 
 - `public/shell-app.js`: убран мёртвый блок `$('logout-btn').onclick` (строка 362) — элемента `#logout-btn` нет с задачи 68, TypeError крашил весь скрипт ниже (drawer, Alt+1–0, ua-btn click, тема, восстановление вкладки). Убран стейл-блок `logoutBtnEl` для инициала (инициал уже в HTML). Добавлен обработчик `type:'logout'` в postMessage (→ `/login`). Esc закрывает и меню кружка.
