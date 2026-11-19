@@ -16,7 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 68.1 | ui | Тема в профиле, токены, перевод всех цветов, проверка каждой страницы в двух темах | `docs/tasks/68-1-ui-theme-profile.md` | 🔧 в работе (Claude, 19.11.2026) |
+| 68.1 | ui | Тема в профиле, токены, перевод всех цветов, проверка каждой страницы в двух темах | `docs/tasks/68-1-ui-theme-profile.md` | ✅ готово (c4bb3ab, 4a57aa9) |
 | 68 | ui | UI Foundation шаг «а»: токены, тёмная тема, иконки, компоненты обратной связи, точки перелома, viewport | `docs/tasks/68-ui-foundation.md` | ✅ готово (e5c561d…5c041df, см. журнал) |
 | 67 | zamery, crm-leads | TV-пересчёт: проверка 5 путей + 5 тестов calcLosses; syncLeads создаёт body_clients для заявок Fitbase | `docs/tasks/67-zamery-crm-leads-sync.md` | ✅ готово (см. журнал) |
 | 66 | control | Control 2.0 этап 2: каталог проверок, версии линеек, конструктор, движок v2, ручные проверки, API | `docs/tasks/66-control2-stage2.md` | ✅ готово (см. журнал) |
@@ -126,6 +126,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 19.11.2026 | Claude | 68.1 ui: тема в профиле, токены, перевод ~2500 цветов, check:mobile | c4bb3ab (части 1–3), 4a57aa9 (часть 4), текущий коммит (части 6–7) | PUT /kviz/api/settings/theme; app_users.ui_theme; AppearanceSection для всех; ~227 намеренных цветов оставлены (серии графиков, палитра тела, TV). Часть 5 (Playwright-прогон на проде) — на стороне Сергея: npm run check:mobile. |
 | 18.11.2026 | Claude | 68 ui шаг «а»: public/ui/tokens.css (цвета светлая+тёмная, типографика, отступы, радиусы, тени, движение, алиасы); FOUC-скрипт + переключатель темы в меню пользователя + postMessage в iframe; замена ~192 hex → токены в index.css/shell.ts/window.ts (TV-секция защищена); Manrope в index.css; Icon.tsx + useBreakpoint.ts + SVG-иконки Lucide для вкладок; viewport-fit=cover; Toaster+ConfirmDialog+ConfirmProvider (Radix); Modal→Radix; Loading/Skeleton/EmptyState/ErrorState; public/ui/ui.js; замена всех alert()/confirm() ~18 мест; анимации slide-in/fade-in/scale-in; glass-* классы; docs обновлены. | e5c561d, 2e5f9f6, 674b126, e392af0, 5c041df + коммит Part8 |
 | 18.11.2026 | Claude | 67 zamery+crm-leads: studioResults.test.ts +5 тестов calcLosses (cm only, kg only, fat only, all grew, mixed); crmLeadsSync.ts syncLeads() — phonesFromLeads + phoneToName → body_clients INSERT после upsert (try/catch, пакеты 100). fitbaseCrmSync.ts исследование: синкает fitbase_leads/fitbase_visits/fitbase_contracts (не crm_leads); lock=10 мин; normalizePhone возвращает +7, не 7. | 8f16595 | Нет SQL, нет env. |
 | 18.11.2026 | Claude | 66 control: src/control/catalog.ts (12 ready + 8 soon CheckType, evaluate()); src/control/lineVersions.ts (getLineVersion, getAllVersions, createVersion, seedDefaultVersions, calcVariablePay); src/jobs/control2.ts (runControl2, runControl2Range); src/http/control2.ts (buildControl2Router); src/index.ts (/run/control2, buildControl2Router, seedDefaultVersions); src/http/checkin.ts (фото только при «Пришла»); ManagerPage (модал «Ушла» без камеры); SettingsPage (раздел control-lines, ControlLinesSection); ReportsPage (control2 Section + Control2Section temp экран) | — | Деплой: проверить /run/control2?date=2026-11-18&key=… и temp экран «Контроль 2.0 (тест)» в Отчёты. SQL уже выполнен (см. ТЗ). |
