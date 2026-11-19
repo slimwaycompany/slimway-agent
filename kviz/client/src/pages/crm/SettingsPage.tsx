@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import { toast } from '../../lib/toast';
+import { PermContext } from '../../lib/permContext';
 import { showConfirm } from '../../lib/confirm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
@@ -26,7 +27,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv';
+type Section = 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -3573,9 +3574,84 @@ function TvSection() {
   );
 }
 
+// ── AppearanceSection (accessible to all users) ───────────────────────────────
+
+function AppearanceSection() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function choose(val: 'light' | 'dark') {
+    if (saving || val === theme) return;
+    setSaving(true);
+    const prev = theme;
+    setTheme(val);
+    if (val === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+    try { localStorage.setItem('sw-theme', val); } catch {}
+    try { window.parent.postMessage({ type: 'sw-theme', theme: val }, window.location.origin); } catch {}
+    try {
+      const r = await fetch('/kviz/api/me/theme', {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ui_theme: val }),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Ошибка'); }
+    } catch {
+      setTheme(prev);
+      if (prev === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      else document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('sw-theme', prev); } catch {}
+      toast.error('Не удалось сохранить тему. Попробуйте ещё раз.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={S.section}>
+      <div style={S.subheader}><div style={S.subTitle}>Оформление</div></div>
+      <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 20 }}>
+        Тема сохраняется в профиле и работает на всех устройствах.
+      </p>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' as const }}>
+        {(['light', 'dark'] as const).map(t => (
+          <button key={t} onClick={() => choose(t)} disabled={saving} style={{
+            width: 160, padding: '12px 12px 14px',
+            borderRadius: 'var(--r-lg)',
+            border: `2px solid ${theme === t ? 'var(--primary)' : 'var(--border)'}`,
+            background: theme === t ? 'var(--primary-soft)' : 'var(--surface)',
+            cursor: saving ? 'wait' : 'pointer', textAlign: 'left' as const,
+            transition: 'border-color var(--dur-fast), background var(--dur-fast)',
+            fontFamily: 'inherit',
+          }}>
+            <div style={{
+              borderRadius: 'var(--r-sm)', overflow: 'hidden', marginBottom: 10,
+              background: t === 'dark' ? '#0b0f14' : '#f2f4f7',
+              border: `1px solid ${t === 'dark' ? '#2a313b' : '#e5e8ec'}`,
+              height: 80, padding: 8,
+            }}>
+              <div style={{ height: 10, width: '60%', borderRadius: 4, background: t === 'dark' ? '#151a21' : '#fff', marginBottom: 6 }} />
+              <div style={{ height: 7, width: '80%', borderRadius: 3, background: t === 'dark' ? '#1c222b' : '#f1f5f9', marginBottom: 4 }} />
+              <div style={{ height: 7, width: '50%', borderRadius: 3, background: t === 'dark' ? '#1c222b' : '#f1f5f9', marginBottom: 8 }} />
+              <div style={{ height: 18, width: 56, borderRadius: 5, background: '#02BDB6' }} />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
+              {t === 'light' ? 'Светлая' : 'Тёмная'}
+            </div>
+            {theme === t && <div style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600 }}>Выбрана ✓</div>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
 const NAV: { id: Section; label: string; icon: string }[] = [
+  { id: 'appearance', label: 'Оформление',          icon: '🎨' },
   { id: 'staff',      label: 'Сотрудники',          icon: '👤' },
   { id: 'devices',    label: 'Аппараты',           icon: '⚙️' },
   { id: 'abonements', label: 'Абонементы',          icon: '📋' },
@@ -3603,10 +3679,22 @@ const NAV: { id: Section; label: string; icon: string }[] = [
 ];
 
 export default function SettingsPage() {
+  const { role, perms } = useContext(PermContext);
+  const hasSettingsPerms = role === 'admin' || Object.keys(perms).some(k => k.startsWith('settings.'));
+
   const [section, setSection] = useState<Section>(() => {
-    try { return (sessionStorage.getItem('crm-settings-section') as Section) || 'devices'; } catch { return 'devices'; }
+    try { return (sessionStorage.getItem('crm-settings-section') as Section) || 'appearance'; } catch { return 'appearance'; }
   });
   const [mobileContent, setMobileContent] = useState(false);
+
+  useEffect(() => {
+    if (!hasSettingsPerms && section !== 'appearance') {
+      setSection('appearance');
+      try { sessionStorage.setItem('crm-settings-section', 'appearance'); } catch {}
+    }
+  }, [hasSettingsPerms, section]);
+
+  const visibleNav = hasSettingsPerms ? NAV : NAV.filter(n => n.id === 'appearance');
 
   function nav(s: Section) {
     setSection(s);
@@ -3618,7 +3706,7 @@ export default function SettingsPage() {
     <div className="settings-wrap" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: '#f8fafc' }}>
       <div className={`settings-sidebar${mobileContent ? ' settings-sidebar--hidden' : ''}`} style={S.sidebar}>
         <div style={S.sidebarTitle}>Настройки</div>
-        {NAV.map(n => (
+        {visibleNav.map(n => (
           <button key={n.id} style={{ ...S.navItem, ...(section === n.id ? S.navActive : {}) }} onClick={() => nav(n.id)}>
             <span style={{ marginRight: 8 }}>{n.icon}</span>{n.label}
           </button>
@@ -3630,6 +3718,7 @@ export default function SettingsPage() {
             onClick={() => setMobileContent(false)}>← Назад</button>
           {NAV.find(n => n.id === section)?.label}
         </div>
+        {section === 'appearance' && <AppearanceSection />}
         {section === 'staff'      && <StaffPage />}
         {section === 'devices'    && <DevicesSection />}
         {section === 'abonements' && <PlansSection kind="abonement" />}

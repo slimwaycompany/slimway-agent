@@ -618,31 +618,32 @@
   }
 
   // ── Theme toggle ────────────────────────────────────────────────────────────
-  function applyShellTheme(val) {
+  function applyShellTheme(val, skipServer) {
     var root = document.documentElement;
-    if (val === 'dark') {
-      root.setAttribute('data-theme', 'dark');
-    } else if (val === 'light') {
-      root.removeAttribute('data-theme');
-    } else {
-      if (matchMedia('(prefers-color-scheme:dark)').matches) root.setAttribute('data-theme', 'dark');
-      else root.removeAttribute('data-theme');
-    }
+    if (val === 'dark') root.setAttribute('data-theme', 'dark');
+    else root.removeAttribute('data-theme');
     try { localStorage.setItem('sw-theme', val); } catch (e) {}
     // Update active state on all theme buttons
     var btns = document.querySelectorAll('[data-theme-val]');
     for (var i = 0; i < btns.length; i++) {
       btns[i].classList.toggle('active', btns[i].getAttribute('data-theme-val') === val);
     }
-    // Broadcast to iframes
+    // Broadcast to all iframes immediately
     var frames = document.querySelectorAll('iframe.frame');
     for (var j = 0; j < frames.length; j++) {
       try { frames[j].contentWindow.postMessage({ type: 'sw-theme', theme: val }, origin); } catch (e) {}
     }
+    // Save to server (fire-and-forget; on error next page load re-syncs from DB)
+    if (!skipServer) {
+      fetch('/kviz/api/me/theme', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ui_theme: val }), credentials: 'include' })
+        .catch(function () {});
+    }
   }
 
-  // Wire up theme buttons + set initial active
-  var initThemeVal = localStorage.getItem('sw-theme') || 'auto';
+  // Read initial theme from server-rendered DOM (always correct), sync cache
+  var initThemeVal = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  try { localStorage.setItem('sw-theme', initThemeVal); } catch (e) {}
+
   var allThemeBtns = document.querySelectorAll('[data-theme-val]');
   for (var ti = 0; ti < allThemeBtns.length; ti++) {
     (function (btn) {
@@ -651,12 +652,15 @@
     }(allThemeBtns[ti]));
   }
 
-  // Update shell theme when system preference changes (while 'auto' is selected)
-  try {
-    matchMedia('(prefers-color-scheme:dark)').addEventListener('change', function () {
-      if ((localStorage.getItem('sw-theme') || 'auto') === 'auto') applyShellTheme('auto');
-    });
-  } catch (e) {}
+  // Broadcast initial theme to iframes when they load (handles the agent-iframe case)
+  var frames = document.querySelectorAll('iframe.frame');
+  for (var fi = 0; fi < frames.length; fi++) {
+    (function (f) {
+      f.addEventListener('load', function () {
+        try { f.contentWindow.postMessage({ type: 'sw-theme', theme: initThemeVal }, origin); } catch (e) {}
+      });
+    }(frames[fi]));
+  }
 
   // ── Restore last tab on reload ──────────────────────────────────────────────
   try {

@@ -4,7 +4,7 @@ import express from 'express';
 import { supabase } from '../db/supabase';
 import { env } from '../config';
 import { rawGet } from './fitbase';
-import { getToken, verifyToken, requireAuth } from './auth';
+import { getToken, verifyToken, requireAuth, getSession } from './auth';
 
 const ALMATY_MS = 5 * 3600 * 1000;
 
@@ -48,13 +48,12 @@ async function fetchLeadSource(leadId: number): Promise<string> {
 // ── HTML page ─────────────────────────────────────────────────────────────────
 
 const HTML_TEMPLATE = `<!DOCTYPE html>
-<html lang="ru">
+<html lang="ru"<!--WIN_THEME-->>
 <head>
 <meta charset="UTF-8">
-<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')}()</script>
+<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}()</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" id="tc-light" media="(prefers-color-scheme: light)" content="#f2f4f7">
-<meta name="theme-color" id="tc-dark" media="(prefers-color-scheme: dark)" content="#0b0f14">
+<meta name="theme-color" content="<!--WIN_META_COLOR-->">
 <link rel="manifest" href="/window/manifest.json">
 <title>SlimWay — помощник</title>
 <script>if(window.self===window.top){location.replace('/');}</script>
@@ -283,12 +282,25 @@ export function mountWindowRoutes(app: express.Application): void {
     { maxAge: 0 },
   ));
 
-  app.get('/window', (req, res) => {
+  app.get('/window', async (req, res) => {
     // Redirect to shell when opened directly in browser
     if (req.headers['sec-fetch-dest'] === 'document') { res.redirect(302, '/'); return; }
     const leadUrl   = (env.FITBASE_LEAD_URL_TEMPLATE   || '').replace(/'/g, "\\'");
     const clientUrl = (env.FITBASE_CLIENT_URL_TEMPLATE || '').replace(/'/g, "\\'");
+    // Inject user theme server-side (no flash)
+    const session = getSession(req);
+    let userTheme = 'light';
+    if (session?.id) {
+      try {
+        const { data } = await supabase.from('app_users').select('ui_theme').eq('id', session.id).maybeSingle();
+        if (data?.ui_theme) userTheme = data.ui_theme as string;
+      } catch {}
+    }
+    const themeAttr = userTheme === 'dark' ? ' data-theme="dark"' : '';
+    const metaColor = userTheme === 'dark' ? '#0b0f14' : '#02BDB6';
     const html = HTML_TEMPLATE
+      .replace('<!--WIN_THEME-->', themeAttr)
+      .replace('<!--WIN_META_COLOR-->', metaColor)
       .replace('__LEAD_URL__',   leadUrl)
       .replace('__CLIENT_URL__', clientUrl);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');

@@ -78,17 +78,30 @@ function MeasureLandingPage() {
 }
 
 export default function App() {
+  // Sync theme from server on initial load (corrects localStorage cache if stale)
+  useEffect(() => {
+    if (window.location.pathname.startsWith('/kviz/results')) return;
+    fetch('/kviz/api/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { ui_theme?: string } | null) => {
+        if (!d?.ui_theme) return;
+        const root = document.documentElement;
+        if (d.ui_theme === 'dark') root.setAttribute('data-theme', 'dark');
+        else root.removeAttribute('data-theme');
+        try { localStorage.setItem('sw-theme', d.ui_theme); } catch {}
+      })
+      .catch(() => {});
+  }, []);
+
+  // Listen for theme change from parent shell
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       if (!e.data || e.data.type !== 'sw-theme') return;
-      const t = e.data.theme, root = document.documentElement;
-      if (window.location.pathname.startsWith('/kviz/results')) return; // TV always light
+      if (window.location.pathname.startsWith('/kviz/results')) return;
+      const t = e.data.theme as string, root = document.documentElement;
       if (t === 'dark') root.setAttribute('data-theme', 'dark');
-      else if (t === 'light') root.removeAttribute('data-theme');
-      else {
-        if (window.matchMedia('(prefers-color-scheme: dark)').matches) root.setAttribute('data-theme', 'dark');
-        else root.removeAttribute('data-theme');
-      }
+      else root.removeAttribute('data-theme');
+      try { localStorage.setItem('sw-theme', t); } catch {}
     }
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);

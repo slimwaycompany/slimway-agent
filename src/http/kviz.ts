@@ -91,7 +91,22 @@ function buildRouter(): Router {
   router.get('/kviz/api/me', async (req, res) => {
     const session = await getSessionWithPerms(req);
     if (!session) { res.json({ authed: false }); return; }
-    res.json({ authed: true, login: session.login, display_name: session.display_name, role: session.role, perms: session.perms });
+    const { data: themeRow } = await supabase.from('app_users').select('ui_theme').eq('id', session.id).maybeSingle();
+    const ui_theme = (themeRow?.ui_theme as string) || 'light';
+    res.json({ authed: true, login: session.login, display_name: session.display_name, role: session.role, perms: session.perms, ui_theme });
+  });
+
+  // Personal theme preference — no special perm required
+  router.put('/kviz/api/me/theme', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const { ui_theme } = req.body as { ui_theme?: string };
+    if (ui_theme !== 'light' && ui_theme !== 'dark') {
+      res.status(400).json({ error: 'Допустимые значения темы: light, dark' }); return;
+    }
+    const { error } = await supabase.from('app_users').update({ ui_theme }).eq('id', session.id);
+    if (error) { console.error('theme update error', error); res.status(500).json({ error: 'Ошибка сохранения темы' }); return; }
+    res.json({ ok: true });
   });
 
   // Public: permissions catalog

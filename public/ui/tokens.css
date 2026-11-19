@@ -77,6 +77,16 @@
   --btn-lg: 48px;
   --header: 56px;
 
+  /* Surfaces & interactive */
+  --surface-3: #eaecf0;
+  --overlay: rgba(0,0,0,0.4);
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --focus-ring: rgba(2,189,182,0.4);
+  --row-hover: rgba(2,189,182,0.06);
+  --row-alt: #f7f8fa;
+  --glass-strong: rgba(255,255,255,0.88);
+
   /* Backward-compat aliases */
   --teal: var(--primary);
   --blue: var(--accent);
@@ -124,6 +134,14 @@
   --info-soft: rgba(96,165,250,.14);
   --sh-1: 0 1px 4px rgba(0,0,0,.24);
   --sh-2: 0 4px 24px rgba(0,0,0,.4);
+  --surface-3: #232b35;
+  --overlay: rgba(0,0,0,0.6);
+  --input-bg: #1c222b;
+  --input-border: #363e4a;
+  --focus-ring: rgba(25,207,200,0.4);
+  --row-hover: rgba(255,255,255,0.04);
+  --row-alt: rgba(255,255,255,0.02);
+  --glass-strong: rgba(21,26,33,0.88);
 }
 
 @media (max-width: 1024px) {

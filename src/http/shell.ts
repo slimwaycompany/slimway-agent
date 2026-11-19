@@ -20,7 +20,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')}()</script>
+<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}()</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>SlimWay — Вход</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -114,13 +114,12 @@ const ICONS: Record<string, string> = {
 // ── Shell page HTML ──────────────────────────────────────────────────────────
 
 const SHELL_HTML = `<!DOCTYPE html>
-<html lang="ru">
+<html lang="ru"<!--SHELL_THEME-->>
 <head>
 <meta charset="UTF-8">
-<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')}()</script>
+<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}()</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" id="tc-light" media="(prefers-color-scheme: light)" content="#f2f4f7">
-<meta name="theme-color" id="tc-dark" media="(prefers-color-scheme: dark)" content="#0b0f14">
+<meta name="theme-color" content="<!--META_COLOR-->">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>SlimWay</title>
@@ -153,13 +152,8 @@ html,body{height:100%;overflow:hidden;font-family:'Manrope',system-ui,sans-serif
 .tbadge{min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;
   font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;
   padding:0 4px;font-family:inherit}
-/* Desktop logout */
-.logout-btn{background:rgba(255,255,255,0.6);border:1px solid var(--glass-border);border-radius:8px;
-  padding:5px 12px;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;
-  color:var(--text-2);transition:opacity .15s;flex-shrink:0;white-space:nowrap}
-.logout-btn:hover{opacity:.75}
-/* Mobile user avatar button */
-.ua-wrap{position:relative;flex-shrink:0;display:none}
+/* User avatar button (all breakpoints) */
+.ua-wrap{position:relative;flex-shrink:0;display:block}
 .ua-btn{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--accent));
   color:var(--on-primary);border:none;cursor:pointer;font-size:14px;font-weight:700;
   display:flex;align-items:center;justify-content:center;font-family:inherit}
@@ -171,10 +165,7 @@ html,body{height:100%;overflow:hidden;font-family:'Manrope',system-ui,sans-serif
   border-bottom:1px solid var(--border);margin-bottom:8px}
 .ua-menu-exit{width:100%;background:var(--danger-soft);border:1px solid #fecaca;border-radius:8px;
   padding:9px 12px;font-size:14px;cursor:pointer;color:var(--danger);font-weight:600;font-family:inherit}
-@media(max-width:1023px){
-  .logout-btn{display:none}
-  .ua-wrap{display:block}
-}
+
 
 /* Panes */
 #panes{flex:1;overflow:hidden;position:relative}
@@ -286,8 +277,6 @@ iframe.frame{flex:1;border:none;min-width:0;height:100%;display:block}
 @media(max-width:1024px){
   #ham-btn{display:flex}
   .tabs{display:none!important}
-  .logout-btn{display:none}
-  .ua-wrap{display:block!important}
   #tab-label{display:block}
 }
 
@@ -339,15 +328,13 @@ html[data-theme="dark"],html[data-theme="dark"] body{background:var(--bg);color:
       <!--METRICS_TAB_BTN-->
       <!--SETTINGS_TAB_BTN-->
     </div>
-    <button class="logout-btn" id="logout-btn"><!--DNAME--> · Выйти</button>
     <div class="ua-wrap" id="ua-wrap">
-      <button class="ua-btn" id="ua-btn" aria-label="Меню пользователя">?</button>
+      <button class="ua-btn" id="ua-btn" aria-label="Меню пользователя"><!--INITIAL--></button>
       <div class="ua-menu" id="ua-menu">
         <div class="ua-menu-name"><!--DNAME--></div>
         <div class="ua-theme" role="group" aria-label="Тема">
           <button class="ua-theme-btn" data-theme-val="light">Светлая</button>
           <button class="ua-theme-btn" data-theme-val="dark">Тёмная</button>
-          <button class="ua-theme-btn" data-theme-val="auto">Авто</button>
         </div>
         <button class="ua-menu-exit" id="ua-menu-exit">Выйти</button>
       </div>
@@ -435,7 +422,6 @@ html[data-theme="dark"],html[data-theme="dark"] body{background:var(--bg);color:
     <div class="ua-theme" role="group" aria-label="Тема" style="margin-bottom:10px">
       <button class="ua-theme-btn" data-theme-val="light">Светлая</button>
       <button class="ua-theme-btn" data-theme-val="dark">Тёмная</button>
-      <button class="ua-theme-btn" data-theme-val="auto">Авто</button>
     </div>
     <button class="drawer-exit-btn" id="drawer-exit">Выйти</button>
   </div>
@@ -518,6 +504,13 @@ export function mountShellRoutes(app: Application): void {
     if (!session) { res.redirect(302, '/login'); return; }
     const isAdmin = session.role === 'admin';
 
+    // Fetch user theme
+    const { data: themeRow } = await supabase.from('app_users').select('ui_theme').eq('id', session.id).maybeSingle();
+    const userTheme = (themeRow?.ui_theme as string) || 'light';
+    const themeAttr  = userTheme === 'dark' ? ' data-theme="dark"' : '';
+    const metaColor  = userTheme === 'dark' ? '#0b0f14' : '#02BDB6';
+    const initial    = escapeHtml((session.display_name || '?')[0].toUpperCase());
+
     // Build SW_PERMS: for admin — all keys edit/see_all; for others — their resolved perm map
     let swPerms: string;
     if (isAdmin) {
@@ -532,14 +525,16 @@ export function mountShellRoutes(app: Application): void {
       swPerms = JSON.stringify(out);
     }
 
-    const hasSettings = isAdmin || Object.keys(session.perms).some(k => k.startsWith('settings.'));
-    const reportsSettingsBtn = hasSettings ? '<button class="side-btn" id="side-to-settings"><span class="side-text">Настройки</span></button>' : '';
-    const reportsPane = `<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button>${reportsSettingsBtn}</div>`;
-    const settingsBtn  = hasSettings ? `<button class="tab-btn" id="tab-btn-settings">${ICONS.settings} Настройки</button>` : '';
-    const settingsPane = hasSettings ? '<div class="pane hidden" id="settings-pane"><button class="side-btn left" id="side-set-to-reports"><span class="side-text">Отчёты</span></button></div>' : '';
-    const settingsCh   = hasSettings ? `<button class="choice-btn" id="choice-settings"><span class="choice-icon">${ICONS.settings}</span><span class="choice-label">Настройки</span></button>` : '';
-    const permsScript  = `<script>window.SW_PERMS=${swPerms};</script>`;
+    // Settings tab is visible to ALL users; inside the page, users without settings.* see only "Оформление"
+    const reportsPane    = `<div class="pane hidden" id="reports-pane"><button class="side-btn left" id="side-to-measure2"><span class="side-text">Замеры</span></button><button class="side-btn" id="side-to-settings"><span class="side-text">Настройки</span></button></div>`;
+    const settingsBtn    = `<button class="tab-btn" id="tab-btn-settings">${ICONS.settings} Настройки</button>`;
+    const settingsPane   = '<div class="pane hidden" id="settings-pane"><button class="side-btn left" id="side-set-to-reports"><span class="side-text">Отчёты</span></button></div>';
+    const settingsCh     = `<button class="choice-btn" id="choice-settings"><span class="choice-icon">${ICONS.settings}</span><span class="choice-label">Настройки</span></button>`;
+    const permsScript    = `<script>window.SW_PERMS=${swPerms};</script>`;
     const html = SHELL_HTML
+      .replace('<!--SHELL_THEME-->', themeAttr)
+      .replace('<!--META_COLOR-->', metaColor)
+      .replace('<!--INITIAL-->', initial)
       .replace('<!--DNAME-->', escapeHtml(session.display_name))
       .replace('<!--REPORTS_TAB_BTN-->', `<button class="tab-btn" id="tab-btn-reports">${ICONS.reports} Отчёты</button>`)
       .replace('<!--REPORTS_SIDE_FROM_MEASURE-->', '<button class="side-btn" id="side-to-reports"><span class="side-text">Отчёты</span></button>')
