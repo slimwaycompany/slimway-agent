@@ -1,9 +1,11 @@
-﻿import { useState, useEffect, useRef, useCallback, useContext } from 'react';
+﻿import { useState, useEffect, useRef, useCallback, useContext, useMemo } from 'react';
 import { toast } from '../../lib/toast';
 import { PermContext } from '../../lib/permContext';
 import { showConfirm } from '../../lib/confirm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
+import { GroupedNav } from '../../components/ui/GroupedNav';
+import type { GroupedNavGroup } from '../../components/ui/GroupedNav';
 import StaffPage from './StaffPage';
 import FreeSlide from '../../components/tv/FreeSlide';
 import TvBackground from '../../components/tv/TvBackground';
@@ -13,6 +15,12 @@ import type { SlideTemplateData } from '../../components/tv/SlideTemplate';
 import type { FreeLayout, ScreenLayout, SlideTemplate as SlideTemplateType, SlideTemplates, TemplateKind } from '../../lib/tvScreenLayout';
 import { migrateFreeLayoutToV2, TEMPLATE_KIND_LABELS, defaultSlideTemplates, defaultScreenLayout, resolveScreenFx, CAROUSEL_ASPECT } from '../../lib/tvScreenLayout';
 import { compressForUpload } from '../../lib/tvImage';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Palette, Cpu, CalendarDays, Monitor, Ticket, Sparkles, Tag, Package, Truck,
+  CreditCard, Banknote, Filter, Megaphone, XCircle, Hash, CheckSquare,
+  MessageSquare, Users, CalendarCheck, BarChart2, Layers, Laptop, Link, Phone, Activity,
+} from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -3650,51 +3658,91 @@ function AppearanceSection() {
 
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
-const NAV: { id: Section; label: string; icon: string }[] = [
-  { id: 'appearance', label: 'Оформление',          icon: '🎨' },
-  { id: 'staff',      label: 'Сотрудники',          icon: '👤' },
-  { id: 'devices',    label: 'Аппараты',           icon: '⚙️' },
-  { id: 'abonements', label: 'Абонементы',          icon: '📋' },
-  { id: 'services',   label: 'Услуги',              icon: '🛎️' },
-  { id: 'products',   label: 'Товары и склад',       icon: '📦' },
-  { id: 'suppliers',  label: 'Поставщики',           icon: '🏭' },
-  { id: 'promos',     label: 'Промокоды',            icon: '🎁' },
-  { id: 'payments',   label: 'Виды оплаты',          icon: '💳' },
-  { id: 'sources',    label: 'Рекламные источники',  icon: '📣' },
-  { id: 'classes',    label: 'Занятия',              icon: '🏃' },
-  { id: 'service',    label: 'Сервис',               icon: '🔧' },
-  { id: 'finance',      label: 'Финансы',              icon: '💰' },
-  { id: 'funnels',      label: 'Воронки CRM',          icon: '🔀' },
-  { id: 'lead-tags',    label: 'Теги заявок',          icon: '🏷️' },
-  { id: 'task-types',   label: 'Типы задач',           icon: '✅' },
-  { id: 'lost-reasons', label: 'Причины отказа',       icon: '❌' },
-  { id: 'fb-users',     label: 'Сопоставление FB',     icon: '👤' },
-  { id: 'scriptolog',   label: 'Скриптолог',           icon: '📝' },
-  { id: 'control',          label: 'Контроль менеджеров',  icon: '📊' },
-  { id: 'control-lines',    label: 'Линейки ролей',         icon: '📋' },
-  { id: 'control-schedule', label: 'График смен',           icon: '📅' },
-  { id: 'control-devices',  label: 'Дов. компьютеры',       icon: '💻' },
-  { id: 'pbx',              label: 'АТС',                   icon: '📞' },
-  { id: 'tv',               label: 'ТВ-экран',              icon: '📺' },
+interface NavSectionDef { id: Section; label: string; Icon: LucideIcon; permKey?: string }
+interface NavGroupDef   { id: string;  label: string; sections: NavSectionDef[] }
+
+const NAV_GROUPS_DEF: NavGroupDef[] = [
+  { id: 'mine',   label: 'Моё',           sections: [
+    { id: 'appearance', label: 'Оформление',          Icon: Palette },
+  ]},
+  { id: 'studio', label: 'Студия',        sections: [
+    { id: 'devices',  label: 'Аппараты',              Icon: Cpu,          permKey: 'settings.devices' },
+    { id: 'classes',  label: 'Занятия и расписание',   Icon: CalendarDays, permKey: 'settings.classes' },
+    { id: 'tv',       label: 'ТВ-экран',               Icon: Monitor,      permKey: 'settings.tv' },
+  ]},
+  { id: 'sell',   label: 'Что продаём',   sections: [
+    { id: 'abonements', label: 'Абонементы',    Icon: Ticket,   permKey: 'settings.abonements' },
+    { id: 'services',   label: 'Услуги',         Icon: Sparkles, permKey: 'settings.services' },
+    { id: 'promos',     label: 'Промокоды',      Icon: Tag,      permKey: 'settings.promos' },
+    { id: 'products',   label: 'Товары и склад', Icon: Package,  permKey: 'settings.products' },
+    { id: 'suppliers',  label: 'Поставщики',     Icon: Truck,    permKey: 'settings.suppliers' },
+  ]},
+  { id: 'money',  label: 'Деньги',        sections: [
+    { id: 'payments', label: 'Виды оплаты', Icon: CreditCard, permKey: 'settings.payments' },
+    { id: 'finance',  label: 'Финансы',     Icon: Banknote,   permKey: 'settings.finance' },
+  ]},
+  { id: 'leads',  label: 'Заявки',        sections: [
+    { id: 'funnels',       label: 'Воронки CRM',          Icon: Filter,        permKey: 'settings.funnels' },
+    { id: 'sources',       label: 'Рекламные источники',  Icon: Megaphone,     permKey: 'settings.sources' },
+    { id: 'lost-reasons',  label: 'Причины отказа',       Icon: XCircle,       permKey: 'settings.lost_reasons' },
+    { id: 'lead-tags',     label: 'Теги заявок',          Icon: Hash,          permKey: 'settings.lead_tags' },
+    { id: 'task-types',    label: 'Типы задач',           Icon: CheckSquare,   permKey: 'settings.task_types' },
+    { id: 'scriptolog',    label: 'Скриптолог',           Icon: MessageSquare, permKey: 'settings.scriptolog' },
+  ]},
+  { id: 'team',   label: 'Команда',       sections: [
+    { id: 'staff',            label: 'Сотрудники',           Icon: Users,         permKey: 'settings.staff' },
+    { id: 'control-schedule', label: 'График смен',          Icon: CalendarCheck, permKey: 'settings.control_schedule' },
+    { id: 'control',          label: 'Контроль менеджеров',  Icon: BarChart2,     permKey: 'settings.control' },
+    { id: 'control-lines',    label: 'Линейки ролей',        Icon: Layers,        permKey: 'settings.control' },
+    { id: 'control-devices',  label: 'Дов. компьютеры',      Icon: Laptop,        permKey: 'settings.control_devices' },
+  ]},
+  { id: 'data',   label: 'Связи и данные', sections: [
+    { id: 'fb-users', label: 'Сопоставление FB', Icon: Link,     permKey: 'settings.fb_users' },
+    { id: 'pbx',      label: 'АТС',               Icon: Phone,    permKey: 'settings.pbx' },
+    { id: 'service',  label: 'Данные InBody',      Icon: Activity, permKey: 'settings.service' },
+  ]},
 ];
+
+const SYNONYMS: [string, string][] = [
+  ['inbody',      'service'],      ['пароль',    'staff'],
+  ['логин',       'staff'],        ['easychat',  'scriptolog'],
+  ['скрипт',      'scriptolog'],   ['звонки',    'pbx'],
+  ['телефония',   'pbx'],          ['onlinepbx', 'pbx'],
+  ['тема',        'appearance'],   ['тёмная',    'appearance'],
+  ['темная',      'appearance'],   ['fitbase',   'fb-users'],
+  ['смены',       'control-schedule'],
+  ['занятия',     'classes'],      ['расписание','classes'],
+];
+
+// All sections flat (for label lookup)
+const ALL_SECTIONS = NAV_GROUPS_DEF.flatMap(g => g.sections);
 
 export default function SettingsPage() {
   const { role, perms } = useContext(PermContext);
-  const hasSettingsPerms = role === 'admin' || Object.keys(perms).some(k => k.startsWith('settings.'));
+
+  const visibleGroups: GroupedNavGroup[] = useMemo(() => {
+    const canSee = (permKey?: string) => !permKey || role === 'admin' || !!perms[permKey];
+    return NAV_GROUPS_DEF
+      .map(g => ({ id: g.id, label: g.label, items: g.sections.filter(s => canSee(s.permKey)).map(s => ({ id: s.id, label: s.label, Icon: s.Icon })) }))
+      .filter(g => g.items.length > 0);
+  }, [role, perms]);
+
+  const totalSections = useMemo(() => visibleGroups.reduce((n, g) => n + g.items.length, 0), [visibleGroups]);
 
   const [section, setSection] = useState<Section>(() => {
     try { return (sessionStorage.getItem('crm-settings-section') as Section) || 'appearance'; } catch { return 'appearance'; }
   });
   const [mobileContent, setMobileContent] = useState(false);
 
+  // Reset if current section is no longer accessible
   useEffect(() => {
-    if (!hasSettingsPerms && section !== 'appearance') {
-      setSection('appearance');
-      try { sessionStorage.setItem('crm-settings-section', 'appearance'); } catch {}
+    if (!visibleGroups.some(g => g.items.some(i => i.id === section))) {
+      const first = (visibleGroups[0]?.items[0]?.id as Section) ?? 'appearance';
+      setSection(first);
+      setMobileContent(false);
+      try { sessionStorage.setItem('crm-settings-section', first); } catch {}
     }
-  }, [hasSettingsPerms, section]);
-
-  const visibleNav = hasSettingsPerms ? NAV : NAV.filter(n => n.id === 'appearance');
+  }, [section, visibleGroups]);
 
   function nav(s: Section) {
     setSection(s);
@@ -3702,21 +3750,26 @@ export default function SettingsPage() {
     try { sessionStorage.setItem('crm-settings-section', s); } catch {}
   }
 
+  const activeLabel = ALL_SECTIONS.find(s => s.id === section)?.label ?? '';
+
   return (
     <div className="settings-wrap" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--bg)' }}>
       <div className={`settings-sidebar${mobileContent ? ' settings-sidebar--hidden' : ''}`} style={S.sidebar}>
         <div style={S.sidebarTitle}>Настройки</div>
-        {visibleNav.map(n => (
-          <button key={n.id} style={{ ...S.navItem, ...(section === n.id ? S.navActive : {}) }} onClick={() => nav(n.id)}>
-            <span style={{ marginRight: 8 }}>{n.icon}</span>{n.label}
-          </button>
-        ))}
+        <GroupedNav
+          groups={visibleGroups}
+          activeId={section}
+          onSelect={id => nav(id as Section)}
+          storageKey="sw-settings-groups"
+          synonyms={SYNONYMS}
+          flat={totalSections <= 6}
+        />
       </div>
       <div className={`settings-content${!mobileContent ? ' settings-content--hidden' : ''}`} style={S.content}>
         <div style={S.contentHeader}>
           <button className="settings-back-btn" style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, fontWeight: 600, padding: '0 12px 0 0', fontFamily: 'inherit' }}
             onClick={() => setMobileContent(false)}>← Назад</button>
-          {NAV.find(n => n.id === section)?.label}
+          {activeLabel}
         </div>
         {section === 'appearance' && <AppearanceSection />}
         {section === 'staff'      && <StaffPage />}
@@ -3758,7 +3811,7 @@ export default function SettingsPage() {
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
 const S: Record<string, React.CSSProperties> = {
-  sidebar:       { width: 220, flexShrink: 0, background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
+  sidebar:       { width: 240, flexShrink: 0, background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
   sidebarTitle:  { padding: '16px 16px 8px', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' as const, letterSpacing: '0.06em' },
   navItem:       { display: 'flex', alignItems: 'center', width: '100%', background: 'none', border: 'none', padding: '10px 16px', fontSize: 13, fontWeight: 500, color: 'var(--text)', cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', borderRadius: 0 },
   navActive:     { background: 'var(--primary-soft)', color: 'var(--primary)', fontWeight: 700 },
