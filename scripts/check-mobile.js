@@ -18,7 +18,8 @@ const path = require('path');
 function loadEnv() {
   const p = path.join(__dirname, '..', '.env');
   if (!fs.existsSync(p)) return;
-  for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
+  for (const rawLine of fs.readFileSync(p, 'utf8').split('\n')) {
+    const line = rawLine.replace(/\r$/, '');
     const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
   }

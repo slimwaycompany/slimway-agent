@@ -190,11 +190,12 @@
 
 ## Сделано
 <!-- новые записи сверху -->
-### 19.11.2026 · (задача 68.2) · группировка Настроек, всегда-светлые экраны, color-scheme, check:mobile
+### 19.11.2026 · 3b7d4e0 · задача 68.2 — группировка Настроек, всегда-светлые экраны, color-scheme, check:mobile
 - **Часть 1 — GroupedNav + SettingsPage:** `kviz/client/src/components/ui/GroupedNav.tsx` (новый) — переиспользуемый аккордеон с поиском+синонимами, localStorage групп, flat-режим для ≤6 разделов; `SettingsPage.tsx` — `NAV_GROUPS_DEF` 7 групп (Моё/Студия/Что продаём/Деньги/Заявки/Команда/Связи и данные), `SYNONYMS`, `visibleGroups` useMemo, сброс раздела при смене прав, sidebar 240px.
 - **Часть 2 — Всегда-светлые экраны:** `tokens.css` — `color-scheme: light/dark`; расширен `@media print` (все поверхности, границы, тени → white/black); `shell.ts`/`window.ts` — удалены FOUC-скрипты (конфликтовали с серверным `data-theme`); `window-app.js` — тема из `data-theme`, кнопка 🌙/☀️ → `PUT /kviz/api/me/theme`; `ResultsPage.tsx`/`SharePage.tsx` — always-light useEffect; `App.tsx` — пропускает `/kviz/results` и `/kviz/r/` при синхронизации темы.
-- **Часть 5 — check:mobile:** `scripts/check-mobile.js` переписан: `buildPages()` 28+ страниц включая все разделы Настроек, `putTheme(ctx, theme)` меняет тему через API перед каждым прогоном, `checkContrastAll(page)` проходит все текстовые элементы < 4.5:1 с DOM-обходом фона, `CONTRAST_STRICT=1` env, отчёт → `tmp/mobile-check/report.md`.
+- **Часть 5 — check:mobile:** `scripts/check-mobile.js` переписан: `buildPages()` 28+ страниц включая все разделы Настроек, `putTheme(ctx, theme)` меняет тему через API перед каждым прогоном, `checkContrastAll(page)` проходит все текстовые элементы < 4.5:1 с DOM-обходом фона, `CONTRAST_STRICT=1` env, отчёт → `tmp/mobile-check/report.md`. Исправлен CRLF-баг в `loadEnv` (`.replace(/\r$/, '')`).
 - **Часть 6 — Документация:** `CLAUDE.md`/`AGENTS.md` — правила темы в профиле, `GroupedNav`, `check:mobile`; `docs/modules/logins.md`, `crm-core.md`, `ovcharka.md`, `scriptolog.md` обновлены.
+- **Часть 8 — Playwright-прогон (19.11.2026):** 126 проверок (28 страниц × 2 темы × 2 ширины + results). **0 FAIL · 126 WARN · 0 ERR.** Все страницы открываются; `/kviz/results` в тёмной теме корректно светлый (always-light работает); нет горизонтальных прокруток. WARN: 2 элемента < 3.0:1 контраста на каждой странице в обеих темах — стабильный паттерн, вероятно в shell-навигации; не чинить до частей 3–4.
 
 ### 19.11.2026 · c4bb3ab…4a57aa9 · задача 68.1 — тема в профиле, токенизация всех цветов, check:mobile
 - **Часть 1 — Тема в профиле:** `app_users.ui_theme text not null default 'light'`; сервер читает тему при `/kviz/api/me` и инжектирует `data-theme` в HTML (`src/http/shell.ts`, `src/http/window.ts`); `App.tsx` синхронизирует тему из API при загрузке и слушает `postMessage({type:'sw-theme'})` от оболочки; `localStorage` остаётся как кэш против FOUC.
