@@ -93,7 +93,7 @@
 - Фильтры с `flexWrap:'wrap'` — переносятся на мобиле.
 
 ## Сделано
-### 19.11.2026 · (pending) · task 69 — диаграммы Факт дня, план-факт (срез)
+### 19.11.2026 · c4593f3 · task 69 — диаграммы ChartsPanel, план-факт (срез)
 
 - `src/http/metrics.ts`: в `by_cashier` добавлены поля `new_count`, `renewal_count`, `new_amount`, `renewal_amount` (через `classify()` + `isTest` фильтр, аналогично by_manager). Новый эндпоинт `GET /kviz/api/metrics/plan-fact?date=YYYY-MM-DD` (admin): план+факт+шаги на выбранную дату; `computeFact(filterFn)` → {fact, stepFacts[10]}; `buildRow(plan, stepPlan, factData)` → все производные метрики; ответ включает managers[], dept{}, seller_plans, has_hidden_sellers.
 - `kviz/client/src/pages/reports/ReportsPage.tsx`: (1) LabelList добавлен в recharts-импорт; (2) `'plan-fact'` в тип Section; (3) пункт «План-факт (срез)» в колонку «Продажи» (adminOnly); (4) FdCshRow + новые интерфейсы PlanFactMgr/PlanFactDept/PlanFactData; (5) ChartsPanel «Менеджеры» и «Кассиры» — dual-axis BarChart (`dualBarChart` хелпер): ₸ слева, шт справа, цвета #1A1A1A/#1E7B34/#6B4F1D, LabelList; (6) рендер `<PlanFactSection />`; (7) вспомогательные функции и компонент PlanFactSection: date picker, загрузка с API, preview-режим (client-side, без сохранения), таблицы КТО В ПЛАНЕ + ФАКТ ПО ШАГАМ, Excel-стиль подсветки статуса, кнопка печати.
