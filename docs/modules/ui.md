@@ -190,6 +190,10 @@
 
 ## Сделано
 <!-- новые записи сверху -->
+### 19.11.2026 · f7d896f · task 70 — z-index ua-wrap; Profil section в Настройках
+- `src/http/shell.ts`: `z-index:50` на `.ua-wrap` — поверх полосы вкладок в шапке (ранее элемент мог быть перекрыт).
+- `SettingsPage.tsx`: раздел «Профиль» в группе «Моё» — без прав, доступен всем; `ProfileSection` — аватар, имя, роль, кнопка «Выйти из учётки» с `showConfirm`; синонимы 'профиль'/'выйти'.
+
 ### 19.11.2026 · 3b7d4e0 · задача 68.2 — группировка Настроек, всегда-светлые экраны, color-scheme, check:mobile
 - **Часть 1 — GroupedNav + SettingsPage:** `kviz/client/src/components/ui/GroupedNav.tsx` (новый) — переиспользуемый аккордеон с поиском+синонимами, localStorage групп, flat-режим для ≤6 разделов; `SettingsPage.tsx` — `NAV_GROUPS_DEF` 7 групп (Моё/Студия/Что продаём/Деньги/Заявки/Команда/Связи и данные), `SYNONYMS`, `visibleGroups` useMemo, сброс раздела при смене прав, sidebar 240px.
 - **Часть 2 — Всегда-светлые экраны:** `tokens.css` — `color-scheme: light/dark`; расширен `@media print` (все поверхности, границы, тени → white/black); `shell.ts`/`window.ts` — удалены FOUC-скрипты (конфликтовали с серверным `data-theme`); `window-app.js` — тема из `data-theme`, кнопка 🌙/☀️ → `PUT /kviz/api/me/theme`; `ResultsPage.tsx`/`SharePage.tsx` — always-light useEffect; `App.tsx` — пропускает `/kviz/results` и `/kviz/r/` при синхронизации темы.
