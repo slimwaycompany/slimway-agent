@@ -603,7 +603,11 @@
       e.stopPropagation();
       uaMenu.classList.toggle('open');
     };
+    // Stop clicks inside menu (theme toggle) from bubbling to document and closing it
+    uaMenu.addEventListener('click', function (e) { e.stopPropagation(); });
     document.addEventListener('click', function () { uaMenu.classList.remove('open'); });
+    // Iframe focus steals click events — close menu on window blur
+    window.addEventListener('blur', function () { uaMenu.classList.remove('open'); });
   }
   if (uaExit) {
     uaExit.onclick = function () {

@@ -136,7 +136,7 @@ html,body{height:100%;overflow:hidden;font-family:'Manrope',system-ui,sans-serif
 #top-bar{height:48px;flex-shrink:0;display:none;align-items:center;justify-content:space-between;
   padding:0 8px;background:var(--glass);backdrop-filter:blur(18px) saturate(140%);
   -webkit-backdrop-filter:blur(18px) saturate(140%);border-bottom:1px solid var(--glass-border);
-  box-shadow:0 1px 8px rgba(2,49,100,0.06);gap:6px}
+  box-shadow:0 1px 8px rgba(2,49,100,0.06);gap:6px;position:relative;z-index:10}
 .tabs{display:flex;gap:2px;flex:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;
   scrollbar-width:none;-ms-overflow-style:none;padding-bottom:1px}
 .tabs::-webkit-scrollbar{display:none}
@@ -609,7 +609,9 @@ export function mountShellRoutes(app: Application): void {
   app.post('/api/logout', (_req, res) => {
     res.setHeader('Set-Cookie', [
       `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/`,
-      `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/window`,
+      `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/`,
+      `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/window`,
+      `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/kviz`,
     ]);
     res.json({ ok: true });
   });
