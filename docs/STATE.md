@@ -9,11 +9,11 @@
 | Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 71: меню кружка (#top-bar z-index:10), stopPropagation в ua-menu, window.blur close, logout All-paths cookie |
 | Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 19.11.2026 | task 70: ProfileSection в Настройках (Профиль → Выйти), display_name в PermContext |
 | Агент воронки Fitbase | `modules/agent.md` | Агент и овчарка | 🟢 | 12.11.2026 | task 48: syncVisits date_to fix (Fitbase требует date_to для /schedule-registration) |
-| Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 28.10.2026 | Работает, кабинет агента |
+| Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 72: sw.js не перехватывает navigate-запросы — FetchEvent network error исправлен |
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟢 | 17.11.2026 | task 62: подвкладка «Мой месяц» — план, заработок, продажи, смены, задачи, клиенты, мотивация |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | 🟢 | 04.11.2026 | task 35: QuizPage tabs на мобиле (Вопрос/Ответы/Резюме) |
 | Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 18.11.2026 | task 67: пути TV-пересчёта подтверждены (5 путей), 12 тестов calcLosses |
-| Отчёты | `modules/reports.md` | Отчёты | 🟢 | 19.11.2026 | task 69: dual-axis диаграммы ChartsPanel (₸+шт, #1A1A1A/#1E7B34/#6B4F1D); by_cashier new/renewal; эндпоинт plan-fact + PlanFactSection |
+| Отчёты | `modules/reports.md` | Отчёты | 🟢 | 19.11.2026 | task 72: фикс ReferenceError в PlanFactSection (Fragment без импорта React) |
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 17.11.2026 | task 64: живой фон (blob-анимация), тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка, эффекты в редакторе |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |

@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 72 | reports, ovcharka | Срез «план-факт» — ReferenceError Fragment; Овчарка — sw.js FetchEvent network error при навигации | ТЗ в чате | ✅ готово (см. журнал) |
 | 71 | infra, ui | Меню кружка профиля поверх iframe: stacking context fix (#top-bar z-index:10), stopPropagation в ua-menu, window.blur close, logout all-paths cookie | ТЗ в чате | ✅ готово (957ffa7) |
 | 70 | infra, ui, logins | Выход из учётки: фикс TypeError $('logout-btn') в shell-app.js, кружок профиля нажимается, «Выйти» в меню кружка и в Настройках→Профиль | ТЗ в чате | ✅ готово (f7d896f) |
 | 69 | reports | Диаграммы ChartsPanel (dual-axis ₸+шт); by_cashier new/renewal; план-факт (срез): эндпоинт + PlanFactSection (preview, таблицы, печать) | ТЗ в чате | ✅ готово (c4593f3) |
@@ -130,6 +131,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 19.11.2026 | Claude | 72 reports/ovcharka: (1) PlanFactSection → `React.Fragment` без импорта `React` → ReferenceError в рантайме; фикс: добавлен `Fragment` в импорт, `React.Fragment` → `Fragment`. (2) `/window/sw.js` перехватывал navigate-запросы → `fetch(navigate)` на редирект давал network error; фикс: пропускать `mode==='navigate'`. | (коммит ниже) | build ✅ |
 | 19.11.2026 | Claude | 71 infra/ui: меню кружка профиля не открывалось поверх iframe. Причина: `backdrop-filter` на `#top-bar` создаёт stacking context с `z-index:auto=0`; `#panes` шёл после в DOM на том же уровне — его iframes перекрывали `.ua-menu`. Фикс: `#top-bar` → `position:relative;z-index:10`. + stopPropagation внутри ua-menu + window.blur close + /api/logout all-path cookie clear. | 957ffa7 | build ✅ |
 | 19.11.2026 | Claude | 70 infra/logins: TypeError в shell-app.js — $('logout-btn').onclick на несуществующий элемент (убран в task 68) → весь скрипт ниже строки 362 не выполнялся (ua-btn, Alt+1–0, drawer, восстановление вкладки, тема). Удалён стейл-блок + logoutBtnEl; z-index:50 на .ua-wrap; Esc закрывает меню кружка; postMessage type='logout'. SettingsPage: ProfileSection (имя, роль, Выйти+confirm+postMessage→оболочка redirects). permContext+App: display_name в контексте. | f7d896f | npm run build ✅. check:mobile — после деплоя. |
 | 19.11.2026 | Claude | 69 reports: dual-axis ChartsPanel (BarChart yAxisId amt/cnt, LabelList, цвета #1A1A1A/#1E7B34/#6B4F1D); by_cashier +new_count/renewal_count/new_amount/renewal_amount; GET /kviz/api/metrics/plan-fact (admin, дата, computeFact, buildRow, 10 шагов); PlanFactSection (date picker, preview, таблицы, Excel-статусы, печать) | c4593f3 | npm run build ✅. Проверка на проде после деплоя. |

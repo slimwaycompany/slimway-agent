@@ -29,6 +29,10 @@
 Задача 34 (04.11.2026): `public/window-app.js` — не затрагивали. Кабина агента скейлится до ширины вкладки через CSS оболочки (`height:100dvh`). Явных фиксированных ширин в кабине нет.
 
 ## Сделано
+### 19.11.2026 · (task 72) — фикс sw.js: не перехватывать навигацию
+
+- `src/http/window.ts`: `/window/sw.js` теперь: `if(e.request.mode!=="navigate")e.respondWith(fetch(e.request))` — навигационные запросы SW пропускает (их обрабатывает браузер сам). Раньше SW пытался выполнить `fetch(navigate-to-/window)`, сервер отвечал редиректом на `/`, fetch в SW на редирект при `navigate` давал network error → `FetchEvent resulted in a network error response`.
+
 ### 19.11.2026 · 3b7d4e0 · задача 68.2 · тема Агента через профиль
 - `public/window-app.js`: тема читается из `data-theme` на `<html>` (серверный инжект); кнопка 🌙/☀️ обновляет DOM и шлёт `PUT /kviz/api/me/theme`; `localStorage` и `prefers-color-scheme` убраны. FOUC-скрипт удалён из `src/http/window.ts` (конфликтовал с серверным инжектом).
 

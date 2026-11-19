@@ -93,6 +93,10 @@
 - Фильтры с `flexWrap:'wrap'` — переносятся на мобиле.
 
 ## Сделано
+### 19.11.2026 · (task 72) — фикс ReferenceError Fragment в PlanFactSection
+
+- `ReportsPage.tsx`: добавлен `Fragment` в импорт из 'react'; `React.Fragment` → `Fragment` в двух местах (строки map внутри таблицы шагов). Причина: `React` не импортировался, `React.Fragment` при рантайме давал ReferenceError.
+
 ### 19.11.2026 · c4593f3 · task 69 — диаграммы ChartsPanel, план-факт (срез)
 
 - `src/http/metrics.ts`: в `by_cashier` добавлены поля `new_count`, `renewal_count`, `new_amount`, `renewal_amount` (через `classify()` + `isTest` фильтр, аналогично by_manager). Новый эндпоинт `GET /kviz/api/metrics/plan-fact?date=YYYY-MM-DD` (admin): план+факт+шаги на выбранную дату; `computeFact(filterFn)` → {fact, stepFacts[10]}; `buildRow(plan, stepPlan, factData)` → все производные метрики; ответ включает managers[], dept{}, seller_plans, has_hidden_sellers.

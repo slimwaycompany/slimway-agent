@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+﻿import { useState, useCallback, useMemo, useEffect, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import Modal from '../../components/ui/Modal';
@@ -4383,7 +4383,7 @@ function PlanFactSection() {
                   <td style={{...TD,fontWeight:700,fontStyle:'normal'}}>{fmtT(activeMgrs[0]?.personal_plan ?? data.month_plan)}</td>
                 </tr>
                 {activeMgrs.map(m=>(
-                  <React.Fragment key={m.name}>
+                  <Fragment key={m.name}>
                     <tr>
                       <td style={TD0}>{m.name}</td>
                       {m.steps.map((sf,i)=>(
@@ -4405,7 +4405,7 @@ function PlanFactSection() {
                       ))}
                       <td style={TD}></td>
                     </tr>
-                  </React.Fragment>
+                  </Fragment>
                 ))}
                 {/* Dept row */}
                 <tr style={DEPT_ROW}>
