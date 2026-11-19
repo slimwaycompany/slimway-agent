@@ -38,6 +38,11 @@
 - CSS для safe-area insets, `100dvh`, `font-size:16px` на input.
 
 ## Сделано
+### 19.11.2026 · f7d896f · task 70 — фикс TypeError #logout-btn, кружок профиля, Выйти
+
+- `public/shell-app.js`: убран мёртвый блок `$('logout-btn').onclick` (строка 362) — элемента `#logout-btn` нет с задачи 68, TypeError крашил весь скрипт ниже (drawer, Alt+1–0, ua-btn click, тема, восстановление вкладки). Убран стейл-блок `logoutBtnEl` для инициала (инициал уже в HTML). Добавлен обработчик `type:'logout'` в postMessage (→ `/login`). Esc закрывает и меню кружка.
+- `src/http/shell.ts`: `z-index:50` на `.ua-wrap` — поверх полосы вкладок.
+
 ### 04.11.2026 · b8b36a6 · task 35 — гамбургер-drawer, 2-кол выбор, PWA
 
 - `shell.ts`: `#ham-btn` + `#tab-label` в `#top-bar`; drawer (`#drawer`, `#drawer-backdrop`) со списком вкладок; `.choice-greeting` на мобиле. CSS: drawer slide-in, backdrop blur, ≤1024px скрыть `.tabs`, показать `#ham-btn`.

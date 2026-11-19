@@ -48,6 +48,12 @@
 - **Пerm-ключи формата `block.row` (task 56):** `manager.tasks`, `clients.phone`, `kassa.sale` и т.д. Для новой вкладки/отчёта/действия — ОБЯЗАТЕЛЬНО добавить в `PERM_CATALOG` (src/core/permissions.ts) и в пресеты нужных должностей. Серверные проверки: `const session = await getSessionWithPerms(req); if (!requirePerm(req, res, 'block.row', 'edit', session)) return;` (тип `session` автоматически сужается до `ExtendedSession` после проверки).
 
 ## Сделано
+### 19.11.2026 · f7d896f · task 70 — Профиль и Выйти в Настройках
+
+- `permContext.tsx`: добавлен `display_name: string` в `PermContextValue` и дефолт `''` в `createContext`.
+- `App.tsx`: `display_name` хранится в state RequireAuth, передаётся в `PermContext.Provider`.
+- `SettingsPage.tsx`: новый раздел «Профиль» (Section `'profile'`, Icon User) в группе «Моё» — без `permKey`, виден всем. `ProfileSection`: аватар-кружок с инициалом, имя, роль, кнопка «Выйти из учётки» (красная, `showConfirm` + POST /api/logout + `postMessage({ type:'logout' })` → оболочка делает `/login`). Синонимы 'профиль' и 'выйти' → 'profile'.
+
 ### 16.11.2026 · (task 56-1) · фикс роли админа в Сотрудниках, защита position_id
 - **permContext.tsx**: добавлен хук `useRole(): string` — возвращает `role` из `PermContext`; отделяет получение роли от проверки прав.
 - **StaffPage.tsx**: `const { role } = usePerm()` → `const role = useRole()` — `isAdmin` теперь корректен; добавлен стейт `positionsLoaded`; `loadPositions` вызывается всегда при маунте (сервер сам 403 для не-adminов); убрана `isAdmin`-зависимость useEffect; загрузка guard (`role === '' → Загрузка…`); `saveProfile` не шлёт `position_id` пока должности не загружены; красное предупреждение «Должность не задана» показывается только когда `positionsLoaded` или `!form.position_id` — иначе «Загрузка…».

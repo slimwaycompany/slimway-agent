@@ -16,7 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 70 | infra, ui, logins | Выход из учётки: фикс TypeError $('logout-btn') в shell-app.js, кружок профиля нажимается, «Выйти» в меню кружка и в Настройках→Профиль | ТЗ в чате | 🔧 в работе (Claude, 19.11.2026) |
+| 70 | infra, ui, logins | Выход из учётки: фикс TypeError $('logout-btn') в shell-app.js, кружок профиля нажимается, «Выйти» в меню кружка и в Настройках→Профиль | ТЗ в чате | ✅ готово (f7d896f) |
 | 69 | reports | Диаграммы ChartsPanel (dual-axis ₸+шт); by_cashier new/renewal; план-факт (срез): эндпоинт + PlanFactSection (preview, таблицы, печать) | ТЗ в чате | ✅ готово (c4593f3) |
 | 68.2 | ui, crm-core | Группы, поиск и права в меню Настроек; всегда-светлые вход/ссылка/ТВ/печать; тема Агента по профилю; check:mobile. Цвета (ч.3–4) — на паузе | `docs/tasks/68-2-ui-theme-fix-settings-groups.md` | 🟡 частично (ч.1–2,5–6,8 готовы; ч.3–4 hex/rgba+Scriptolog на паузе) |
 | 68.1 | ui | Тема в профиле, токены, перевод всех цветов, проверка каждой страницы в двух темах | `docs/tasks/68-1-ui-theme-profile.md` | 🟡 частично (c4bb3ab, 4a57aa9, b5b6dc0; проверка не проведена, ~590 hex/245 rgba, scriptolog, печать, /login, Агент — доделка в 68.2) |
@@ -129,6 +129,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 19.11.2026 | Claude | 70 infra/logins: TypeError в shell-app.js — $('logout-btn').onclick на несуществующий элемент (убран в task 68) → весь скрипт ниже строки 362 не выполнялся (ua-btn, Alt+1–0, drawer, восстановление вкладки, тема). Удалён стейл-блок + logoutBtnEl; z-index:50 на .ua-wrap; Esc закрывает меню кружка; postMessage type='logout'. SettingsPage: ProfileSection (имя, роль, Выйти+confirm+postMessage→оболочка redirects). permContext+App: display_name в контексте. | f7d896f | npm run build ✅. check:mobile — после деплоя. |
 | 19.11.2026 | Claude | 69 reports: dual-axis ChartsPanel (BarChart yAxisId amt/cnt, LabelList, цвета #1A1A1A/#1E7B34/#6B4F1D); by_cashier +new_count/renewal_count/new_amount/renewal_amount; GET /kviz/api/metrics/plan-fact (admin, дата, computeFact, buildRow, 10 шагов); PlanFactSection (date picker, preview, таблицы, Excel-статусы, печать) | c4593f3 | npm run build ✅. Проверка на проде после деплоя. |
 | 19.11.2026 | Claude | 68.2 ui: GroupedNav.tsx (новый) + SettingsPage 7 групп+поиск+синонимы+visibleGroups; always-light ResultsPage/SharePage/App.tsx; FOUC-скрипты удалены из shell.ts/window.ts; tokens.css color-scheme+print; window-app.js тема→профиль; check-mobile.js переписан (28+ страниц, putTheme через API, checkContrastAll полный обход, отчёт .md); CLAUDE.md/AGENTS.md/logins.md/crm-core.md/ovcharka.md/scriptolog.md/ui.md обновлены; CRLF-фикс loadEnv. Ч.8: 0 FAIL · 126 WARN · 0 ERR (all 28 pages × 2 themes × 2 widths). | 3b7d4e0 + (pending hash) | Ч.3–4 (hex/rgba, Scriptolog) на паузе. |
 | 19.11.2026 | Claude | 68.1 ui: тема в профиле, токены, перевод ~2500 цветов, check:mobile | c4bb3ab (части 1–3), 4a57aa9 (часть 4), текущий коммит (части 6–7) | PUT /kviz/api/settings/theme; app_users.ui_theme; AppearanceSection для всех; ~227 намеренных цветов оставлены (серии графиков, палитра тела, TV). Часть 5 (Playwright-прогон на проде) — на стороне Сергея: npm run check:mobile. |
