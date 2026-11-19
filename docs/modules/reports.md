@@ -93,7 +93,7 @@
 - Фильтры с `flexWrap:'wrap'` — переносятся на мобиле.
 
 ## Сделано
-### 19.11.2026 · (task 72) — фикс ReferenceError Fragment в PlanFactSection
+### 19.11.2026 · 60825f6 · task 72 — фикс ReferenceError Fragment в PlanFactSection
 
 - `ReportsPage.tsx`: добавлен `Fragment` в импорт из 'react'; `React.Fragment` → `Fragment` в двух местах (строки map внутри таблицы шагов). Причина: `React` не импортировался, `React.Fragment` при рантайме давал ReferenceError.
 

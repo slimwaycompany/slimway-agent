@@ -29,7 +29,7 @@
 Задача 34 (04.11.2026): `public/window-app.js` — не затрагивали. Кабина агента скейлится до ширины вкладки через CSS оболочки (`height:100dvh`). Явных фиксированных ширин в кабине нет.
 
 ## Сделано
-### 19.11.2026 · (task 72) — фикс sw.js: не перехватывать навигацию
+### 19.11.2026 · 60825f6 · task 72 — фикс sw.js: не перехватывать навигацию
 
 - `src/http/window.ts`: `/window/sw.js` теперь: `if(e.request.mode!=="navigate")e.respondWith(fetch(e.request))` — навигационные запросы SW пропускает (их обрабатывает браузер сам). Раньше SW пытался выполнить `fetch(navigate-to-/window)`, сервер отвечал редиректом на `/`, fetch в SW на редирект при `navigate` давал network error → `FetchEvent resulted in a network error response`.
 
