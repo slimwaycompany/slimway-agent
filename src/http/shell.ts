@@ -151,7 +151,7 @@ html,body{height:100%;overflow:hidden;font-family:'Manrope',system-ui,sans-serif
   font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;
   padding:0 4px;font-family:inherit}
 /* User avatar button (all breakpoints) */
-.ua-wrap{position:relative;flex-shrink:0;display:block}
+.ua-wrap{position:relative;flex-shrink:0;display:block;z-index:50}
 .ua-btn{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--accent));
   color:var(--on-primary);border:none;cursor:pointer;font-size:14px;font-weight:700;
   display:flex;align-items:center;justify-content:center;font-family:inherit}

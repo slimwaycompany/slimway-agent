@@ -5,9 +5,10 @@ export interface PermEntry { level: 'view' | 'edit'; see_all: boolean }
 interface PermContextValue {
   role: string;
   perms: Record<string, PermEntry>;
+  display_name: string;
 }
 
-export const PermContext = createContext<PermContextValue>({ role: '', perms: {} });
+export const PermContext = createContext<PermContextValue>({ role: '', perms: {}, display_name: '' });
 
 export function usePerm(key: string, level: 'view' | 'edit' = 'view'): boolean {
   const { role, perms } = useContext(PermContext);

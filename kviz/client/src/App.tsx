@@ -38,8 +38,8 @@ interface MeResponse {
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
-  const [state, setState] = useState<{ ok: boolean | null; role: string; perms: Record<string, PermEntry> }>({
-    ok: null, role: '', perms: {},
+  const [state, setState] = useState<{ ok: boolean | null; role: string; perms: Record<string, PermEntry>; display_name: string }>({
+    ok: null, role: '', perms: {}, display_name: '',
   });
 
   useEffect(() => {
@@ -50,7 +50,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     fetch('/kviz/api/me', { credentials: 'include' })
       .then(r => r.json() as Promise<MeResponse>)
       .then(d => {
-        if (d.authed) setState({ ok: true, role: d.role ?? '', perms: d.perms ?? {} });
+        if (d.authed) setState({ ok: true, role: d.role ?? '', perms: d.perms ?? {}, display_name: d.display_name ?? '' });
         else onFail();
       })
       .catch(onFail);
@@ -63,7 +63,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     </div>
   );
   return (
-    <PermContext.Provider value={{ role: state.role, perms: state.perms }}>
+    <PermContext.Provider value={{ role: state.role, perms: state.perms, display_name: state.display_name }}>
       {children}
     </PermContext.Provider>
   );

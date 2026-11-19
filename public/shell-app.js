@@ -358,14 +358,6 @@
   }
   applyPermissions();
 
-  // ── Logout ──────────────────────────────────────────────────────────────────
-  $('logout-btn').onclick = function () {
-    try { sessionStorage.removeItem('sw-session'); } catch (e) {}
-    fetch('/api/logout', { method: 'POST' }).finally(function () {
-      location.href = '/login';
-    });
-  };
-
   // ── Keyboard shortcuts: Alt+1-0 ────────────────────────────────────────────
   // Order: 1=Manager,2=Agent,3=Schedule,4=Clients,5=Funnel,6=Cashier,7=Kviz,8=Measure,9=Reports,0=Settings
   document.addEventListener('keydown', function (e) {
@@ -448,6 +440,10 @@
       showTab('schedule');
     }
     if (d.type === 'auth-required') {
+      location.href = '/login';
+    }
+    if (d.type === 'logout') {
+      try { sessionStorage.removeItem('sw-session'); } catch (e) {}
       location.href = '/login';
     }
   });
@@ -563,7 +559,12 @@
     }, { passive: true });
   }
 
-  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeDrawer(); });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') {
+      closeDrawer();
+      if (uaMenu) uaMenu.classList.remove('open');
+    }
+  });
 
   // Update drawer active item and tab label
   function updateDrawerState(name) {
@@ -598,12 +599,6 @@
   var uaMenu = $('ua-menu');
   var uaExit = $('ua-menu-exit');
   if (uaBtn && uaMenu) {
-    // Set initial from logout button text (contains display_name)
-    var logoutBtnEl = $('logout-btn');
-    if (logoutBtnEl) {
-      var fullText = (logoutBtnEl.textContent || '').trim().split(' ')[0] || '?';
-      uaBtn.textContent = fullText.charAt(0).toUpperCase();
-    }
     uaBtn.onclick = function (e) {
       e.stopPropagation();
       uaMenu.classList.toggle('open');

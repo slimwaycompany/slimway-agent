@@ -19,7 +19,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Palette, Cpu, CalendarDays, Monitor, Ticket, Sparkles, Tag, Package, Truck,
   CreditCard, Banknote, Filter, Megaphone, XCircle, Hash, CheckSquare,
-  MessageSquare, Users, CalendarCheck, BarChart2, Layers, Laptop, Link, Phone, Activity,
+  MessageSquare, Users, CalendarCheck, BarChart2, Layers, Laptop, Link, Phone, Activity, User,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv';
+type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -3582,6 +3582,45 @@ function TvSection() {
   );
 }
 
+// ── ProfileSection (accessible to all users) ──────────────────────────────────
+
+function ProfileSection() {
+  const { display_name, role } = useContext(PermContext);
+  const [busy, setBusy] = useState(false);
+  const roleLabel = role === 'admin' ? 'Администратор' : 'Менеджер';
+
+  async function handleLogout() {
+    const ok = await showConfirm('Выйти из учётки?');
+    if (!ok) return;
+    setBusy(true);
+    try { sessionStorage.removeItem('sw-session'); } catch {}
+    await fetch('/api/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+    try { window.parent.postMessage({ type: 'logout' }, window.location.origin); } catch {}
+    // fallback if opened outside iframe
+    if (window.parent === window) window.location.href = '/login';
+  }
+
+  return (
+    <div style={S.section}>
+      <div style={S.subheader}><div style={S.subTitle}>Профиль</div></div>
+      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16, maxWidth: 360 }}>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+          <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg,var(--primary),var(--accent))', color: 'var(--on-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>
+            {(display_name || '?')[0].toUpperCase()}
+          </div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{display_name || '—'}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)' }}>{roleLabel}</div>
+          </div>
+        </div>
+        <button onClick={handleLogout} disabled={busy} style={{ padding: '11px 18px', borderRadius: 'var(--r-md)', border: '1.5px solid var(--danger)', background: 'var(--danger-soft)', color: 'var(--danger)', fontSize: 14, fontWeight: 700, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit', transition: 'opacity var(--dur-fast)' }}>
+          {busy ? 'Выходим…' : 'Выйти из учётки'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── AppearanceSection (accessible to all users) ───────────────────────────────
 
 function AppearanceSection() {
@@ -3663,7 +3702,8 @@ interface NavGroupDef   { id: string;  label: string; sections: NavSectionDef[] 
 
 const NAV_GROUPS_DEF: NavGroupDef[] = [
   { id: 'mine',   label: 'Моё',           sections: [
-    { id: 'appearance', label: 'Оформление',          Icon: Palette },
+    { id: 'profile',    label: 'Профиль',              Icon: User },
+    { id: 'appearance', label: 'Оформление',           Icon: Palette },
   ]},
   { id: 'studio', label: 'Студия',        sections: [
     { id: 'devices',  label: 'Аппараты',              Icon: Cpu,          permKey: 'settings.devices' },
@@ -3704,6 +3744,7 @@ const NAV_GROUPS_DEF: NavGroupDef[] = [
 ];
 
 const SYNONYMS: [string, string][] = [
+  ['профиль',     'profile'],      ['выйти',     'profile'],
   ['inbody',      'service'],      ['пароль',    'staff'],
   ['логин',       'staff'],        ['easychat',  'scriptolog'],
   ['скрипт',      'scriptolog'],   ['звонки',    'pbx'],
@@ -3771,6 +3812,7 @@ export default function SettingsPage() {
             onClick={() => setMobileContent(false)}>← Назад</button>
           {activeLabel}
         </div>
+        {section === 'profile'    && <ProfileSection />}
         {section === 'appearance' && <AppearanceSection />}
         {section === 'staff'      && <StaffPage />}
         {section === 'devices'    && <DevicesSection />}
