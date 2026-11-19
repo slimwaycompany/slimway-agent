@@ -11,28 +11,31 @@
   let notifGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
   let audioCtx = null;
 
-  // ── Dark mode ─────────────────────────────────────────────────────────────
-  let darkMode = localStorage.getItem('sw-theme') === 'dark' ||
-    (localStorage.getItem('sw_theme') === 'dark' && !localStorage.getItem('sw-theme'));
-  function applyTheme() {
-    if (darkMode) document.documentElement.setAttribute('data-theme', 'dark');
-    else document.documentElement.removeAttribute('data-theme');
-    $('theme-btn').textContent = darkMode ? '☀️' : '🌙';
+  // ── Theme (from server via data-theme on <html>; button saves to profile) ──
+  function syncThemeBtn() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    $('theme-btn').textContent = dark ? '☀️' : '🌙';
   }
-  applyTheme();
+  syncThemeBtn();
   $('theme-btn').onclick = function () {
-    darkMode = !darkMode;
-    localStorage.setItem('sw-theme', darkMode ? 'dark' : 'light');
-    applyTheme();
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var next = dark ? 'light' : 'dark';
+    if (next === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+    syncThemeBtn();
+    fetch('/kviz/api/me/theme', {
+      method: 'PUT', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ui_theme: next }),
+    }).catch(function () {});
   };
-  // Receive theme broadcast from shell
+  // Receive theme broadcast from parent shell
   window.addEventListener('message', function (e) {
     if (!e.data || e.data.type !== 'sw-theme') return;
     var t = e.data.theme;
-    if (t === 'dark') darkMode = true;
-    else if (t === 'light') darkMode = false;
-    else darkMode = matchMedia('(prefers-color-scheme:dark)').matches;
-    applyTheme();
+    if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+    syncThemeBtn();
   });
 
   // ── Sound ─────────────────────────────────────────────────────────────────

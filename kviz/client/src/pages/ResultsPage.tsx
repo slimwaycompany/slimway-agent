@@ -67,6 +67,17 @@ export default function ResultsPage() {
   const progressKeyRef = useRef(0);
   const [progressKey, setProgressKey] = useState(0);
 
+  // Public TV display — always light regardless of user theme
+  useEffect(() => {
+    document.documentElement.removeAttribute('data-theme');
+    return () => {
+      try {
+        if (localStorage.getItem('sw-theme') === 'dark')
+          document.documentElement.setAttribute('data-theme', 'dark');
+      } catch {}
+    };
+  }, []);
+
   useEffect(() => {
     document.documentElement.classList.add('tv-page');
     document.body.classList.add('tv-page');

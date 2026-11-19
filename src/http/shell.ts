@@ -20,7 +20,6 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}()</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>SlimWay — Вход</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -117,7 +116,6 @@ const SHELL_HTML = `<!DOCTYPE html>
 <html lang="ru"<!--SHELL_THEME-->>
 <head>
 <meta charset="UTF-8">
-<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}()</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="<!--META_COLOR-->">
 <link rel="manifest" href="/manifest.webmanifest">

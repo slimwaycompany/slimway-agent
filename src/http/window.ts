@@ -51,7 +51,6 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 <html lang="ru"<!--WIN_THEME-->>
 <head>
 <meta charset="UTF-8">
-<script>!function(){var t=localStorage.getItem('sw-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')}()</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="<!--WIN_META_COLOR-->">
 <link rel="manifest" href="/window/manifest.json">

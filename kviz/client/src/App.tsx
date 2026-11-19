@@ -80,7 +80,8 @@ function MeasureLandingPage() {
 export default function App() {
   // Sync theme from server on initial load (corrects localStorage cache if stale)
   useEffect(() => {
-    if (window.location.pathname.startsWith('/kviz/results')) return;
+    const p = window.location.pathname;
+    if (p.startsWith('/kviz/results') || p.startsWith('/kviz/r/')) return;
     fetch('/kviz/api/me', { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then((d: { ui_theme?: string } | null) => {
@@ -97,7 +98,8 @@ export default function App() {
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       if (!e.data || e.data.type !== 'sw-theme') return;
-      if (window.location.pathname.startsWith('/kviz/results')) return;
+      const _p = window.location.pathname;
+      if (_p.startsWith('/kviz/results') || _p.startsWith('/kviz/r/')) return;
       const t = e.data.theme as string, root = document.documentElement;
       if (t === 'dark') root.setAttribute('data-theme', 'dark');
       else root.removeAttribute('data-theme');

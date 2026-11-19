@@ -109,6 +109,17 @@ export default function SharePage() {
   const [tab, setTab] = useState<'figure' | 'zones' | 'inbody'>('figure');
   const [mView, setMView] = useState<'before' | 'after'>('after');
 
+  // Public share page — always light
+  useEffect(() => {
+    document.documentElement.removeAttribute('data-theme');
+    return () => {
+      try {
+        if (localStorage.getItem('sw-theme') === 'dark')
+          document.documentElement.setAttribute('data-theme', 'dark');
+      } catch {}
+    };
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     fetch(`/api/r/${encodeURIComponent(token)}`)
