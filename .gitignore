@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+tmp/
 import/
 *.log
 kviz/client/node_modules/
