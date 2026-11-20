@@ -43,7 +43,13 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
-### 20.11.2026 · (текущий) · task 75 · QR — нормы ИМТ/%жира/безжировой/BMR, ИСМ, ккал, делители сегментов
+### 20.11.2026 · a4f0d34 · task 76 · QR — висцеральный жир, нормы воды/белка/минералов, ИСМ 1 знак
+
+- **kviz/client/src/utils/inbody.ts**: `vfl` из `data[228..231]`; `g4f` исправлен для divisor≥100 (2 знака вместо 1 — фикс pre-existing бага `minerals = 3.9 → 3.86`; SAMPLE теперь PASS).
+- **src/http/inbody.ts**: `vfl` в `InBodyRow` и `data`; добавлены `protein_min/max`, `minerals_min/max`, `tbw_min/max`.
+- **ClientPage.tsx**: `smi.toFixed(1)` вместо `toFixed(0)`.
+
+### 20.11.2026 · c27f8e8 · task 75 · QR — нормы ИМТ/%жира/безжировой/BMR, ИСМ, ккал, делители сегментов
 
 - **kviz/client/src/utils/inbody.ts**: tail-парсер переписан на `tg(i, div)` + `seg(base, divs[])`. Нормы: `bmi_min/max` (tail 0,4), `pbf_min/max` (tail 12,16), `ffm_min/max` (tail 115,119), `bmr_min/max` (tail 123,127), `smi` (tail 105). `recommended_kcal` из `data[160..163]`. Делители сегментов: lean trunk ÷10 (20.6), fat все ÷10; % безжир ÷10 (позиции 60–79); % жир ÷10 по позициям 81,86,91,96,101. `fat_by_segment.trunk` SAMPLE: 0.47 → 4.7 (исправление ÷100→÷10). `lean_norm` = `[ffm_min, ffm_max]`.
 - **src/http/inbody.ts**: в data QR добавлены `bmi_min/max`, `pbf_min/max`, `smi`, `recommended_kcal`, `bmr_min/max`.
@@ -127,8 +133,7 @@
 - Импорт InBody CSV, расчёт параметров, полный лист замера, попап зоны с зумом.
 
 ## Открытые баги
-- **QR-парсер не читает**: висцеральный уровень (`vfl`), норма мышц (smm_min/max). Пишутся `null` в `data`. Позиции в raw не найдены.
-- **selfCheck SAMPLE**: `minerals` = 3.9 вместо 3.86 (g4f с divisor=100 округляет до 1 знака, pre-existing). Не влияет на карточку клиента.
+- **QR-парсер не читает**: норма мышц (smm_min/max, эталон 21.4–26.2), окружность живота (abdomen_circumference, не на листе 20.11). Пишутся `null`.
 
 ## Следующее
 - **ClientPage mobile дополнения (записано 04.11):** zone-detail как bottom-sheet на мобиле; попап зоны по нажатию на строку списка — проверить на реальном телефоне.
