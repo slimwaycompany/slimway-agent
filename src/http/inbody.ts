@@ -43,6 +43,7 @@ interface InBodyRow {
   bmr?: number | null;
   data?: Record<string, unknown> | null;
   raw?: string | null;
+  raw_qr?: string | null;
 }
 
 async function knownPhoneDigitsSet(phoneDigits: string[]): Promise<Set<string>> {
@@ -99,8 +100,11 @@ export function buildInbodyRouter(): Router {
       const lean_seg = ib.lean_by_segment as Record<string, number> | null;
       const fat_seg  = ib.fat_by_segment  as Record<string, number> | null;
 
+      const rawQr = (ib.raw && typeof ib.raw === 'string' && ib.raw.trim()) ? ib.raw.trim() : null;
+
       const row: InBodyRow = {
         inbody_id, tested_at, phone, source: 'qr',
+        raw_qr: rawQr,
         weight: ib.weight_kg != null ? Number(ib.weight_kg) : null,
         bfm:    ib.fat_kg     != null ? Number(ib.fat_kg)    : null,
         pbf:    ib.fat_pct    != null ? Number(ib.fat_pct)   : null,

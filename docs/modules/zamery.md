@@ -43,6 +43,13 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
+### 20.11.2026 · (текущий) · task 73 · сохранять сырую строку QR в inbody_tests.raw_qr
+
+- Колонка `inbody_tests.raw_qr` (text, nullable) добавлена Сергеем в Supabase.
+- `src/http/inbody.ts`: в `InBodyRow` добавлено поле `raw_qr?: string | null`; в обработчике `POST /kviz/api/inbody/qr` значение берётся из `ib.raw` (поле `raw` объекта `InBodyData`, который клиент уже отправлял в составе `inbody`). Клиентский код (`InBodyScanPage.tsx`, `ClientPage.tsx`) не менялся — `parsed.raw` уже шёл на сервер.
+- Если `raw` пустой или отсутствует → `raw_qr = null`, запрос не падает.
+- CSV-импорт и колонка `raw` у CSV-тестов не затронуты.
+
 ### 18.11.2026 · 8f16595 · task 67 · проверка путей TV-пересчёта + 5 новых тестов calcLosses
 
 - **Пути recalcStudioResultForClient подтверждены** (код не менялся): measure.ts:515 (POST /measure/measurements), inbody.ts:146 (POST /inbody/qr), inbody.ts:259 (POST /inbody/csv-import, fire-and-forget), inbody.ts:373 (POST /inbody/recalculate, fire-and-forget), inbody.ts:501 (POST /inbody/link-to-client) — все 5 путей присутствуют.
@@ -110,7 +117,7 @@
 - Импорт InBody CSV, расчёт параметров, полный лист замера, попап зоны с зумом.
 
 ## Открытые баги
-- (нет на 16.11.2026)
+- **QR-парсер не заполняет**: мышцы, ИМТ, % жира, висцеральный жир, окружность живота, ИСМ, идеальный вес, контроль, норму ккал. BMR и WHR разбираются со сдвигом (BMR −19, WHR 0.02 на тесте 19.11.2026). Исправление — после сверки с raw_qr.
 
 ## Следующее
 - **ClientPage mobile дополнения (записано 04.11):** zone-detail как bottom-sheet на мобиле; попап зоны по нажатию на строку списка — проверить на реальном телефоне.
