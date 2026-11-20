@@ -47,6 +47,7 @@ export interface InBodyData {
   bmr_min: number | null;
   bmr_max: number | null;
   recommended_kcal: number | null;
+  vfl: number | null;
   // derived
   bmi: number;
   fat_pct: number;
@@ -56,7 +57,8 @@ function g4(s: string, pos: number): number {
   return parseInt(s.slice(pos * 4, pos * 4 + 4), 10);
 }
 function g4f(s: string, pos: number, divisor = 10): number {
-  return Math.round(g4(s, pos) / divisor * 10) / 10;
+  const p = divisor >= 100 ? 100 : 10;
+  return Math.round(g4(s, pos) / divisor * p) / p;
 }
 function sign4(raw: string): number {
   // parses +0095 or -0012 → ±9.5
@@ -174,6 +176,8 @@ export function parseInBody(raw: string): InBodyData | null {
     const kcalStr = data.slice(160, 164);
     const recommended_kcal = /^\d{4}$/.test(kcalStr) ? parseInt(kcalStr, 10) : null;
     const lean_norm: [number, number] = [ffm_min ?? 0, ffm_max ?? 0];
+    const vflStr = data.slice(228, 232);
+    const vfl = /^\d{4}$/.test(vflStr) ? parseInt(vflStr, 10) : null;
 
     // ── Derived
     const bmi     = Math.round(weight_kg / ((height_cm / 100) ** 2) * 10) / 10;
@@ -190,7 +194,7 @@ export function parseInBody(raw: string): InBodyData | null {
       obesity_pct, lean_by_segment, fat_by_segment,
       lean_pct_norm_by_segment, fat_pct_norm_by_segment,
       bmi_min, bmi_max, pbf_min, pbf_max, ffm_min, ffm_max,
-      smi, bmr_min, bmr_max, recommended_kcal,
+      smi, bmr_min, bmr_max, recommended_kcal, vfl,
       bmi, fat_pct,
     };
   } catch { return null; }

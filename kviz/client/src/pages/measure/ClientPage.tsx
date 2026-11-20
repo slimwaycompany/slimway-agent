@@ -1323,7 +1323,7 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
                       <tr key={key}>
                         <td style={{ padding: '3px 0', fontSize: 12, color: 'var(--text-2)' }}>{label}</td>
                         <td style={{ padding: '3px 0', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                          {val != null ? val.toFixed(key === 'vfl' || key === 'smi' ? 0 : 2) + unit : '—'}
+                          {val != null ? val.toFixed(key === 'vfl' ? 0 : key === 'smi' ? 1 : 2) + unit : '—'}
                         </td>
                       </tr>
                     );

@@ -113,6 +113,7 @@ export function buildInbodyRouter(): Router {
         bmi:    ib.bmi        != null ? Number(ib.bmi)       : null,
         whr:    ib.whr        != null ? Number(ib.whr)       : null,
         bmr:    ib.bmr_kcal   != null ? Number(ib.bmr_kcal)  : null,
+        vfl:    ib.vfl        != null ? Number(ib.vfl)       : null,
         data: {
           weight: ib.weight_kg, bfm: ib.fat_kg, pbf: ib.fat_pct,
           smm: ib.skeletal_muscle_kg, ffm: ib.lean_kg, bmi: ib.bmi, whr: ib.whr, bmr: ib.bmr_kcal,
@@ -145,8 +146,14 @@ export function buildInbodyRouter(): Router {
           pbf_min: ib.pbf_min ?? null, pbf_max: ib.pbf_max ?? null,
           smi: ib.smi ?? null, recommended_kcal: ib.recommended_kcal ?? null,
           bmr_min: ib.bmr_min ?? null, bmr_max: ib.bmr_max ?? null,
+          protein_min:  (ib.protein_norm as number[])?.[0] ?? null,
+          protein_max:  (ib.protein_norm as number[])?.[1] ?? null,
+          minerals_min: (ib.minerals_norm as number[])?.[0] ?? null,
+          minerals_max: (ib.minerals_norm as number[])?.[1] ?? null,
+          tbw_min:      (ib.water_norm as number[])?.[0] ?? null,
+          tbw_max:      (ib.water_norm as number[])?.[1] ?? null,
           // not yet parsed from QR
-          vfl: null, inbody_score: null, abdomen_circumference: null,
+          vfl: ib.vfl ?? null, inbody_score: null, abdomen_circumference: null,
         },
       };
 
