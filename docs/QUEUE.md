@@ -16,7 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 75 | zamery | QR — нормы ИМТ/%жира/безжировой/BMR, ИСМ, ккал, делители сегментов по эталону 20.11 | ТЗ в чате | 🔧 в работе (Claude, 20.11.2026) |
+| 75 | zamery | QR — нормы ИМТ/%жира/безжировой/BMR, ИСМ, ккал, делители сегментов по эталону 20.11 | ТЗ в чате | ✅ готово (c27f8e8) |
 | 74 | zamery | QR-парсер: блок контроля !0000 (BMR/WHR сдвиг); QR data — ключи CSV | ТЗ в чате | ✅ готово (ab82712) |
 | 73 | zamery | Сохранять сырую строку QR в inbody_tests.raw_qr для сверки парсера | ТЗ в чате | ✅ готово (ce1786f) |
 | 72 | reports, ovcharka | Срез «план-факт» — ReferenceError Fragment; Овчарка — sw.js FetchEvent network error при навигации | ТЗ в чате | ✅ готово (60825f6) |
@@ -134,6 +134,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 20.11.2026 | Claude | 75 zamery: tail-парсер tg()+seg(); bmi/pbf/ffm/bmr нормы, smi, recommended_kcal; lean trunk ÷10, fat ÷10, % жир по позициям 81/86/91/96/101; selfCheck fat_by_segment.trunk 0.47→4.7 (÷10); все поля фикстуры 20.11 OK (36/36). | c27f8e8 | build ✅ |
 | 20.11.2026 | Claude | 74 zamery: (1) inbody.ts regex `([+!\-]\d{4})` — матч `!0000` блока контроля; BMR/WHR больше не сдвигаются. (2) inbody.ts POST /qr data: добавлены `target_weight`, `weight_control`, `bfm_control`, `ffm_control`, `obesity_degree`; `vfl/inbody_score/recommended_kcal/abdomen_circumference` → null. SAMPLE bmr/whr/control проверены tsx. | ab82712 | build ✅ |
 | 20.11.2026 | Claude | 73 zamery: `inbody_tests.raw_qr` — `InBodyRow` +поле, `POST /inbody/qr` берёт `ib.raw` (уже отправлялось клиентом в составе `InBodyData`), кладёт в `raw_qr`; null если пусто. Клиентский код не менялся. Баги QR-парсера записаны в «Открытые баги» zamery.md. | ce1786f | build ✅ |
 | 19.11.2026 | Claude | 72 reports/ovcharka: (1) PlanFactSection → `React.Fragment` без импорта `React` → ReferenceError в рантайме; фикс: добавлен `Fragment` в импорт, `React.Fragment` → `Fragment`. (2) `/window/sw.js` перехватывал navigate-запросы → `fetch(navigate)` на редирект давал network error; фикс: пропускать `mode==='navigate'`. | 60825f6 | build ✅ |
