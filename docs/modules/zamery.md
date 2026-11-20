@@ -43,7 +43,12 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
-### 20.11.2026 · (текущий) · task 74 · QR-парсер: блок контроля `!0000`; QR data — ключи CSV
+### 20.11.2026 · (текущий) · task 75 · QR — нормы ИМТ/%жира/безжировой/BMR, ИСМ, ккал, делители сегментов
+
+- **kviz/client/src/utils/inbody.ts**: tail-парсер переписан на `tg(i, div)` + `seg(base, divs[])`. Нормы: `bmi_min/max` (tail 0,4), `pbf_min/max` (tail 12,16), `ffm_min/max` (tail 115,119), `bmr_min/max` (tail 123,127), `smi` (tail 105). `recommended_kcal` из `data[160..163]`. Делители сегментов: lean trunk ÷10 (20.6), fat все ÷10; % безжир ÷10 (позиции 60–79); % жир ÷10 по позициям 81,86,91,96,101. `fat_by_segment.trunk` SAMPLE: 0.47 → 4.7 (исправление ÷100→÷10). `lean_norm` = `[ffm_min, ffm_max]`.
+- **src/http/inbody.ts**: в data QR добавлены `bmi_min/max`, `pbf_min/max`, `smi`, `recommended_kcal`, `bmr_min/max`.
+
+### 20.11.2026 · ab82712 · task 74 · QR-парсер: блок контроля `!0000`; QR data — ключи CSV
 
 - **kviz/client/src/utils/inbody.ts**: регулярка блока контроля `/^([+-]\d{4})([+-]\d{4})([+-]\d{4})/` → `/^([+-]\d{4})([+-]\d{4})([+!\-]\d{4})/`. Символ `!` перед `0000` совпадает; `sign4` не менялся (`!` трактуется как `+`, значение 0). Это устраняло сдвиг BMR на −19 и WHR на 0.02.
 - **src/http/inbody.ts** `POST /kviz/api/inbody/qr`: в `data` добавлены ключи, которые читает ClientPage: `target_weight`, `weight_control`, `bfm_control`, `ffm_control`, `obesity_degree`; поля, которые QR не разбирает, пишутся явно как `null` (`vfl`, `inbody_score`, `recommended_kcal`, `abdomen_circumference`).
@@ -122,8 +127,8 @@
 - Импорт InBody CSV, расчёт параметров, полный лист замера, попап зоны с зумом.
 
 ## Открытые баги
-- **QR-парсер не читает**: висцеральный уровень (`vfl`), ИСМ (`smi`), рекомендуемые ккал (`recommended_kcal`) — поля пишутся `null` в `data`. Исправление — после анализа raw_qr.
-- **selfCheck SAMPLE**: `minerals` = 3.9 вместо 3.86 (g4f с divisor=100 округляет до 1 знака); trunk lean_by_segment = 2.43 вместо 24.3 (InBody 270 кодирует туловище с ÷10, конечности ÷100). Оба — pre-existing, не критичны для карточки клиента.
+- **QR-парсер не читает**: висцеральный уровень (`vfl`), норма мышц (smm_min/max). Пишутся `null` в `data`. Позиции в raw не найдены.
+- **selfCheck SAMPLE**: `minerals` = 3.9 вместо 3.86 (g4f с divisor=100 округляет до 1 знака, pre-existing). Не влияет на карточку клиента.
 
 ## Следующее
 - **ClientPage mobile дополнения (записано 04.11):** zone-detail как bottom-sheet на мобиле; попап зоны по нажатию на строку списка — проверить на реальном телефоне.

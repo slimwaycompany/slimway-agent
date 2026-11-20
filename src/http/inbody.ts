@@ -140,8 +140,13 @@ export function buildInbodyRouter(): Router {
           bfm_control:    ib.fat_control_kg    ?? null,
           ffm_control:    ib.muscle_control_kg ?? null,
           obesity_degree: ib.obesity_pct       ?? null,
+          // norms and extras from tail
+          bmi_min: ib.bmi_min ?? null, bmi_max: ib.bmi_max ?? null,
+          pbf_min: ib.pbf_min ?? null, pbf_max: ib.pbf_max ?? null,
+          smi: ib.smi ?? null, recommended_kcal: ib.recommended_kcal ?? null,
+          bmr_min: ib.bmr_min ?? null, bmr_max: ib.bmr_max ?? null,
           // not yet parsed from QR
-          vfl: null, inbody_score: null, recommended_kcal: null, abdomen_circumference: null,
+          vfl: null, inbody_score: null, abdomen_circumference: null,
         },
       };
 

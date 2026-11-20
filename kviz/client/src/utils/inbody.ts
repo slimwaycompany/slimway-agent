@@ -36,6 +36,17 @@ export interface InBodyData {
   fat_by_segment:  { right_arm: number; left_arm: number; trunk: number; right_leg: number; left_leg: number };
   lean_pct_norm_by_segment: { right_arm: number; left_arm: number; trunk: number; right_leg: number; left_leg: number };
   fat_pct_norm_by_segment:  { right_arm: number; left_arm: number; trunk: number; right_leg: number; left_leg: number };
+  // norms from tail
+  bmi_min: number | null;
+  bmi_max: number | null;
+  pbf_min: number | null;
+  pbf_max: number | null;
+  ffm_min: number | null;
+  ffm_max: number | null;
+  smi: number | null;
+  bmr_min: number | null;
+  bmr_max: number | null;
+  recommended_kcal: number | null;
   // derived
   bmi: number;
   fat_pct: number;
@@ -134,18 +145,35 @@ export function parseInBody(raw: string): InBodyData | null {
     // Segment data is in the tail section after `!!!!`
     const tailStr = tailMatch ? tailMatch[1] : '';
 
-    // tail layout (from spec and verified against sample):
-    // 5×4 unknown | 5×4 lean_by_seg (÷100) | 5×4 fat_by_seg (÷100) |
-    // 5×4 lean_pct_norm | 5×4 fat_pct_norm | 4 score | 8 zeros | 4 lean_norm_min | 4 lean_norm_max | ... obesity ...
-    const lean_by_segment = tailStr.length >= 60 ? seg5(tailStr, 5, 100) : { right_arm: 0, left_arm: 0, trunk: 0, right_leg: 0, left_leg: 0 };
-    const fat_by_segment  = tailStr.length >= 80 ? seg5(tailStr, 10, 100) : { right_arm: 0, left_arm: 0, trunk: 0, right_leg: 0, left_leg: 0 };
-    const lean_pct_norm_by_segment = tailStr.length >= 100 ? seg5(tailStr, 15, 10) : { right_arm: 0, left_arm: 0, trunk: 0, right_leg: 0, left_leg: 0 };
-    const fat_pct_norm_by_segment  = tailStr.length >= 120 ? seg5(tailStr, 20, 10) : { right_arm: 0, left_arm: 0, trunk: 0, right_leg: 0, left_leg: 0 };
-
-    // Lean mass norm from tail (after 5 fat% norm groups + 4 unknown chars = position 25 in tail)
-    const lnMin = tailStr.length >= 128 ? parseInt(tailStr.slice(100, 104), 10) / 10 : 0;
-    const lnMax = tailStr.length >= 132 ? parseInt(tailStr.slice(104, 108), 10) / 10 : 0;
-    const lean_norm: [number, number] = lnMin > 0 ? [lnMin, lnMax] : [0, 0];
+    // tailStr = хвост строки после !!!! (проверено по листу 20.11)
+    const tg = (i: number, div: number): number | null => {
+      const s = tailStr.slice(i, i + 4);
+      return /^\d{4}$/.test(s) ? Math.round(parseInt(s, 10) / div * 100) / 100 : null;
+    };
+    const seg = (base: number, d: number[]) => ({
+      right_arm: tg(base,      d[0]) ?? 0,
+      left_arm:  tg(base + 4,  d[1]) ?? 0,
+      trunk:     tg(base + 8,  d[2]) ?? 0,
+      right_leg: tg(base + 12, d[3]) ?? 0,
+      left_leg:  tg(base + 16, d[4]) ?? 0,
+    });
+    const lean_by_segment          = seg(20, [100, 100, 10, 100, 100]);
+    const fat_by_segment           = seg(40, [10, 10, 10, 10, 10]);
+    const lean_pct_norm_by_segment = seg(60, [10, 10, 10, 10, 10]);
+    const fpos = [81, 86, 91, 96, 101];
+    const fat_pct_norm_by_segment = {
+      right_arm: tg(fpos[0], 10) ?? 0, left_arm: tg(fpos[1], 10) ?? 0,
+      trunk:     tg(fpos[2], 10) ?? 0, right_leg: tg(fpos[3], 10) ?? 0,
+      left_leg:  tg(fpos[4], 10) ?? 0,
+    };
+    const bmi_min = tg(0, 10),   bmi_max = tg(4, 10);
+    const pbf_min = tg(12, 10),  pbf_max = tg(16, 10);
+    const ffm_min = tg(115, 10), ffm_max = tg(119, 10);
+    const smi     = tg(105, 10);
+    const bmr_min = tg(123, 1),  bmr_max = tg(127, 1);
+    const kcalStr = data.slice(160, 164);
+    const recommended_kcal = /^\d{4}$/.test(kcalStr) ? parseInt(kcalStr, 10) : null;
+    const lean_norm: [number, number] = [ffm_min ?? 0, ffm_max ?? 0];
 
     // ── Derived
     const bmi     = Math.round(weight_kg / ((height_cm / 100) ** 2) * 10) / 10;
@@ -161,6 +189,8 @@ export function parseInBody(raw: string): InBodyData | null {
       weight_control_kg, fat_control_kg, muscle_control_kg, ideal_weight_kg,
       obesity_pct, lean_by_segment, fat_by_segment,
       lean_pct_norm_by_segment, fat_pct_norm_by_segment,
+      bmi_min, bmi_max, pbf_min, pbf_max, ffm_min, ffm_max,
+      smi, bmr_min, bmr_max, recommended_kcal,
       bmi, fat_pct,
     };
   } catch { return null; }
@@ -200,7 +230,7 @@ export function selfCheck(): string[] {
   check('fat_pct', d.fat_pct,            15.3); // 9.9/64.6 = 15.32% ~ 15.3
   check('lean_by_segment.right_arm', d.lean_by_segment.right_arm, 2.91);
   check('lean_by_segment.trunk',     d.lean_by_segment.trunk,     24.3);
-  check('fat_by_segment.trunk',      d.fat_by_segment.trunk,      0.47);
+  check('fat_by_segment.trunk',      d.fat_by_segment.trunk,      4.7); // was 0.47 (÷100), fixed to ÷10
   return errors;
 }
 
