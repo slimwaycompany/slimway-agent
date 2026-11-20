@@ -1093,7 +1093,8 @@ function ibBarPct(val: number, lo: number, hi: number): number {
 }
 
 function NormBar({ val, lo, hi, goodDir, unit = '' }: { val: number | null; lo: number | null; hi: number | null; goodDir?: 'low' | 'high'; unit?: string }) {
-  if (val == null || lo == null || hi == null) return <span style={{ color: 'var(--text-3)', fontSize: 12 }}>—</span>;
+  if (val == null) return <span style={{ color: 'var(--text-3)', fontSize: 12 }}>—</span>;
+  if (lo == null || hi == null) return <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{val.toFixed(1)}{unit}</span>;
   const pct = ibBarPct(val, lo, hi);
   const color = ibColor(val, [lo, hi], goodDir);
   return (
@@ -1147,21 +1148,22 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
   const score = t.inbody_score;
   const scoreColor = score != null ? ibColor(score, [70, 90], 'high') : 'var(--text-3)';
 
-  function Row({ label, val, unit = '', normMin, normMax, goodDir, fKey }: {
+  function Row({ label, val, unit = '', normMin, normMax, goodDir, fKey, dp }: {
     label: string; val: number | null; unit?: string;
-    normMin?: string; normMax?: string; goodDir?: 'low' | 'high'; fKey?: string;
+    normMin?: string; normMax?: string; goodDir?: 'low' | 'high'; fKey?: string; dp?: number;
   }) {
     const lo = normMin ? n(normMin) : null;
     const hi = normMax ? n(normMax) : null;
     const fVal = fKey ? fn(fKey) : null;
+    const decimals = dp ?? 1;
     return (
       <tr>
         <td style={{ padding: '4px 8px', fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{label}</td>
         <td style={{ padding: '4px 8px', fontSize: 13, fontWeight: 700, color: val != null && lo != null && hi != null ? ibColor(val, [lo, hi], goodDir) : 'var(--text)' }}>
-          {val != null ? val.toFixed(1) + unit : '—'}
+          {val != null ? val.toFixed(decimals) + unit : '—'}
         </td>
         <td style={{ padding: '4px 8px', fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
-          {lo != null && hi != null ? `${lo.toFixed(1)}–${hi.toFixed(1)}` : ''}
+          {lo != null && hi != null ? `${lo.toFixed(decimals)}–${hi.toFixed(decimals)}` : ''}
         </td>
         {compare && <td style={{ padding: '4px 8px', fontSize: 12, fontWeight: 600, color: diffColor2(fVal, val, goodDir) }}>
           {diff(fVal, val)}
@@ -1221,7 +1223,7 @@ function InBodyFullSheet({ tests, firstTest, onClose }: { tests: InBodyTest[]; f
                 <tbody>
                   <Row label="Вода (л)" val={n('tbw')} normMin="tbw_min" normMax="tbw_max" fKey="tbw" goodDir="high" />
                   <Row label="Белок (кг)" val={n('protein')} normMin="protein_min" normMax="protein_max" fKey="protein" goodDir="high" />
-                  <Row label="Минералы (кг)" val={n('minerals')} normMin="minerals_min" normMax="minerals_max" fKey="minerals" goodDir="high" />
+                  <Row label="Минералы (кг)" val={n('minerals')} normMin="minerals_min" normMax="minerals_max" fKey="minerals" goodDir="high" dp={2} />
                   <Row label="Жир (кг)" val={n('bfm')} normMin="bfm_min" normMax="bfm_max" fKey="bfm" goodDir="low" />
                   <Row label="Вес (кг)" val={n('weight')} normMin="weight_min" normMax="weight_max" fKey="weight" />
                 </tbody>
