@@ -134,6 +134,14 @@ export function buildInbodyRouter(): Router {
           protein: ib.protein_kg, minerals: ib.minerals_kg,
           tbw: ib.water_l, bmr_kcal: ib.bmr_kcal,
           obesity_pct: ib.obesity_pct, ideal_weight: ib.ideal_weight_kg,
+          // keys read by ClientPage card (CSV uses these names)
+          target_weight:  ib.ideal_weight_kg  ?? null,
+          weight_control: ib.weight_control_kg ?? null,
+          bfm_control:    ib.fat_control_kg    ?? null,
+          ffm_control:    ib.muscle_control_kg ?? null,
+          obesity_degree: ib.obesity_pct       ?? null,
+          // not yet parsed from QR
+          vfl: null, inbody_score: null, recommended_kcal: null, abdomen_circumference: null,
         },
       };
 

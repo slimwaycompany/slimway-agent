@@ -114,7 +114,7 @@ export function parseInBody(raw: string): InBodyData | null {
 
     // ── Weight control (+xxxx × 3) after group 23 (=position 24*4=96 chars in bc)
     const ctrlStr = bc.slice(24 * 4);
-    const ctrlMatch = ctrlStr.match(/^([+-]\d{4})([+-]\d{4})([+-]\d{4})/);
+    const ctrlMatch = ctrlStr.match(/^([+-]\d{4})([+-]\d{4})([+!\-]\d{4})/);
     const weight_control_kg = ctrlMatch ? sign4(ctrlMatch[1]) : 0;
     const fat_control_kg    = ctrlMatch ? sign4(ctrlMatch[2]) : 0;
     const muscle_control_kg = ctrlMatch ? sign4(ctrlMatch[3]) : 0;

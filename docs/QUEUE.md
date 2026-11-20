@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 74 | zamery | QR-парсер: блок контроля !0000 (BMR/WHR сдвиг); QR data — ключи CSV | ТЗ в чате | 🔧 в работе (Claude, 20.11.2026) |
 | 73 | zamery | Сохранять сырую строку QR в inbody_tests.raw_qr для сверки парсера | ТЗ в чате | ✅ готово (ce1786f) |
 | 72 | reports, ovcharka | Срез «план-факт» — ReferenceError Fragment; Овчарка — sw.js FetchEvent network error при навигации | ТЗ в чате | ✅ готово (60825f6) |
 | 71 | infra, ui | Меню кружка профиля поверх iframe: stacking context fix (#top-bar z-index:10), stopPropagation в ua-menu, window.blur close, logout all-paths cookie | ТЗ в чате | ✅ готово (957ffa7) |

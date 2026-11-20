@@ -43,7 +43,12 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
-### 20.11.2026 · (текущий) · task 73 · сохранять сырую строку QR в inbody_tests.raw_qr
+### 20.11.2026 · (текущий) · task 74 · QR-парсер: блок контроля `!0000`; QR data — ключи CSV
+
+- **kviz/client/src/utils/inbody.ts**: регулярка блока контроля `/^([+-]\d{4})([+-]\d{4})([+-]\d{4})/` → `/^([+-]\d{4})([+-]\d{4})([+!\-]\d{4})/`. Символ `!` перед `0000` совпадает; `sign4` не менялся (`!` трактуется как `+`, значение 0). Это устраняло сдвиг BMR на −19 и WHR на 0.02.
+- **src/http/inbody.ts** `POST /kviz/api/inbody/qr`: в `data` добавлены ключи, которые читает ClientPage: `target_weight`, `weight_control`, `bfm_control`, `ffm_control`, `obesity_degree`; поля, которые QR не разбирает, пишутся явно как `null` (`vfl`, `inbody_score`, `recommended_kcal`, `abdomen_circumference`).
+
+### 20.11.2026 · ce1786f · task 73 · сохранять сырую строку QR в inbody_tests.raw_qr
 
 - Колонка `inbody_tests.raw_qr` (text, nullable) добавлена Сергеем в Supabase.
 - `src/http/inbody.ts`: в `InBodyRow` добавлено поле `raw_qr?: string | null`; в обработчике `POST /kviz/api/inbody/qr` значение берётся из `ib.raw` (поле `raw` объекта `InBodyData`, который клиент уже отправлял в составе `inbody`). Клиентский код (`InBodyScanPage.tsx`, `ClientPage.tsx`) не менялся — `parsed.raw` уже шёл на сервер.
@@ -117,7 +122,8 @@
 - Импорт InBody CSV, расчёт параметров, полный лист замера, попап зоны с зумом.
 
 ## Открытые баги
-- **QR-парсер не заполняет**: мышцы, ИМТ, % жира, висцеральный жир, окружность живота, ИСМ, идеальный вес, контроль, норму ккал. BMR и WHR разбираются со сдвигом (BMR −19, WHR 0.02 на тесте 19.11.2026). Исправление — после сверки с raw_qr.
+- **QR-парсер не читает**: висцеральный уровень (`vfl`), ИСМ (`smi`), рекомендуемые ккал (`recommended_kcal`) — поля пишутся `null` в `data`. Исправление — после анализа raw_qr.
+- **selfCheck SAMPLE**: `minerals` = 3.9 вместо 3.86 (g4f с divisor=100 округляет до 1 знака); trunk lean_by_segment = 2.43 вместо 24.3 (InBody 270 кодирует туловище с ÷10, конечности ÷100). Оба — pre-existing, не критичны для карточки клиента.
 
 ## Следующее
 - **ClientPage mobile дополнения (записано 04.11):** zone-detail как bottom-sheet на мобиле; попап зоны по нажатию на строку списка — проверить на реальном телефоне.
