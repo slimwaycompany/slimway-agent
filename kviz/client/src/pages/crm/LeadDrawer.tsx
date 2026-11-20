@@ -1,11 +1,15 @@
 ﻿import { useState, useEffect, useRef } from 'react';
 import { postToParent } from '../../utils/iframe';
 import { showConfirm } from '../../lib/confirm';
+import StagePopup, { type PopupStage } from './StagePopup';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface Stage { id: string; name: string; kind: string; sort: number; is_archived: boolean }
-interface Funnel { id: string; name: string; stages: Stage[] }
+interface Stage {
+  id: string; name: string; kind: string; sort: number; is_archived: boolean;
+  memo: string | null; action_label: string; checklist: { text: string; who: 'human' | 'auto'; rule?: string }[];
+}
+interface Funnel { id: string; name: string; is_active: boolean; stages: Stage[] }
 
 interface Lead {
   id: string; title: string | null; name: string | null; surname: string | null;
@@ -115,6 +119,7 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
   const [isAdmin, setIsAdmin]     = useState(false);
   const [origin, setOrigin]       = useState('');
   const [toast, setToast]         = useState('');
+  const [memoStage, setMemoStage] = useState<Stage | null>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
 
   // form fields (controlled)
@@ -159,6 +164,12 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
         setStageId(l.stage_id ?? '');
         setAdSourceId(l.ad_source_id ?? '');
         setManagerUserId(l.manager_user_id ?? '');
+        // Show memo popup once per lead open if current stage has memo
+        if (l.stage_id) {
+          const allStages = funnels.flatMap(f => f.stages);
+          const st = allStages.find(s => s.id === l.stage_id);
+          if (st && st.memo) setMemoStage(st);
+        }
       }
       if (act.ok) setActivity(Array.isArray(act.data) ? act.data : []);
       setOrigin((ld.data as Record<string, unknown>)?.origin as string ?? '');
@@ -253,6 +264,17 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
 
   return (
     <>
+      {/* Stage memo popup (shown once on open) */}
+      {memoStage && (
+        <StagePopup
+          mode="memo"
+          stage={memoStage as PopupStage}
+          lostReasons={[]}
+          onConfirm={() => setMemoStage(null)}
+          onCancel={() => setMemoStage(null)}
+        />
+      )}
+
       {/* Overlay */}
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 100 }} onClick={onClose} />
 

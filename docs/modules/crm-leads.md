@@ -7,6 +7,26 @@
 
 ## Сделано
 
+### 20.11.2026 · task 78 · popup подтверждения перехода, ручное создание заявки, автоматика, настройки этапов
+
+**Бэкенд `src/http/crmLeads.ts`:**
+- `POST /crm/leads` переписан для ручного создания: находит активную воронку «Новые заявки» (`is_active=true`, name ilike), системный inbox-этап (`kind='inbox'`, `funnel_id IS NULL`), проверяет дубль по phone (409 `{error:'duplicate',lead_id}`), `force:true` обходит проверку; `origin='manual'`, `title=name+surname`, `budget='0'`, `tags=[]`; после создания запускает `runLeadRules({type:'lead_created'})` fire-and-forget.
+- `PATCH /crm/funnel-stages/:id`: добавлены поля `memo` (≤1000), `action_label` (1–30), `checklist` (массив ≤20 пунктов, каждый `{text,who,rule?}`).
+- `POST /crm/leads/:id/move`: принимает `comment` (пишет в activity), вызывает `runLeadRules({type:'stage_enter',...})` fire-and-forget.
+- `GET /kviz/api/crm/lead-rules` (admin): возвращает правила из `crm_lead_rules`.
+- `PATCH /kviz/api/crm/lead-rules/:id` (admin): обновляет `is_enabled` и `params`.
+- `PATCH /kviz/api/crm/settings/sync` (admin): переключает флаг `leads.fitbase_sync_enabled` в `crm_settings`.
+
+**Новый файл `src/core/leadRules.ts`:** `runLeadRules(event)` — загружает включённые правила, вызывает `applyRule` для каждого; правила `lead_first_contact` (на `lead_created`, создаёт задачу+activity) и `stage_task` (на `stage_enter`, создаёт задачу+activity); дублирование защищено через `crm_lead_activity.meta.rule_code`; все задачи `[АВТО]` с `created_by=null`.
+
+**Новый компонент `kviz/client/src/pages/crm/StagePopup.tsx`:** попап подтверждения перехода (`mode='move'`) и просмотра памятки (`mode='memo'`); показывает memo, checklist «Делаете вы», admin-collapsible «Автоматика», comment, lost_reason (обязательно при kind=fail), кнопка action_label; bottom sheet на ≤640px.
+
+**`FunnelPage.tsx` обновлён:** интерфейс Stage/Funnel с новыми полями; загружает `syncEnabled`/`lostReasons` при монтировании; фильтрует только `is_active` воронки; drag end открывает StagePopup вместо PATCH; `confirmMove()` → POST /move с comment+lost_reason_id; кнопка «+ Заявка» → CreateLeadModal (дублирование со ссылкой); auto-refresh каждые 60с (пауза при попапе/дрэге); колонки с `alignItems:'stretch'` и собственным вертикальным скроллом; кнопка «Синхр. FB» скрыта если `!syncEnabled`.
+
+**`LeadDrawer.tsx` обновлён:** интерфейс Stage с `memo/action_label/checklist`; после загрузки лида проверяет memo текущего этапа и показывает StagePopup `mode='memo'` один раз.
+
+**`SettingsPage.tsx` обновлён:** `Section` + `'lead-rules'`; `CrmStage` с `memo/action_label/checklist`; `StageEditor` — inline-редактор memo/action_label/checklist внутри FunnelsSection; `FunnelsSection` добавлен sync-переключатель сверху; `LeadRulesSection` — список правил из `crm_lead_rules` с галочками и редактором params; раздел «Автоматизация» в группе «Заявки».
+
 ### 18.11.2026 · 8f16595 · task 67 · syncLeads() создаёт body_clients для заявок с телефоном
 
 - **crmLeadsSync.ts** `syncLeads()`: после upsert всех заявок собирает телефоны (normPhone → `7XXXXXXXXXX`), фильтрует по `body_clients.phone_digits` (SELECT IN), вставляет только новых в батчах по 100 (`{name: «Имя Фамилия», phone: «+7XXXXXXXXXX»}`); всё в try/catch — ошибка не прерывает синк; логирует `[crm-leads-sync] body_clients: добавлено N`.
@@ -42,8 +62,10 @@
 - **API воронок и лидов:** `src/http/crmLeads.ts` → `buildCrmLeadsRouter()`, смонтирован в `kviz.ts` после `buildCrmRouter()`
 - **Cron-эндпоинт:** `src/index.ts` → `handleCrmLeadsSync`, `/run/crm-leads-sync`
 - **Kanban-доска:** `kviz/client/src/pages/crm/FunnelPage.tsx`, маршрут `/crm/funnel`
+- **Попап этапа:** `kviz/client/src/pages/crm/StagePopup.tsx` (mode=move и mode=memo)
 - **Карточка заявки:** `kviz/client/src/pages/crm/LeadDrawer.tsx`
-- **Настройки CRM-разделов:** `kviz/client/src/pages/crm/SettingsPage.tsx` (секции funnels/lead-tags/task-types/lost-reasons/fb-users)
+- **Правила автоматики:** `src/core/leadRules.ts`, `runLeadRules(event)`
+- **Настройки CRM-разделов:** `kviz/client/src/pages/crm/SettingsPage.tsx` (секции funnels/lead-rules/lead-tags/task-types/lost-reasons/fb-users)
 - **Задачи в Менеджере:** `kviz/client/src/pages/manager/ManagerPage.tsx` → `LeadTasksSection`
 - Зонд API Fitbase — `src/jobs/probeLeadsApi.ts`, эндпоинт `GET /run/probe-leads-api` (`2076c1f`). Только rawGet. Отчёт: `docs/reports/fitbase-leads-api.md`.
 - Не путать: `kviz/client/src/pages/MetricsPage.tsx` + `src/http/metrics.ts` — отчёты по воронке Fitbase (Отчёты → Маркетинг: Факт дня, Дневной такт), модуль `reports.md`.

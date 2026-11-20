@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession, requireAuth, requireAdmin } from './auth';
-import { runCrmLeadsSync } from '../jobs/crmLeadsSync';
+import { runCrmLeadsSync, isFitbaseSyncEnabled } from '../jobs/crmLeadsSync';
 import { acquireLock, releaseLock } from '../core/lock';
 import { rawGet, paginateGet } from './fitbase';
+import { runLeadRules } from '../core/leadRules';
 import type { Request, Response } from 'express';
 
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
@@ -11,6 +12,15 @@ const JOB = 'crm-leads-sync';
 
 function todayUtc5(): string {
   return new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
+}
+
+function normPhone(raw: unknown): string | null {
+  if (!raw) return null;
+  let d = String(raw).replace(/\D/g, '');
+  if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1);
+  if (d.length === 11 && d[0] === '7') return d;
+  if (d.length === 10) return '7' + d;
+  return null;
 }
 
 async function writeActivity(leadId: string, kind: string, text: string, author: string, meta?: Record<string, unknown>) {
@@ -40,28 +50,45 @@ export function buildCrmLeadsRouter(): Router {
 
   // ── Sync ─────────────────────────────────────────────────────────────────────
 
-  r.get('/kviz/api/crm/leads-sync', (req, res) => {
+  r.get('/kviz/api/crm/leads-sync', async (req, res) => {
     if (!requireAuth(req, res)) return;
-    res.json(syncStatus);
+    const enabled = await isFitbaseSyncEnabled().catch(() => false);
+    res.json({ ...syncStatus, enabled });
   });
 
-  r.post('/kviz/api/crm/leads-sync', (req, res) => {
+  r.post('/kviz/api/crm/leads-sync', async (req, res) => {
     if (!requireAuth(req, res)) return;
+    const enabled = await isFitbaseSyncEnabled().catch(() => false);
+    if (!enabled) { res.status(403).json({ error: 'sync_disabled' }); return; }
     runSyncBg().catch(console.error);
     res.json({ ok: true, status: syncStatus.status });
   });
 
   // Canonical aliases (must be before /:id routes)
-  r.get('/kviz/api/crm/leads/sync/status', (req, res) => {
+  r.get('/kviz/api/crm/leads/sync/status', async (req, res) => {
     if (!requireAuth(req, res)) return;
-    res.json(syncStatus);
+    const enabled = await isFitbaseSyncEnabled().catch(() => false);
+    res.json({ ...syncStatus, enabled });
   });
 
-  r.post('/kviz/api/crm/leads/sync', (req, res) => {
+  r.post('/kviz/api/crm/leads/sync', async (req, res) => {
     if (!requireAuth(req, res)) return;
+    const enabled = await isFitbaseSyncEnabled().catch(() => false);
+    if (!enabled) { res.status(403).json({ error: 'sync_disabled' }); return; }
     if (syncStatus.status === 'running') { res.status(409).json({ error: 'Синхронизация уже идёт' }); return; }
     runSyncBg().catch(console.error);
     res.json({ ok: true, status: 'running' });
+  });
+
+  // Sync settings (admin): toggle fitbase sync flag
+  r.patch('/kviz/api/crm/settings/sync', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const enabled = Boolean((req.body as Record<string, unknown>).enabled);
+      await supabase.from('crm_settings')
+        .upsert({ key: 'leads.fitbase_sync_enabled', value: enabled }, { onConflict: 'key' });
+      res.json({ ok: true, enabled });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
   // ── Funnels ───────────────────────────────────────────────────────────────────
@@ -77,17 +104,21 @@ export function buildCrmLeadsRouter(): Router {
         .select('*').eq('branch_id', BRANCH_ID).order('sort').order('name');
 
       const stagesByFunnel = new Map<string, unknown[]>();
+      const systemStages: unknown[] = [];
       for (const s of stages || []) {
         const fid = (s as Record<string, unknown>).funnel_id as string | null;
         if (fid) {
           if (!stagesByFunnel.has(fid)) stagesByFunnel.set(fid, []);
           stagesByFunnel.get(fid)!.push(s);
+        } else {
+          systemStages.push(s);
         }
       }
 
+      // system stages (funnel_id IS NULL: inbox/success/fail) are included in every active funnel
       res.json((funnels || []).map(f => ({
         ...f,
-        stages: stagesByFunnel.get((f as Record<string, unknown>).id as string) ?? [],
+        stages: [...systemStages, ...(stagesByFunnel.get((f as Record<string, unknown>).id as string) ?? [])],
       })));
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -146,6 +177,26 @@ export function buildCrmLeadsRouter(): Router {
       if (b.is_archived      !== undefined) upd.is_archived      = Boolean(b.is_archived);
       if (b.color            !== undefined) upd.color            = b.color ?? null;
       if (b.background_color !== undefined) upd.background_color = b.background_color ?? null;
+      if (b.memo             !== undefined) {
+        const m = b.memo ? String(b.memo) : null;
+        if (m && m.length > 1000) { res.status(400).json({ error: 'memo не более 1000 символов' }); return; }
+        upd.memo = m;
+      }
+      if (b.action_label !== undefined) {
+        const al = String(b.action_label ?? '').trim();
+        if (!al || al.length > 30) { res.status(400).json({ error: 'action_label: 1–30 символов' }); return; }
+        upd.action_label = al;
+      }
+      if (b.checklist !== undefined) {
+        if (!Array.isArray(b.checklist)) { res.status(400).json({ error: 'checklist должен быть массивом' }); return; }
+        if (b.checklist.length > 20) { res.status(400).json({ error: 'checklist не более 20 пунктов' }); return; }
+        for (const item of b.checklist) {
+          const it = item as Record<string, unknown>;
+          if (!it.text || String(it.text).length > 200) { res.status(400).json({ error: 'Текст пункта: 1–200 символов' }); return; }
+          if (it.who !== 'human' && it.who !== 'auto') { res.status(400).json({ error: 'who: human или auto' }); return; }
+        }
+        upd.checklist = b.checklist;
+      }
       const { data, error } = await supabase.from('crm_funnel_stages')
         .update(upd).eq('id', req.params.id).eq('branch_id', BRANCH_ID).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -202,25 +253,46 @@ export function buildCrmLeadsRouter(): Router {
     const session = getSession(req)!;
     try {
       const b = req.body as Record<string, unknown>;
-      if (!b.funnel_id) { res.status(400).json({ error: 'Укажите воронку' }); return; }
-      const phone = b.phone ? (() => { let d = String(b.phone).replace(/\D/g, ''); if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1); if (d.length === 11 && d[0] === '7') return d; if (d.length === 10) return '7' + d; return null; })() : null;
+      const name = String(b.name ?? '').trim();
+      if (!name) { res.status(400).json({ error: 'Укажите имя' }); return; }
+      const phone = normPhone(b.phone);
+      if (!phone) { res.status(400).json({ error: 'Укажите корректный номер телефона' }); return; }
+
+      // Find active funnel "Новые заявки"
+      const { data: funnels } = await supabase.from('crm_funnels')
+        .select('id,name').eq('branch_id', BRANCH_ID).eq('is_active', true);
+      const funnel = (funnels || []).find(f => (f as Record<string, unknown>).name as string ? ((f as Record<string, unknown>).name as string).toLowerCase().includes('новые заявки') : false);
+      if (!funnel) { res.status(422).json({ error: 'funnel_not_found' }); return; }
+
+      // Find system inbox stage (kind='inbox', funnel_id IS NULL)
+      const { data: inboxStage } = await supabase.from('crm_funnel_stages')
+        .select('id').eq('branch_id', BRANCH_ID).eq('kind', 'inbox').is('funnel_id', null).maybeSingle();
+      if (!inboxStage) { res.status(422).json({ error: 'inbox_stage_not_found' }); return; }
+
+      // Duplicate check: non-archived lead with same phone
+      if (!b.force) {
+        const { data: dup } = await supabase.from('crm_leads')
+          .select('id').eq('branch_id', BRANCH_ID).eq('phone', phone).eq('is_archived', false).maybeSingle();
+        if (dup) { res.status(409).json({ error: 'duplicate', lead_id: (dup as Record<string, unknown>).id }); return; }
+      }
+
+      const surname = String(b.surname ?? '').trim();
+      const title = [name, surname].filter(Boolean).join(' ');
+      const funnelId = (funnel as Record<string, unknown>).id as string;
+      const stageId = (inboxStage as Record<string, unknown>).id as string;
+
       const { data, error } = await supabase.from('crm_leads').insert({
-        branch_id: BRANCH_ID, origin: 'manual',
-        title:       (b.title      as string | null) ?? null,
-        name:        (b.name       as string | null) ?? null,
-        surname:     (b.surname    as string | null) ?? null,
-        phone,
-        description: (b.description as string | null) ?? null,
-        budget:      b.budget != null ? String(b.budget) : null,
-        funnel_id:   b.funnel_id,
-        stage_id:    (b.stage_id as string | null) ?? null,
-        ad_source_id: (b.ad_source_id as string | null) ?? null,
-        tags: Array.isArray(b.tags) ? b.tags : [],
+        branch_id: BRANCH_ID, origin: 'manual', fitbase_id: null,
+        title, name, surname: surname || null, phone,
+        funnel_id: funnelId, stage_id: stageId,
+        budget: '0', tags: [], custom_fields: {},
         fb_created_at: new Date().toISOString(),
         synced_at: new Date().toISOString(),
       }).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
-      await writeActivity((data as Record<string, unknown>).id as string, 'created', 'Заявка создана', session.display_name);
+      const leadId = (data as Record<string, unknown>).id as string;
+      await writeActivity(leadId, 'created', 'Заявка создана вручную', session.display_name);
+      runLeadRules({ type: 'lead_created', leadId }).catch(console.error);
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -342,7 +414,12 @@ export function buildCrmLeadsRouter(): Router {
         .update(upd).eq('id', req.params.id).eq('branch_id', BRANCH_ID).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
 
-      await writeActivity(req.params.id, 'stage_change', `Этап → ${(stage as Record<string, unknown>).name}`, session.display_name);
+      const stageName = (stage as Record<string, unknown>).name as string;
+      await writeActivity(req.params.id, 'stage_change', `Этап → ${stageName}`, session.display_name);
+      if (b.comment && String(b.comment).trim()) {
+        await writeActivity(req.params.id, 'comment', String(b.comment).trim(), session.display_name);
+      }
+      runLeadRules({ type: 'stage_enter', leadId: req.params.id, stageId: b.stage_id as string }).catch(console.error);
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -706,6 +783,32 @@ export function buildCrmLeadsRouter(): Router {
       }
 
       res.json({ ok: true, leadsUpdated, tasksUpdated });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Lead rules ────────────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/lead-rules', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('crm_lead_rules')
+        .select('*').eq('branch_id', BRANCH_ID).order('code');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data || []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/kviz/api/crm/lead-rules/:id', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const upd: Record<string, unknown> = {};
+      if (b.is_enabled !== undefined) upd.is_enabled = Boolean(b.is_enabled);
+      if (b.params     !== undefined) upd.params     = b.params ?? {};
+      const { data, error } = await supabase.from('crm_lead_rules')
+        .update(upd).eq('id', req.params.id).eq('branch_id', BRANCH_ID).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

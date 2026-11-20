@@ -35,7 +35,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv';
+type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -1700,31 +1700,101 @@ function FinExpensesTab() {
 
 // ── CRM: Funnels & Stages ─────────────────────────────────────────────────────
 
-interface CrmStage  { id: string; name: string; kind: string; sort: number; is_archived: boolean; color: string | null; funnel_id: string | null }
+interface CrmStage  {
+  id: string; name: string; kind: string; sort: number; is_archived: boolean;
+  color: string | null; funnel_id: string | null;
+  memo: string | null; action_label: string;
+  checklist: { text: string; who: 'human' | 'auto'; rule?: string }[];
+}
 interface CrmFunnel { id: string; name: string; sort: number; is_active: boolean; stages: CrmStage[] }
 
+function StageEditor({ stage, onSaved }: { stage: CrmStage; onSaved: () => void }) {
+  const [memo, setMemo]           = useState(stage.memo ?? '');
+  const [actionLabel, setLabel]   = useState(stage.action_label || 'Подтвердить');
+  const [checklist, setChecklist] = useState<{ text: string; who: 'human' | 'auto'; rule?: string }[]>(stage.checklist ?? []);
+  const [saving, setSaving]       = useState(false);
+  const [err, setErr]             = useState('');
+
+  async function save() {
+    setSaving(true); setErr('');
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/funnel-stages/${stage.id}`, { memo: memo || null, action_label: actionLabel, checklist });
+    setSaving(false);
+    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
+    onSaved();
+  }
+
+  return (
+    <div style={{ padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8, marginTop: 4 }}>
+      {err && <div style={S.errBox}>{err}</div>}
+      <div style={{ marginBottom: 8 }}>
+        <label style={S.label}>Памятка этапа (memo)</label>
+        <textarea style={{ ...S.inp, minHeight: 60, resize: 'vertical' }} value={memo} onChange={e => setMemo(e.target.value)} placeholder="Показывается при переходе на этап и открытии карточки" />
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label style={S.label}>Кнопка действия</label>
+        <input style={S.inp} value={actionLabel} onChange={e => setLabel(e.target.value)} maxLength={30} placeholder="Подтвердить" />
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label style={S.label}>Чек-лист (до 20 пунктов)</label>
+        {checklist.map((item, i) => (
+          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 5 }}>
+            <input style={{ ...S.inp, flex: 1 }} value={item.text} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, text: e.target.value } : x))} placeholder="Текст пункта" maxLength={200} />
+            <select style={{ ...S.inp, width: 90 }} value={item.who} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, who: e.target.value as 'human'|'auto' } : x))}>
+              <option value="human">Менеджер</option>
+              <option value="auto">Авто</option>
+            </select>
+            {item.who === 'auto' && <input style={{ ...S.inp, width: 100 }} value={item.rule ?? ''} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, rule: e.target.value || undefined } : x))} placeholder="Правило" />}
+            <button style={{ ...S.iconBtn, color: 'var(--danger)' }} onClick={() => setChecklist(cl => cl.filter((_, j) => j !== i))}>✕</button>
+          </div>
+        ))}
+        {checklist.length < 20 && (
+          <button style={{ ...S.editBtn, fontSize: 12 }} onClick={() => setChecklist(cl => [...cl, { text: '', who: 'human' }])}>+ Пункт</button>
+        )}
+      </div>
+      <button style={S.saveBtn} disabled={saving} onClick={save}>{saving ? 'Сохранение...' : 'Сохранить'}</button>
+    </div>
+  );
+}
+
 function FunnelsSection() {
-  const [funnels, setFunnels] = useState<CrmFunnel[]>([]);
-  const [err, setErr] = useState('');
+  const [funnels, setFunnels]           = useState<CrmFunnel[]>([]);
+  const [err, setErr]                   = useState('');
   const [newFunnelName, setNewFunnelName] = useState('');
   const [newStageName, setNewStageName] = useState<Record<string, string>>({});
+  const [editStageId, setEditStageId]   = useState<string | null>(null);
+  const [syncEnabled, setSyncEnabled]   = useState<boolean | null>(null);
+  const [syncLoading, setSyncLoading]   = useState(false);
 
   async function load() {
     const { ok, data } = await api('GET', '/kviz/api/crm/funnels');
     if (ok && Array.isArray(data)) setFunnels(data);
   }
-  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    load();
+    api('GET', '/kviz/api/crm/leads-sync').then(({ ok, data }) => {
+      if (ok) setSyncEnabled((data as Record<string,unknown>).enabled !== false);
+    });
+  }, []);
+
+  async function toggleSync() {
+    if (syncEnabled === null) return;
+    setSyncLoading(true);
+    const { ok } = await api('PATCH', '/kviz/api/crm/settings/sync', { enabled: !syncEnabled });
+    setSyncLoading(false);
+    if (ok) setSyncEnabled(v => !v);
+  }
 
   async function createFunnel() {
     if (!newFunnelName.trim()) return;
     const { ok, data } = await api('POST', '/kviz/api/crm/funnels', { name: newFunnelName.trim() });
-    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
     setNewFunnelName(''); load();
   }
 
   async function toggleFunnelActive(f: CrmFunnel) {
     const { ok, data } = await api('PATCH', `/kviz/api/crm/funnels/${f.id}`, { is_active: !f.is_active });
-    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
     load();
   }
 
@@ -1732,19 +1802,33 @@ function FunnelsSection() {
     const name = (newStageName[funnelId] ?? '').trim();
     if (!name) return;
     const { ok, data } = await api('POST', '/kviz/api/crm/funnel-stages', { name, funnel_id: funnelId });
-    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
     setNewStageName(prev => ({ ...prev, [funnelId]: '' })); load();
   }
 
   async function toggleStageArchived(stage: CrmStage) {
     const { ok, data } = await api('PATCH', `/kviz/api/crm/funnel-stages/${stage.id}`, { is_archived: !stage.is_archived });
-    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
     load();
   }
 
   return (
     <div style={S.section}>
       {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
+
+      {/* Sync toggle */}
+      {syncEnabled !== null && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
+          <span style={{ flex: 1, fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>Синхронизация с Fitbase</span>
+          <button
+            onClick={toggleSync} disabled={syncLoading}
+            style={{ padding: '5px 14px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: syncLoading ? 'default' : 'pointer', fontFamily: 'inherit', background: syncEnabled ? 'var(--primary)' : 'var(--surface-2)', color: syncEnabled ? '#fff' : 'var(--text-2)' }}
+          >
+            {syncEnabled ? 'Включена' : 'Выключена'}
+          </button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <input style={{ ...S.inp, flex: 1 }} placeholder="Название новой воронки" value={newFunnelName} onChange={e => setNewFunnelName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFunnel()} />
         <button style={S.addBtn} onClick={createFunnel}>+ Воронка</button>
@@ -1757,14 +1841,20 @@ function FunnelsSection() {
           </div>
           <div style={{ padding: '8px 14px' }}>
             {f.stages.sort((a, b) => a.sort - b.sort).map(s => (
-              <div key={s.id} style={{ ...S.row, opacity: s.is_archived ? 0.5 : 1 }}>
-                <span style={{ fontSize: 13, color: 'var(--text)' }}>{s.name}</span>
-                <div style={S.rowActions}>
-                  <span style={{ fontSize: 11, color: 'var(--text-3)', padding: '2px 6px' }}>{s.kind}</span>
-                  {s.kind === 'normal' && (
-                    <button style={S.editBtn} onClick={() => toggleStageArchived(s)}>{s.is_archived ? 'Восстановить' : 'В архив'}</button>
-                  )}
+              <div key={s.id} style={{ opacity: s.is_archived ? 0.5 : 1, marginBottom: 2 }}>
+                <div style={S.row}>
+                  <span style={{ fontSize: 13, color: 'var(--text)' }}>{s.name}</span>
+                  <div style={S.rowActions}>
+                    <span style={{ fontSize: 11, color: 'var(--text-3)', padding: '2px 6px' }}>{s.kind}</span>
+                    <button style={S.editBtn} onClick={() => setEditStageId(editStageId === s.id ? null : s.id)}>
+                      {editStageId === s.id ? 'Скрыть' : 'Редактировать'}
+                    </button>
+                    {s.kind === 'normal' && (
+                      <button style={S.editBtn} onClick={() => toggleStageArchived(s)}>{s.is_archived ? 'Восстановить' : 'В архив'}</button>
+                    )}
+                  </div>
                 </div>
+                {editStageId === s.id && <StageEditor stage={s} onSaved={() => { load(); setEditStageId(null); }} />}
               </div>
             ))}
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
@@ -3697,6 +3787,99 @@ function AppearanceSection() {
 
 // ── Main SettingsPage ──────────────────────────────────────────────────────────
 
+// ── CRM: Lead Rules ───────────────────────────────────────────────────────────
+
+interface LeadRule { id: string; code: string; is_enabled: boolean; params: Record<string, unknown> }
+
+const RULE_LABELS: Record<string, string> = {
+  lead_first_contact: 'Первый контакт (при создании заявки)',
+  stage_task: 'Задача при входе в этап',
+};
+const RULE_PARAM_FIELDS: Record<string, { key: string; label: string; type?: string }[]> = {
+  lead_first_contact: [
+    { key: 'funnel_name',    label: 'Воронка (содержит)',      type: 'text' },
+    { key: 'task_type',      label: 'Тип задачи',              type: 'text' },
+    { key: 'due_in_minutes', label: 'Срок через (мин)',        type: 'number' },
+    { key: 'text',           label: 'Текст задачи',            type: 'text' },
+  ],
+  stage_task: [
+    { key: 'funnel_name',    label: 'Воронка (содержит)',      type: 'text' },
+    { key: 'stage_name',     label: 'Этап (содержит)',         type: 'text' },
+    { key: 'task_type',      label: 'Тип задачи',              type: 'text' },
+    { key: 'due_in_minutes', label: 'Срок через (мин, 0=без)', type: 'number' },
+    { key: 'text',           label: 'Текст задачи',            type: 'text' },
+  ],
+};
+
+function LeadRulesSection() {
+  const [rules, setRules] = useState<LeadRule[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [params, setParams] = useState<Record<string, unknown>>({});
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function load() {
+    const { ok, data } = await api('GET', '/kviz/api/crm/lead-rules');
+    if (ok && Array.isArray(data)) setRules(data);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function toggleEnabled(rule: LeadRule) {
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/lead-rules/${rule.id}`, { is_enabled: !rule.is_enabled });
+    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
+    load();
+  }
+
+  async function saveParams(rule: LeadRule) {
+    setSaving(true); setErr('');
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/lead-rules/${rule.id}`, { params });
+    setSaving(false);
+    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
+    setEditId(null); load();
+  }
+
+  return (
+    <div style={S.section}>
+      {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
+      {rules.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Правила не настроены в базе данных</div>}
+      {rules.map(rule => (
+        <div key={rule.id} style={{ background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 8, background: 'var(--surface-2)', borderRadius: '10px 10px 0 0' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{RULE_LABELS[rule.code] ?? rule.code}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{rule.code}</div>
+            </div>
+            <button
+              onClick={() => toggleEnabled(rule)}
+              style={{ padding: '4px 12px', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: rule.is_enabled ? 'var(--primary)' : 'var(--surface-2)', color: rule.is_enabled ? '#fff' : 'var(--text-2)' }}
+            >
+              {rule.is_enabled ? 'Включено' : 'Выключено'}
+            </button>
+            <button style={S.editBtn} onClick={() => { setEditId(editId === rule.id ? null : rule.id); setParams({ ...rule.params }); }}>
+              {editId === rule.id ? 'Скрыть' : 'Параметры'}
+            </button>
+          </div>
+          {editId === rule.id && (
+            <div style={{ padding: '12px 14px' }}>
+              {(RULE_PARAM_FIELDS[rule.code] ?? []).map(f => (
+                <div key={f.key} style={{ marginBottom: 8 }}>
+                  <label style={S.label}>{f.label}</label>
+                  <input
+                    style={S.inp} type={f.type ?? 'text'}
+                    value={String(params[f.key] ?? '')}
+                    onChange={e => setParams(p => ({ ...p, [f.key]: f.type === 'number' ? Number(e.target.value) : e.target.value }))}
+                  />
+                </div>
+              ))}
+              <button style={S.saveBtn} disabled={saving} onClick={() => saveParams(rule)}>{saving ? 'Сохранение...' : 'Сохранить'}</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface NavSectionDef { id: Section; label: string; Icon: LucideIcon; permKey?: string }
 interface NavGroupDef   { id: string;  label: string; sections: NavSectionDef[] }
 
@@ -3727,6 +3910,7 @@ const NAV_GROUPS_DEF: NavGroupDef[] = [
     { id: 'lost-reasons',  label: 'Причины отказа',       Icon: XCircle,       permKey: 'settings.lost_reasons' },
     { id: 'lead-tags',     label: 'Теги заявок',          Icon: Hash,          permKey: 'settings.lead_tags' },
     { id: 'task-types',    label: 'Типы задач',           Icon: CheckSquare,   permKey: 'settings.task_types' },
+    { id: 'lead-rules',    label: 'Автоматизация',        Icon: Cpu,           permKey: 'settings.funnels' },
     { id: 'scriptolog',    label: 'Скриптолог',           Icon: MessageSquare, permKey: 'settings.scriptolog' },
   ]},
   { id: 'team',   label: 'Команда',       sections: [
@@ -3834,6 +4018,7 @@ export default function SettingsPage() {
         {section === 'service'    && <ServiceSection />}
         {section === 'finance'    && <FinanceSection />}
         {section === 'funnels'    && <FunnelsSection />}
+        {section === 'lead-rules' && <LeadRulesSection />}
         {section === 'lead-tags'  && <LeadTagsSection />}
         {section === 'task-types' && <TaskTypesSection />}
         {section === 'lost-reasons' && <LostReasonsSection />}
