@@ -4,6 +4,12 @@ import { paginateGet } from '../http/fitbase';
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
 const SKIP_FUNNEL_FB_IDS = new Set([5, 6, 7]);
 
+export async function isFitbaseSyncEnabled(): Promise<boolean> {
+  const { data } = await supabase.from('crm_settings')
+    .select('value').eq('key', 'leads.fitbase_sync_enabled').maybeSingle();
+  return (data as Record<string, unknown> | null)?.value === true;
+}
+
 function toISO(ts: unknown): string | null {
   const n = Number(ts);
   return n > 0 ? new Date(n * 1000).toISOString() : null;
@@ -448,6 +454,10 @@ async function syncClientStatuses(): Promise<void> {
 }
 
 export async function runCrmLeadsSync(): Promise<Record<string, unknown>> {
+  if (!await isFitbaseSyncEnabled()) {
+    console.log('[crm-leads-sync] disabled by flag');
+    return { disabled: true };
+  }
   const start = Date.now();
   let funnelsMeta = { funnels: 0, stages: 0 };
   let leadsMeta   = { total: 0, upserted: 0, skipped: 0, failed: 0 };
