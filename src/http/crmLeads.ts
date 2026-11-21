@@ -6,6 +6,7 @@ import { acquireLock, releaseLock } from '../core/lock';
 import { rawGet, paginateGet } from './fitbase';
 import { runLeadRules } from '../core/leadRules';
 import { STAGE_CONTENT } from '../core/leadStageContent';
+import { answerRowsToAnswers, computeResult, CONTRAINDICATIONS, HINTS, type AnswerRow } from '../core/qualifyCatalog';
 import type { Request, Response } from 'express';
 
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
@@ -229,7 +230,7 @@ export function buildCrmLeadsRouter(): Router {
       if (b.checklist !== undefined) {
         if (!Array.isArray(b.checklist)) { res.status(400).json({ error: 'checklist должен быть массивом' }); return; }
         if (b.checklist.length > 20) { res.status(400).json({ error: 'checklist не более 20 пунктов' }); return; }
-        const VALID_TYPES = ['question', 'check', 'text', 'comment'];
+        const VALID_TYPES = ['question', 'check', 'text', 'comment', 'multi', 'number', 'date'];
         for (const item of b.checklist) {
           const it = item as Record<string, unknown>;
           if (!it.key || String(it.key).length > 50) { res.status(400).json({ error: 'key: 1–50 символов' }); return; }
@@ -273,6 +274,15 @@ export function buildCrmLeadsRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // ── Hints catalog ────────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/hints', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const stage = req.query.stage as string | undefined;
+    if (!stage) { res.json([]); return; }
+    res.json(HINTS.filter(h => h.stage === stage));
+  });
+
   // ── Leads ─────────────────────────────────────────────────────────────────────
 
   r.get('/kviz/api/crm/leads', async (req, res) => {
@@ -289,16 +299,34 @@ export function buildCrmLeadsRouter(): Router {
       const { data: leads, error } = await q.order('fb_created_at', { ascending: false }).limit(1000);
       if (error) { res.status(500).json({ error: error.message }); return; }
 
-      // Compute is_overdue from tasks
+      // Compute is_overdue from tasks + qualify_temperature from answers
       const ids = (leads || []).map(l => (l as Record<string, unknown>).id as string);
       let overdueSet = new Set<string>();
+      const tempMap = new Map<string, string>();
       if (ids.length) {
-        const { data: td } = await supabase.from('crm_lead_tasks')
-          .select('lead_id').in('lead_id', ids).eq('status', 'open').eq('is_overdue', true);
+        const [{ data: td }, { data: allAnswers }] = await Promise.all([
+          supabase.from('crm_lead_tasks').select('lead_id').in('lead_id', ids).eq('status', 'open').eq('is_overdue', true),
+          supabase.from('crm_lead_answers').select('lead_id,item_key,kind,answer_option,answer_text').in('lead_id', ids).eq('branch_id', BRANCH_ID),
+        ]);
         overdueSet = new Set((td || []).map(t => (t as Record<string, unknown>).lead_id as string));
+        const answersByLead = new Map<string, AnswerRow[]>();
+        for (const a of (allAnswers ?? [])) {
+          const r2 = a as Record<string, unknown>;
+          const lid = r2.lead_id as string;
+          if (!answersByLead.has(lid)) answersByLead.set(lid, []);
+          answersByLead.get(lid)!.push(a as unknown as AnswerRow);
+        }
+        for (const [lid, rows] of answersByLead) {
+          const qa = answerRowsToAnswers(rows);
+          tempMap.set(lid, computeResult(qa).temperature);
+        }
       }
 
-      res.json((leads || []).map(l => ({ ...l, is_overdue: overdueSet.has((l as Record<string, unknown>).id as string) })));
+      res.json((leads || []).map(l => ({
+        ...l,
+        is_overdue: overdueSet.has((l as Record<string, unknown>).id as string),
+        qualify_temperature: tempMap.get((l as Record<string, unknown>).id as string) ?? null,
+      })));
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -354,10 +382,19 @@ export function buildCrmLeadsRouter(): Router {
   r.get('/kviz/api/crm/leads/:id', async (req, res) => {
     if (!requireAuth(req, res)) return;
     try {
-      const { data, error } = await supabase.from('crm_leads')
-        .select('*').eq('id', req.params.id).eq('branch_id', BRANCH_ID).single();
+      const [{ data, error }, { data: ansRows }] = await Promise.all([
+        supabase.from('crm_leads').select('*').eq('id', req.params.id).eq('branch_id', BRANCH_ID).single(),
+        supabase.from('crm_lead_answers').select('item_key,kind,answer_option,answer_text')
+          .eq('branch_id', BRANCH_ID).eq('lead_id', req.params.id),
+      ]);
       if (error || !data) { res.status(404).json({ error: 'Не найдено' }); return; }
-      res.json(data);
+      let qualify = null;
+      if (ansRows && ansRows.length > 0) {
+        const qa = answerRowsToAnswers(ansRows as unknown as AnswerRow[]);
+        const qr = computeResult(qa);
+        qualify = { score: qr.score, temperature: qr.temperature, warnings: qr.warnings, flags: qr.flags };
+      }
+      res.json({ ...data, qualify });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -478,18 +515,71 @@ export function buildCrmLeadsRouter(): Router {
         res.status(400).json({ error: 'Укажите причину отказа' }); return;
       }
 
-      // Validate required items
+      // Build answer lookups for show_if evaluation and validation
       const checklist = (st.checklist as null | Record<string, unknown>[]) ?? [];
       const answers   = Array.isArray(b.answers) ? (b.answers as Record<string, unknown>[]) : [];
-      const answeredKeys = new Set(answers.map(a => a.item_key as string));
-      const missing = checklist
-        .filter(it => it.required && it.who !== 'auto' && !answeredKeys.has(it.key as string))
-        .map(it => it.key as string);
+      const answerByKey  = new Map<string, { option: string; text: string }>();
+      const multiByKey   = new Map<string, Set<string>>();
+      for (const a of answers) {
+        const key  = String(a.item_key ?? '');
+        const kind = String(a.kind ?? '');
+        if (kind === 'multi') {
+          if (!multiByKey.has(key)) multiByKey.set(key, new Set());
+          if (a.answer_option) multiByKey.get(key)!.add(String(a.answer_option));
+        } else {
+          answerByKey.set(key, { option: String(a.answer_option ?? ''), text: String(a.answer_text ?? '') });
+        }
+      }
+      function evalShowIf(cond: Record<string, unknown>): boolean {
+        const a   = answerByKey.get(cond.key as string);
+        const sel = Array.from(multiByKey.get(cond.key as string) ?? []);
+        const opt = a?.option ?? '';
+        const txt = a?.text ?? '';
+        switch (cond.op as string) {
+          case 'eq':           return opt === String(cond.value);
+          case 'neq':          return opt !== String(cond.value);
+          case 'contains':     return sel.includes(String(cond.value)) || opt === String(cond.value);
+          case 'not_contains': return !sel.includes(String(cond.value)) && opt !== String(cond.value);
+          case 'not_none':     return !!a || sel.length > 0;
+          case 'in':           return Array.isArray(cond.value) && (cond.value as string[]).includes(opt);
+          case 'gte':          return Number(txt || opt) >= Number(cond.value);
+          case 'lte':          return Number(txt || opt) <= Number(cond.value);
+        }
+        return true;
+      }
+
+      // Validate required items (only visible ones — respecting show_if)
+      const answeredKeys = new Set([...answerByKey.keys(), ...multiByKey.keys()]);
+      const missing = checklist.filter(it => {
+        if (!it.required || it.who === 'auto') return false;
+        if (it.show_if && !evalShowIf(it.show_if as Record<string, unknown>)) return false;
+        if (it.type === 'multi') return (multiByKey.get(it.key as string)?.size ?? 0) === 0;
+        return !answeredKeys.has(it.key as string);
+      }).map(it => it.key as string);
       if (missing.length) {
         res.status(400).json({ error: 'required_missing', missing }); return;
       }
       if (st.require_comment && !String(b.comment ?? '').trim()) {
         res.status(400).json({ error: 'comment_required' }); return;
+      }
+
+      // Check stop contraindications — require bant_contra_warned acknowledgment
+      const stopIds = new Set(CONTRAINDICATIONS.stop.map(c => c.id));
+      const contraSelected = Array.from(multiByKey.get('bant_contra') ?? []);
+      if (contraSelected.some(id => stopIds.has(id)) && !b.bant_contra_warned) {
+        res.status(400).json({ error: 'contra_stop', items: contraSelected.filter(id => stopIds.has(id)) }); return;
+      }
+
+      // Validate number item ranges
+      for (const a of answers) {
+        const key = String(a.item_key ?? '');
+        if (!a.answer_text) continue;
+        const item = checklist.find(it => it.key === key) as Record<string, unknown> | undefined;
+        if (!item || item.type !== 'number') continue;
+        const val = Number(a.answer_text);
+        if (isNaN(val)) { res.status(400).json({ error: `${item.label}: введите число` }); return; }
+        if (item.min != null && val < (item.min as number)) { res.status(400).json({ error: `${item.label}: минимум ${item.min}` }); return; }
+        if (item.max != null && val > (item.max as number)) { res.status(400).json({ error: `${item.label}: максимум ${item.max}` }); return; }
       }
 
       const upd: Record<string, unknown> = {

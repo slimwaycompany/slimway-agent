@@ -1,3 +1,5 @@
+import { KVIZ_TAB_VISIBLE } from './featureFlags';
+
 export type PermLevel = 'view' | 'edit';
 export interface PermEntry { level: PermLevel; see_all: boolean }
 
@@ -65,13 +67,6 @@ export const PERM_CATALOG: PermBlock[] = [
     ],
   },
   {
-    key: 'kviz', label: 'Квалификация', icon: '📝',
-    rows: [
-      { key: 'kviz.new',     label: 'Новая квалификация', kind: 'row' },
-      { key: 'kviz.history', label: 'История',            kind: 'row', hasSeeAll: true },
-    ],
-  },
-  {
     key: 'measure', label: 'Замеры', icon: '📏',
     rows: [
       { key: 'measure.new',          label: 'Новый замер',      kind: 'row' },
@@ -101,6 +96,13 @@ export const PERM_CATALOG: PermBlock[] = [
       { key: 'reports.daily_metrics', label: 'Метрики по дням',          kind: 'row' },
     ],
   },
+  ...(KVIZ_TAB_VISIBLE ? [{
+    key: 'kviz', label: 'Квалификация', icon: '📝',
+    rows: [
+      { key: 'kviz.new',     label: 'Новая квалификация', kind: 'row' as const },
+      { key: 'kviz.history', label: 'История',            kind: 'row' as const, hasSeeAll: true },
+    ],
+  }] : []),
   {
     key: 'settings', label: 'Настройки', icon: '⚙️',
     rows: [

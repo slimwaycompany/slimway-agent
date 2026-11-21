@@ -1,9 +1,15 @@
 // AUTO-GENERATED from templates/voronki.xlsx — do not edit by hand
 // To regenerate: python gen_stage_content.py > src/core/leadStageContent.ts
 
-export type ItemType = 'question' | 'check' | 'text' | 'comment';
+export type ItemType = 'question' | 'check' | 'text' | 'comment' | 'multi' | 'number' | 'date';
 export type ItemWho  = 'human' | 'auto';
 export type ItemRule = 'lead_first_contact' | 'stage_task' | null;
+
+export interface ShowIf {
+  key: string;
+  op: 'eq' | 'neq' | 'contains' | 'not_contains' | 'not_none' | 'in' | 'gte' | 'lte';
+  value: string | string[] | number;
+}
 
 export interface StageItem {
   key: string;
@@ -15,6 +21,12 @@ export interface StageItem {
   options?: string[];
   who: ItemWho;
   rule?: ItemRule;
+  // new fields for multi/number/date types
+  allow_other?: boolean;
+  none_option?: boolean;    // for multi: selecting this clears others
+  min?: number;
+  max?: number;
+  show_if?: ShowIf;
 }
 
 export interface StageHelper {
@@ -120,10 +132,20 @@ export const STAGE_CONTENT: StageContent[] = [
 7. Создать задачу, если клиенту требуется дополнительное время.`,
     },
     items: [
+      { key: "bant_travel_time", block: "Расстояние", type: "question", label: "Как далеко ехать", required: false, who: "human", options: ["near", "medium", "far", "very_far"] },
+      { key: "bant_gender", block: "О клиенте", type: "question", label: "Пол", required: false, who: "human", options: ["female", "male"] },
+      { key: "bant_age", block: "О клиенте", type: "question", label: "Возрастная группа", required: false, who: "human", options: ["under18", "18-25", "26-35", "36-45", "46-55", "56+"] },
+      { key: "bant_postpartum", block: "О клиенте", type: "question", label: "После родов (за последний год)", required: false, who: "human", options: ["yes", "no"] },
+      { key: "bant_postpartum_period", block: "О клиенте", type: "question", label: "Когда были роды", required: false, who: "human", options: ["lt6w", "6w-6m", "gt6m"], show_if: { key: "bant_postpartum", op: "eq", value: "yes" } },
+      { key: "bant_contra", block: "Противопоказания", type: "multi", label: "Противопоказания и особенности здоровья", required: false, who: "human", none_option: true, options: ["pregnancy","pacemaker","heart","epilepsy","oncology","anticoag","transplant","cyst","surgery","infection","pressure","diabetes","hernia","knees","circulation","dizziness","thyroid","lipedema"] },
+      { key: "bant_goals", block: "Запрос", type: "multi", label: "Что хочет убрать / улучшить", required: false, who: "human", options: ["belly","sides","hips","legs","arms","weight","cellulite","edema"] },
       { key: "bant_budget", block: "Вопросы BANT", type: "question", label: "Budget: отношение к стоимости", required: true, who: "human", options: ["Готов в бюджет", "Сомневается", "Не готов", "Не выяснено"] },
       { key: "bant_authority", block: "Вопросы BANT", type: "question", label: "Authority: кто решает", required: true, who: "human", options: ["Решает сам", "Нужно согласовать", "Не выяснено"] },
+      { key: "bant_decision", block: "Вопросы BANT", type: "question", label: "Принимает решение", required: false, who: "human", options: ["self", "family"] },
       { key: "bant_need", block: "Вопросы BANT", type: "question", label: "Need: цель и желаемый результат", required: true, who: "human", options: ["Цель понятна", "Цель размыта", "Не выяснено"] },
       { key: "bant_timing", block: "Вопросы BANT", type: "question", label: "Timing: когда готов прийти", required: true, who: "human", options: ["Сегодня/завтра", "Позже (дата)", "Не определился", "Не выяснено"] },
+      { key: "bant_start_when", block: "Вопросы BANT", type: "question", label: "Когда готов начать", required: false, who: "human", options: ["this_week", "next_week", "this_month", "later"] },
+      { key: "bant_motivation", block: "Мотивация", type: "number", label: "Мотивация по шкале 1–10", required: false, who: "human", min: 1, max: 10 },
       { key: "bant_times", block: "Следующий шаг", type: "check", label: "Предложены два времени посещения", required: false, who: "human" },
     ],
   },
@@ -276,6 +298,8 @@ export const STAGE_CONTENT: StageContent[] = [
       { key: "arrived_inbody", block: "Встреча", type: "check", label: "Замеры InBody проведены (если нет ограничений)", required: true, who: "human" },
       { key: "arrived_limits", block: "Встреча", type: "question", label: "Ограничения", required: true, who: "human", options: ["Нет", "Есть (описать)", "Не выяснено"] },
       { key: "arrived_goal", block: "Встреча", type: "text", label: "Цель клиента", required: true, who: "human" },
+      { key: "arr_height", block: "Параметры", type: "number", label: "Рост (см)", required: false, who: "human", min: 100, max: 250 },
+      { key: "arr_weight", block: "Параметры", type: "number", label: "Вес (кг)", required: false, who: "human", min: 30, max: 300 },
     ],
   },
   {

@@ -195,16 +195,19 @@
       xp.classList.remove('hidden');
       $('tab-btn-cashier').classList.add('active');
       if (!cashierCreated) {
-        lazyIframe('cashier-pane', 'cashier-iframe', '/kviz/crm/cashier', 'side-cash-to-kviz');
+        var cashRightId = $('side-cash-to-kviz') ? 'side-cash-to-kviz' : ($('side-cash-to-measure') ? 'side-cash-to-measure' : null);
+        lazyIframe('cashier-pane', 'cashier-iframe', '/kviz/crm/cashier', cashRightId);
         cashierCreated = true;
       }
       history.replaceState(null, '', '#cashier');
 
     } else if (name === 'kviz') {
-      $('kviz-pane').classList.remove('hidden');
-      $('tab-btn-kviz').classList.add('active');
+      var kp = $('kviz-pane');
+      if (!kp) return;
+      kp.classList.remove('hidden');
+      var ktb = $('tab-btn-kviz');
+      if (ktb) ktb.classList.add('active');
       if (!kvizCreated) {
-        // Insert iframe before right button "Замеры"
         lazyIframe('kviz-pane', 'kviz-iframe', '/kviz/', 'side-to-measure');
         kvizCreated = true;
       }
@@ -266,7 +269,7 @@
   // ── Choice buttons ──────────────────────────────────────────────────────────
   $('choice-manager').onclick  = function () { showTab('manager'); };
   $('choice-agent').onclick    = function () { showTab('agent'); };
-  $('choice-kviz').onclick     = function () { showTab('kviz'); };
+  if ($('choice-kviz')) $('choice-kviz').onclick = function () { showTab('kviz'); };
   $('choice-measure').onclick  = function () { showTab('measure'); };
   $('choice-schedule').onclick = function () { showTab('schedule'); };
   $('choice-clients').onclick  = function () { showTab('clients'); };
@@ -278,7 +281,7 @@
   // ── Tab buttons ─────────────────────────────────────────────────────────────
   $('tab-btn-manager').onclick  = function () { showTab('manager'); };
   $('tab-btn-agent').onclick    = function () { showTab('agent'); };
-  $('tab-btn-kviz').onclick     = function () { showTab('kviz'); };
+  if ($('tab-btn-kviz')) $('tab-btn-kviz').onclick = function () { showTab('kviz'); };
   $('tab-btn-measure').onclick  = function () { showTab('measure'); };
   $('tab-btn-schedule').onclick = function () { showTab('schedule'); };
   $('tab-btn-clients').onclick  = function () { showTab('clients'); };
@@ -309,16 +312,18 @@
   $('side-fn-to-clients').onclick  = function () { showTab('clients'); };
   $('side-fn-to-cashier').onclick  = function () { showTab('cashier'); };
 
-  // cashier-pane: left=Воронка, right=Квалификация
+  // cashier-pane: left=Воронка, right=Квалификация (или Замеры если квалификация скрыта)
   $('side-cash-to-funnel').onclick = function () { showTab('funnel'); };
-  $('side-cash-to-kviz').onclick   = function () { showTab('kviz'); };
+  if ($('side-cash-to-kviz'))    $('side-cash-to-kviz').onclick    = function () { showTab('kviz'); };
+  if ($('side-cash-to-measure')) $('side-cash-to-measure').onclick = function () { showTab('measure'); };
 
   // kviz-pane: left=Касса, right=Замеры
-  $('side-kviz-to-cashier').onclick = function () { showTab('cashier'); };
-  $('side-to-measure').onclick      = function () { showTab('measure'); };
+  if ($('side-kviz-to-cashier')) $('side-kviz-to-cashier').onclick = function () { showTab('cashier'); };
+  if ($('side-to-measure'))      $('side-to-measure').onclick      = function () { showTab('measure'); };
 
-  // measure-pane: left=Квалификация, right=Отчёты
-  $('side-to-kviz2').onclick = function () { showTab('kviz'); };
+  // measure-pane: left=Квалификация (или Касса если скрыта), right=Отчёты
+  if ($('side-to-kviz2'))        $('side-to-kviz2').onclick        = function () { showTab('kviz'); };
+  if ($('side-meas-to-cashier')) $('side-meas-to-cashier').onclick = function () { showTab('cashier'); };
   if ($('side-to-reports')) $('side-to-reports').onclick = function () { showTab('reports'); };
 
   // reports-pane: left=Замеры, right=Настройки (admin only)
@@ -334,9 +339,9 @@
     'side-sched-to-agent': 'agent', 'side-sched-to-clients': 'clients',
     'side-cl-to-schedule': 'schedule', 'side-cl-to-funnel': 'funnel',
     'side-fn-to-clients': 'clients', 'side-fn-to-cashier': 'cashier',
-    'side-cash-to-funnel': 'funnel', 'side-cash-to-kviz': 'kviz',
+    'side-cash-to-funnel': 'funnel', 'side-cash-to-kviz': 'kviz', 'side-cash-to-measure': 'measure',
     'side-kviz-to-cashier': 'cashier', 'side-to-measure': 'measure',
-    'side-to-kviz2': 'kviz', 'side-to-reports': 'reports',
+    'side-to-kviz2': 'kviz', 'side-meas-to-cashier': 'cashier', 'side-to-reports': 'reports',
     'side-to-measure2': 'measure', 'side-to-settings': 'settings',
     'side-set-to-reports': 'reports',
   };
@@ -408,6 +413,7 @@
       showToast('Квалификация сохранена: ' + (map[d.temperature] || d.temperature || ''));
     }
     if (d.type === 'open-kviz') {
+      if (!$('kviz-pane')) return;
       showTab('kviz');
       if (d.path) {
         var frame = $('kviz-iframe');

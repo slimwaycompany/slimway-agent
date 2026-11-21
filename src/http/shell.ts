@@ -4,6 +4,7 @@ import express, { Application } from 'express';
 import { supabase } from '../db/supabase';
 import { makeToken, getSession, getSessionWithPerms, COOKIE_NAME, COOKIE_MAX_S, checkLoginRate, writeLoginLog } from './auth';
 import { PERM_CATALOG } from '../core/permissions';
+import { KVIZ_TAB_VISIBLE } from '../core/featureFlags';
 
 const SHELL_APP_JS = fs.readFileSync(
   path.join(__dirname, '../../public/shell-app.js'),
@@ -320,7 +321,7 @@ html[data-theme="dark"],html[data-theme="dark"] body{background:var(--bg);color:
       <button class="tab-btn" id="tab-btn-clients">${ICONS.clients} Клиенты</button>
       <button class="tab-btn" id="tab-btn-funnel">${ICONS.funnel} Воронка</button>
       <button class="tab-btn" id="tab-btn-cashier">${ICONS.cashier} Касса</button>
-      <button class="tab-btn" id="tab-btn-kviz">${ICONS.kviz} <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>
+      <!--KVIZ_TAB_BTN-->
       <button class="tab-btn" id="tab-btn-measure">${ICONS.measure} Замеры</button>
       <!--REPORTS_TAB_BTN-->
       <!--METRICS_TAB_BTN-->
@@ -384,23 +385,11 @@ html[data-theme="dark"],html[data-theme="dark"] body{background:var(--bg);color:
       <button class="side-btn left" id="side-cash-to-funnel">
         <span class="side-text">Воронка</span>
       </button>
-      <button class="side-btn" id="side-cash-to-kviz">
-        <span class="sbadge" id="badge-side-kviz">0</span>
-        <span class="side-text">Квалификация</span>
-      </button>
+      <!--KVIZ_CASH_RIGHT_BTN-->
     </div>
-    <div class="pane hidden" id="kviz-pane">
-      <button class="side-btn left" id="side-kviz-to-cashier">
-        <span class="side-text">Касса</span>
-      </button>
-      <button class="side-btn" id="side-to-measure">
-        <span class="side-text">Замеры</span>
-      </button>
-    </div>
+    <!--KVIZ_PANE-->
     <div class="pane hidden" id="measure-pane">
-      <button class="side-btn left" id="side-to-kviz2">
-        <span class="side-text">Квалификация</span>
-      </button>
+      <!--KVIZ_MEAS_LEFT_BTN-->
       <!--REPORTS_SIDE_FROM_MEASURE-->
     </div>
     <!--REPORTS_PANE-->
@@ -458,11 +447,7 @@ html[data-theme="dark"],html[data-theme="dark"] body{background:var(--bg);color:
         <span class="choice-icon">${ICONS.cashier}</span>
         <span class="choice-label">Касса</span>
       </button>
-      <button class="choice-btn" id="choice-kviz">
-        <span class="cbadge" id="badge-choice-kviz">0</span>
-        <span class="choice-icon">${ICONS.kviz}</span>
-        <span class="choice-label">Квалификация</span>
-      </button>
+      <!--KVIZ_CHOICE_BTN-->
       <button class="choice-btn" id="choice-measure">
         <span class="choice-icon">${ICONS.measure}</span>
         <span class="choice-label">Замеры</span>
@@ -529,6 +514,16 @@ export function mountShellRoutes(app: Application): void {
     const settingsPane   = '<div class="pane hidden" id="settings-pane"><button class="side-btn left" id="side-set-to-reports"><span class="side-text">Отчёты</span></button></div>';
     const settingsCh     = `<button class="choice-btn" id="choice-settings"><span class="choice-icon">${ICONS.settings}</span><span class="choice-label">Настройки</span></button>`;
     const permsScript    = `<script>window.SW_PERMS=${swPerms};</script>`;
+    const kvizTabBtn     = KVIZ_TAB_VISIBLE ? `<button class="tab-btn" id="tab-btn-kviz">${ICONS.kviz} <span id="kviz-tab-text">Квалификация</span><span class="tbadge" id="badge-tab-kviz">0</span></button>` : '';
+    const kvizCashRight  = KVIZ_TAB_VISIBLE
+      ? `<button class="side-btn" id="side-cash-to-kviz"><span class="sbadge" id="badge-side-kviz">0</span><span class="side-text">Квалификация</span></button>`
+      : `<button class="side-btn" id="side-cash-to-measure"><span class="side-text">Замеры</span></button>`;
+    const kvizPane       = KVIZ_TAB_VISIBLE ? `<div class="pane hidden" id="kviz-pane"><button class="side-btn left" id="side-kviz-to-cashier"><span class="side-text">Касса</span></button><button class="side-btn" id="side-to-measure"><span class="side-text">Замеры</span></button></div>` : '';
+    const kvizMeasLeft   = KVIZ_TAB_VISIBLE
+      ? `<button class="side-btn left" id="side-to-kviz2"><span class="side-text">Квалификация</span></button>`
+      : `<button class="side-btn left" id="side-meas-to-cashier"><span class="side-text">Касса</span></button>`;
+    const kvizChoiceBtn  = KVIZ_TAB_VISIBLE ? `<button class="choice-btn" id="choice-kviz"><span class="cbadge" id="badge-choice-kviz">0</span><span class="choice-icon">${ICONS.kviz}</span><span class="choice-label">Квалификация</span></button>` : '';
+
     const html = SHELL_HTML
       .replace('<!--SHELL_THEME-->', themeAttr)
       .replace('<!--META_COLOR-->', metaColor)
@@ -541,6 +536,11 @@ export function mountShellRoutes(app: Application): void {
       .replace('<!--METRICS_TAB_BTN-->', '')
       .replace('<!--METRICS_PANE-->', '')
       .replace('<!--METRICS_CHOICE_BTN-->', '')
+      .replace('<!--KVIZ_TAB_BTN-->',      kvizTabBtn)
+      .replace('<!--KVIZ_CASH_RIGHT_BTN-->', kvizCashRight)
+      .replace('<!--KVIZ_PANE-->',         kvizPane)
+      .replace('<!--KVIZ_MEAS_LEFT_BTN-->', kvizMeasLeft)
+      .replace('<!--KVIZ_CHOICE_BTN-->',   kvizChoiceBtn)
       .replace('<!--SETTINGS_TAB_BTN-->', settingsBtn)
       .replace('<!--SETTINGS_PANE-->', settingsPane)
       .replace('<!--SETTINGS_CHOICE_BTN-->', settingsCh)

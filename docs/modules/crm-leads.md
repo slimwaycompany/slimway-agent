@@ -7,6 +7,46 @@
 
 ## Сделано
 
+### 21.11.2026 · task 80 · логика квалификации в этапах, предупреждения, подсказки, скрыта вкладка Квалификация
+
+**`src/core/featureFlags.ts`** (новый): `KVIZ_TAB_VISIBLE = false` — управляет видимостью вкладки.
+
+**`src/http/shell.ts`**: вкладка Квалификация скрыта через флаг; плейсхолдеры и навигационные ссылки пересчитаны (Касса→Замеры напрямую).
+
+**`src/core/permissions.ts`**: блок kviz условно исключён из PERM_CATALOG при `KVIZ_TAB_VISIBLE=false`.
+
+**`public/shell-app.js`**: null-guard для всех элементов kviz; обработчики навигации адаптированы к динамическому набору кнопок.
+
+**`src/core/priceCatalog.ts`** (новый): `PRICE_PACKS`, `selectPackage()`, `fmtPrice()` — прайс-каталог на сервере.
+
+**`src/core/qualifyCatalog.ts`** (новый): `CONTRAINDICATIONS`, `GOALS`, `AGE_GROUPS`, `TRAVEL_TIMES`, `HINTS[]`, `computeResult(QualifyAnswers)`, `answerRowsToAnswers(AnswerRow[])` — вся логика квалификации на сервере.
+
+**`src/core/leadStageContent.ts`**: новые типы `multi/number/date`; `ShowIf` interface с операторами `eq/neq/contains/not_none/in/gte/lte`; новые поля `none_option/allow_other/min/max/show_if`; этап B.A.N.T. получил 15 пунктов с маппингом на QualifyAnswers; «Пришел» — `arr_height/arr_weight`.
+
+**`src/http/crmLeads.ts`** расширен:
+- `GET /crm/hints?stage=<key>` — фильтрует HINTS по ключу этапа.
+- `GET /crm/leads` — батч-вычисляет `qualify_temperature` для каждой заявки (1 доп. запрос на пачку).
+- `GET /crm/leads/:id` — возвращает `qualify: {score,temperature,warnings,flags}`.
+- `POST /crm/leads/:id/move` — валидирует только видимые required пункты (show_if), проверяет стоп-противопоказания (`contra_stop` 400 → `bant_contra_warned`), проверяет диапазоны number-пунктов.
+- Допустимые типы чеклиста расширены: `multi/number/date`.
+
+**`kviz/client/src/pages/crm/StagePopup.tsx`** переписан:
+- `StageItem` — новые типы multi/number/date; `ShowIf`, `allow_other`, `none_option`, `min/max`.
+- Рендер: multi — чекбоксы с взаимоисключающей «Нет»; number — input[type=number] с min/max; date — input[type=date].
+- show_if: оценивается по текущим ответам — скрытые пункты не валидируются.
+- OPT_LABEL: ID → русская метка для qualify-mapped опций.
+- Warnings block: цветные бейджи ⛔/⏸/ℹ️ сверху над пунктами (из qualify.warnings).
+- Hints accordion: `GET /crm/hints?stage=<key>` → аккордеон в правой колонке (макс. 2 блока, цвет по tone).
+- Self-fetch qualify: если prop не передан, сам загружает `/crm/leads/:id`.
+- Лог ответов: ID-опции маппятся в читаемые метки через OPT_LABEL.
+
+**`kviz/client/src/pages/crm/FunnelPage.tsx`**:
+- Интерфейс `StageItem` обновлён (новые типы + show_if).
+- `Lead.qualify_temperature` добавлен.
+- `LeadCard`: температурный бейдж 🔥/🌤/❄️/⛔/⏸ из `qualify_temperature`.
+
+**После задачи нужно:** запустить `POST /kviz/api/crm/funnels/:id/reset-content` (admin) для обновления checklist в БД — чтобы серверная show_if-валидация и новые типы пунктов работали корректно.
+
 ### 21.11.2026 · task 79 · контент этапов из таблицы, checklist v2, StagePopup v2, настройки этапов v2
 
 **`src/core/leadStageContent.ts`** (новый, сгенерирован `gen_stage_content.py`):  

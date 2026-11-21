@@ -11,9 +11,12 @@ import { useRole } from '../../lib/permContext';
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface StageItem {
-  key: string; block: string; type: 'question' | 'check' | 'text' | 'comment';
+  key: string; block: string;
+  type: 'question' | 'check' | 'text' | 'comment' | 'multi' | 'number' | 'date';
   label: string; hint?: string; required: boolean; options?: string[];
   who: 'human' | 'auto'; rule?: string | null;
+  allow_other?: boolean; none_option?: boolean; min?: number; max?: number;
+  show_if?: { key: string; op: string; value: unknown };
 }
 
 interface StageHelper { manager?: string | null; transition?: string | null; important?: string | null; agent?: string | null; }
@@ -29,13 +32,21 @@ interface Stage {
 
 interface Funnel { id: string; name: string; is_active: boolean; stages: Stage[] }
 
+const TEMP_BADGE: Record<string, { label: string; color: string; bg: string }> = {
+  hot:      { label: '🔥 Горячий',   color: '#e65100', bg: 'rgba(230,81,0,0.1)' },
+  warm:     { label: '🌤 Тёплый',    color: '#d97706', bg: 'rgba(217,119,6,0.1)' },
+  cold:     { label: '❄️ Холодный',  color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' },
+  stop:     { label: '⛔ Стоп',      color: '#dc2626', bg: 'rgba(220,38,38,0.1)' },
+  postpone: { label: '⏸ Отложить',  color: '#6b7280', bg: 'rgba(107,114,128,0.1)' },
+};
+
 interface Lead {
   id: string; title: string | null; name: string | null; surname: string | null;
   phone: string | null; stage_id: string | null; funnel_id: string | null;
   budget: string | null; fb_created_at: string | null; fb_updated_at: string | null;
   is_archived: boolean; is_overdue: boolean; is_duplicate: boolean;
   tags: string[]; fitbase_manager_name: string | null; manager_user_id: string | null;
-  description: string | null;
+  description: string | null; qualify_temperature?: string | null;
 }
 
 interface LostReason { id: string; name: string; }
@@ -94,6 +105,11 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
         {lead.fitbase_manager_name && <span style={{ fontSize: 11, color: 'var(--text-2)', background: 'var(--surface-2)', borderRadius: 4, padding: '1px 5px' }}>{lead.fitbase_manager_name.split(' ')[0]}</span>}
         {lead.is_overdue && <span style={{ fontSize: 11, background: 'var(--danger-soft)', color: 'var(--danger)', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>просрочено</span>}
         {lead.is_duplicate && <span style={{ fontSize: 11, background: 'var(--warning-soft)', color: '#b45309', borderRadius: 4, padding: '1px 5px' }}>дубль</span>}
+        {lead.qualify_temperature && TEMP_BADGE[lead.qualify_temperature] && (
+          <span style={{ fontSize: 11, borderRadius: 4, padding: '1px 5px', fontWeight: 600, background: TEMP_BADGE[lead.qualify_temperature].bg, color: TEMP_BADGE[lead.qualify_temperature].color }}>
+            {TEMP_BADGE[lead.qualify_temperature].label}
+          </span>
+        )}
       </div>
       {lead.tags && lead.tags.length > 0 && (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
