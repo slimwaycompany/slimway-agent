@@ -351,7 +351,7 @@ html[data-theme="dark"],html[data-theme="dark"] body{background:var(--bg);color:
         <span class="sbadge" id="badge-side-manager">0</span>
         <span class="side-text">Менеджер</span>
       </button>
-      <iframe class="frame" id="agent-iframe" src="/window" allow="notifications; clipboard-write"></iframe>
+      <iframe class="frame" id="agent-iframe" src="/window" allow="clipboard-write"></iframe>
       <button class="side-btn" id="side-to-schedule">
         <span class="side-text">Расписание</span>
       </button>

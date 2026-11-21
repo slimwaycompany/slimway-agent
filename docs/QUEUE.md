@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 81 | crm-leads | Единый формат вариантов (id/label), none_option как ID, not_none fix, checklist без потерь, sw.js консоль | ТЗ в чате | ✅ готово |
 | 80 | crm-leads, kviz | Логика квалификации в этапах: multi/number/date, show_if, предупреждения, подсказки, бейдж температуры, скрыта вкладка Квалификация | ТЗ в чате | ✅ готово |
 | 79 | crm-leads | контент этапов из xlsx, checklist v2 + ответы, StagePopup 3-колонки, настройки v2, кнопки reset-content | ТЗ в чате | ✅ готово |
 | 78 | crm-leads | popup подтверждения перехода, ручное создание заявки, автоматика, настройки этапов | ТЗ в чате | ✅ готово (150e224, fix) |
@@ -139,6 +140,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 21.11.2026 | Claude | 81 crm-leads: React #31 фикс (normOpt, options тип Array<string|{id,label}>); none_option: string|null+noneOptId (легаси boolean→'__none__'); not_none исключает none_option; allow_other; number range error; checklistRules.ts (evalShowIf с noneByKey); PATCH checklist whitelist+show_if+min+max+allow_other+multi-options; control.md вкладка B.A.N.T. → отменено; sw.js без fetch; notifications из iframe убран. | pending | build ✅ |
 | 21.11.2026 | Claude | 80 crm-leads/kviz: featureFlags.ts (KVIZ_TAB_VISIBLE=false), shell.ts placeholders, permissions.ts условный kviz, shell-app.js null-guards; qualifyCatalog.ts (computeResult, answerRowsToAnswers, HINTS); priceCatalog.ts; leadStageContent.ts multi/number/date+ShowIf+bant-items+arr_height/weight; StagePopup.tsx — новые типы, show_if, warnings, hints, OPT_LABEL, selfQualify; crmLeads.ts — GET /hints, qualify в list+detail, POST /move show_if+contra_stop+range; FunnelPage.tsx — qualify_temperature badge. После: reset-content для обновления checklist в БД. | pending | build ✅ |
 | 20.11.2026 | Claude | 76 zamery: vfl из data[228..231]; g4f divisor≥100 → 2 знака (minerals 3.9→3.86, SAMPLE PASS); protein/minerals/water min/max в data QR; ClientPage smi.toFixed(1). | a4f0d34 | build ✅ |
 | 20.11.2026 | Claude | 75 zamery: tail-парсер tg()+seg(); bmi/pbf/ffm/bmr нормы, smi, recommended_kcal; lean trunk ÷10, fat ÷10, % жир по позициям 81/86/91/96/101; selfCheck fat_by_segment.trunk 0.47→4.7 (÷10); все поля фикстуры 20.11 OK (36/36). | c27f8e8 | build ✅ |

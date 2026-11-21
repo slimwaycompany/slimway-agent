@@ -15,7 +15,7 @@ interface StageItem {
   type: 'question' | 'check' | 'text' | 'comment' | 'multi' | 'number' | 'date';
   label: string; hint?: string; required: boolean; options?: string[];
   who: 'human' | 'auto'; rule?: string | null;
-  allow_other?: boolean; none_option?: boolean; min?: number; max?: number;
+  allow_other?: boolean; none_option?: string | null; min?: number; max?: number;
   show_if?: { key: string; op: string; value: unknown };
 }
 

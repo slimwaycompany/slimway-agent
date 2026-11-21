@@ -11,8 +11,8 @@ export interface StageItem {
   key: string; block: string;
   type: 'question' | 'check' | 'text' | 'comment' | 'multi' | 'number' | 'date';
   label: string; hint?: string; required: boolean;
-  options?: string[]; who: 'human' | 'auto'; rule?: string | null;
-  allow_other?: boolean; none_option?: boolean; min?: number; max?: number; show_if?: ShowIf;
+  options?: Array<string | { id: string; label: string }>; who: 'human' | 'auto'; rule?: string | null;
+  allow_other?: boolean; none_option?: string | null; min?: number; max?: number; show_if?: ShowIf;
 }
 
 export interface StageHelper {
@@ -62,6 +62,7 @@ const OPT_LABEL: Record<string, string> = {
   under18: 'До 18', '18-25': '18–25', '26-35': '26–35', '36-45': '36–45', '46-55': '46–55', '56+': '56+',
   yes: 'Да', no: 'Нет',
   lt6w: 'Меньше 6 недель', '6w-6m': '6 недель – 6 месяцев', gt6m: 'Больше 6 месяцев',
+  no_contra: 'Нет противопоказаний',
   pregnancy: 'Беременность', pacemaker: 'Кардиостимулятор', heart: 'Серьёзные проблемы с сердцем',
   epilepsy: 'Эпилепсия', oncology: 'Онкология', anticoag: 'Приём антикоагулянтов',
   transplant: 'Трансплантация органов', cyst: 'Киста / миома',
@@ -75,6 +76,18 @@ const OPT_LABEL: Record<string, string> = {
   self: 'Сам(а)', family: 'Посоветоваться с семьёй',
   this_week: 'На этой неделе', next_week: 'На следующей', this_month: 'В течение месяца', later: 'Позже',
 };
+
+type OptItem = string | { id: string; label: string };
+function normOpt(o: OptItem): { id: string; label: string } {
+  if (typeof o === 'string') return { id: o, label: OPT_LABEL[o] ?? o };
+  return { id: o.id, label: o.label };
+}
+// Normalise none_option: boolean true (legacy) → '__none__', string → string, falsy → null
+function noneOptId(val: string | null | undefined | boolean): string | null {
+  if (!val) return null;
+  if (val === true) return '__none__';
+  return val as string;
+}
 function optLabel(opt: string) { return OPT_LABEL[opt] ?? opt; }
 
 function stageHintKey(name: string): string | null {
@@ -97,6 +110,7 @@ export default function StagePopup({ mode, stage, lostReasons, onConfirm, onCanc
   const [lostReasonId, setLostId]       = useState('');
   const [answers, setAnswers]           = useState<Record<string, ItemAnswer>>({});
   const [multiAnswers, setMultiAnswers] = useState<Record<string, string[]>>({});
+  const [numErrors, setNumErrors]       = useState<Record<string, string>>({});
   const [answerLog, setAnswerLog]       = useState<AnswerEntry[]>([]);
   const [logStageFilter, setLogFilter]  = useState('');
   const [logStages, setLogStages]       = useState<{ id: string; name: string }[]>([]);
@@ -147,13 +161,15 @@ export default function StagePopup({ mode, stage, lostReasons, onConfirm, onCanc
     setAnswers(prev => ({ ...prev, [key]: { ...prev[key], item_key: key, kind, ...patch } }));
   }
 
-  function toggleMulti(key: string, opt: string, isNone?: boolean) {
+  function toggleMulti(key: string, optId: string, noneId: string | null) {
     setMultiAnswers(prev => {
       const cur = prev[key] ?? [];
-      if (isNone) return { ...prev, [key]: cur.includes(opt) ? [] : [opt] };
-      const without = cur.filter(o => o !== '__none__');
-      const idx = without.indexOf(opt);
-      return { ...prev, [key]: idx >= 0 ? without.filter(o => o !== opt) : [...without, opt] };
+      if (noneId && optId === noneId) {
+        return { ...prev, [key]: cur.includes(noneId) ? [] : [noneId] };
+      }
+      const without = noneId ? cur.filter(o => o !== noneId) : [...cur];
+      const idx = without.indexOf(optId);
+      return { ...prev, [key]: idx >= 0 ? without.filter(o => o !== optId) : [...without, optId] };
     });
   }
 
@@ -161,7 +177,7 @@ export default function StagePopup({ mode, stage, lostReasons, onConfirm, onCanc
   function isVisible(it: StageItem): boolean {
     if (!it.show_if) return true;
     const { key, op, value } = it.show_if;
-    const a = answers[key];
+    const a   = answers[key];
     const sel = multiAnswers[key] ?? [];
     const opt = a?.answer_option ?? '';
     const txt = a?.answer_text ?? '';
@@ -170,10 +186,15 @@ export default function StagePopup({ mode, stage, lostReasons, onConfirm, onCanc
       case 'neq':          return opt !== String(value);
       case 'contains':     return sel.includes(String(value)) || opt === String(value);
       case 'not_contains': return !sel.includes(String(value)) && opt !== String(value);
-      case 'not_none':     return !!a || sel.length > 0;
-      case 'in':           return Array.isArray(value) && value.includes(opt);
-      case 'gte':          return Number(txt || opt) >= Number(value);
-      case 'lte':          return Number(txt || opt) <= Number(value);
+      case 'not_none': {
+        const refItem = checklist.find(ci => ci.key === key);
+        const noneId  = noneOptId(refItem?.none_option);
+        const realSel = noneId ? sel.filter(id => id !== noneId) : sel;
+        return realSel.length > 0 || !!opt || !!txt;
+      }
+      case 'in':  return Array.isArray(value) && value.includes(opt);
+      case 'gte': return Number(txt || opt) >= Number(value);
+      case 'lte': return Number(txt || opt) <= Number(value);
     }
     return true;
   }
@@ -194,6 +215,7 @@ export default function StagePopup({ mode, stage, lostReasons, onConfirm, onCanc
   const canConfirm = mode !== 'move' || (
     (!needLost || !!lostReasonId) &&
     missingRequired.length === 0 &&
+    Object.keys(numErrors).length === 0 &&
     (!reqComment || !!comment.trim())
   );
 
@@ -269,15 +291,18 @@ export default function StagePopup({ mode, stage, lostReasons, onConfirm, onCanc
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
                       {it.label}{it.required && mode === 'move' ? <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span> : null}
                     </div>
-                    {(it.options ?? []).map(opt => (
-                      <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--text)', marginBottom: 4, cursor: mode === 'memo' ? 'default' : 'pointer' }}>
-                        <input type="radio" name={it.key} disabled={mode === 'memo'}
-                          checked={answers[it.key]?.answer_option === opt}
-                          onChange={() => setAnswer(it.key, 'question', { answer_option: opt })}
-                        />
-                        {optLabel(opt)}
-                      </label>
-                    ))}
+                    {(it.options ?? []).map(o => {
+                      const opt = normOpt(o as OptItem);
+                      return (
+                        <label key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--text)', marginBottom: 4, cursor: mode === 'memo' ? 'default' : 'pointer' }}>
+                          <input type="radio" name={it.key} disabled={mode === 'memo'}
+                            checked={answers[it.key]?.answer_option === opt.id}
+                            onChange={() => setAnswer(it.key, 'question', { answer_option: opt.id })}
+                          />
+                          {opt.label}
+                        </label>
+                      );
+                    })}
                     {mode !== 'memo' && (
                       <input type="text" placeholder="Свободный ответ..."
                         value={answers[it.key]?.answer_text ?? ''}
@@ -302,31 +327,53 @@ export default function StagePopup({ mode, stage, lostReasons, onConfirm, onCanc
                   </div>
                 )}
 
-                {it.type === 'multi' && (
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
-                      {it.label}{it.required && mode === 'move' ? <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span> : null}
+                {it.type === 'multi' && (() => {
+                  const noneId = noneOptId(it.none_option);
+                  const sel    = multiAnswers[it.key] ?? [];
+                  return (
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
+                        {it.label}{it.required && mode === 'move' ? <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span> : null}
+                      </div>
+                      {/* Legacy none_option=true: render special checkbox not in options array */}
+                      {noneId === '__none__' && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--text)', marginBottom: 4, cursor: mode === 'memo' ? 'default' : 'pointer' }}>
+                          <input type="checkbox" disabled={mode === 'memo'}
+                            checked={sel.includes('__none__')}
+                            onChange={() => toggleMulti(it.key, '__none__', '__none__')}
+                          />
+                          Нет противопоказаний
+                        </label>
+                      )}
+                      {(it.options ?? []).map(o => {
+                        const opt = normOpt(o as OptItem);
+                        return (
+                          <label key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--text)', marginBottom: 4, cursor: mode === 'memo' ? 'default' : 'pointer' }}>
+                            <input type="checkbox" disabled={mode === 'memo'}
+                              checked={sel.includes(opt.id)}
+                              onChange={() => toggleMulti(it.key, opt.id, noneId)}
+                            />
+                            {opt.label}
+                          </label>
+                        );
+                      })}
+                      {it.allow_other && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--text)', marginBottom: 4, cursor: mode === 'memo' ? 'default' : 'pointer' }}>
+                          <input type="checkbox" disabled={mode === 'memo'}
+                            checked={sel.includes('__other__')}
+                            onChange={() => toggleMulti(it.key, '__other__', noneId)}
+                          />
+                          <span style={{ flexShrink: 0 }}>Другое:</span>
+                          <input type="text" disabled={mode === 'memo'} placeholder="Укажите..."
+                            value={answers[it.key]?.answer_text ?? ''}
+                            onChange={e => setAnswer(it.key, 'multi', { answer_text: e.target.value })}
+                            style={{ flex: 1, padding: '2px 6px', border: '1px solid var(--input-border)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--text)' }}
+                          />
+                        </label>
+                      )}
                     </div>
-                    {it.none_option && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--text)', marginBottom: 4, cursor: mode === 'memo' ? 'default' : 'pointer' }}>
-                        <input type="checkbox" disabled={mode === 'memo'}
-                          checked={(multiAnswers[it.key] ?? []).includes('__none__')}
-                          onChange={() => toggleMulti(it.key, '__none__', true)}
-                        />
-                        Нет противопоказаний
-                      </label>
-                    )}
-                    {(it.options ?? []).map(opt => (
-                      <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--text)', marginBottom: 4, cursor: mode === 'memo' ? 'default' : 'pointer' }}>
-                        <input type="checkbox" disabled={mode === 'memo'}
-                          checked={(multiAnswers[it.key] ?? []).includes(opt)}
-                          onChange={() => toggleMulti(it.key, opt)}
-                        />
-                        {optLabel(opt)}
-                      </label>
-                    ))}
-                  </div>
-                )}
+                  );
+                })()}
 
                 {it.type === 'number' && (
                   <div>
@@ -336,10 +383,22 @@ export default function StagePopup({ mode, stage, lostReasons, onConfirm, onCanc
                     <input type="number" disabled={mode === 'memo'}
                       value={answers[it.key]?.answer_text ?? ''}
                       min={it.min} max={it.max}
-                      onChange={e => setAnswer(it.key, 'number', { answer_text: e.target.value })}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setAnswer(it.key, 'number', { answer_text: val });
+                        if (val) {
+                          const n = Number(val);
+                          if (it.min != null && n < it.min) setNumErrors(p => ({ ...p, [it.key]: `Минимум ${it.min}` }));
+                          else if (it.max != null && n > it.max) setNumErrors(p => ({ ...p, [it.key]: `Максимум ${it.max}` }));
+                          else setNumErrors(p => { const r = { ...p }; delete r[it.key]; return r; });
+                        } else {
+                          setNumErrors(p => { const r = { ...p }; delete r[it.key]; return r; });
+                        }
+                      }}
                       placeholder={it.min != null && it.max != null ? `${it.min}–${it.max}` : ''}
-                      style={{ width: '100%', padding: '7px 9px', border: '1.5px solid var(--input-border)', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)', color: 'var(--text)' }}
+                      style={{ width: '100%', padding: '7px 9px', border: `1.5px solid ${numErrors[it.key] ? 'var(--danger)' : 'var(--input-border)'}`, borderRadius: 7, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)', color: 'var(--text)' }}
                     />
+                    {numErrors[it.key] && <div style={{ color: 'var(--danger)', fontSize: 11, marginTop: 2 }}>{numErrors[it.key]}</div>}
                   </div>
                 )}
 

@@ -326,7 +326,7 @@ export function mountWindowRoutes(app: express.Application): void {
 
   app.get('/window/sw.js', (_req, res) => {
     res.setHeader('Content-Type', 'application/javascript');
-    res.send('self.addEventListener("fetch",e=>{if(e.request.mode!=="navigate")e.respondWith(fetch(e.request));});');
+    res.send('// push-only service worker — no fetch interception');
   });
 
   app.get('/window/api/state', async (req, res) => {

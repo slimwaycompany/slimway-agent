@@ -23,7 +23,7 @@ export interface StageItem {
   rule?: ItemRule;
   // new fields for multi/number/date types
   allow_other?: boolean;
-  none_option?: boolean;    // for multi: selecting this clears others
+  none_option?: string | null;  // for multi: ID of the mutually-exclusive "none" variant
   min?: number;
   max?: number;
   show_if?: ShowIf;
@@ -137,7 +137,7 @@ export const STAGE_CONTENT: StageContent[] = [
       { key: "bant_age", block: "О клиенте", type: "question", label: "Возрастная группа", required: false, who: "human", options: ["under18", "18-25", "26-35", "36-45", "46-55", "56+"] },
       { key: "bant_postpartum", block: "О клиенте", type: "question", label: "После родов (за последний год)", required: false, who: "human", options: ["yes", "no"] },
       { key: "bant_postpartum_period", block: "О клиенте", type: "question", label: "Когда были роды", required: false, who: "human", options: ["lt6w", "6w-6m", "gt6m"], show_if: { key: "bant_postpartum", op: "eq", value: "yes" } },
-      { key: "bant_contra", block: "Противопоказания", type: "multi", label: "Противопоказания и особенности здоровья", required: false, who: "human", none_option: true, options: ["pregnancy","pacemaker","heart","epilepsy","oncology","anticoag","transplant","cyst","surgery","infection","pressure","diabetes","hernia","knees","circulation","dizziness","thyroid","lipedema"] },
+      { key: "bant_contra", block: "Противопоказания", type: "multi", label: "Противопоказания и особенности здоровья", required: false, who: "human", none_option: "no_contra", options: ["no_contra","pregnancy","pacemaker","heart","epilepsy","oncology","anticoag","transplant","cyst","surgery","infection","pressure","diabetes","hernia","knees","circulation","dizziness","thyroid","lipedema"] },
       { key: "bant_goals", block: "Запрос", type: "multi", label: "Что хочет убрать / улучшить", required: false, who: "human", options: ["belly","sides","hips","legs","arms","weight","cellulite","edema"] },
       { key: "bant_budget", block: "Вопросы BANT", type: "question", label: "Budget: отношение к стоимости", required: true, who: "human", options: ["Готов в бюджет", "Сомневается", "Не готов", "Не выяснено"] },
       { key: "bant_authority", block: "Вопросы BANT", type: "question", label: "Authority: кто решает", required: true, who: "human", options: ["Решает сам", "Нужно согласовать", "Не выяснено"] },

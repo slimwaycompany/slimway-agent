@@ -7,6 +7,36 @@
 
 ## Сделано
 
+### 21.11.2026 · task 81 · единый формат вариантов (объект id/label), none_option и not_none, сохранение чек-листа без потерь
+
+**Причина:** React #31 — objects are not valid as React child: `bant_contra.options` в БД хранился как `{id,label}[]` (после редактирования в UI), StagePopup рендерил `{opt}` как строку → краш.
+
+**`kviz/client/src/pages/crm/StagePopup.tsx`**:
+- `StageItem.options` — `Array<string | {id: string; label: string}>`.
+- `StageItem.none_option` — `string | null` (ID исключающего варианта).
+- `normOpt(o)` — нормализует строку или объект в `{id, label}`.
+- `noneOptId(val)` — нормализует `boolean true` (легаси) → `'__none__'`; строку → строку.
+- `toggleMulti(key, optId, noneId)` — исключающая логика через noneId.
+- `isVisible()` / `not_none` — исключает none_option ID из подсчёта реальных выборов.
+- Number input: красный бордер + сообщение при выходе за min/max; блокирует «Подтвердить».
+- `allow_other` — чекбокс «Другое» с текстовым полем.
+
+**`src/core/checklistRules.ts`** (новый): `evalShowIf(cond, answerByKey, multiByKey, noneByKey)` — общая логика show_if на сервере; `not_none` правильно исключает none_option ID.
+
+**`src/core/leadStageContent.ts`**: `none_option` тип `string | null`; `bant_contra.none_option` → `'no_contra'`; `'no_contra'` добавлен в options (первым).
+
+**`src/http/crmLeads.ts`**:
+- Импорт `evalShowIf` из `checklistRules.ts`; POST /move строит `noneByKey` и передаёт в `evalShowIf`.
+- PATCH `/crm/funnel-stages/:id` checklist: теперь сохраняет `show_if`, `none_option`, `min`, `max`, `allow_other`, `options` для `multi`-типа; лимит 25 пунктов; проверка уникальности `key`; `none_option` должен быть в `options`.
+
+**`src/http/window.ts`**: sw.js — убран fetch-обработчик (только push), убраны console-ошибки при перехвате запросов.
+
+**`src/http/shell.ts`**: убран `notifications` из `allow` агент-iframe (лишнее разрешение).
+
+**`docs/modules/control.md`**: решение от 19.11 о вкладке B.A.N.T. с `crm_bant` помечено «отменено 21.11».
+
+**После деплоя:** запустить `POST /kviz/api/crm/funnels/:id/reset-content` (admin) — обновит `bant_contra.none_option` и options в БД до нового формата.
+
 ### 21.11.2026 · task 80 · логика квалификации в этапах, предупреждения, подсказки, скрыта вкладка Квалификация
 
 **`src/core/featureFlags.ts`** (новый): `KVIZ_TAB_VISIBLE = false` — управляет видимостью вкладки.

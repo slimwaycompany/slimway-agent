@@ -7,6 +7,7 @@ import { rawGet, paginateGet } from './fitbase';
 import { runLeadRules } from '../core/leadRules';
 import { STAGE_CONTENT } from '../core/leadStageContent';
 import { answerRowsToAnswers, computeResult, CONTRAINDICATIONS, HINTS, type AnswerRow } from '../core/qualifyCatalog';
+import { evalShowIf, type ShowIfCond } from '../core/checklistRules';
 import type { Request, Response } from 'express';
 
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
@@ -229,28 +230,53 @@ export function buildCrmLeadsRouter(): Router {
       if (b.require_comment !== undefined) upd.require_comment = Boolean(b.require_comment);
       if (b.checklist !== undefined) {
         if (!Array.isArray(b.checklist)) { res.status(400).json({ error: 'checklist должен быть массивом' }); return; }
-        if (b.checklist.length > 20) { res.status(400).json({ error: 'checklist не более 20 пунктов' }); return; }
+        if (b.checklist.length > 25) { res.status(400).json({ error: 'checklist не более 25 пунктов' }); return; }
         const VALID_TYPES = ['question', 'check', 'text', 'comment', 'multi', 'number', 'date'];
+        const keys = new Set<string>();
         for (const item of b.checklist) {
           const it = item as Record<string, unknown>;
           if (!it.key || String(it.key).length > 50) { res.status(400).json({ error: 'key: 1–50 символов' }); return; }
-          if (!VALID_TYPES.includes(it.type as string)) { res.status(400).json({ error: 'type: question|check|text|comment' }); return; }
+          if (keys.has(it.key as string)) { res.status(400).json({ error: `key «${it.key}» повторяется` }); return; }
+          keys.add(it.key as string);
+          if (!VALID_TYPES.includes(it.type as string)) { res.status(400).json({ error: 'type: question|check|text|comment|multi|number|date' }); return; }
           if (!it.label || String(it.label).length > 200) { res.status(400).json({ error: 'label: 1–200 символов' }); return; }
           if (it.hint !== undefined && it.hint !== null && String(it.hint).length > 500) { res.status(400).json({ error: 'hint: до 500 символов' }); return; }
           if (it.who !== 'human' && it.who !== 'auto') { res.status(400).json({ error: 'who: human или auto' }); return; }
-          if (it.type === 'question') {
-            if (!Array.isArray(it.options) || (it.options as unknown[]).length < 0 || (it.options as unknown[]).length > 10) {
-              res.status(400).json({ error: 'options: массив до 10 вариантов для question' }); return;
+          if (it.type === 'question' || it.type === 'multi') {
+            if (!Array.isArray(it.options) || (it.options as unknown[]).length > 25) {
+              res.status(400).json({ error: `options: массив до 25 вариантов для ${it.type}` }); return;
+            }
+          }
+          if (it.type === 'multi' && it.none_option != null) {
+            const opts = it.options as unknown[] ?? [];
+            const optIds = opts.map(o => typeof o === 'string' ? o : (o as Record<string,unknown>).id);
+            if (!optIds.includes(it.none_option)) {
+              res.status(400).json({ error: `none_option «${it.none_option}» не найден в options` }); return;
+            }
+          }
+          if (it.show_if) {
+            const sf = it.show_if as Record<string, unknown>;
+            const VALID_OPS = ['eq','neq','contains','not_contains','not_none','in','gte','lte'];
+            if (!sf.key || !VALID_OPS.includes(sf.op as string)) {
+              res.status(400).json({ error: 'show_if: нужны key и op' }); return;
             }
           }
         }
-        upd.checklist = (b.checklist as Record<string, unknown>[]).map(it => ({
-          key: it.key, block: it.block ?? '', type: it.type, label: it.label,
-          ...(it.hint ? { hint: it.hint } : {}),
-          required: Boolean(it.required), who: it.who,
-          ...(it.type === 'question' ? { options: it.options ?? [] } : {}),
-          ...(it.who === 'auto' && it.rule ? { rule: it.rule } : {}),
-        }));
+        upd.checklist = (b.checklist as Record<string, unknown>[]).map(it => {
+          const mapped: Record<string, unknown> = {
+            key: it.key, block: it.block ?? '', type: it.type, label: it.label,
+            required: Boolean(it.required), who: it.who,
+          };
+          if (it.hint) mapped.hint = it.hint;
+          if (it.type === 'question' || it.type === 'multi') mapped.options = it.options ?? [];
+          if (it.who === 'auto' && it.rule) mapped.rule = it.rule;
+          if (it.show_if) mapped.show_if = it.show_if;
+          if (it.none_option != null) mapped.none_option = it.none_option;
+          if (it.min != null) mapped.min = Number(it.min);
+          if (it.max != null) mapped.max = Number(it.max);
+          if (it.allow_other) mapped.allow_other = true;
+          return mapped;
+        });
       }
       const { data, error } = await supabase.from('crm_funnel_stages')
         .update(upd).eq('id', req.params.id).eq('branch_id', BRANCH_ID).select().single();
@@ -530,29 +556,19 @@ export function buildCrmLeadsRouter(): Router {
           answerByKey.set(key, { option: String(a.answer_option ?? ''), text: String(a.answer_text ?? '') });
         }
       }
-      function evalShowIf(cond: Record<string, unknown>): boolean {
-        const a   = answerByKey.get(cond.key as string);
-        const sel = Array.from(multiByKey.get(cond.key as string) ?? []);
-        const opt = a?.option ?? '';
-        const txt = a?.text ?? '';
-        switch (cond.op as string) {
-          case 'eq':           return opt === String(cond.value);
-          case 'neq':          return opt !== String(cond.value);
-          case 'contains':     return sel.includes(String(cond.value)) || opt === String(cond.value);
-          case 'not_contains': return !sel.includes(String(cond.value)) && opt !== String(cond.value);
-          case 'not_none':     return !!a || sel.length > 0;
-          case 'in':           return Array.isArray(cond.value) && (cond.value as string[]).includes(opt);
-          case 'gte':          return Number(txt || opt) >= Number(cond.value);
-          case 'lte':          return Number(txt || opt) <= Number(cond.value);
-        }
-        return true;
+      // Build none_option map for not_none evaluation
+      const noneByKey = new Map<string, string | null>();
+      for (const it of checklist) {
+        const val = it.none_option;
+        if (!val) continue;
+        noneByKey.set(it.key as string, typeof val === 'boolean' ? '__none__' : String(val));
       }
 
       // Validate required items (only visible ones — respecting show_if)
       const answeredKeys = new Set([...answerByKey.keys(), ...multiByKey.keys()]);
       const missing = checklist.filter(it => {
         if (!it.required || it.who === 'auto') return false;
-        if (it.show_if && !evalShowIf(it.show_if as Record<string, unknown>)) return false;
+        if (it.show_if && !evalShowIf(it.show_if as ShowIfCond, answerByKey, multiByKey, noneByKey)) return false;
         if (it.type === 'multi') return (multiByKey.get(it.key as string)?.size ?? 0) === 0;
         return !answeredKeys.has(it.key as string);
       }).map(it => it.key as string);
