@@ -1700,58 +1700,176 @@ function FinExpensesTab() {
 
 // ── CRM: Funnels & Stages ─────────────────────────────────────────────────────
 
+interface CrmStageItem {
+  key: string; block: string; type: 'question' | 'check' | 'text' | 'comment';
+  label: string; hint?: string; required: boolean; options?: string[];
+  who: 'human' | 'auto'; rule?: string | null;
+}
+interface CrmStageHelper { manager?: string | null; transition?: string | null; important?: string | null; agent?: string | null; }
+
 interface CrmStage  {
   id: string; name: string; kind: string; sort: number; is_archived: boolean;
   color: string | null; funnel_id: string | null;
   memo: string | null; action_label: string;
-  checklist: { text: string; who: 'human' | 'auto'; rule?: string }[];
+  checklist: CrmStageItem[];
+  helper?: CrmStageHelper | null;
+  require_comment?: boolean;
 }
 interface CrmFunnel { id: string; name: string; sort: number; is_active: boolean; stages: CrmStage[] }
 
-function StageEditor({ stage, onSaved }: { stage: CrmStage; onSaved: () => void }) {
-  const [memo, setMemo]           = useState(stage.memo ?? '');
-  const [actionLabel, setLabel]   = useState(stage.action_label || 'Подтвердить');
-  const [checklist, setChecklist] = useState<{ text: string; who: 'human' | 'auto'; rule?: string }[]>(stage.checklist ?? []);
-  const [saving, setSaving]       = useState(false);
-  const [err, setErr]             = useState('');
+function StageEditor({ stage, onSaved, funnelId }: { stage: CrmStage; onSaved: () => void; funnelId?: string }) {
+  const [memo, setMemo]                 = useState(stage.memo ?? '');
+  const [actionLabel, setLabel]         = useState(stage.action_label || 'Подтвердить');
+  const [reqComment, setReqComment]     = useState(stage.require_comment ?? false);
+  const [helper, setHelper]             = useState<CrmStageHelper>(stage.helper ?? {});
+  const [checklist, setChecklist]       = useState<CrmStageItem[]>(stage.checklist ?? []);
+  const [saving, setSaving]             = useState(false);
+  const [resetting, setResetting]       = useState(false);
+  const [err, setErr]                   = useState('');
+  const [helperOpen, setHelperOpen]     = useState(false);
+  const [checklistOpen, setCheckOpen]   = useState(true);
 
   async function save() {
     setSaving(true); setErr('');
-    const { ok, data } = await api('PATCH', `/kviz/api/crm/funnel-stages/${stage.id}`, { memo: memo || null, action_label: actionLabel, checklist });
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/funnel-stages/${stage.id}`, {
+      memo: memo || null, action_label: actionLabel,
+      require_comment: reqComment, helper, checklist,
+    });
     setSaving(false);
     if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
     onSaved();
   }
 
+  async function resetStage() {
+    if (!await showConfirm(`Вернуть пункты и подсказки этапа «${stage.name}» к содержимому таблицы?`)) return;
+    if (!funnelId) return;
+    setResetting(true);
+    const { ok, data } = await api('POST', `/kviz/api/crm/funnels/${funnelId}/reset-content`);
+    setResetting(false);
+    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
+    onSaved();
+  }
+
+  function newItem(): CrmStageItem {
+    return { key: `item_${Date.now()}`, block: '', type: 'check', label: '', required: true, who: 'human' };
+  }
+
+  const ITEM_TYPES: { value: CrmStageItem['type']; label: string }[] = [
+    { value: 'check',    label: 'Чекбокс' },
+    { value: 'question', label: 'Вопрос' },
+    { value: 'text',     label: 'Текст' },
+    { value: 'comment',  label: 'Комментарий' },
+  ];
+
   return (
     <div style={{ padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8, marginTop: 4 }}>
       {err && <div style={S.errBox}>{err}</div>}
+
+      {/* Legacy memo */}
       <div style={{ marginBottom: 8 }}>
-        <label style={S.label}>Памятка этапа (memo)</label>
-        <textarea style={{ ...S.inp, minHeight: 60, resize: 'vertical' }} value={memo} onChange={e => setMemo(e.target.value)} placeholder="Показывается при переходе на этап и открытии карточки" />
+        <label style={S.label}>Памятка этапа (устаревшее, заменяется подсказками)</label>
+        <textarea style={{ ...S.inp, minHeight: 40, resize: 'vertical', fontSize: 11 }} value={memo} onChange={e => setMemo(e.target.value)} placeholder="Показывается при открытии карточки" />
       </div>
+
       <div style={{ marginBottom: 8 }}>
         <label style={S.label}>Кнопка действия</label>
         <input style={S.inp} value={actionLabel} onChange={e => setLabel(e.target.value)} maxLength={30} placeholder="Подтвердить" />
       </div>
-      <div style={{ marginBottom: 8 }}>
-        <label style={S.label}>Чек-лист (до 20 пунктов)</label>
-        {checklist.map((item, i) => (
-          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 5 }}>
-            <input style={{ ...S.inp, flex: 1 }} value={item.text} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, text: e.target.value } : x))} placeholder="Текст пункта" maxLength={200} />
-            <select style={{ ...S.inp, width: 90 }} value={item.who} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, who: e.target.value as 'human'|'auto' } : x))}>
-              <option value="human">Менеджер</option>
-              <option value="auto">Авто</option>
-            </select>
-            {item.who === 'auto' && <input style={{ ...S.inp, width: 100 }} value={item.rule ?? ''} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, rule: e.target.value || undefined } : x))} placeholder="Правило" />}
-            <button style={{ ...S.iconBtn, color: 'var(--danger)' }} onClick={() => setChecklist(cl => cl.filter((_, j) => j !== i))}>✕</button>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)', marginBottom: 10, cursor: 'pointer' }}>
+        <input type="checkbox" checked={reqComment} onChange={e => setReqComment(e.target.checked)} />
+        Комментарий обязателен при переносе
+      </label>
+
+      {/* Helper */}
+      <div style={{ marginBottom: 10 }}>
+        <button type="button" onClick={() => setHelperOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--text)', padding: 0, marginBottom: 4 }}>
+          {helperOpen ? '▾' : '▸'} Подсказки для менеджера
+        </button>
+        {helperOpen && (
+          <div style={{ marginTop: 6 }}>
+            {(['manager', 'transition', 'important', 'agent'] as (keyof CrmStageHelper)[]).map(k => (
+              <div key={k} style={{ marginBottom: 6 }}>
+                <label style={{ ...S.label, textTransform: 'capitalize' as const }}>
+                  {k === 'manager' ? 'Менеджер вручную' : k === 'transition' ? 'Переход' : k === 'important' ? 'Важно' : 'Агент/автоматика (только для админа)'}
+                </label>
+                <textarea
+                  style={{ ...S.inp, minHeight: 60, resize: 'vertical', fontSize: 12 }}
+                  value={helper[k] ?? ''}
+                  onChange={e => setHelper(h => ({ ...h, [k]: e.target.value || null }))}
+                  maxLength={4000}
+                />
+              </div>
+            ))}
           </div>
-        ))}
-        {checklist.length < 20 && (
-          <button style={{ ...S.editBtn, fontSize: 12 }} onClick={() => setChecklist(cl => [...cl, { text: '', who: 'human' }])}>+ Пункт</button>
         )}
       </div>
-      <button style={S.saveBtn} disabled={saving} onClick={save}>{saving ? 'Сохранение...' : 'Сохранить'}</button>
+
+      {/* Checklist */}
+      <div style={{ marginBottom: 10 }}>
+        <button type="button" onClick={() => setCheckOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--text)', padding: 0, marginBottom: 4 }}>
+          {checklistOpen ? '▾' : '▸'} Пункты ({checklist.length})
+        </button>
+        {checklistOpen && (
+          <div>
+            {checklist.map((item, i) => (
+              <div key={item.key} style={{ background: 'var(--surface)', borderRadius: 7, padding: '8px 10px', marginBottom: 6, border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' }}>
+                  <input style={{ ...S.inp, flex: 2, minWidth: 120 }} value={item.label} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="Текст пункта" maxLength={200} />
+                  <select style={{ ...S.inp, width: 100 }} value={item.type} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, type: e.target.value as CrmStageItem['type'] } : x))}>
+                    {ITEM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                  <select style={{ ...S.inp, width: 90 }} value={item.who} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, who: e.target.value as 'human'|'auto' } : x))}>
+                    <option value="human">Менеджер</option>
+                    <option value="auto">Авто</option>
+                  </select>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={item.required} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, required: e.target.checked } : x))} />
+                    Обяз.
+                  </label>
+                  <button style={{ ...S.iconBtn, color: 'var(--danger)' }} onClick={() => setChecklist(cl => cl.filter((_, j) => j !== i))}>✕</button>
+                </div>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  <input style={{ ...S.inp, flex: 1, fontSize: 11 }} value={item.block} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, block: e.target.value } : x))} placeholder="Блок (группа)" />
+                  {item.who === 'auto' && (
+                    <select style={{ ...S.inp, width: 170, fontSize: 11 }} value={item.rule ?? ''} onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, rule: e.target.value || null } : x))}>
+                      <option value="">Нет правила</option>
+                      <option value="lead_first_contact">lead_first_contact</option>
+                      <option value="stage_task">stage_task</option>
+                    </select>
+                  )}
+                </div>
+                {item.type === 'question' && (
+                  <div style={{ marginTop: 5 }}>
+                    <label style={{ ...S.label, fontSize: 11 }}>Варианты (по одному в строке)</label>
+                    <textarea
+                      style={{ ...S.inp, fontSize: 11, minHeight: 48, resize: 'vertical' }}
+                      value={(item.options ?? []).join('\n')}
+                      onChange={e => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, options: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) } : x))}
+                      placeholder="Вариант 1&#10;Вариант 2"
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+            {checklist.length < 20 && (
+              <button style={{ ...S.editBtn, fontSize: 12 }} onClick={() => setChecklist(cl => [...cl, newItem()])}>+ Пункт</button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button style={S.saveBtn} disabled={saving} onClick={save}>{saving ? 'Сохранение...' : 'Сохранить'}</button>
+        {funnelId && (
+          <button
+            type="button" disabled={resetting} onClick={resetStage}
+            style={{ padding: '7px 14px', border: '1.5px solid var(--border)', borderRadius: 8, background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: resetting ? 'default' : 'pointer', fontFamily: 'inherit' }}
+          >
+            {resetting ? 'Сброс...' : 'Вернуть к таблице'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1837,6 +1955,12 @@ function FunnelsSection() {
         <div key={f.id} style={{ background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 12, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 8, background: 'var(--surface-2)' }}>
             <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{f.name}</span>
+            <button style={{ ...S.editBtn, fontSize: 11 }} onClick={async () => {
+              if (!await showConfirm('Загрузить содержимое из таблицы? Настройки всех этапов этой воронки (пункты, подсказки) будут заменены данными из таблицы.')) return;
+              const { ok, data } = await api('POST', `/kviz/api/crm/funnels/${f.id}/reset-content`);
+              if (ok) { toast.success('Содержимое загружено'); load(); }
+              else setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка');
+            }}>Загрузить из таблицы</button>
             <button style={{ ...S.editBtn, fontSize: 11 }} onClick={() => toggleFunnelActive(f)}>{f.is_active ? 'Активна' : 'Неактивна'}</button>
           </div>
           <div style={{ padding: '8px 14px' }}>
@@ -1854,7 +1978,7 @@ function FunnelsSection() {
                     )}
                   </div>
                 </div>
-                {editStageId === s.id && <StageEditor stage={s} onSaved={() => { load(); setEditStageId(null); }} />}
+                {editStageId === s.id && <StageEditor stage={s} onSaved={() => { load(); setEditStageId(null); }} funnelId={f.id} />}
               </div>
             ))}
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>

@@ -19,7 +19,7 @@
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | ⚪ | 28.10.2026 | Требования собраны, следующий этап после кассы |
-| CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 20.11.2026 | fix: isFitbaseSyncEnabled не попал в коммит — сборка падала на Render; исправлено |
+| CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 21.11.2026 | task 79: контент этапов из xlsx, checklist v2, StagePopup 3-колонки, ответы на пункты, кнопка «Загрузить из таблицы» |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | 🟡 | 19.11.2026 | task 71: меню кружка поверх iframe (#top-bar stacking context fix) |
 | Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 18.11.2026 | task 66: каталог проверок, линейки ролей (версии), движок v2, конструктор в Настройках, API, temp экран |

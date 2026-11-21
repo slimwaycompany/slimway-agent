@@ -7,6 +7,30 @@
 
 ## Сделано
 
+### 21.11.2026 · task 79 · контент этапов из таблицы, checklist v2, StagePopup v2, настройки этапов v2
+
+**`src/core/leadStageContent.ts`** (новый, сгенерирован `gen_stage_content.py`):  
+`STAGE_CONTENT[12]` — 12 этапов (inbox/funnel×9/fail/success), каждый с `name`, `scope`, `require_comment`, `helper{manager,transition,important,agent}` из xlsx, `items[]` — чеклист пунктов новой структуры `{key,block,type,label,required,who,options?,rule?}`.
+
+**`src/http/crmLeads.ts`** расширен:  
+- `PATCH /crm/funnel-stages/:id`: принимает `helper` (объект 4 ключа, до 4000 символов каждый), `require_comment` (boolean), `checklist` в новом формате `{key,block,type,label,hint,required,options,who,rule}`.
+- `POST /crm/funnels/:id/reset-content` (admin): сопоставляет этапы по kind (inbox/fail/success) или имени, обновляет helper/require_comment/checklist из STAGE_CONTENT.
+- `POST /crm/leads/:id/move`: валидирует required-пункты (возврат `{error:'required_missing',missing:[...]}` 400), require_comment (400), пишет ответы в `crm_lead_answers` с `move_activity_id`.
+- `GET /crm/leads/:id/answers` и `POST /crm/leads/:id/answers` — журнал ответов.
+- `GET /crm/leads/:id/activity`: мержит ответы из `crm_lead_answers` как `kind='answer'` по move_activity_id.
+
+**`StagePopup.tsx`** переписан (3 колонки ≥1025px: пункты | подсказки | лог; на мобиле — вкладки):  
+- Поддерживает типы `question` (радиокнопки+текст), `check` (чекбокс), `text`/`comment` (textarea); блоки по `item.block`; валидация required; список пропущенных ниже кнопки.  
+- Загружает лог ответов `GET /answers`, фильтр по этапу.
+
+**`FunnelPage.tsx`**: интерфейс Stage/StageItem расширен новыми полями; `confirmMove` передаёт `answers[]`; сортировка inbox → funnel → success → fail; `leadId` передаётся в StagePopup.
+
+**`SettingsPage.tsx`**: `StageEditor` — 4 textarea подсказок (manager/transition/important/agent), `require_comment`, редактор пунктов с type/block/hint/required/options/rule; кнопка «Вернуть к таблице» per-stage; кнопка «Загрузить из таблицы» per-funnel; `funnelId` передаётся в StageEditor.
+
+**`LeadDrawer.tsx`**: интерфейс Stage обновлён — поля helper/require_comment/checklist нового формата (обратная совместимость через опциональные ключи).
+
+**Таблицы:** SQL выполнен до задачи — колонки `helper jsonb`, `require_comment boolean` в `crm_funnel_stages`; таблица `crm_lead_answers`.
+
 ### 20.11.2026 · fix · исправление сборки — экспорт isFitbaseSyncEnabled
 
 - `src/jobs/crmLeadsSync.ts`: функция `isFitbaseSyncEnabled()` была в рабочем дереве, но не попала в коммит 150e224 (stash/pop без git add). Добавлена в коммит и теперь деплоится правильно.

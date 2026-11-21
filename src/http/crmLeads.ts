@@ -5,6 +5,7 @@ import { runCrmLeadsSync, isFitbaseSyncEnabled } from '../jobs/crmLeadsSync';
 import { acquireLock, releaseLock } from '../core/lock';
 import { rawGet, paginateGet } from './fitbase';
 import { runLeadRules } from '../core/leadRules';
+import { STAGE_CONTENT } from '../core/leadStageContent';
 import type { Request, Response } from 'express';
 
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
@@ -151,6 +152,34 @@ export function buildCrmLeadsRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // Reset stage content from STAGE_CONTENT table (admin)
+  r.post('/kviz/api/crm/funnels/:id/reset-content', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const { data: stages } = await supabase.from('crm_funnel_stages')
+        .select('id,name,kind,funnel_id').eq('branch_id', BRANCH_ID)
+        .or(`funnel_id.eq.${req.params.id},funnel_id.is.null`);
+      const updated: string[] = [];
+      for (const s of (stages || [])) {
+        const st = s as Record<string, unknown>;
+        const content = STAGE_CONTENT.find(c =>
+          st.kind === 'inbox'   ? c.scope === 'inbox' :
+          st.kind === 'fail'    ? c.scope === 'fail' :
+          st.kind === 'success' ? c.scope === 'success' :
+          c.name.toLowerCase() === (st.name as string).toLowerCase()
+        );
+        if (!content) continue;
+        await supabase.from('crm_funnel_stages').update({
+          helper: content.helper,
+          require_comment: content.require_comment,
+          checklist: content.items,
+        }).eq('id', st.id).eq('branch_id', BRANCH_ID);
+        updated.push(st.name as string);
+      }
+      res.json({ ok: true, updated });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // Funnel stages PATCH/POST/DELETE (admin)
   r.post('/kviz/api/crm/funnel-stages', async (req, res) => {
     if (!requireAdmin(req, res)) return;
@@ -187,15 +216,40 @@ export function buildCrmLeadsRouter(): Router {
         if (!al || al.length > 30) { res.status(400).json({ error: 'action_label: 1–30 символов' }); return; }
         upd.action_label = al;
       }
+      if (b.helper !== undefined) {
+        const h = b.helper as Record<string, unknown>;
+        for (const k of ['manager', 'transition', 'important', 'agent']) {
+          if (h[k] !== undefined && h[k] !== null && String(h[k]).length > 4000) {
+            res.status(400).json({ error: `helper.${k} не более 4000 символов` }); return;
+          }
+        }
+        upd.helper = { manager: h.manager ?? null, transition: h.transition ?? null, important: h.important ?? null, agent: h.agent ?? null };
+      }
+      if (b.require_comment !== undefined) upd.require_comment = Boolean(b.require_comment);
       if (b.checklist !== undefined) {
         if (!Array.isArray(b.checklist)) { res.status(400).json({ error: 'checklist должен быть массивом' }); return; }
         if (b.checklist.length > 20) { res.status(400).json({ error: 'checklist не более 20 пунктов' }); return; }
+        const VALID_TYPES = ['question', 'check', 'text', 'comment'];
         for (const item of b.checklist) {
           const it = item as Record<string, unknown>;
-          if (!it.text || String(it.text).length > 200) { res.status(400).json({ error: 'Текст пункта: 1–200 символов' }); return; }
+          if (!it.key || String(it.key).length > 50) { res.status(400).json({ error: 'key: 1–50 символов' }); return; }
+          if (!VALID_TYPES.includes(it.type as string)) { res.status(400).json({ error: 'type: question|check|text|comment' }); return; }
+          if (!it.label || String(it.label).length > 200) { res.status(400).json({ error: 'label: 1–200 символов' }); return; }
+          if (it.hint !== undefined && it.hint !== null && String(it.hint).length > 500) { res.status(400).json({ error: 'hint: до 500 символов' }); return; }
           if (it.who !== 'human' && it.who !== 'auto') { res.status(400).json({ error: 'who: human или auto' }); return; }
+          if (it.type === 'question') {
+            if (!Array.isArray(it.options) || (it.options as unknown[]).length < 0 || (it.options as unknown[]).length > 10) {
+              res.status(400).json({ error: 'options: массив до 10 вариантов для question' }); return;
+            }
+          }
         }
-        upd.checklist = b.checklist;
+        upd.checklist = (b.checklist as Record<string, unknown>[]).map(it => ({
+          key: it.key, block: it.block ?? '', type: it.type, label: it.label,
+          ...(it.hint ? { hint: it.hint } : {}),
+          required: Boolean(it.required), who: it.who,
+          ...(it.type === 'question' ? { options: it.options ?? [] } : {}),
+          ...(it.who === 'auto' && it.rule ? { rule: it.rule } : {}),
+        }));
       }
       const { data, error } = await supabase.from('crm_funnel_stages')
         .update(upd).eq('id', req.params.id).eq('branch_id', BRANCH_ID).select().single();
@@ -361,11 +415,33 @@ export function buildCrmLeadsRouter(): Router {
   r.get('/kviz/api/crm/leads/:id/activity', async (req, res) => {
     if (!requireAuth(req, res)) return;
     try {
-      const { data, error } = await supabase.from('crm_lead_activity')
-        .select('*').eq('branch_id', BRANCH_ID).eq('lead_id', req.params.id)
-        .order('created_at', { ascending: false }).limit(100);
+      const [{ data: acts, error }, { data: ans }] = await Promise.all([
+        supabase.from('crm_lead_activity').select('*').eq('branch_id', BRANCH_ID).eq('lead_id', req.params.id)
+          .order('created_at', { ascending: false }).limit(100),
+        supabase.from('crm_lead_answers').select('*').eq('branch_id', BRANCH_ID).eq('lead_id', req.params.id)
+          .order('created_at', { ascending: false }).limit(500),
+      ]);
       if (error) { res.status(500).json({ error: error.message }); return; }
-      res.json(data || []);
+      // group answers by move_activity_id, expose as kind='answer'
+      const answersByMove = new Map<string, unknown[]>();
+      for (const a of (ans || [])) {
+        const r2 = a as Record<string, unknown>;
+        const mid = (r2.move_activity_id ?? 'standalone') as string;
+        if (!answersByMove.has(mid)) answersByMove.set(mid, []);
+        answersByMove.get(mid)!.push(a);
+      }
+      const result: unknown[] = [...(acts || [])];
+      for (const [mid, items] of answersByMove) {
+        if (mid === 'standalone') {
+          result.push({ id: `ans-standalone`, kind: 'answer', created_at: (items[0] as Record<string,unknown>).created_at, items });
+        }
+      }
+      result.sort((a, b) => {
+        const ta = (a as Record<string,unknown>).created_at as string;
+        const tb = (b as Record<string,unknown>).created_at as string;
+        return tb.localeCompare(ta);
+      });
+      res.json(result);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -394,16 +470,31 @@ export function buildCrmLeadsRouter(): Router {
       if (!b.stage_id) { res.status(400).json({ error: 'Укажите этап' }); return; }
 
       const { data: stage } = await supabase.from('crm_funnel_stages')
-        .select('id,name,kind,funnel_id').eq('id', b.stage_id as string).single();
+        .select('id,name,kind,funnel_id,checklist,require_comment').eq('id', b.stage_id as string).single();
       if (!stage) { res.status(400).json({ error: 'Этап не найден' }); return; }
 
-      if ((stage as Record<string, unknown>).kind === 'fail' && !b.lost_reason_id) {
+      const st = stage as Record<string, unknown>;
+      if (st.kind === 'fail' && !b.lost_reason_id) {
         res.status(400).json({ error: 'Укажите причину отказа' }); return;
+      }
+
+      // Validate required items
+      const checklist = (st.checklist as null | Record<string, unknown>[]) ?? [];
+      const answers   = Array.isArray(b.answers) ? (b.answers as Record<string, unknown>[]) : [];
+      const answeredKeys = new Set(answers.map(a => a.item_key as string));
+      const missing = checklist
+        .filter(it => it.required && it.who !== 'auto' && !answeredKeys.has(it.key as string))
+        .map(it => it.key as string);
+      if (missing.length) {
+        res.status(400).json({ error: 'required_missing', missing }); return;
+      }
+      if (st.require_comment && !String(b.comment ?? '').trim()) {
+        res.status(400).json({ error: 'comment_required' }); return;
       }
 
       const upd: Record<string, unknown> = {
         stage_id: b.stage_id,
-        funnel_id: (stage as Record<string, unknown>).funnel_id ?? null,
+        funnel_id: st.funnel_id ?? null,
         stage_changed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -414,12 +505,67 @@ export function buildCrmLeadsRouter(): Router {
         .update(upd).eq('id', req.params.id).eq('branch_id', BRANCH_ID).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
 
-      const stageName = (stage as Record<string, unknown>).name as string;
-      await writeActivity(req.params.id, 'stage_change', `Этап → ${stageName}`, session.display_name);
+      const stageName = st.name as string;
+      const { data: actRow } = await supabase.from('crm_lead_activity').insert({
+        branch_id: BRANCH_ID, lead_id: req.params.id,
+        kind: 'stage_change', text: `Этап → ${stageName}`, author: session.display_name, meta: {},
+      }).select('id').single();
+
       if (b.comment && String(b.comment).trim()) {
         await writeActivity(req.params.id, 'comment', String(b.comment).trim(), session.display_name);
       }
+
+      // Write answers
+      if (answers.length) {
+        const moveActId = (actRow as Record<string, unknown> | null)?.id as string | null;
+        const rows = answers.map(a => ({
+          branch_id: BRANCH_ID, lead_id: req.params.id, stage_id: b.stage_id as string,
+          move_activity_id: moveActId ?? null,
+          item_key: String(a.item_key ?? ''), kind: String(a.kind ?? ''),
+          answer_option: (a.answer_option as string | null) ?? null,
+          answer_text:   (a.answer_text   as string | null) ?? null,
+          author: session.display_name,
+        }));
+        await supabase.from('crm_lead_answers').insert(rows);
+      }
+
       runLeadRules({ type: 'stage_enter', leadId: req.params.id, stageId: b.stage_id as string }).catch(console.error);
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Lead answers ──────────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/leads/:id/answers', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      let q = supabase.from('crm_lead_answers').select('*')
+        .eq('branch_id', BRANCH_ID).eq('lead_id', req.params.id)
+        .order('created_at', { ascending: false }).limit(500);
+      if (req.query.stage_id) q = q.eq('stage_id', req.query.stage_id as string);
+      const { data, error } = await q;
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data || []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/leads/:id/answers', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const answers = Array.isArray(b.answers) ? (b.answers as Record<string, unknown>[]) : [];
+      if (!answers.length) { res.status(400).json({ error: 'Нет ответов' }); return; }
+      const stageId = b.stage_id as string | null ?? null;
+      const rows = answers.map(a => ({
+        branch_id: BRANCH_ID, lead_id: req.params.id, stage_id: stageId,
+        move_activity_id: null, item_key: String(a.item_key ?? ''), kind: String(a.kind ?? ''),
+        answer_option: (a.answer_option as string | null) ?? null,
+        answer_text:   (a.answer_text   as string | null) ?? null,
+        author: session.display_name,
+      }));
+      const { data, error } = await supabase.from('crm_lead_answers').insert(rows).select();
+      if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });

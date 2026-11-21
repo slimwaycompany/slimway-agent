@@ -7,7 +7,10 @@ import StagePopup, { type PopupStage } from './StagePopup';
 
 interface Stage {
   id: string; name: string; kind: string; sort: number; is_archived: boolean;
-  memo: string | null; action_label: string; checklist: { text: string; who: 'human' | 'auto'; rule?: string }[];
+  memo: string | null; action_label: string;
+  checklist: { key?: string; text?: string; type?: string; label?: string; block?: string; who: 'human' | 'auto'; required?: boolean; rule?: string | null }[];
+  helper?: { manager?: string | null; transition?: string | null; important?: string | null; agent?: string | null } | null;
+  require_comment?: boolean;
 }
 interface Funnel { id: string; name: string; is_active: boolean; stages: Stage[] }
 

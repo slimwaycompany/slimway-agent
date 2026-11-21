@@ -10,12 +10,21 @@ import { useRole } from '../../lib/permContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface ChecklistItem { text: string; who: 'human' | 'auto'; rule?: string; }
+interface StageItem {
+  key: string; block: string; type: 'question' | 'check' | 'text' | 'comment';
+  label: string; hint?: string; required: boolean; options?: string[];
+  who: 'human' | 'auto'; rule?: string | null;
+}
+
+interface StageHelper { manager?: string | null; transition?: string | null; important?: string | null; agent?: string | null; }
 
 interface Stage {
   id: string; name: string; kind: string; sort: number;
   is_archived: boolean; color: string | null; background_color: string | null;
-  memo: string | null; action_label: string; checklist: ChecklistItem[];
+  memo: string | null; action_label: string;
+  checklist: StageItem[];
+  helper?: StageHelper | null;
+  require_comment?: boolean;
 }
 
 interface Funnel { id: string; name: string; is_active: boolean; stages: Stage[] }
@@ -313,21 +322,28 @@ export default function FunnelPage() {
     setDragging(lead ?? null);
   }
 
-  async function confirmMove(params: { comment?: string; lost_reason_id?: string }) {
+  async function confirmMove(params: { comment?: string; lost_reason_id?: string; answers?: unknown[] }) {
     if (!pendingMove) return;
     const { lead, stage } = pendingMove;
     setPendingMove(null);
-    // Optimistic update
     setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, stage_id: stage.id } : l));
     const body: Record<string, unknown> = { stage_id: stage.id };
-    if (params.comment)       body.comment        = params.comment;
+    if (params.comment)        body.comment        = params.comment;
     if (params.lost_reason_id) body.lost_reason_id = params.lost_reason_id;
+    if (params.answers?.length) body.answers       = params.answers;
     const { ok } = await api('POST', `/kviz/api/crm/leads/${lead.id}/move`, body);
     if (!ok) setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, stage_id: lead.stage_id } : l));
   }
 
   const funnel = funnels.find(f => f.id === selFunnelId);
-  const stages = (funnel?.stages ?? []).filter(s => !s.is_archived).sort((a, b) => a.sort - b.sort);
+  // inbox first, then normal by sort, fail/success last (always visible even when empty)
+  const stages = (funnel?.stages ?? [])
+    .filter(s => !s.is_archived)
+    .sort((a, b) => {
+      const rank = (s: Stage) => s.kind === 'inbox' ? -2 : s.kind === 'fail' ? 2 : s.kind === 'success' ? 1 : 0;
+      const dr = rank(a) - rank(b);
+      return dr !== 0 ? dr : a.sort - b.sort;
+    });
 
   function getStageLeads(stageId: string) {
     return leads.filter(l => l.stage_id === stageId);
@@ -400,6 +416,7 @@ export default function FunnelPage() {
           lostReasons={lostReasons}
           onConfirm={confirmMove}
           onCancel={() => setPendingMove(null)}
+          leadId={pendingMove.lead.id}
         />
       )}
 
