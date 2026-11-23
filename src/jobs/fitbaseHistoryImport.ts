@@ -225,15 +225,20 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
 
   async function checkpoint() {
     if (!runId) return;
-    await supabase.from('crm_fitbase_import_runs').update({
-      processed:               job.processed,
-      plans_upserted:          job.plans_upserted,
-      sales_upserted:          job.sales_upserted,
-      refunds_upserted:        job.refunds_upserted,
-      visits_upserted:         job.visits_upserted,
-      errors:                  job.errors.slice(-50),
-      last_client_fitbase_id:  lastFid || null,
-    }).eq('id', runId);
+    try {
+      const { error } = await supabase.from('crm_fitbase_import_runs').update({
+        processed:               job.processed,
+        plans_upserted:          job.plans_upserted,
+        sales_upserted:          job.sales_upserted,
+        refunds_upserted:        job.refunds_upserted,
+        visits_upserted:         job.visits_upserted,
+        errors:                  job.errors.slice(-50),
+        last_client_fitbase_id:  lastFid || null,
+      }).eq('id', runId);
+      if (error) console.error('[history-import] checkpoint update error:', error.message);
+    } catch (e) {
+      console.error('[history-import] checkpoint exception:', String(e));
+    }
   }
 
   try {
@@ -250,7 +255,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
       const { data: recentVisitClients } = await supabase
         .from('crm_visit_history')
         .select('client_id')
-        .gte('visit_date', ninetyDaysAgo);
+        .gte('visit_at', ninetyDaysAgo);
 
       const activeIds = new Set([
         ...(activePlanClients ?? []).map((r: Record<string,unknown>) => r.client_id as string),
@@ -304,21 +309,23 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
     }
 
     // 4. Per-client loop
+    console.log(`[history-import] starting loop: ${clients.length} clients`);
+
     for (let i = 0; i < clients.length; i++) {
       const { id: clientId, fitbase_client_id: fid } = clients[i];
+      lastFid = fid;
+      let cPlans = 0, cSales = 0, cPays = 0, cVisits = 0;
 
+      // ── 4.1 Contracts ───────────────────────────────────────────────────────
       try {
-        lastFid = fid;
-        await sleep(100); // small pause before each client
-
-        // ── 4.1 Contracts ─────────────────────────────────────────────────────
+        await sleep(100);
         const contractsResp = await rawGet(`/client-contract?client_id=${fid}`);
         await sleep(300 + Math.random() * 200);
         const contracts = (contractsResp.items ?? []) as Record<string, unknown>[];
 
         for (const contract of contracts) {
-          const ticket = contract.ticket as Record<string, unknown> | null;
-          const ci     = ticket?.contract_item as Record<string, unknown> | null;
+          const ticket   = contract.ticket as Record<string, unknown> | null;
+          const ci       = ticket?.contract_item as Record<string, unknown> | null;
           const planName = (ci?.name ?? ticket?.name ?? contract.contract_name ?? '') as string;
           const planKey  = planName.toLowerCase().trim();
           const matched  = plansByName.get(planKey) ?? null;
@@ -329,10 +336,6 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
           const needsSplit    = matched !== null
             && matched.deviceCount > 1
             && (status === 'active' || status === 'not_activated');
-
-          const activatedAt    = toDate(contract.activation_date);
-          const planStartDate  = toDate(contract.begin_date);
-          const validUntil     = toDate(contract.end_date);
 
           const { error: planErr } = await supabase.from('crm_client_plans').upsert({
             client_id:            clientId,
@@ -345,26 +348,34 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
             sessions_total:       sessionsTotal,
             sessions_left:        sessionsLeft,
             purchased_at:         toDate(contract.payment_date),
-            planned_start_date:   planStartDate,
-            activated_at:         activatedAt,
-            valid_until:          validUntil,
+            planned_start_date:   toDate(contract.begin_date),
+            activated_at:         toDate(contract.activation_date),
+            valid_until:          toDate(contract.end_date),
             needs_split:          needsSplit,
           }, { onConflict: 'fitbase_contract_id' });
 
-          if (planErr) { job.errors.push(`client ${fid} contract ${contract.id}: ${planErr.message}`); }
-          else job.plans_upserted++;
+          if (planErr) {
+            const msg = `client ${fid} contract ${contract.id}: ${planErr.message}`;
+            console.error('[history-import]', msg);
+            job.errors.push(msg);
+          } else { job.plans_upserted++; cPlans++; }
         }
+      } catch (e) {
+        const msg = `client ${fid} contracts: ${(e as Error).message ?? String(e)}`;
+        console.error('[history-import]', msg);
+        job.errors.push(msg);
+      }
 
-        // ── 4.2 & 4.3 Sales + Refunds ─────────────────────────────────────────
+      // ── 4.2 & 4.3 Sales + Refunds ───────────────────────────────────────────
+      try {
         await sleep(300 + Math.random() * 200);
         const steps = await getTillOrderSteps({ client_id: fid });
         await sleep(300 + Math.random() * 200);
 
-        // Group by order_id; null order_id → each step is its own order
         const orderMap = new Map<string, Record<string, unknown>[]>();
         for (const step of steps) {
           const s = step as Record<string, unknown>;
-          if (Number(s.amount) < 0 || s.operation_type === 'refund') continue; // handle as refund
+          if (Number(s.amount) < 0 || s.operation_type === 'refund') continue;
           const key = s.order_id != null ? String(s.order_id) : `step_${s.id}`;
           if (!orderMap.has(key)) orderMap.set(key, []);
           orderMap.get(key)!.push(s);
@@ -373,16 +384,11 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
         for (const [orderKey, orderSteps] of orderMap) {
           const orderId = orderSteps[0]?.order_id != null ? Number(orderSteps[0].order_id) : null;
 
-          // Skip if already imported
           if (orderId !== null) {
             const { data: existing } = await supabase
-              .from('crm_sales')
-              .select('id')
-              .eq('fitbase_order_id', orderId)
-              .maybeSingle();
+              .from('crm_sales').select('id').eq('fitbase_order_id', orderId).maybeSingle();
             if (existing) { job.sales_upserted++; continue; }
           } else {
-            // No order_id — skip; can't do idempotency without fitbase_step_id in crm_sale_items
             job.errors.push(`client ${fid}: step ${orderSteps[0].id} has no order_id, skipped`);
             continue;
           }
@@ -395,171 +401,168 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
           const { data: saleRow, error: saleErr } = await supabase
             .from('crm_sales')
             .insert({
-              branch_id:        BRANCH_ID,
-              client_id:        clientId,
-              cashier:          cashier,
-              manager:          manager,
-              subtotal:         total,
-              total:            total,
-              discount_kind:    'none',
-              status:           'completed',
-              source:           'fitbase',
-              fitbase_order_id: orderId,
-              paid_at:          paidAt,
-              shift_id:         null,
+              branch_id: BRANCH_ID, client_id: clientId,
+              cashier, manager, subtotal: total, total,
+              discount_kind: 'none', status: 'completed',
+              source: 'fitbase', fitbase_order_id: orderId,
+              paid_at: paidAt, shift_id: null,
             })
             .select('id').single();
 
           if (saleErr || !saleRow) {
-            job.errors.push(`client ${fid} order ${orderKey}: sale insert error: ${saleErr?.message}`);
+            const msg = `client ${fid} order ${orderKey}: sale insert: ${saleErr?.message}`;
+            console.error('[history-import]', msg);
+            job.errors.push(msg);
             continue;
           }
 
           const saleId = (saleRow as { id: string }).id;
-
-          // Insert items + payments for each step
           const itemInserts: Record<string, unknown>[] = [];
           const payInserts:  Record<string, unknown>[] = [];
 
           for (const step of orderSteps) {
             const s = step as Record<string, unknown>;
-            const fbItemType = String(s.item_type ?? 'product');
+            const fbItemType  = String(s.item_type ?? 'product');
             const crmItemType = fbItemType === 'contract' ? 'plan' : fbItemType;
-            const itemName  = (s.item as Record<string,unknown> | null)?.name as string ?? null;
-            const stepAmt   = Number(s.amount);
-            const pmName    = ((s.payment_type as Record<string,unknown> | null)?.name as string ?? '').toLowerCase().trim();
-            const pmId      = pmByName.get(pmName) ?? null;
+            const itemName    = (s.item as Record<string,unknown> | null)?.name as string ?? null;
+            const stepAmt     = Number(s.amount);
+            const pmName      = ((s.payment_type as Record<string,unknown> | null)?.name as string ?? '').toLowerCase().trim();
+            const pmId        = pmByName.get(pmName) ?? null;
 
-            itemInserts.push({
-              sale_id:    saleId,
-              item_type:  crmItemType,
-              name:       itemName,
-              qty:        1,
-              unit_price: stepAmt,
-              total:      stepAmt,
-            });
+            itemInserts.push({ sale_id: saleId, item_type: crmItemType, name: itemName, qty: 1, unit_price: stepAmt, total: stepAmt });
 
             if (stepAmt > 0) {
-              const priceDeposit = Number((s.priceDeposit ?? 0));
-              const priceBonus   = Number((s.priceBonus   ?? 0));
+              const priceDeposit = Number(s.priceDeposit ?? 0);
+              const priceBonus   = Number(s.priceBonus   ?? 0);
               const cashAmt      = stepAmt - priceDeposit - priceBonus;
 
               if (cashAmt > 0) {
-                if (pmId === null) job.errors.push(`client ${fid} order ${orderKey}: step ${s.id} payment method "${pmName}" not found in CRM, inserted with null`);
+                if (pmId === null) {
+                  const msg = `client ${fid} order ${orderKey}: step ${s.id} pm "${pmName}" not found, inserted with null`;
+                  console.error('[history-import]', msg);
+                  job.errors.push(msg);
+                }
                 payInserts.push({ sale_id: saleId, payment_method_id: pmId, amount: cashAmt, fitbase_step_id: Number(s.id) });
+                cPays++;
               }
-              if (priceDeposit > 0 && depositPmId !== null) {
+              if (priceDeposit > 0 && depositPmId !== null)
                 payInserts.push({ sale_id: saleId, payment_method_id: depositPmId, amount: priceDeposit });
-              }
-              if (priceBonus > 0 && bonusPmId !== null) {
+              if (priceBonus > 0 && bonusPmId !== null)
                 payInserts.push({ sale_id: saleId, payment_method_id: bonusPmId, amount: priceBonus });
-              }
 
-              // Deposit top-up → crm_balance_ops
               if (fbItemType === 'deposit') {
                 const { error: balErr } = await supabase.from('crm_balance_ops').insert({
-                  client_id: clientId,
-                  wallet:    'deposit',
-                  amount:    stepAmt,
-                  reason:    'Пополнение депозита (Fitbase)',
-                  created_by: 'fitbase_import',
+                  client_id: clientId, wallet: 'deposit', amount: stepAmt,
+                  reason: 'Пополнение депозита (Fitbase)', created_by: 'fitbase_import',
                   created_at: tsToIso(s.created_at),
                 });
-                if (balErr) job.errors.push(`client ${fid} order ${orderKey}: balance_ops: ${balErr.message}`);
+                if (balErr) {
+                  const msg = `client ${fid} order ${orderKey}: balance_ops: ${balErr.message}`;
+                  console.error('[history-import]', msg);
+                  job.errors.push(msg);
+                }
               }
             }
           }
 
           if (itemInserts.length) {
             const { error: itemErr } = await supabase.from('crm_sale_items').insert(itemInserts);
-            if (itemErr) job.errors.push(`client ${fid} order ${orderKey}: items: ${itemErr.message}`);
+            if (itemErr) {
+              const msg = `client ${fid} order ${orderKey}: items: ${itemErr.message}`;
+              console.error('[history-import]', msg);
+              job.errors.push(msg);
+            }
           }
           if (payInserts.length) {
             const { error: payErr } = await supabase.from('crm_sale_payments').insert(payInserts);
-            if (payErr) job.errors.push(`client ${fid} order ${orderKey}: payments: ${payErr.message}`);
+            if (payErr) {
+              const msg = `client ${fid} order ${orderKey}: payments: ${payErr.message}`;
+              console.error('[history-import]', msg);
+              job.errors.push(msg);
+            }
           }
 
           job.sales_upserted++;
+          cSales++;
         }
 
         // Refunds
-        const refundSteps = steps.filter(s => {
-          const st = s as Record<string, unknown>;
-          return Number(st.amount) < 0 || st.operation_type === 'refund';
-        });
-
-        for (const step of refundSteps) {
-          const s = step as Record<string, unknown>;
+        const refundSteps = (steps as Record<string, unknown>[]).filter(
+          s => Number(s.amount) < 0 || s.operation_type === 'refund',
+        );
+        for (const s of refundSteps) {
           const stepId = Number(s.id);
           const amount = Math.abs(Number(s.amount));
           if (amount <= 0) continue;
 
-          // Try to find matching crm_sale by order_id
           let saleId: string | null = null;
           if (s.order_id != null) {
             const { data: matchSale } = await supabase
-              .from('crm_sales')
-              .select('id')
-              .eq('fitbase_order_id', Number(s.order_id))
-              .maybeSingle();
+              .from('crm_sales').select('id').eq('fitbase_order_id', Number(s.order_id)).maybeSingle();
             saleId = (matchSale as { id: string } | null)?.id ?? null;
           }
 
           const { error: refErr } = await supabase.from('crm_refunds').upsert({
-            client_id:        clientId,
-            source:           'fitbase',
-            fitbase_step_id:  stepId,
-            sale_id:          saleId,
-            shift_id:         null,
-            amount,
-            reason:           'Возврат из Fitbase',
-            created_by:       ((s.created_by_user as Record<string,unknown> | null)?.name as string ?? 'fitbase_import'),
-            status:           'completed',
-            created_at:       tsToIso(s.created_at),
+            client_id: clientId, source: 'fitbase', fitbase_step_id: stepId,
+            sale_id: saleId, shift_id: null, amount,
+            reason: 'Возврат из Fitbase',
+            created_by: ((s.created_by_user as Record<string,unknown> | null)?.name as string ?? 'fitbase_import'),
+            status: 'completed', created_at: tsToIso(s.created_at),
           }, { onConflict: 'fitbase_step_id' });
 
-          if (refErr) job.errors.push(`client ${fid} refund step ${stepId}: ${refErr.message}`);
-          else job.refunds_upserted++;
+          if (refErr) {
+            const msg = `client ${fid} refund step ${stepId}: ${refErr.message}`;
+            console.error('[history-import]', msg);
+            job.errors.push(msg);
+          } else job.refunds_upserted++;
         }
+      } catch (e) {
+        const msg = `client ${fid} sales/refunds: ${(e as Error).message ?? String(e)}`;
+        console.error('[history-import]', msg);
+        job.errors.push(msg);
+      }
 
-        // ── 4.4 Visits ───────────────────────────────────────────────────────
+      // ── 4.4 Visits ──────────────────────────────────────────────────────────
+      try {
         const visits = await fetchVisitsForClient(fid);
         await sleep(200);
 
         const visitRows: Record<string, unknown>[] = [];
         for (const v of visits) {
           const vis = v as Record<string, unknown>;
-          const ev  = vis.event as Record<string, unknown> | null ?? {};
-          const tr  = ev.training as Record<string, unknown> | null ?? {};
+          const ev  = (vis.event as Record<string, unknown> | null) ?? {};
+          const tr  = (ev.training as Record<string, unknown> | null) ?? {};
           const cc  = vis.client_contract as Record<string, unknown> | null;
           visitRows.push({
-            client_id:            clientId,
-            fitbase_reg_id:       Number(vis.id),
-            fitbase_contract_id:  cc?.id != null ? Number(cc.id) : null,
-            status:               vis.status != null ? Number(vis.status) : 0,
-            visit_at:             tsToIso(ev.date ?? null),
-            training_name:        tr.name as string | null ?? null,
+            client_id:           clientId,
+            fitbase_reg_id:      Number(vis.id),
+            fitbase_contract_id: cc?.id != null ? Number(cc.id) : null,
+            status:              vis.status != null ? Number(vis.status) : 0,
+            visit_at:            tsToIso(ev.date ?? null),
+            training_name:       (tr.name as string | null) ?? null,
           });
         }
 
-        if (visitRows.length) {
-          // Upsert in chunks of 100
-          for (let vi = 0; vi < visitRows.length; vi += 100) {
-            const { error: visErr } = await supabase.from('crm_visit_history')
-              .upsert(visitRows.slice(vi, vi + 100), { onConflict: 'fitbase_reg_id' });
-            if (visErr) job.errors.push(`client ${fid} visits: ${visErr.message}`);
-            else job.visits_upserted += visitRows.slice(vi, vi + 100).length;
-          }
+        for (let vi = 0; vi < visitRows.length; vi += 100) {
+          const chunk = visitRows.slice(vi, vi + 100);
+          const { error: visErr } = await supabase.from('crm_visit_history')
+            .upsert(chunk, { onConflict: 'fitbase_reg_id' });
+          if (visErr) {
+            const msg = `client ${fid} visits chunk ${vi}: ${visErr.message}`;
+            console.error('[history-import]', msg);
+            job.errors.push(msg);
+          } else { job.visits_upserted += chunk.length; cVisits += chunk.length; }
         }
-
       } catch (e) {
-        const msg = `client ${fid}: ${(e as Error).message ?? String(e)}`;
+        const msg = `client ${fid} visits: ${(e as Error).message ?? String(e)}`;
         console.error('[history-import]', msg);
         job.errors.push(msg);
       }
 
+      console.log(`[history-import] client ${fid} (${i + 1}/${clients.length}): plans ${cPlans}, sales ${cSales}, payments ${cPays}, visits ${cVisits}`);
+
       job.processed++;
-      await checkpoint();
+      if (job.processed % 10 === 0 || i === clients.length - 1) await checkpoint();
     }
 
     // Nightly: also run linkBodyClients

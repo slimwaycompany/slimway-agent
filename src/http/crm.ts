@@ -2181,22 +2181,48 @@ export function buildCrmRouter(): Router {
 
   r.post('/kviz/api/crm/fitbase-history-import', async (req, res) => {
     if (!requireAdmin(req, res)) return;
+
+    // In-memory guard (fast path)
+    if (getHistoryImportJob()?.status === 'running') {
+      res.status(409).json({ error: 'Импорт уже идёт', ...getHistoryImportJob() }); return;
+    }
+
+    // DB guard: stale 'running' run from before server restart → mark as error
+    const { data: staleRuns } = await supabase
+      .from('crm_fitbase_import_runs').select('id').eq('status', 'running');
+    if (staleRuns?.length) {
+      await supabase.from('crm_fitbase_import_runs')
+        .update({ status: 'error', finished_at: new Date().toISOString() })
+        .eq('status', 'running');
+      console.log(`[history-import] marked ${staleRuns.length} stale running run(s) as error`);
+    }
+
     const kind = (req.body?.kind === 'nightly' ? 'nightly' : 'full') as 'full' | 'nightly';
     const rawIds = req.body?.client_ids;
     const clientIds: number[] | undefined = Array.isArray(rawIds) ? rawIds.map(Number).filter(Boolean) : undefined;
     const job = startHistoryImport(kind);
     if (!job) { res.status(409).json({ error: 'Импорт уже идёт', ...getHistoryImportJob() }); return; }
+    console.log(`[history-import] started kind=${kind} client_ids=${clientIds?.join(',') ?? 'all'}`);
     res.json({ status: 'started', kind, client_ids: clientIds ?? null });
     runFitbaseHistoryImport(kind, clientIds).catch(e => {
       const j = getHistoryImportJob();
       if (j) { j.status = 'error'; j.errors.push(String(e)); }
+      console.error('[history-import] unhandled rejection:', String(e));
     });
   });
 
-  r.get('/kviz/api/crm/fitbase-history-import/status', (req, res) => {
+  r.get('/kviz/api/crm/fitbase-history-import/status', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const job = getHistoryImportJob();
-    res.json(job ?? { status: 'idle' });
+    if (job) { res.json(job); return; }
+    // Server restarted — fall back to last DB run
+    const { data } = await supabase
+      .from('crm_fitbase_import_runs')
+      .select('*')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    res.json(data ?? { status: 'idle' });
   });
 
   // ── InBody ↔ CRM client link ──────────────────────────────────────────────────
