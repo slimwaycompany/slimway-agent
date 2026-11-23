@@ -4281,11 +4281,22 @@ function ClassesSection() {
 
 const WEEKDAYS = ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
 
+const TZ_OPTIONS = [
+  { value: 'Asia/Yekaterinburg', label: 'UTC+5 · Астана (Asia/Yekaterinburg)' },
+  { value: 'Asia/Almaty',        label: 'UTC+5 · Алматы (Asia/Almaty)' },
+  { value: 'Asia/Aqtobe',        label: 'UTC+5 · Актобе (Asia/Aqtobe)' },
+  { value: 'Asia/Atyrau',        label: 'UTC+5 · Атырау (Asia/Atyrau)' },
+  { value: 'Asia/Oral',          label: 'UTC+5 · Уральск (Asia/Oral)' },
+  { value: 'Asia/Qostanay',      label: 'UTC+5 · Костанай (Asia/Qostanay)' },
+];
+
 function BranchSection() {
   const [branch, setBranch]   = useState<Record<string, unknown>>({});
   const [hours, setHours]     = useState<{ weekday: number; is_open: boolean; open_time: string; close_time: string }[]>([]);
   const [saving, setSaving]   = useState(false);
   const [err, setErr]         = useState('');
+  // form key forces remount after load so defaultValues refresh
+  const [formKey, setFormKey] = useState(0);
 
   const load = useCallback(async () => {
     const r = await fetch('/kviz/api/crm/branch', { credentials: 'include' });
@@ -4298,6 +4309,7 @@ function BranchSection() {
         ? { weekday: i + 1, is_open: Boolean(ex.is_open), open_time: String(ex.open_time ?? '07:00'), close_time: String(ex.close_time ?? '22:00') }
         : { weekday: i + 1, is_open: true, open_time: '07:00', close_time: '22:00' };
     }));
+    setFormKey(k => k + 1);
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -4305,18 +4317,26 @@ function BranchSection() {
     e.preventDefault(); setSaving(true); setErr('');
     const fd = new FormData(e.currentTarget);
     const branchBody: Record<string, unknown> = {};
-    for (const k of ['legal_name','bin','country','city','address','phone','timezone','currency','language']) {
+    // nullable fields
+    for (const k of ['name', 'legal_name', 'bin', 'country', 'city', 'address', 'phone']) {
       branchBody[k] = fd.get(k) || null;
     }
-    const socialsStr = String(fd.get('socials') ?? '').trim();
-    if (socialsStr) {
-      try { branchBody.socials = JSON.parse(socialsStr); }
-      catch { setErr('Поле «Соцсети» должно быть в формате JSON'); setSaving(false); return; }
-    } else { branchBody.socials = null; }
+    // NOT NULL fields — only send if non-empty
+    for (const k of ['timezone', 'currency', 'language']) {
+      const v = String(fd.get(k) ?? '').trim();
+      if (v) branchBody[k] = v;
+    }
+    // Socials: 4 separate inputs → object
+    const socials: Record<string, string> = {};
+    for (const k of ['instagram', 'whatsapp', 'tiktok', 'telegram']) {
+      const v = String(fd.get(`socials_${k}`) ?? '').trim();
+      if (v) socials[k] = v;
+    }
+    branchBody.socials = socials;
 
     const { ok, data } = await api('PUT', '/kviz/api/crm/branch', { branch: branchBody, hours });
     setSaving(false);
-    if (ok) toast.success('Сохранено');
+    if (ok) { toast.success('Сохранено'); load(); }
     else setErr((data as { error?: string }).error || 'Ошибка');
   }
 
@@ -4325,20 +4345,26 @@ function BranchSection() {
   }
 
   const sv = (key: string, def = '') => branch[key] !== undefined && branch[key] !== null ? String(branch[key]) : def;
+  const socialsObj = (branch.socials && typeof branch.socials === 'object') ? branch.socials as Record<string, string> : {};
+  const ss = (k: string) => socialsObj[k] ?? '';
 
   return (
     <div style={S.section}>
-      <form onSubmit={save}>
+      <form key={formKey} onSubmit={save}>
         <div style={{ marginBottom: 20 }}>
-          <div style={S.subTitle}>Реквизиты</div>
+          <div style={S.subTitle}>Карточка филиала</div>
           <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 2, minWidth: 200 }}>
+              <label style={S.label}>Название филиала *</label>
+              <input style={S.inp} name="name" required defaultValue={sv('name')} />
+            </div>
             <div style={{ flex: 2, minWidth: 200 }}>
               <label style={S.label}>Юридическое название</label>
               <input style={S.inp} name="legal_name" defaultValue={sv('legal_name')} />
             </div>
             <div style={{ flex: 1, minWidth: 140 }}>
-              <label style={S.label}>БИН</label>
-              <input style={S.inp} name="bin" defaultValue={sv('bin')} />
+              <label style={S.label}>БИН (12 цифр)</label>
+              <input style={S.inp} name="bin" defaultValue={sv('bin')} maxLength={12} inputMode="numeric" />
             </div>
           </div>
           <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
@@ -4356,24 +4382,45 @@ function BranchSection() {
             <input style={S.inp} name="address" defaultValue={sv('address')} />
           </div>
           <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 140 }}>
+            <div style={{ flex: 1, minWidth: 160 }}>
               <label style={S.label}>Телефон</label>
-              <input style={S.inp} name="phone" defaultValue={sv('phone')} />
+              <input style={S.inp} name="phone" defaultValue={sv('phone')} inputMode="tel" />
             </div>
-            <div style={{ flex: 1, minWidth: 140 }}>
+            <div style={{ flex: 2, minWidth: 200 }}>
               <label style={S.label}>Часовой пояс</label>
-              <input style={S.inp} name="timezone" defaultValue={sv('timezone', 'Asia/Yekaterinburg')} />
+              <select style={S.inp} name="timezone" defaultValue={sv('timezone', 'Asia/Yekaterinburg')}>
+                {TZ_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 140 }}>
+            <div style={{ flex: 1, minWidth: 120 }}>
               <label style={S.label}>Валюта</label>
-              <input style={S.inp} name="currency" defaultValue={sv('currency', 'KZT')} />
+              <select style={S.inp} name="currency" defaultValue={sv('currency', 'KZT')}>
+                <option value="KZT">KZT — тенге</option>
+                <option value="RUB">RUB — рубль</option>
+                <option value="USD">USD — доллар</option>
+              </select>
             </div>
-            <div style={{ flex: 1, minWidth: 140 }}>
+            <div style={{ flex: 1, minWidth: 120 }}>
               <label style={S.label}>Язык</label>
-              <input style={S.inp} name="language" defaultValue={sv('language', 'ru')} />
+              <select style={S.inp} name="language" defaultValue={sv('language', 'ru')}>
+                <option value="ru">Русский</option>
+                <option value="kk">Қазақша</option>
+              </select>
             </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={S.subTitle}>Соцсети</div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
+            {(['instagram','whatsapp','tiktok','telegram'] as const).map(k => (
+              <div key={k} style={{ flex: 1, minWidth: 160 }}>
+                <label style={S.label}>{k.charAt(0).toUpperCase() + k.slice(1)}</label>
+                <input style={S.inp} name={`socials_${k}`} defaultValue={ss(k)} placeholder={k === 'whatsapp' ? '7XXXXXXXXXX' : '@username'} />
+              </div>
+            ))}
           </div>
         </div>
 

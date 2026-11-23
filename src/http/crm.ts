@@ -1712,12 +1712,47 @@ export function buildCrmRouter(): Router {
     if (!requirePerm(req, res, 'settings.branch', 'edit', session)) return;
     try {
       const { branch, hours } = req.body as { branch: Record<string, unknown>; hours?: unknown[] };
-      const allowed = ['legal_name','bin','country','city','address','phone','timezone','currency','language','socials'];
+      const allowed = ['name','legal_name','bin','country','city','address','phone','timezone','currency','language','socials'];
       const branchUpd: Record<string, unknown> = {};
       for (const k of allowed) if (branch && k in branch) branchUpd[k] = branch[k];
+
+      // Validations
+      if (branchUpd.bin) {
+        if (!/^\d{12}$/.test(String(branchUpd.bin))) {
+          res.status(400).json({ error: 'БИН должен содержать 12 цифр' }); return;
+        }
+      }
+      if (branchUpd.phone) {
+        const ph = normalizePhone(String(branchUpd.phone));
+        if (!ph) { res.status(400).json({ error: 'Неверный формат телефона' }); return; }
+        branchUpd.phone = ph;
+      }
+      // NOT NULL fields — skip if empty/null
+      for (const k of ['timezone', 'currency', 'language']) {
+        if (!branchUpd[k]) delete branchUpd[k];
+      }
+      // socials: ensure object, never null
+      if ('socials' in branchUpd) {
+        branchUpd.socials = (branchUpd.socials && typeof branchUpd.socials === 'object') ? branchUpd.socials : {};
+      }
+
+      // Hours validation
+      const DAY_NAMES = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+      if (Array.isArray(hours)) {
+        for (const h of hours) {
+          const hr = h as Record<string, unknown>;
+          if (hr.is_open && hr.open_time && hr.close_time) {
+            if (String(hr.close_time) <= String(hr.open_time)) {
+              const dn = DAY_NAMES[Number(hr.weekday) - 1] ?? '';
+              res.status(400).json({ error: `Время закрытия должно быть позже открытия (${dn})` }); return;
+            }
+          }
+        }
+      }
+
       if (Object.keys(branchUpd).length > 0) {
         const { error } = await supabase.from('crm_branches').update(branchUpd).eq('id', BRANCH_ID);
-        if (error) { res.status(500).json({ error: error.message }); return; }
+        if (error) { console.error('[branch] update:', error); res.status(500).json({ error: 'Не удалось сохранить, попробуйте ещё раз' }); return; }
       }
       if (Array.isArray(hours)) {
         const rows = hours.map((h: unknown) => {
@@ -1725,10 +1760,10 @@ export function buildCrmRouter(): Router {
           return { branch_id: BRANCH_ID, weekday: Number(hr.weekday), is_open: Boolean(hr.is_open), open_time: hr.open_time || null, close_time: hr.close_time || null };
         });
         const { error } = await supabase.from('crm_branch_hours').upsert(rows, { onConflict: 'branch_id,weekday' });
-        if (error) { res.status(500).json({ error: error.message }); return; }
+        if (error) { console.error('[branch hours] upsert:', error); res.status(500).json({ error: 'Не удалось сохранить, попробуйте ещё раз' }); return; }
       }
       res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: String(e) }); }
+    } catch (e) { console.error('[branch] put:', e); res.status(500).json({ error: 'Не удалось сохранить, попробуйте ещё раз' }); }
   });
 
   // ── Schedule: day view ────────────────────────────────────────────────────────
