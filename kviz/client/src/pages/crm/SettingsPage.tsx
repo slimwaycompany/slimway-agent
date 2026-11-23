@@ -1125,6 +1125,9 @@ interface IbPreview { total: number; new: number; duplicates: number; linked: nu
 interface IbImportResult { added: number; skipped: number; without_client: number }
 interface IbTest { id: string; inbody_id: string; tested_at: string; phone: string | null; weight: number | null }
 
+interface LinkStats { linked: number; no_crm_pair: number; disputed: Array<{ body_id: number; phone: string | null; crm_ids: string[] }> }
+interface HiJob { status: string; kind?: string; total_clients?: number; processed?: number; plans_upserted?: number; sales_upserted?: number; refunds_upserted?: number; visits_upserted?: number; errors?: string[] }
+
 function InBodySettingsSection() {
   type ParsedRows = ReturnType<typeof parseLookinBodyCSV>;
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1135,6 +1138,63 @@ function InBodySettingsSection() {
   const [unlinked, setUnlinked] = useState<IbTest[] | null>(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
+
+  // Link stats state
+  const [linkStats, setLinkStats]   = useState<LinkStats | null>(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError]   = useState('');
+  const [linkResult, setLinkResult] = useState<{ linked_by_fb: number; linked_by_phone: number } | null>(null);
+
+  // History import state
+  const [hiJob, setHiJob]       = useState<HiJob | null>(null);
+  const [hiError, setHiError]   = useState('');
+  const hiTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => { if (hiTimerRef.current) clearInterval(hiTimerRef.current); }, []);
+
+  async function loadLinkStats() {
+    setLinkLoading(true); setLinkError(''); setLinkResult(null);
+    try {
+      const r = await fetch('/kviz/api/crm/inbody-link-stats', { credentials: 'include' });
+      if (!r.ok) { setLinkError('Ошибка загрузки'); return; }
+      setLinkStats(await r.json());
+    } catch (e) { setLinkError(String(e)); } finally { setLinkLoading(false); }
+  }
+
+  async function runLinkAuto() {
+    setLinkLoading(true); setLinkError(''); setLinkResult(null);
+    try {
+      const r = await fetch('/kviz/api/crm/inbody-link-auto', { method: 'POST', credentials: 'include' });
+      const d = await r.json();
+      if (!r.ok) { setLinkError(d.error || 'Ошибка'); return; }
+      setLinkResult(d); await loadLinkStats();
+    } catch (e) { setLinkError(String(e)); } finally { setLinkLoading(false); }
+  }
+
+  async function pollHiStatus() {
+    try {
+      const r = await fetch('/kviz/api/crm/fitbase-history-import/status', { credentials: 'include' });
+      const d: HiJob = await r.json().catch(() => ({ status: 'error' }));
+      setHiJob(d);
+      if (d.status === 'done' || d.status === 'error') {
+        if (hiTimerRef.current) clearInterval(hiTimerRef.current);
+      }
+    } catch {}
+  }
+
+  async function startHiImport(kind: 'full' | 'nightly') {
+    setHiError('');
+    try {
+      const r = await fetch('/kviz/api/crm/fitbase-history-import', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok && r.status !== 409) { setHiError(d?.error || `Ошибка (${r.status})`); return; }
+      hiTimerRef.current = setInterval(pollHiStatus, 2000);
+      pollHiStatus();
+    } catch { setHiError('Не удалось запустить импорт'); }
+  }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1252,6 +1312,83 @@ function InBodySettingsSection() {
           </div>
         ))}
         {unlinked !== null && !unlinked.length && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Все тесты привязаны</div>}
+      </div>
+
+      {/* ── Связь body_clients → crm_clients ──────────────────────────────── */}
+      <div style={SS.block}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={SS.title}>Связь замеров с клиентами CRM</div>
+          <button style={{ padding: '6px 14px', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }} onClick={loadLinkStats} disabled={linkLoading}>{linkStats === null ? 'Загрузить' : '↺ Обновить'}</button>
+        </div>
+        {linkError && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 8 }}>{linkError}</div>}
+        {linkResult && <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 8, padding: '8px 14px', fontSize: 13, marginBottom: 10 }}>✓ Привязано: по Fitbase ID <b>{linkResult.linked_by_fb}</b>, по телефону <b>{linkResult.linked_by_phone}</b></div>}
+        {linkStats && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+              <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--primary)' }}>{linkStats.linked}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)' }}>Привязано</div>
+              </div>
+              <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--warning, #f59e0b)' }}>{linkStats.disputed.length}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)' }}>Спорных</div>
+              </div>
+              <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-2)' }}>{linkStats.no_crm_pair}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)' }}>Без пары CRM</div>
+              </div>
+            </div>
+            {linkStats.disputed.length > 0 && (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Спорные (несколько клиентов CRM на один телефон):</div>
+                {linkStats.disputed.map(d => (
+                  <div key={d.body_id} style={{ padding: '4px 0', fontSize: 12, color: 'var(--text-2)' }}>
+                    body #{d.body_id} · {d.phone ?? '—'} → {d.crm_ids.length} клиента CRM
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <button style={{ ...SS.btn, background: 'var(--primary)', color: 'var(--on-primary)' }} onClick={runLinkAuto} disabled={linkLoading}>
+          {linkLoading ? 'Привязываем…' : 'Автопривязка (по Fitbase ID + телефону)'}
+        </button>
+      </div>
+
+      {/* ── Импорт истории из Fitbase ─────────────────────────────────────── */}
+      <div style={SS.block}>
+        <div style={SS.title}>Импорт истории из Fitbase</div>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>Загружает абонементы, продажи, возвраты и визиты всех клиентов CRM из Fitbase.</div>
+        {hiError && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 8 }}>{hiError}</div>}
+        {hiJob && hiJob.status === 'running' && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ background: 'var(--border)', borderRadius: 4, height: 6, overflow: 'hidden', marginBottom: 6 }}>
+              <div style={{ background: 'var(--primary)', height: '100%', width: `${(hiJob.total_clients ?? 0) > 0 ? Math.round(((hiJob.processed ?? 0) / hiJob.total_clients!) * 100) : 0}%`, transition: 'width 0.5s' }} />
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
+              {hiJob.processed ?? 0} / {hiJob.total_clients ?? 0} клиентов · планы {hiJob.plans_upserted ?? 0} · продажи {hiJob.sales_upserted ?? 0} · визиты {hiJob.visits_upserted ?? 0}
+            </div>
+          </div>
+        )}
+        {hiJob && hiJob.status === 'done' && (
+          <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 8, padding: '8px 14px', fontSize: 13, marginBottom: 10 }}>
+            ✓ Готово: {hiJob.processed ?? 0} клиентов · планы {hiJob.plans_upserted ?? 0} · продажи {hiJob.sales_upserted ?? 0} · возвраты {hiJob.refunds_upserted ?? 0} · визиты {hiJob.visits_upserted ?? 0}
+            {(hiJob.errors?.length ?? 0) > 0 && <div style={{ color: 'var(--warning, #f59e0b)', marginTop: 4 }}>Ошибок: {hiJob.errors!.length}</div>}
+          </div>
+        )}
+        {hiJob && hiJob.status === 'error' && (
+          <div style={{ background: 'var(--danger-soft)', color: 'var(--danger)', borderRadius: 8, padding: '8px 14px', fontSize: 13, marginBottom: 10 }}>
+            Ошибка: {hiJob.errors?.[0] ?? 'неизвестная'}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button style={{ ...SS.btn, background: 'var(--primary)', color: 'var(--on-primary)', flex: 1, minWidth: 160 }} onClick={() => startHiImport('full')} disabled={hiJob?.status === 'running'}>
+            {hiJob?.status === 'running' ? 'Импорт идёт…' : 'Полный импорт'}
+          </button>
+          <button style={{ ...SS.btn, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', flex: 1, minWidth: 160 }} onClick={() => startHiImport('nightly')} disabled={hiJob?.status === 'running'}>
+            Только активные
+          </button>
+        </div>
       </div>
     </div>
   );

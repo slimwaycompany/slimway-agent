@@ -22,14 +22,15 @@ interface RefClient { id: string; full_name: string; phone: string | null }
 
 interface ClientBalance { deposit: number; bonus: number }
 interface ClientPlan {
-  id: string; plan_id: string; status: string; purchased_at: string;
+  id: string; plan_id: string | null; source?: string; name?: string | null; status: string; purchased_at: string;
   activated_at: string | null; valid_until: string | null;
+  sessions_total?: number | null; sessions_left?: number | null; needs_split?: boolean;
   plan: { id: string; name: string; kind: string } | null;
   crm_client_plan_items: { device_type_code: string; sessions_total: number; sessions_left: number; phase: string }[];
 }
 interface SaleRow {
-  id: string; number: number; total: number; status: string; created_at: string;
-  cashier: string; discount_kind: string;
+  id: string; number: number | null; total: number; status: string; created_at: string;
+  cashier: string | null; discount_kind: string | null; source?: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -402,13 +403,17 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
             return (
               <div key={cp.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>{cp.plan?.name ?? cp.plan_id}</span>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{cp.plan?.name ?? cp.name ?? cp.plan_id ?? '—'}</span>
                   <span style={{ fontSize: 11, fontWeight: 600, color: st.color, background: st.color + '1a', padding: '2px 8px', borderRadius: 4 }}>{st.text}</span>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>
                   {cp.activated_at && <span>Активирован: {fmtDate(cp.activated_at)}</span>}
                   {cp.valid_until && <span style={{ marginLeft: 8 }}>До: {fmtDate(cp.valid_until)}</span>}
+                  {cp.source === 'fitbase' && <span style={{ marginLeft: 8, color: 'var(--accent)', fontSize: 11 }}>Fitbase</span>}
                 </div>
+                {cp.needs_split && (
+                  <div style={{ fontSize: 11, color: 'var(--warning, #f59e0b)', marginTop: 2 }}>⚠ Нужно разделить по аппаратам</div>
+                )}
                 {cp.crm_client_plan_items.length > 0 && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
                     {cp.crm_client_plan_items.map((it, i) => (
@@ -416,6 +421,11 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
                         {it.device_type_code}: {it.sessions_left}/{it.sessions_total} сеансов
                       </span>
                     ))}
+                  </div>
+                )}
+                {cp.source === 'fitbase' && cp.sessions_left != null && cp.crm_client_plan_items.length === 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 4 }}>
+                    Остаток: {cp.sessions_left}{cp.sessions_total != null ? `/${cp.sessions_total}` : ''} сеансов
                   </div>
                 )}
               </div>
@@ -431,12 +441,15 @@ function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
           {(sales ?? []).map(sale => (
             <div key={sale.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>#{sale.number} · {sale.total.toLocaleString('ru-RU')} ₸</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {sale.number != null ? `#${sale.number}` : 'Fitbase'} · {sale.total.toLocaleString('ru-RU')} ₸
+                </span>
                 {sale.status !== 'completed' && <span style={{ fontSize: 11, color: 'var(--danger)', background: 'var(--danger-soft)', padding: '1px 6px', borderRadius: 4 }}>{sale.status}</span>}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
-                {sale.cashier} · {fmtDate(sale.created_at)}
-                {sale.discount_kind !== 'none' && ` · скидка (${sale.discount_kind})`}
+                {sale.cashier ?? '—'} · {fmtDate(sale.created_at)}
+                {sale.discount_kind && sale.discount_kind !== 'none' && ` · скидка (${sale.discount_kind})`}
+                {sale.source === 'fitbase' && <span style={{ marginLeft: 6, color: 'var(--accent)', fontSize: 11 }}>Fitbase</span>}
               </div>
             </div>
           ))}

@@ -35,6 +35,7 @@ import { runControl, runControlRange } from './jobs/control';
 import { syncControlSheet, shouldSyncSheet } from './jobs/controlSheetSync';
 import { runProbeControl } from './jobs/probeControl';
 import { runProbeClientHistory } from './jobs/probeClientHistory';
+import { runFitbaseHistoryImport, startHistoryImport, getHistoryImportJob } from './jobs/fitbaseHistoryImport';
 import { POSITION_PRESETS } from './core/permissions';
 import { mountTelegramRoute } from './http/telegram';
 import { buildCheckinRouter } from './http/checkin';
@@ -393,6 +394,31 @@ async function handlePbxSync(req: express.Request, res: express.Response): Promi
 }
 app.get('/run/pbx-sync',  handlePbxSync);
 app.post('/run/pbx-sync', handlePbxSync);
+
+// fitbase-history-import — start full or nightly history import
+async function handleFitbaseHistoryImport(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const kind = (req.query.kind === 'nightly' ? 'nightly' : 'full') as 'full' | 'nightly';
+  const job = startHistoryImport(kind);
+  if (!job) { res.status(409).json({ error: 'Импорт уже идёт', ...getHistoryImportJob() }); return; }
+  res.status(202).json({ status: 'accepted', kind });
+  runFitbaseHistoryImport(kind).catch(e => {
+    const j = getHistoryImportJob();
+    if (j) { j.status = 'error'; j.errors.push(String(e)); }
+  });
+}
+
+async function handleFitbaseHistoryStatus(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const job = getHistoryImportJob();
+  if (!job) { res.json({ status: 'idle' }); return; }
+  res.json(job);
+}
+
+app.get('/run/fitbase-history-import',         handleFitbaseHistoryImport);
+app.post('/run/fitbase-history-import',        handleFitbaseHistoryImport);
+app.get('/run/fitbase-history-import/status',  handleFitbaseHistoryStatus);
+app.post('/run/fitbase-history-import/status', handleFitbaseHistoryStatus);
 
 // shifts-autoclose — must be before generic /run/:job
 app.use(buildShiftsAutocloseRoute());

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession, requireAuth, requireAdmin, getSessionWithPerms, can, requirePerm } from './auth';
+import { startHistoryImport, runFitbaseHistoryImport, getHistoryImportJob, linkBodyClients, getLinkStats } from '../jobs/fitbaseHistoryImport';
 
 const BRANCH_ID         = '00000000-0000-0000-0000-000000000001';
 const GENERIC_CRM_ERROR = 'Ошибка кассы, сообщите администратору';
@@ -1440,14 +1441,14 @@ export function buildCrmRouter(): Router {
       // Trigger lifecycle update for this client's plans
       const today = todayUtc5();
       const { data: cps } = await supabase.from('crm_client_plans')
-        .select('id,plan_id,status,planned_start_date,auto_activate_on,valid_until,extra_until,activated_at,purchased_at,freeze_days_used,crm_client_plan_items(*)')
+        .select('id,plan_id,source,name,status,planned_start_date,auto_activate_on,valid_until,extra_until,activated_at,purchased_at,freeze_days_used,sessions_total,sessions_left,needs_split,crm_client_plan_items(*)')
         .eq('client_id', req.params.id).order('purchased_at', { ascending: false });
 
       for (const cp of cps || []) {
         if (cp.status === 'not_activated') {
           const shouldActivate = (cp.planned_start_date && cp.planned_start_date <= today)
             || (cp.auto_activate_on && cp.auto_activate_on <= today);
-          if (shouldActivate) {
+          if (shouldActivate && cp.plan_id) { // only auto-activate CRM plans with a valid plan_id
             const startDate = cp.planned_start_date || today;
             const { data: plan } = await supabase.from('crm_plans')
               .select('validity_days,extra_days').eq('id', cp.plan_id).single();
@@ -1469,14 +1470,14 @@ export function buildCrmRouter(): Router {
         }
       }
 
-      // Join with plan names
-      const planIds = [...new Set((cps || []).map(cp => cp.plan_id))];
+      // Join with plan names (only for plans with plan_id)
+      const planIds = [...new Set((cps || []).map(cp => cp.plan_id).filter(Boolean))];
       const { data: plans } = planIds.length
         ? await supabase.from('crm_plans').select('id,name,kind').in('id', planIds)
         : { data: [] };
       const planMap = new Map((plans || []).map((p: Record<string,unknown>) => [p.id, p]));
 
-      res.json((cps || []).map(cp => ({ ...cp, plan: planMap.get(cp.plan_id) ?? null })));
+      res.json((cps || []).map(cp => ({ ...cp, plan: cp.plan_id ? (planMap.get(cp.plan_id) ?? null) : null })));
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -2173,6 +2174,141 @@ export function buildCrmRouter(): Router {
     try {
       const result = await runCrmLifecycle();
       res.json({ ok: true, ...result });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Fitbase history import (admin, from UI) ───────────────────────────────────
+
+  r.post('/kviz/api/crm/fitbase-history-import', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const kind = (req.body?.kind === 'nightly' ? 'nightly' : 'full') as 'full' | 'nightly';
+    const job = startHistoryImport(kind);
+    if (!job) { res.status(409).json({ error: 'Импорт уже идёт', ...getHistoryImportJob() }); return; }
+    res.json({ status: 'started', kind });
+    runFitbaseHistoryImport(kind).catch(e => {
+      const j = getHistoryImportJob();
+      if (j) { j.status = 'error'; j.errors.push(String(e)); }
+    });
+  });
+
+  r.get('/kviz/api/crm/fitbase-history-import/status', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const job = getHistoryImportJob();
+    res.json(job ?? { status: 'idle' });
+  });
+
+  // ── InBody ↔ CRM client link ──────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/inbody-link-stats', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const stats = await getLinkStats();
+      res.json(stats);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/inbody-link-auto', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const result = await linkBodyClients();
+      res.json({ ok: true, ...result });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/body-clients/:id/link', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      if (!b.crm_client_id) { res.status(400).json({ error: 'crm_client_id required' }); return; }
+      const { data: client } = await supabase.from('crm_clients').select('id').eq('id', b.crm_client_id as string).eq('is_deleted', false).maybeSingle();
+      if (!client) { res.status(404).json({ error: 'Клиент CRM не найден' }); return; }
+      const { error } = await supabase.from('body_clients')
+        .update({ crm_client_id: b.crm_client_id, crm_link_method: 'manual' })
+        .eq('id', Number(req.params.id));
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/body-clients/:id/unlink', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const { error } = await supabase.from('body_clients')
+        .update({ crm_client_id: null, crm_link_method: null })
+        .eq('id', Number(req.params.id));
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Client summary (LTV, active plan, visits, last measure) ──────────────────
+
+  r.get('/kviz/api/crm/clients/:id/summary', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const clientId = req.params.id;
+
+      // LTV: sum of sale totals minus sum of refund amounts (simple approximation)
+      const [salesRes, refundsRes, activePlanRes, visitsRes, bodyRes] = await Promise.all([
+        supabase.from('crm_sales').select('total').eq('client_id', clientId).not('status', 'eq', 'refunded'),
+        supabase.from('crm_refunds').select('amount').eq('client_id', clientId),
+        supabase.from('crm_client_plans')
+          .select('id,name,plan_id,status,valid_until,sessions_left,source')
+          .eq('client_id', clientId)
+          .in('status', ['active', 'not_activated'])
+          .order('purchased_at', { ascending: false })
+          .limit(1),
+        supabase.from('crm_visit_history')
+          .select('visit_date,status')
+          .eq('client_id', clientId),
+        supabase.from('body_clients')
+          .select('id, fitbase_client_id')
+          .eq('crm_client_id', clientId)
+          .limit(1),
+      ]);
+
+      const salesTotal   = (salesRes.data ?? []).reduce((s: number, r: Record<string,unknown>) => s + Number(r.total ?? 0), 0);
+      const refundsTotal = (refundsRes.data ?? []).reduce((s: number, r: Record<string,unknown>) => s + Number(r.amount ?? 0), 0);
+      const ltv = salesTotal - refundsTotal;
+
+      const activePlanRaw = (activePlanRes.data ?? [])[0] as Record<string,unknown> | null ?? null;
+      let activePlanWithName: Record<string,unknown> | null = activePlanRaw;
+      if (activePlanRaw?.plan_id) {
+        const { data: planRow } = await supabase.from('crm_plans').select('name').eq('id', activePlanRaw.plan_id as string).single();
+        if (planRow) activePlanWithName = { ...activePlanRaw, plan_name: (planRow as Record<string,unknown>).name };
+      } else if (activePlanRaw?.name) {
+        activePlanWithName = { ...activePlanRaw, plan_name: activePlanRaw.name };
+      }
+
+      const attendedVisits = (visitsRes.data ?? []).filter((v: Record<string,unknown>) => v.status === 3);
+      const visits_attended_total = attendedVisits.length;
+      const sortedDates = attendedVisits.map((v: Record<string,unknown>) => v.visit_date as string | null).filter(Boolean).sort();
+      const last_visit_at = sortedDates.length ? sortedDates[sortedDates.length - 1] : null;
+
+      const bodyClient = (bodyRes.data ?? [])[0] as Record<string,unknown> | undefined;
+      const body_client_id = bodyClient?.id ?? null;
+
+      // Last inbody_test via body_client_id
+      let inbody_last: string | null = null;
+      if (body_client_id) {
+        const { data: ibRow } = await supabase.from('inbody_tests')
+          .select('tested_at').eq('body_client_id', body_client_id)
+          .order('tested_at', { ascending: false }).limit(1);
+        inbody_last = (ibRow ?? [])[0]?.tested_at ?? null;
+      }
+
+      // Last measurement via phone
+      const { data: clientRow } = await supabase.from('crm_clients').select('phone').eq('id', clientId).single();
+      let measure_last: string | null = null;
+      if (clientRow?.phone) {
+        const digits = (clientRow.phone as string).replace(/\D/g, '').slice(-10);
+        const { data: mRow } = await supabase.from('measurements')
+          .select('measured_at').ilike('phone_digits', `%${digits}`)
+          .order('measured_at', { ascending: false }).limit(1);
+        measure_last = (mRow ?? [])[0]?.measured_at ?? null;
+      }
+
+      res.json({ ltv, active_plan: activePlanWithName, visits_attended_total, last_visit_at, inbody_last, measure_last, body_client_id });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
