@@ -415,8 +415,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
 
     // 4. Per-client loop
     console.log(`[history-import] starting loop: ${clients.length} clients`);
-    let pmDiagCount  = 0; // log first few payment objects to diagnose pm name field
-    let negDiagCount = 0; // log first few negative steps to identify operation types
+    let pmDiagCount = 0; // log first few payment objects to diagnose pm name field
 
     for (let i = 0; i < clients.length; i++) {
       const { id: clientId, fitbase_client_id: fid } = clients[i];
@@ -480,12 +479,12 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
         await sleep(300 + Math.random() * 200);
 
         const refundSteps = (steps as Record<string, unknown>[]).filter(
-          s => Number((s as Record<string,unknown>).amount) < 0 || (s as Record<string,unknown>).operation_type === 'refund',
+          s => Number((s as Record<string,unknown>).amount) < 0,
         );
 
         const orderMap = new Map<string, Record<string, unknown>[]>();
         for (const step of steps as Record<string, unknown>[]) {
-          if (Number(step.amount) < 0 || step.operation_type === 'refund') continue;
+          if (Number(step.amount) < 0) continue;
           if (step.order_id == null) {
             job.errors.push(`client ${fid}: step ${step.id} has no order_id, skipped`);
             continue;
@@ -655,23 +654,23 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
         // Refunds — log diagnostics + match by contract/item, not order_id
         for (const step of refundSteps) {
           const s = step as Record<string, unknown>;
-          if (negDiagCount < 10) {
-            console.log(`[history-import] NEGATIVE_STEP client ${fid}: ${JSON.stringify({
-              id: s.id, operation_type: s.operation_type, item_type: s.item_type,
-              contract_id: s.contract_id,
-              item_id: (s.item as Record<string,unknown> | null)?.id,
-              order_id: s.order_id, amount: s.amount,
-              payment_method: (s.payment_method as Record<string,unknown> | null)?.name
-                ?? (s.payment_type as Record<string,unknown> | null)?.name,
-              comment: s.comment,
-            })}`);
-            negDiagCount++;
-          }
+          const rawRefType    = String(s.item_type ?? '').toLowerCase().trim();
+          const crmRefType    = ITEM_TYPE_MAP[rawRefType];
 
-          // Non-refund negative steps (adjustments, corrections, etc.) — count, don't create refund
-          if (s.operation_type !== 'refund') {
-            const opType = String(s.operation_type ?? 'unknown');
-            job.stats.negative_other[opType] = (job.stats.negative_other[opType] ?? 0) + 1;
+          console.log(`[history-import] NEGATIVE_STEP client ${fid}: ${JSON.stringify({
+            id: s.id, operation_type: s.operation_type, item_type: rawRefType,
+            contract_id: s.contract_id,
+            item_id: (s.item as Record<string,unknown> | null)?.id,
+            order_id: s.order_id, amount: s.amount,
+            payment_method: (s.payment_method as Record<string,unknown> | null)?.name
+              ?? (s.payment_type as Record<string,unknown> | null)?.name,
+            comment: s.comment,
+          })}`);
+
+          // Only plan (contract/service) and product item types are refunds
+          if (crmRefType !== 'plan' && crmRefType !== 'product') {
+            job.stats.negative_other[rawRefType || 'unknown'] =
+              (job.stats.negative_other[rawRefType || 'unknown'] ?? 0) + 1;
             continue;
           }
 
@@ -679,9 +678,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
           const amount        = Math.abs(Number(s.amount));
           if (amount <= 0) continue;
 
-          // For plan/contract items: item.id IS the fitbase_contract_id in crm_sale_items
-          const rawRefType    = String(s.item_type ?? '').toLowerCase().trim();
-          const isContractRef = ITEM_TYPE_MAP[rawRefType] === 'plan';
+          const isContractRef = crmRefType === 'plan';
           const refFbId       = (s.item as Record<string,unknown> | null)?.id != null ? Number((s.item as Record<string,unknown>).id) : null;
           const refContractId = isContractRef ? refFbId : null;
           const refProductId  = isContractRef ? null    : refFbId;
