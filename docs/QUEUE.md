@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 85 | crm-core, crm-kassa, zamery | Карточка клиента v2 эт.2–3: связка с InBody, импорт абонементов/продаж/визитов из Fitbase, сводный API, кнопка запуска | `docs/tasks/85-crm-core-fitbase-history-import.md` | 🔧 в работе (claude-sonnet-4-6, 23.11.2026) |
 | 84 | crm-core | Карточка клиента v2 этап 1: зонд Fitbase (продажи, оплаты, сеансы) + связка с InBody, только чтение | `docs/tasks/84-crm-core-client-card-probe.md` | ✅ готово (0fa1920) |
 | 83-1 | crm-core, crm-schedule | BranchSection: socials как 4 поля, NOT NULL поля-списки (timezone/currency/language), обязательное name, валидации БИН/телефона/часов | ТЗ в чате | ❓ проверить на проде |
 | 83 | crm-schedule | Визуальные правки, поиск, время, часы филиала, badge-этикетки, BranchSection | ТЗ в чате | ❓ проверить на проде |
