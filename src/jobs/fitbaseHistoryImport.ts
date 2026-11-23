@@ -208,7 +208,7 @@ async function fetchVisitsForClient(clientId: number): Promise<Record<string, un
 
 // ── Main import ───────────────────────────────────────────────────────────────
 
-export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise<void> {
+export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientIds?: number[]): Promise<void> {
   if (!_job) return; // must be started via startHistoryImport first
 
   // 1. Create run record in DB
@@ -221,15 +221,18 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
   const job = _job;
   job.run_id = runId;
 
+  let lastFid = 0;
+
   async function checkpoint() {
     if (!runId) return;
     await supabase.from('crm_fitbase_import_runs').update({
-      processed:        job.processed,
-      plans_upserted:   job.plans_upserted,
-      sales_upserted:   job.sales_upserted,
-      refunds_upserted: job.refunds_upserted,
-      visits_upserted:  job.visits_upserted,
-      errors:           job.errors.slice(-50),
+      processed:               job.processed,
+      plans_upserted:          job.plans_upserted,
+      sales_upserted:          job.sales_upserted,
+      refunds_upserted:        job.refunds_upserted,
+      visits_upserted:         job.visits_upserted,
+      errors:                  job.errors.slice(-50),
+      last_client_fitbase_id:  lastFid || null,
     }).eq('id', runId);
   }
 
@@ -274,6 +277,8 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
       }));
     }
 
+    if (clientIds?.length) clients = clients.filter(c => clientIds.includes(c.fitbase_client_id));
+
     job.total_clients = clients.length;
     if (runId) {
       await supabase.from('crm_fitbase_import_runs').update({ total_clients: clients.length }).eq('id', runId);
@@ -303,6 +308,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
       const { id: clientId, fitbase_client_id: fid } = clients[i];
 
       try {
+        lastFid = fid;
         await sleep(100); // small pause before each client
 
         // ── 4.1 Contracts ─────────────────────────────────────────────────────
@@ -328,7 +334,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
           const planStartDate  = toDate(contract.begin_date);
           const validUntil     = toDate(contract.end_date);
 
-          await supabase.from('crm_client_plans').upsert({
+          const { error: planErr } = await supabase.from('crm_client_plans').upsert({
             client_id:            clientId,
             branch_id:            BRANCH_ID,
             fitbase_contract_id:  Number(contract.id),
@@ -345,7 +351,8 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
             needs_split:          needsSplit,
           }, { onConflict: 'fitbase_contract_id' });
 
-          job.plans_upserted++;
+          if (planErr) { job.errors.push(`client ${fid} contract ${contract.id}: ${planErr.message}`); }
+          else job.plans_upserted++;
         }
 
         // ── 4.2 & 4.3 Sales + Refunds ─────────────────────────────────────────
@@ -375,13 +382,9 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
               .maybeSingle();
             if (existing) { job.sales_upserted++; continue; }
           } else {
-            // No order_id: check by fitbase_step_id of first step
-            const { data: existing } = await supabase
-              .from('crm_sale_items')
-              .select('id')
-              .eq('fitbase_step_id', Number(orderSteps[0].id))
-              .maybeSingle();
-            if (existing) { job.sales_upserted++; continue; }
+            // No order_id — skip; can't do idempotency without fitbase_step_id in crm_sale_items
+            job.errors.push(`client ${fid}: step ${orderSteps[0].id} has no order_id, skipped`);
+            continue;
           }
 
           const total   = orderSteps.reduce((s, step) => s + Number(step.amount), 0);
@@ -428,15 +431,12 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
             const pmId      = pmByName.get(pmName) ?? null;
 
             itemInserts.push({
-              sale_id:         saleId,
-              item_type:       crmItemType,
-              name:            itemName,
-              qty:             1,
-              unit_price:      stepAmt,
-              total:           stepAmt,
-              fitbase_step_id: Number(s.id),
-              fitbase_item_id: s.item_id != null ? Number(s.item_id) : null,
-              operation_type:  String(s.operation_type ?? 'purchase'),
+              sale_id:    saleId,
+              item_type:  crmItemType,
+              name:       itemName,
+              qty:        1,
+              unit_price: stepAmt,
+              total:      stepAmt,
             });
 
             if (stepAmt > 0) {
@@ -444,7 +444,8 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
               const priceBonus   = Number((s.priceBonus   ?? 0));
               const cashAmt      = stepAmt - priceDeposit - priceBonus;
 
-              if (cashAmt > 0 && pmId !== null) {
+              if (cashAmt > 0) {
+                if (pmId === null) job.errors.push(`client ${fid} order ${orderKey}: step ${s.id} payment method "${pmName}" not found in CRM, inserted with null`);
                 payInserts.push({ sale_id: saleId, payment_method_id: pmId, amount: cashAmt, fitbase_step_id: Number(s.id) });
               }
               if (priceDeposit > 0 && depositPmId !== null) {
@@ -456,7 +457,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
 
               // Deposit top-up → crm_balance_ops
               if (fbItemType === 'deposit') {
-                await supabase.from('crm_balance_ops').insert({
+                const { error: balErr } = await supabase.from('crm_balance_ops').insert({
                   client_id: clientId,
                   wallet:    'deposit',
                   amount:    stepAmt,
@@ -464,6 +465,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
                   created_by: 'fitbase_import',
                   created_at: tsToIso(s.created_at),
                 });
+                if (balErr) job.errors.push(`client ${fid} order ${orderKey}: balance_ops: ${balErr.message}`);
               }
             }
           }
@@ -535,7 +537,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
             fitbase_reg_id:       Number(vis.id),
             fitbase_contract_id:  cc?.id != null ? Number(cc.id) : null,
             status:               vis.status != null ? Number(vis.status) : 0,
-            visit_date:           ev.date as string | null ?? null,
+            visit_at:             tsToIso(ev.date ?? null),
             training_name:        tr.name as string | null ?? null,
           });
         }
@@ -557,9 +559,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
       }
 
       job.processed++;
-
-      // Checkpoint every 10 clients
-      if (job.processed % 10 === 0) await checkpoint();
+      await checkpoint();
     }
 
     // Nightly: also run linkBodyClients

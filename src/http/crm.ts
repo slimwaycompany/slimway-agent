@@ -2182,10 +2182,12 @@ export function buildCrmRouter(): Router {
   r.post('/kviz/api/crm/fitbase-history-import', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const kind = (req.body?.kind === 'nightly' ? 'nightly' : 'full') as 'full' | 'nightly';
+    const rawIds = req.body?.client_ids;
+    const clientIds: number[] | undefined = Array.isArray(rawIds) ? rawIds.map(Number).filter(Boolean) : undefined;
     const job = startHistoryImport(kind);
     if (!job) { res.status(409).json({ error: 'Импорт уже идёт', ...getHistoryImportJob() }); return; }
-    res.json({ status: 'started', kind });
-    runFitbaseHistoryImport(kind).catch(e => {
+    res.json({ status: 'started', kind, client_ids: clientIds ?? null });
+    runFitbaseHistoryImport(kind, clientIds).catch(e => {
       const j = getHistoryImportJob();
       if (j) { j.status = 'error'; j.errors.push(String(e)); }
     });
