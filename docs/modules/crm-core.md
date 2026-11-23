@@ -15,7 +15,7 @@
 - `crm_branches` — филиалы (сейчас один `00000000-0000-0000-0000-000000000001`)
 - `crm_settings` — key/value настройки (`lessons.no_show_burns_session`, `schedule.day_start` 07:00, `schedule.day_end` 23:00, `schedule.step_minutes` 30)
 - `crm_ad_sources` — рекламные источники (`requires_referrer`)
-- `crm_clients` — клиенты: ФИО, phone (цифры 7XXXXXXXXXX), birth_date, ad_source_id, referrer_client_id, iin (12 цифр), id_issued_by, id_valid_until, photo_path (bucket `crm-client-photos`), contraindications, profile_complete, source (manual / fitbase_import), fitbase_client_id, is_deleted; **+ gender (M/F), address, skirt_size, device_settings, important_note (task 86)**
+- `crm_clients` — клиенты: ФИО, phone (цифры 7XXXXXXXXXX), birth_date, ad_source_id, referrer_client_id, iin (12 цифр), id_issued_by, id_valid_until, photo_path (bucket `crm-client-photos`), contraindications, profile_complete, source (manual / fitbase_import), fitbase_client_id, is_deleted; **+ gender ('female'|'male'|null), address, skirt_size ('XS'|'S'|'M'|'L'|'XL'|'XXL'|'XXXL'|null), device_settings (jsonb {device_type_code:{vacu,ik}}), important_note, instagram, tiktok, email (task 87)**
 - `crm_client_tags` — личные метки клиентов: id, branch_id, name, color, is_active, created_at (task 86)
 - `crm_client_tag_links` — id, client_id, tag_id, created_at (task 86)
 - `crm_client_comments` — id, client_id, text, author, created_at, updated_at (task 86)
@@ -26,7 +26,7 @@
 - `crm_suppliers` (+ link), `crm_products`, `crm_product_supplies` (партии: quantity, remaining, закуп, розница, дата), вью `crm_product_stock`
 - `crm_promo_codes` (percent/fixed, лимиты, applies_to_all) + `crm_promo_targets` (plan/product)
 - `crm_audit_log`
-- `crm_visit_history` — визиты из Fitbase: fitbase_reg_id (unique), client_id, fitbase_contract_id, status (0–4), visit_date, training_name
+- `crm_visit_history` — визиты из Fitbase: fitbase_reg_id (unique), client_id, fitbase_contract_id, status (строка 'attended'|...), **visit_at** (не visit_date), training_name
 - `crm_fitbase_import_runs` — прогресс и чекпоинты импорта истории: kind, status, total_clients, processed, планы/продажи/возвраты/визиты, errors, last_client_fitbase_id
 - `body_clients` — добавлены `crm_client_id` (FK crm_clients) + `crm_link_method` ('fitbase_id'|'phone'|'manual')
 
@@ -48,6 +48,16 @@
 - `SettingsPage`: sidebar скрывается при выборе раздела (`settings-sidebar--hidden`), кнопка `← Назад` в заголовке контента.
 
 ## Сделано
+### 23.11.2026 · (task 87) · Карточка клиента: доработки по замечаниям
+- **Part 1:** `src/http/crm.ts`: `normSocial()` хелпер (убирает @, домен, trailing slash); PATCH добавлены `gender` (валидация 'female'|'male'|null, '' → null), `instagram`/`tiktok` через normSocial, `email` (toLower); POST: gender default 'female' (не ''), те же поля.
+- **Part 1 UI:** `ClientsPage.tsx`: `fmtPhone()` форматирует `+7 777 618 61 87`; левая колонка: 22px bold ФИО, отдельная строка телефона с кнопками WhatsApp/Позвонить, строка ДР+возраст, строка соцсетей (instagram/tiktok/email если заполнены); `ClientForm`: поля instagram/tiktok/email, gender select 'female'/'male'/null; gender display 'female'→'Женский'.
+- **Part 2:** `src/http/crm.ts` summary: `crm_visit_history` фильтр исправлен на `status === 'attended'` (было `=== 3`) и колонка `visit_at` (было `visit_date`); добавлен счётчик из `crm_bookings status='attended'`; `visits_attended_total = history + bookings`.
+- **Part 3:** `POST /kviz/api/crm/clients/fill-fitbase-data` — загружает crm_ad_sources, клиентов без ad_source_id c fitbase_client_id, fitbase_leads по client_fitbase_id; сопоставляет source по имени без регистра; обновляет только пустые; возвращает `{updated, not_found_sources}`. Кнопка «Дозаполнить данные» в FitbaseImport.
+- **Part 4:** skirt_size → `<select>` XS…XXXL; device_settings: 2 input (Вакуум + ИК) на аппарат вместо текстового поля; старые строковые значения → пустая структура при init.
+- **Part 5:** `body_measurements` вместо `measurements`, lookup по `body_client_id`; таймер 7 дней в InBody и Замерах: `timerLabel(lastIso)` — прогресс-бар + цветовые метки ≤2/'Сегодня'/просрочено; InBody header: «Тестов: N, первый ДД.ММ.ГГГГ»; новые поля: bfm, bmi (ИМТ), bmr, tbw (Вода), inbody_score (Баллы).
+- **Part 6:** `batchEnrich()` добавляет `plan_name`, `extra_plans_count`, `sessions_summary`, `last_visit_at`, `days_since_visit`; sort=days_without_visit (all-scan + сортировка в памяти); min_days фильтр; toolbar: 2 новых select; список: правая колонка абонемент + сеансы + «N дн. назад» (цвет по порогам 14/30 дней).
+- **Part 7:** build чистый, check:mobile без новых ошибок.
+
 ### 23.11.2026 · (task 86 доработка) · Карточка клиента — попап 92vw/vh, 3 равных колонки, левая колонка полная
 - `ClientsPage.tsx`: удалена шапка (`cp-header`), закрытие — крестик `cp-close-btn` (absolute top-right); аватар/ФИО/телефон (кнопка копирования)/Fitbase-бейдж/кнопка «Редактировать»/метки перенесены в верх ЛЕВОЙ колонки; добавлены строки: Дата рождения+возраст, Источник+реферер, Клиент с, LTV, Визитов, Депозит/Бонусы; активный абонемент берётся из `plans` (не из summary), показывается первый по valid_until + «+ещё N»; сеансы по аппарату: pool (`device_type_codes`) и unlimited (`is_unlimited`) — с именами аппаратов через `dtNameMap`.
 - InBody: исправлены поля `pbf` (не body_fat_percent) и `ffm` (не visceral_fat); показываются вес, % жира, жир кг (weight-ffm), мышцы (smm) + дельта к предыдущему тесту (`inbody_prev`); ссылка исправлена на `/reports/client/:body_client_id`.
@@ -105,13 +115,9 @@
 - Вкладка Настройки — 7 групп: **Моё** (Оформление), **Студия** (Аппараты, Занятия и расписание, ТВ-экран), **Что продаём** (Абонементы, Услуги, Промокоды, Товары и склад, Поставщики), **Деньги** (Виды оплаты, Финансы), **Заявки** (Воронки CRM, Рекламные источники, Причины отказа, Теги заявок, Типы задач, Скриптолог), **Команда** (Сотрудники, График смен, Контроль менеджеров, Линейки ролей, Дов. компьютеры), **Связи и данные** (Сопоставление FB, АТС, Данные InBody). Переименования: «Занятия» → «Занятия и расписание», «Сервис» → «Данные InBody». Поиск с синонимами в верхней части меню. Каждый раздел виден только при праве `settings.<раздел>`; «Оформление» — без прав, всем. Вкладка Клиенты (список, анкета, карточка).
 
 ## Открытые баги
-- **(записано 23.11.2026)** Рекламный источник не подтянулся ни у одного клиента из Fitbase: импорт (runFitbaseImport, src/http/crm.ts ~стр. 192) не заполняет ad_source_id. В Fitbase источник есть (`advertising_source.name` — так его уже читает fitbaseCrmSync.ts:60 для лидов; проверить, есть ли он у клиента в fitbase_clients_cache.raw, иначе брать из лида клиента). Нужно: сопоставить по названию с crm_ad_sources (без учёта регистра), не найденные — списком в отчёт (создавать или нет — решает Сергей), заполнять только пустой ad_source_id, ручной выбор не перетирать. Вручную источник выбирается нормально.
-- **(записано 23.11.2026)** Пол: не стоит ни у кого и в форме не выбирается. В PATCH /kviz/api/crm/clients/:id (src/http/crm.ts ~стр. 1055) в списке разрешённых полей нет `gender` — значение отбрасывается. Плюс ошибка check ниже. Предложение Claude: студия сейчас только женская — всем существующим клиентам поставлен gender = 'female' одним SQL (решение Сергея 23.11); двух мужчин (учётка Сергея и один клиент) Сергей меняет сам. Новым клиентам по умолчанию — 'female'.
-- **(записано 23.11.2026)** Сохранение клиента падает: `new row for relation "crm_clients" violates check constraint "crm_clients_gender_check"`. Допустимо только `gender` = 'female' | 'male' | null. Форма, скорее всего, шлёт пустую строку или русское значение («Женский»). Нужно: '' → null, «Женский» → 'female', «Мужской» → 'male'; ошибку показывать по-русски, не сырой Postgres.
 - (нет активных)
 
 ## Следующее
-- **(записано 23.11.2026) Список клиентов — новые колонки:** текущий абонемент (название; если несколько активных — ближайший по окончанию и «+N»), количество сеансов (остаток / всего; по аппаратам или пулу — коротко, безлимит — «∞»), последний визит (дата) и сколько дней с него прошло (crm_visit_history attended + crm_bookings attended). Считать на сервере одним запросом для страницы списка, не по клиенту. Желательно сортировка и фильтр по «дней без визита». Пока только эти поля.
 - **Мультифилиальность — план переезда (оценка 23.11.2026, делаем позже, отдельным чатом «Мультифилиальность»):** объём — 2–3 задачи Claude Code + 1 SQL.
   - Уже есть: `branch_id` во всех таблицах CRM; `app_users.branch_id` и `all_branches`; карточка филиала (`crm_branches`) и часы работы по дням (`crm_branch_hours`, задача 83).
   - Переделать:

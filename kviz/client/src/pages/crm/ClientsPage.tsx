@@ -11,6 +11,8 @@ interface ClientRow {
   id: string; full_name: string; phone: string | null; birth_date: string | null;
   ad_source_id: string | null; profile_complete: boolean; status: string;
   fitbase_client_id: string | null; created_at: string;
+  last_visit_at?: string | null; days_since_visit?: number | null;
+  plan_name?: string | null; extra_plans_count?: number; sessions_summary?: string | null;
 }
 
 interface ClientFull extends ClientRow {
@@ -20,7 +22,8 @@ interface ClientFull extends ClientRow {
   source: string; branch_id: string; is_deleted: boolean;
   gender: string | null; address: string | null;
   important_note: string | null; skirt_size: string | null;
-  device_settings: Record<string, string> | null;
+  device_settings: Record<string, { vacu?: number; ik?: number }> | null;
+  instagram: string | null; tiktok: string | null; email: string | null;
 }
 
 interface DeviceType { code: string; name: string; is_active: boolean }
@@ -45,6 +48,8 @@ interface ClientSummary {
   inbody_last: string | null;
   inbody_latest: Record<string, unknown> | null;
   inbody_prev: Record<string, unknown> | null;
+  inbody_count: number;
+  inbody_first: string | null;
   measure_last: string | null;
   measure_latest: Record<string, unknown> | null;
   measure_first: Record<string, unknown> | null;
@@ -108,12 +113,25 @@ function ageFromDate(bd: string | null): string {
   return `${age} л.`;
 }
 
-function dayLabel(days: number | null): { label: string; cls: string } | null {
-  if (days === null) return null;
-  if (days < 0) return { label: `через ${-days} д.`, cls: 'cp-timer--ok' };
-  if (days === 0) return { label: 'сегодня', cls: 'cp-timer--ok' };
-  if (days <= 7) return { label: `${days} д. назад`, cls: 'cp-timer--warn' };
-  return { label: `${days} д. назад`, cls: 'cp-timer--over' };
+function fmtPhone(p: string | null): string {
+  if (!p) return '';
+  const d = p.replace(/\D/g, '');
+  if (d.length === 11) return `+${d[0]} ${d.slice(1,4)} ${d.slice(4,7)} ${d.slice(7,9)} ${d.slice(9)}`;
+  return '+' + d;
+}
+
+function timerLabel(lastIso: string | null): { label: string; cls: string; pct: number } | null {
+  if (!lastIso) return null;
+  const d = daysAgo(lastIso);
+  if (d === null) return null;
+  const nextIn = 7 - d;
+  const nextDate = new Date(new Date(lastIso).getTime() + 7 * 86400000);
+  const nf = `${String(nextDate.getDate()).padStart(2,'0')}.${String(nextDate.getMonth()+1).padStart(2,'0')}`;
+  const pct = Math.min(Math.round((d / 7) * 100), 100);
+  if (nextIn > 2) return { label: `Следующий через ${nextIn} дн. (${nf})`, cls: 'cp-timer--ok', pct };
+  if (nextIn > 0) return { label: `Скоро · через ${nextIn} дн. (${nf})`, cls: 'cp-timer--warn', pct };
+  if (nextIn === 0) return { label: 'Сегодня', cls: 'cp-timer--warn', pct: 100 };
+  return { label: `Просрочено на ${-nextIn} дн.`, cls: 'cp-timer--over', pct: 100 };
 }
 
 const SYSTEM_TAG_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -154,6 +172,9 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
     notes: client?.notes ?? '',
     gender: client?.gender ?? '',
     address: client?.address ?? '',
+    instagram: client?.instagram ?? '',
+    tiktok: client?.tiktok ?? '',
+    email: client?.email ?? '',
     profile_complete: client?.profile_complete ?? false,
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -211,6 +232,7 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
       id_issued_by: form.id_issued_by || null, id_valid_until: form.id_valid_until || null,
       contraindications: form.contraindications || null, notes: form.notes || null,
       gender: form.gender || null, address: form.address || null,
+      instagram: form.instagram || null, tiktok: form.tiktok || null, email: form.email || null,
       profile_complete: form.profile_complete,
     };
     const url = isNew ? '/kviz/api/crm/clients' : `/kviz/api/crm/clients/${client!.id}`;
@@ -258,8 +280,8 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
           <label style={SF.label}>Пол</label>
           <select style={SF.inp} value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}>
             <option value="">— не указан —</option>
-            <option value="F">Женский</option>
-            <option value="M">Мужской</option>
+            <option value="female">Женский</option>
+            <option value="male">Мужской</option>
           </select>
         </div>
         <div>
@@ -301,6 +323,18 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
         <div style={{ gridColumn: '1/-1' }}>
           <label style={SF.label}>Адрес</label>
           <input style={SF.inp} value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="г. Астана, ул. ..." />
+        </div>
+        <div>
+          <label style={SF.label}>Instagram</label>
+          <input style={SF.inp} value={form.instagram} onChange={e => setForm(f => ({ ...f, instagram: e.target.value }))} placeholder="@username или ссылка" />
+        </div>
+        <div>
+          <label style={SF.label}>TikTok</label>
+          <input style={SF.inp} value={form.tiktok} onChange={e => setForm(f => ({ ...f, tiktok: e.target.value }))} placeholder="@username или ссылка" />
+        </div>
+        <div style={{ gridColumn: '1/-1' }}>
+          <label style={SF.label}>Email</label>
+          <input style={SF.inp} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="user@example.com" />
         </div>
         <div style={{ gridColumn: '1/-1' }}>
           <label style={SF.label}>Фото</label>
@@ -474,7 +508,7 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   const [allTags, setAllTags] = useState<ClientTag[]>([]);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [importantEdit, setImportantEdit] = useState(false);
-  const [importantForm, setImportantForm] = useState<{ skirt_size: string; device_settings: Record<string, string>; important_note: string; contraindications: string }>({ skirt_size: '', device_settings: {}, important_note: '', contraindications: '' });
+  const [importantForm, setImportantForm] = useState<{ skirt_size: string; device_settings: Record<string, { vacu: string; ik: string }>; important_note: string; contraindications: string }>({ skirt_size: '', device_settings: {}, important_note: '', contraindications: '' });
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
   const [referrerName, setReferrerName] = useState<string | null>(null);
 
@@ -508,9 +542,19 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
           .then(r => r.json()).then(d => { if (d.full_name) setReferrerName(d.full_name); }).catch(() => {});
       }
       const rawDs = (cd as ClientFull).device_settings;
+      const dsForm: Record<string, { vacu: string; ik: string }> = {};
+      if (rawDs && typeof rawDs === 'object') {
+        for (const [k, v] of Object.entries(rawDs)) {
+          if (v && typeof v === 'object') {
+            dsForm[k] = { vacu: v.vacu != null ? String(v.vacu) : '', ik: v.ik != null ? String(v.ik) : '' };
+          } else {
+            dsForm[k] = { vacu: '', ik: '' }; // old text value → empty structured
+          }
+        }
+      }
       setImportantForm({
         skirt_size: (cd as ClientFull).skirt_size ?? '',
-        device_settings: (rawDs && typeof rawDs === 'object') ? rawDs as Record<string, string> : {},
+        device_settings: dsForm,
         important_note: (cd as ClientFull).important_note ?? '',
         contraindications: (cd as ClientFull).contraindications ?? '',
       });
@@ -528,18 +572,20 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   useEffect(() => { loadFeed(); }, [loadFeed]);
 
   async function saveImportant() {
-    const dsClean: Record<string, string> = {};
+    const dsClean: Record<string, { vacu?: number; ik?: number }> = {};
     for (const [k, v] of Object.entries(importantForm.device_settings)) {
-      if (v.trim()) dsClean[k] = v.trim();
+      const vacu = v.vacu.trim() ? Number(v.vacu) : undefined;
+      const ik = v.ik.trim() ? Number(v.ik) : undefined;
+      if (vacu != null || ik != null) dsClean[k] = { ...(vacu != null ? { vacu } : {}), ...(ik != null ? { ik } : {}) };
     }
     const { ok, data } = await apiJSON('PATCH', `/kviz/api/crm/clients/${clientId}`, {
       skirt_size: importantForm.skirt_size || null,
-      device_settings: dsClean,
+      device_settings: Object.keys(dsClean).length ? dsClean : null,
       important_note: importantForm.important_note || null,
       contraindications: importantForm.contraindications || null,
     });
     if (!ok) { toast.error(data.error || 'Ошибка'); return; }
-    setClient(prev => prev ? { ...prev, skirt_size: importantForm.skirt_size || null, device_settings: dsClean, important_note: importantForm.important_note || null, contraindications: importantForm.contraindications || null } : prev);
+    setClient(prev => prev ? { ...prev, skirt_size: importantForm.skirt_size || null, device_settings: Object.keys(dsClean).length ? dsClean : null, important_note: importantForm.important_note || null, contraindications: importantForm.contraindications || null } : prev);
     setImportantEdit(false);
     toast.success('Сохранено');
   }
@@ -627,26 +673,62 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
             <div className="cp-col cp-col-left">
 
               {/* Identity block */}
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10, paddingRight: 28 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8, paddingRight: 28 }}>
                 {photoUrl
-                  ? <img src={photoUrl} alt="" style={{ width: 44, height: 44, borderRadius: 22, objectFit: 'cover', flexShrink: 0 }} />
-                  : <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg,#02BDB6,#263CD9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 700, flexShrink: 0 }}>{initials}</div>
+                  ? <img src={photoUrl} alt="" style={{ width: 44, height: 44, borderRadius: 22, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />
+                  : <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg,#02BDB6,#263CD9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 700, flexShrink: 0, marginTop: 2 }}>{initials}</div>
                 }
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>{client.full_name}</div>
-                  {client.phone && (
-                    <button onClick={() => navigator.clipboard.writeText(client.phone!).then(() => toast.info('Телефон скопирован'))}
-                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: 'var(--primary)', fontFamily: 'inherit', display: 'block', marginTop: 2 }}>
-                      {client.phone} ⎘
+                  <div style={{ fontSize: 22, fontWeight: 700, lineHeight: '1.25', wordBreak: 'break-word' }}>{client.full_name}</div>
+                </div>
+              </div>
+
+              {/* Phone row */}
+              {client.phone && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 5 }}>{fmtPhone(client.phone)}</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button className="cp-btn" style={{ fontSize: 11 }}
+                      onClick={() => navigator.clipboard.writeText(fmtPhone(client.phone!)).then(() => toast.info('Телефон скопирован'))}>
+                      ⎘ Копировать
                     </button>
-                  )}
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 5, alignItems: 'center' }}>
-                    {client.fitbase_client_id && (
-                      <span style={{ fontSize: 11, background: 'var(--accent-soft, #ede9fe)', color: 'var(--accent)', padding: '1px 7px', borderRadius: 4 }}>Fitbase #{client.fitbase_client_id}</span>
-                    )}
-                    {canEdit && <button className="cp-btn" style={{ fontSize: 11 }} onClick={onEdit}>✎ Редактировать</button>}
+                    <a href={`https://wa.me/${client.phone}`} target="_blank" rel="noreferrer"
+                      style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: '#25D366', color: '#fff', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}>
+                      WhatsApp
+                    </a>
+                    <a href={`tel:+${client.phone}`}
+                      style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'var(--primary)', color: '#fff', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}>
+                      Позвонить
+                    </a>
                   </div>
                 </div>
+              )}
+
+              {/* Birth date + age */}
+              {(() => {
+                const bd = client.birth_date || (client.iin && client.iin.length >= 7 ? iinToDob(client.iin) : null);
+                return (
+                  <div style={{ fontSize: 13, marginBottom: 8, color: bd ? 'var(--text)' : 'var(--text-3)' }}>
+                    {bd ? `${fmtDate(bd)} · ${ageFromDate(bd)}` : 'Дата рождения не указана'}
+                  </div>
+                );
+              })()}
+
+              {/* Social links */}
+              {(client.instagram || client.tiktok || client.email) && (
+                <div style={{ fontSize: 12, marginBottom: 8, lineHeight: '1.7', color: 'var(--text-2)' }}>
+                  {client.instagram && <div>Instagram @{client.instagram}</div>}
+                  {client.tiktok && <div>TikTok @{client.tiktok}</div>}
+                  {client.email && <div>{client.email}</div>}
+                </div>
+              )}
+
+              {/* Fitbase badge + Edit btn */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+                {client.fitbase_client_id && (
+                  <span style={{ fontSize: 11, background: 'var(--accent-soft, #ede9fe)', color: 'var(--accent)', padding: '1px 7px', borderRadius: 4 }}>Fitbase #{client.fitbase_client_id}</span>
+                )}
+                {canEdit && <button className="cp-btn" style={{ fontSize: 11 }} onClick={onEdit}>✎ Редактировать</button>}
               </div>
 
               {/* Tags row */}
@@ -688,16 +770,10 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
 
               {/* Info rows */}
               <div style={{ fontSize: 13, lineHeight: '1.6', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                {client.birth_date && (
-                  <div className="cp-row"><span className="cp-row-key">Дата рождения</span><span className="cp-row-val">{fmtDate(client.birth_date)}{ageFromDate(client.birth_date) && ` (${ageFromDate(client.birth_date)})`}</span></div>
-                )}
                 {source && (
                   <div className="cp-row"><span className="cp-row-key">Источник</span><span className="cp-row-val">{source.name}{referrerName ? ` / ${referrerName}` : ''}</span></div>
                 )}
                 <div className="cp-row"><span className="cp-row-key">Клиент с</span><span className="cp-row-val">{fmtDate(client.created_at)}</span></div>
-                {summary?.last_visit_at && (
-                  <div className="cp-row"><span className="cp-row-key">Последний визит</span><span className="cp-row-val">{fmtDate(summary.last_visit_at)}</span></div>
-                )}
                 <div className="cp-row">
                   <span className="cp-row-key">LTV</span>
                   <span className="cp-row-val" style={{ color: 'var(--primary)', fontWeight: 700 }}>{summary ? summary.ltv.toLocaleString('ru-RU') + ' ₸' : '…'}</span>
@@ -706,6 +782,9 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                   <span className="cp-row-key">Визитов</span>
                   <span className="cp-row-val">{summary?.visits_attended_total ?? '…'}</span>
                 </div>
+                {summary?.last_visit_at && (
+                  <div className="cp-row"><span className="cp-row-key">Последний визит</span><span className="cp-row-val">{fmtDate(summary.last_visit_at)}</span></div>
+                )}
                 {balance && balance.deposit > 0 && (
                   <div className="cp-row"><span className="cp-row-key">Депозит</span><span className="cp-row-val" style={{ color: 'var(--success)' }}>{balance.deposit.toLocaleString('ru-RU')} ₸</span></div>
                 )}
@@ -764,7 +843,7 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                   {client.id_issued_by && <div className="cp-row"><span className="cp-row-key">Документ</span><span className="cp-row-val">{client.id_issued_by}</span></div>}
                   {client.id_valid_until && <div className="cp-row"><span className="cp-row-key">Действует до</span><span className="cp-row-val">{fmtDate(client.id_valid_until)}</span></div>}
                   {client.address && <div className="cp-row"><span className="cp-row-key">Адрес</span><span className="cp-row-val">{client.address}</span></div>}
-                  {client.gender && <div className="cp-row"><span className="cp-row-key">Пол</span><span className="cp-row-val">{client.gender === 'F' ? 'Женский' : 'Мужской'}</span></div>}
+                  {client.gender && <div className="cp-row"><span className="cp-row-key">Пол</span><span className="cp-row-val">{client.gender === 'female' ? 'Женский' : 'Мужской'}</span></div>}
                   {client.notes && <div className="cp-row"><span className="cp-row-key">Заметки</span><span className="cp-row-val">{client.notes}</span></div>}
                 </div>
               )}
@@ -783,35 +862,58 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                 <div className="cp-window-body">
                   {importantEdit ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {(['skirt_size', 'important_note', 'contraindications'] as const).map(k => {
-                        const label = k === 'skirt_size' ? 'Размер юбки' : k === 'important_note' ? 'Важное' : 'Противопоказания';
-                        return (
-                          <div key={k}>
-                            <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>{label}</label>
-                            <textarea value={importantForm[k]} onChange={e => setImportantForm(f => ({ ...f, [k]: e.target.value }))}
-                              style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
-                          </div>
-                        );
-                      })}
-                      {deviceTypes.map(dt => (
-                        <div key={dt.code}>
-                          <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>{dt.name ?? dt.code}</label>
-                          <textarea value={importantForm.device_settings[dt.code] ?? ''}
-                            onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: e.target.value } }))}
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>Размер юбки</label>
+                        <select value={importantForm.skirt_size} onChange={e => setImportantForm(f => ({ ...f, skirt_size: e.target.value }))}
+                          style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }}>
+                          <option value="">— не указан —</option>
+                          {['XS','S','M','L','XL','XXL','XXXL'].map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      {(['important_note', 'contraindications'] as const).map(k => (
+                        <div key={k}>
+                          <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>{k === 'important_note' ? 'Важное' : 'Противопоказания'}</label>
+                          <textarea value={importantForm[k]} onChange={e => setImportantForm(f => ({ ...f, [k]: e.target.value }))}
                             style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
                         </div>
                       ))}
+                      {deviceTypes.map(dt => {
+                        const dv = importantForm.device_settings[dt.code] ?? { vacu: '', ik: '' };
+                        return (
+                          <div key={dt.code}>
+                            <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>{dt.name ?? dt.code}</label>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>Вакуум</div>
+                                <input type="number" min={0} max={9} value={dv.vacu}
+                                  onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, vacu: e.target.value } } }))}
+                                  style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>ИК</div>
+                                <input type="number" min={0} max={9} value={dv.ik}
+                                  onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, ik: e.target.value } } }))}
+                                  style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div style={{ fontSize: 13 }}>
                       {client.skirt_size && <div className="cp-row"><span className="cp-row-key">Юбка</span><span className="cp-row-val">{client.skirt_size}</span></div>}
                       {deviceTypes.map(dt => {
                         const val = client.device_settings?.[dt.code];
-                        return val ? <div key={dt.code} className="cp-row"><span className="cp-row-key">{dt.name ?? dt.code}</span><span className="cp-row-val">{val}</span></div> : null;
+                        if (!val || typeof val !== 'object') return null;
+                        const parts: string[] = [];
+                        if (val.vacu != null) parts.push(`Вакуум: ${val.vacu}`);
+                        if (val.ik != null) parts.push(`ИК: ${val.ik}`);
+                        return parts.length ? <div key={dt.code} className="cp-row"><span className="cp-row-key">{dt.name ?? dt.code}</span><span className="cp-row-val">{parts.join(' · ')}</span></div> : null;
                       })}
                       {client.important_note && <div style={{ padding: '4px 0', color: '#b45309', fontSize: 13 }}>⚠ {client.important_note}</div>}
                       {client.contraindications && <div style={{ padding: '4px 0', color: 'var(--danger)', fontSize: 13 }}>Противопоказания: {client.contraindications}</div>}
-                      {!client.skirt_size && !Object.values(client.device_settings ?? {}).some(v => v) && !client.important_note && !client.contraindications && (
+                      {!client.skirt_size && !Object.values(client.device_settings ?? {}).some(v => v && typeof v === 'object' && (v.vacu != null || v.ik != null)) && !client.important_note && !client.contraindications && (
                         <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет данных</div>
                       )}
                     </div>
@@ -937,16 +1039,30 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
 
               {/* InBody */}
               <div className="cp-window">
-                <div className="cp-window-hdr">InBody</div>
+                <div className="cp-window-hdr">
+                  InBody
+                  {(summary?.inbody_count ?? 0) > 0 && (
+                    <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-2)' }}>
+                      Тестов: {summary!.inbody_count}, первый {fmtDate(summary!.inbody_first)}
+                    </span>
+                  )}
+                </div>
                 <div className="cp-window-body">
                   {summary?.inbody_last ? (
                     <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmtDate(summary.inbody_last)}</span>
+                      <div style={{ marginBottom: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmtDate(summary.inbody_last)}</span>
+                          {(() => {
+                            const lbl = timerLabel(summary.inbody_last);
+                            return lbl ? <span className={`cp-timer ${lbl.cls}`}>{lbl.label}</span> : null;
+                          })()}
+                        </div>
                         {(() => {
-                          const d = daysAgo(summary.inbody_last);
-                          const lbl = dayLabel(d ? 7 - d : null);
-                          return lbl ? <span className={`cp-timer ${lbl.cls}`}>{lbl.label}</span> : null;
+                          const lbl = timerLabel(summary.inbody_last);
+                          if (!lbl) return null;
+                          const color = lbl.cls === 'cp-timer--ok' ? 'var(--primary)' : lbl.cls === 'cp-timer--warn' ? 'var(--warning,#f59e0b)' : 'var(--danger)';
+                          return <div style={{ background: 'var(--border)', borderRadius: 2, height: 3 }}><div style={{ background: color, height: '100%', width: `${lbl.pct}%`, borderRadius: 2 }} /></div>;
                         })()}
                       </div>
                       {summary.inbody_latest && (
@@ -1005,6 +1121,21 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                               </span>
                             </div>
                           )}
+                          {summary.inbody_latest.bfm != null && (
+                            <div className="cp-row"><span className="cp-row-key">BFM</span><span className="cp-row-val">{String(summary.inbody_latest.bfm)} кг</span></div>
+                          )}
+                          {summary.inbody_latest.bmi != null && (
+                            <div className="cp-row"><span className="cp-row-key">ИМТ</span><span className="cp-row-val">{String(summary.inbody_latest.bmi)}</span></div>
+                          )}
+                          {summary.inbody_latest.bmr != null && (
+                            <div className="cp-row"><span className="cp-row-key">BMR</span><span className="cp-row-val">{String(summary.inbody_latest.bmr)} ккал</span></div>
+                          )}
+                          {summary.inbody_latest.tbw != null && (
+                            <div className="cp-row"><span className="cp-row-key">Вода</span><span className="cp-row-val">{String(summary.inbody_latest.tbw)} л</span></div>
+                          )}
+                          {summary.inbody_latest.inbody_score != null && (
+                            <div className="cp-row"><span className="cp-row-key">Баллы</span><span className="cp-row-val">{String(summary.inbody_latest.inbody_score)}</span></div>
+                          )}
                         </div>
                       )}
                       {summary.body_client_id && (
@@ -1026,12 +1157,19 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                 <div className="cp-window-body">
                   {summary?.measure_last ? (
                     <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmtDate(summary.measure_last)}</span>
+                      <div style={{ marginBottom: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmtDate(summary.measure_last)}</span>
+                          {(() => {
+                            const lbl = timerLabel(summary.measure_last);
+                            return lbl ? <span className={`cp-timer ${lbl.cls}`}>{lbl.label}</span> : null;
+                          })()}
+                        </div>
                         {(() => {
-                          const d = daysAgo(summary.measure_last);
-                          const lbl = dayLabel(d != null ? 7 - d : null);
-                          return lbl ? <span className={`cp-timer ${lbl.cls}`}>{lbl.label}</span> : null;
+                          const lbl = timerLabel(summary.measure_last);
+                          if (!lbl) return null;
+                          const color = lbl.cls === 'cp-timer--ok' ? 'var(--primary)' : lbl.cls === 'cp-timer--warn' ? 'var(--warning,#f59e0b)' : 'var(--danger)';
+                          return <div style={{ background: 'var(--border)', borderRadius: 2, height: 3 }}><div style={{ background: color, height: '100%', width: `${lbl.pct}%`, borderRadius: 2 }} /></div>;
                         })()}
                       </div>
                       {summary.measure_latest && (
@@ -1112,6 +1250,8 @@ interface ImportJobState {
 function FitbaseImport({ onDone }: { onDone: () => void }) {
   const [job, setJob]   = useState<ImportJobState>({ status: 'idle' });
   const [error, setError] = useState('');
+  const [fillLoading, setFillLoading] = useState(false);
+  const [fillResult, setFillResult] = useState<{ updated: number; not_found_sources: string[] } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
@@ -1139,6 +1279,16 @@ function FitbaseImport({ onDone }: { onDone: () => void }) {
     pollStatus();
   }
 
+  async function fillData() {
+    setFillLoading(true); setFillResult(null); setError('');
+    try {
+      const r = await fetch('/kviz/api/crm/clients/fill-fitbase-data', { method: 'POST', credentials: 'include' });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { setError(d?.error || `Ошибка (${r.status})`); } else { setFillResult(d); onDone(); }
+    } catch { setError('Не удалось выполнить дозаполнение.'); }
+    setFillLoading(false);
+  }
+
   const running = job.status === 'running';
   const pct = (job.total || 0) > 0 ? Math.round(((job.processed || 0) / job.total!) * 100) : 0;
 
@@ -1163,9 +1313,20 @@ function FitbaseImport({ onDone }: { onDone: () => void }) {
           Всего: {job.total} · Добавлено: <b>{job.added}</b> · Обновлено: {job.updated} · Пропущено: {job.skipped}
         </div>
       )}
-      <button style={{ padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: running ? 'default' : 'pointer', fontFamily: 'inherit', opacity: running ? 0.7 : 1 }} onClick={run} disabled={running}>
-        {running ? 'Импортируем…' : 'Запустить импорт'}
-      </button>
+      {fillResult && (
+        <div style={{ background: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13 }}>
+          Дозаполнено: <b>{fillResult.updated}</b>
+          {fillResult.not_found_sources.length > 0 && <span style={{ color: 'var(--warning,#f59e0b)', marginLeft: 8 }}>Источники не найдены: {fillResult.not_found_sources.join(', ')}</span>}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button style={{ padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: running ? 'default' : 'pointer', fontFamily: 'inherit', opacity: running ? 0.7 : 1 }} onClick={run} disabled={running}>
+          {running ? 'Импортируем…' : 'Запустить импорт'}
+        </button>
+        <button style={{ padding: '8px 16px', background: 'none', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, cursor: fillLoading ? 'default' : 'pointer', fontFamily: 'inherit', color: 'var(--text)', opacity: fillLoading ? 0.7 : 1 }} onClick={fillData} disabled={fillLoading || running}>
+          {fillLoading ? 'Дозаполняем…' : 'Дозаполнить данные'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1180,6 +1341,8 @@ export default function ClientsPage() {
   const [search, setSearch]     = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterComplete, setFilterComplete] = useState('');
+  const [sortBy, setSortBy]       = useState('');
+  const [filterMinDays, setFilterMinDays] = useState('');
   const [loading, setLoading]   = useState(false);
   const [popupId, setPopupId]   = useState<string | null>(() => {
     const m = window.location.hash.match(/^#client=(.+)$/);
@@ -1207,12 +1370,14 @@ export default function ClientsPage() {
     if (search) params.set('search', search);
     if (filterSource) params.set('ad_source_id', filterSource);
     if (filterComplete) params.set('profile_complete', filterComplete);
+    if (sortBy) params.set('sort', sortBy);
+    if (filterMinDays) params.set('min_days', filterMinDays);
     const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
     const d = await r.json();
     const items: ClientRow[] = d?.items ?? (Array.isArray(d) ? d : []);
     setClients(items); setTotal(d?.total ?? items.length); setOffset(items.length);
     setLoading(false);
-  }, [search, filterSource, filterComplete]);
+  }, [search, filterSource, filterComplete, sortBy, filterMinDays]);
 
   async function loadMore() {
     setLoading(true);
@@ -1220,6 +1385,8 @@ export default function ClientsPage() {
     if (search) params.set('search', search);
     if (filterSource) params.set('ad_source_id', filterSource);
     if (filterComplete) params.set('profile_complete', filterComplete);
+    if (sortBy) params.set('sort', sortBy);
+    if (filterMinDays) params.set('min_days', filterMinDays);
     const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
     const d = await r.json();
     const items: ClientRow[] = d?.items ?? (Array.isArray(d) ? d : []);
@@ -1275,6 +1442,16 @@ export default function ClientsPage() {
           <option value="true">Заполнена</option>
           <option value="false">Не заполнена</option>
         </select>
+        <select style={SL.filter} value={filterMinDays} onChange={e => setFilterMinDays(e.target.value)}>
+          <option value="">Все визиты</option>
+          <option value="7">7+ дн. без визита</option>
+          <option value="14">14+ дн.</option>
+          <option value="30">30+ дн.</option>
+        </select>
+        <select style={SL.filter} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <option value="">По имени</option>
+          <option value="days_without_visit">По дням без визита</option>
+        </select>
         <button style={SL.addBtn} onClick={() => setEditClient('new')}>+ Клиент</button>
         {role === 'admin' && <button style={SL.outlineBtn} onClick={() => setShowImport(v => !v)}>↓ Fitbase</button>}
       </div>
@@ -1286,9 +1463,9 @@ export default function ClientsPage() {
         {!loading && !clients.length && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Клиенты не найдены</div>}
         {clients.map(c => (
           <div key={c.id}
-            style={{ ...SL.row, background: popupId === c.id ? 'rgba(2,189,182,0.06)' : 'var(--surface)', borderLeft: popupId === c.id ? '3px solid var(--primary)' : '3px solid transparent' }}
+            style={{ ...SL.row, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, background: popupId === c.id ? 'rgba(2,189,182,0.06)' : 'var(--surface)', borderLeft: popupId === c.id ? '3px solid var(--primary)' : '3px solid transparent' }}
             onClick={() => setPopupId(c.id)}>
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
               <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
                 {c.phone ?? '—'}
@@ -1299,6 +1476,21 @@ export default function ClientsPage() {
                   {c.ad_source_id && <span style={SL.chip}>{sourceMap.get(c.ad_source_id) ?? '?'}</span>}
                   {c.profile_complete && <span style={{ ...SL.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>✓</span>}
                 </div>
+              )}
+            </div>
+            <div style={{ flexShrink: 0, textAlign: 'right', fontSize: 12, minWidth: 100 }}>
+              {c.plan_name && (
+                <div style={{ fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
+                  {c.plan_name}{(c.extra_plans_count ?? 0) > 0 ? ` +${c.extra_plans_count}` : ''}
+                </div>
+              )}
+              {c.sessions_summary && <div style={{ color: 'var(--text-2)', marginTop: 1 }}>{c.sessions_summary}</div>}
+              {c.days_since_visit != null ? (
+                <div style={{ marginTop: 1, color: (c.days_since_visit ?? 0) >= 30 ? 'var(--danger)' : (c.days_since_visit ?? 0) >= 14 ? 'var(--warning,#f59e0b)' : 'var(--text-3)' }}>
+                  {c.days_since_visit === 0 ? 'Сегодня' : `${c.days_since_visit} дн. назад`}
+                </div>
+              ) : (
+                !c.plan_name && <div style={{ color: 'var(--text-3)', marginTop: 1 }}>нет визитов</div>
               )}
             </div>
           </div>
