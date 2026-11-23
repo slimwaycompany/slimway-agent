@@ -1833,12 +1833,13 @@ export function buildCrmRouter(): Router {
           items.push({ id: c.id as string, kind: 'comment', at: c.created_at as string, text: c.text as string, author: c.author as string });
       }
       if (kind === 'all' || kind === 'tasks') {
+        const TASK_STATUS_RU: Record<string, string> = { open: 'Открыта', done: 'Выполнена', overdue: 'Просрочена', cancelled: 'Отменена' };
         const { data: tasks } = await supabase.from('crm_lead_tasks')
           .select('id,description,status,due_at,created_by,created_at').eq('client_id', clientId)
           .lt('created_at', before).order('created_at', { ascending: false }).limit(LIMIT);
         for (const t of (tasks ?? []) as Record<string,unknown>[])
           items.push({ id: t.id as string, kind: 'task', at: t.created_at as string, text: t.description as string,
-            author: (t.created_by as string) ?? '—', extra: { status: t.status as string, due_at: t.due_at as string | null } });
+            author: (t.created_by as string) ?? '—', extra: { status: TASK_STATUS_RU[t.status as string] ?? (t.status as string), due_at: t.due_at as string | null } });
       }
       if (kind === 'all' || kind === 'log') {
         const { data: logs } = await supabase.from('crm_audit_log')
@@ -2595,7 +2596,7 @@ export function buildCrmRouter(): Router {
           .eq('client_id', clientId).in('status', ['active', 'not_activated'])
           .order('purchased_at', { ascending: false }).limit(1),
         supabase.from('crm_visit_history').select('visit_date,status').eq('client_id', clientId),
-        supabase.from('body_clients').select('id').eq('crm_client_id', clientId).limit(1),
+        supabase.from('body_clients').select('id,phone_digits').eq('crm_client_id', clientId).limit(1),
         saleIds.length && pmIds.length
           ? supabase.from('crm_sale_payments').select('amount').in('sale_id', saleIds).in('payment_method_id', pmIds)
           : Promise.resolve({ data: [] as Record<string,unknown>[] }),
@@ -2638,26 +2639,32 @@ export function buildCrmRouter(): Router {
       // Body client
       const bodyClient = (bodyRes.data ?? [])[0] as Record<string,unknown> | undefined;
       const body_client_id = bodyClient?.id ?? null;
+      const bodyPhoneDigits = bodyClient?.phone_digits as string | null ?? null;
 
-      // InBody latest
+      // InBody: query by phone_digits (inbody_tests has no body_client_id, only phone_digits)
       let inbody_last: string | null = null;
       let inbody_latest: Record<string,unknown> | null = null;
-      if (body_client_id) {
-        const { data: ibRow } = await supabase.from('inbody_tests')
-          .select('tested_at,weight,body_fat_percent,smm,protein_kg,minerals_kg,body_water_kg,visceral_fat')
-          .eq('body_client_id', body_client_id).order('tested_at', { ascending: false }).limit(1);
-        if (ibRow?.[0]) { inbody_last = (ibRow[0] as Record<string,unknown>).tested_at as string; inbody_latest = ibRow[0] as Record<string,unknown>; }
+      let inbody_prev: Record<string,unknown> | null = null;
+      if (bodyPhoneDigits) {
+        const { data: ibRows } = await supabase.from('inbody_tests')
+          .select('tested_at,weight,pbf,smm,ffm,vfl')
+          .eq('phone_digits', bodyPhoneDigits).order('tested_at', { ascending: false }).limit(2);
+        if (ibRows?.[0]) { inbody_last = (ibRows[0] as Record<string,unknown>).tested_at as string; inbody_latest = ibRows[0] as Record<string,unknown>; }
+        if (ibRows?.[1]) inbody_prev = ibRows[1] as Record<string,unknown>;
       }
 
-      // Measures latest (match by last 10 phone digits)
+      // Measures: latest + first (for delta since start)
       let measure_last: string | null = null;
       let measure_latest: Record<string,unknown> | null = null;
+      let measure_first: Record<string,unknown> | null = null;
       if (client?.phone) {
         const digits = (client.phone as string).replace(/\D/g, '').slice(-10);
-        const { data: mRow } = await supabase.from('measurements')
-          .select('measured_at,weight,waist_cm,hips_cm,chest_cm,total_cm')
-          .ilike('phone_digits', `%${digits}`).order('measured_at', { ascending: false }).limit(1);
-        if (mRow?.[0]) { measure_last = (mRow[0] as Record<string,unknown>).measured_at as string; measure_latest = mRow[0] as Record<string,unknown>; }
+        const [mLatestRes, mFirstRes] = await Promise.all([
+          supabase.from('measurements').select('measured_at,total_cm,weight').ilike('phone_digits', `%${digits}`).order('measured_at', { ascending: false }).limit(1),
+          supabase.from('measurements').select('measured_at,total_cm,weight').ilike('phone_digits', `%${digits}`).order('measured_at', { ascending: true }).limit(1),
+        ]);
+        if (mLatestRes.data?.[0]) { measure_last = (mLatestRes.data[0] as Record<string,unknown>).measured_at as string; measure_latest = mLatestRes.data[0] as Record<string,unknown>; }
+        if (mFirstRes.data?.[0] && measure_last && (mFirstRes.data[0] as Record<string,unknown>).measured_at !== measure_last) measure_first = mFirstRes.data[0] as Record<string,unknown>;
       }
 
       // System tags
@@ -2692,7 +2699,7 @@ export function buildCrmRouter(): Router {
 
       res.json({
         ltv, active_plan: activePlanWithName, visits_attended_total, last_visit_at,
-        inbody_last, inbody_latest, measure_last, measure_latest, body_client_id,
+        inbody_last, inbody_latest, inbody_prev, measure_last, measure_latest, measure_first, body_client_id,
         system_tags: systemTags, personal_tags,
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }

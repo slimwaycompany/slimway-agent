@@ -34,7 +34,7 @@ interface ClientPlan {
   sessions_total?: number | null; sessions_left?: number | null; needs_split?: boolean;
   freeze_days_used?: number | null;
   plan: { id: string; name: string; kind: string; freeze_days?: number | null } | null;
-  crm_client_plan_items: { device_type_code: string; sessions_total: number; sessions_left: number; phase: string }[];
+  crm_client_plan_items: { device_type_code: string | null; device_type_codes?: string[] | null; sessions_total: number; sessions_left: number; phase: string; is_unlimited?: boolean; daily_limit?: number | null }[];
 }
 
 interface ClientSummary {
@@ -44,8 +44,10 @@ interface ClientSummary {
   last_visit_at: string | null;
   inbody_last: string | null;
   inbody_latest: Record<string, unknown> | null;
+  inbody_prev: Record<string, unknown> | null;
   measure_last: string | null;
   measure_latest: Record<string, unknown> | null;
+  measure_first: Record<string, unknown> | null;
   body_client_id: string | null;
   system_tags: string[];
   personal_tags: { id: string; name: string; color: string }[];
@@ -95,6 +97,15 @@ async function apiJSON(method: string, url: string, body?: unknown) {
 function daysAgo(iso: string | null): number | null {
   if (!iso) return null;
   return Math.round((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+
+function ageFromDate(bd: string | null): string {
+  if (!bd) return '';
+  const birth = new Date(bd);
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) age--;
+  return `${age} л.`;
 }
 
 function dayLabel(days: number | null): { label: string; cls: string } | null {
@@ -465,6 +476,7 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   const [importantEdit, setImportantEdit] = useState(false);
   const [importantForm, setImportantForm] = useState<{ skirt_size: string; device_settings: Record<string, string>; important_note: string; contraindications: string }>({ skirt_size: '', device_settings: {}, important_note: '', contraindications: '' });
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
+  const [referrerName, setReferrerName] = useState<string | null>(null);
 
   const canEdit = role === 'admin' || role === 'manager';
 
@@ -490,6 +502,10 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
       if ((cd as ClientFull).photo_path) {
         fetch(`/kviz/api/crm/clients/${clientId}/photo-url`, { credentials: 'include' })
           .then(r => r.json()).then(d => { if (d.url) setPhotoUrl(d.url); }).catch(() => {});
+      }
+      if ((cd as ClientFull).referrer_client_id) {
+        fetch(`/kviz/api/crm/clients/${(cd as ClientFull).referrer_client_id}`, { credentials: 'include' })
+          .then(r => r.json()).then(d => { if (d.full_name) setReferrerName(d.full_name); }).catch(() => {});
       }
       const rawDs = (cd as ClientFull).device_settings;
       setImportantForm({
@@ -571,8 +587,8 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   if (!client) return null;
 
   const source = adSources.find(s => s.id === client.ad_source_id);
-  const activePlan = summary?.active_plan ?? null;
   const initials = client.full_name[0]?.toUpperCase() ?? '?';
+  const dtNameMap = Object.fromEntries(deviceTypes.map(dt => [dt.code, dt.name ?? dt.code]));
 
   // Plan list filter
   const filteredPlans = (plans ?? []).filter(cp => {
@@ -580,6 +596,17 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     if (planFilter === 'closed') return ['expired', 'refunded', 'cancelled'].includes(cp.status);
     return true;
   });
+
+  // Active plans for left column display
+  const activePlans = (plans ?? [])
+    .filter(p => ['active', 'not_activated', 'frozen'].includes(p.status))
+    .sort((a, b) => {
+      if (!a.valid_until) return 1;
+      if (!b.valid_until) return -1;
+      return a.valid_until < b.valid_until ? -1 : 1;
+    });
+  const displayPlan = activePlans[0] ?? null;
+  const extraPlansCount = activePlans.length - 1;
 
   // Personal tags that are not already on the client
   const personalTagIds = new Set((summary?.personal_tags ?? []).map(t => t.id));
@@ -590,115 +617,138 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
       <div className="cp-overlay" onClick={onClose}>
         <div className="cp-popup" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
 
-          {/* Header */}
-          <div className="cp-header">
-            <div className="cp-header-left">
-              {photoUrl
-                ? <img src={photoUrl} alt="" style={{ width: 44, height: 44, borderRadius: 22, objectFit: 'cover', flexShrink: 0 }} />
-                : <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg,#02BDB6,#263CD9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 700, flexShrink: 0 }}>{initials}</div>
-              }
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.full_name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 1 }}>{client.phone ?? 'Без телефона'}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-              {canEdit && <button className="cp-btn" onClick={onEdit}>✎ Редактировать</button>}
-              <button className="cp-btn" style={{ fontSize: 18, padding: '4px 8px' }} onClick={onClose} aria-label="Закрыть">✕</button>
-            </div>
-          </div>
-
-          {/* Tags bar */}
-          <div className="cp-tags">
-            {(summary?.system_tags ?? []).map(sk => {
-              const def = SYSTEM_TAG_LABELS[sk];
-              if (!def) return null;
-              return <span key={sk} className="cp-tag" style={{ background: def.bg, color: def.color }}>{def.label}</span>;
-            })}
-            {(summary?.personal_tags ?? []).map(pt => (
-              <span key={pt.id} className="cp-tag cp-tag--personal"
-                style={{ background: pt.color + '22', color: pt.color, border: `1px solid ${pt.color}44` }}
-                title="Нажмите ✕ чтобы снять"
-              >
-                {pt.name}
-                {canEdit && <span style={{ marginLeft: 4, opacity: .7, fontSize: 10 }} onClick={() => removeTag(pt.id)}>✕</span>}
-              </span>
-            ))}
-            {canEdit && (
-              <div style={{ position: 'relative' }}>
-                <button className="cp-btn" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setTagPickerOpen(v => !v)}>+ Метка</button>
-                {tagPickerOpen && unassignedPersonalTags.length > 0 && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,.12)', zIndex: 10, minWidth: 160, padding: 4 }}>
-                    {unassignedPersonalTags.map(t => (
-                      <div key={t.id} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 6 }}
-                        onClick={() => addTag(t.id)}>
-                        <div style={{ width: 8, height: 8, borderRadius: 4, background: t.color }} />
-                        {t.name}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {tagPickerOpen && unassignedPersonalTags.length === 0 && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: 'var(--text-3)', zIndex: 10, minWidth: 180 }}>
-                    Все метки уже назначены
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {/* Close button — absolute top-right of popup */}
+          <button className="cp-close-btn" onClick={onClose} aria-label="Закрыть">✕</button>
 
           {/* Body: 3 columns */}
           <div className="cp-body" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
             {/* ── Left column ── */}
             <div className="cp-col cp-col-left">
-              {/* LTV + visits */}
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--primary)' }}>
-                      {summary ? summary.ltv.toLocaleString('ru-RU') + ' ₸' : '…'}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase' }}>LTV</div>
-                  </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 18, fontWeight: 700 }}>{summary?.visits_attended_total ?? '…'}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase' }}>визитов</div>
+
+              {/* Identity block */}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10, paddingRight: 28 }}>
+                {photoUrl
+                  ? <img src={photoUrl} alt="" style={{ width: 44, height: 44, borderRadius: 22, objectFit: 'cover', flexShrink: 0 }} />
+                  : <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg,#02BDB6,#263CD9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 700, flexShrink: 0 }}>{initials}</div>
+                }
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{client.full_name}</div>
+                  {client.phone && (
+                    <button onClick={() => navigator.clipboard.writeText(client.phone!).then(() => toast.info('Телефон скопирован'))}
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: 'var(--primary)', fontFamily: 'inherit', display: 'block', marginTop: 2 }}>
+                      {client.phone} ⎘
+                    </button>
+                  )}
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 5, alignItems: 'center' }}>
+                    {client.fitbase_client_id && (
+                      <span style={{ fontSize: 11, background: 'var(--accent-soft, #ede9fe)', color: 'var(--accent)', padding: '1px 7px', borderRadius: 4 }}>Fitbase #{client.fitbase_client_id}</span>
+                    )}
+                    {canEdit && <button className="cp-btn" style={{ fontSize: 11 }} onClick={onEdit}>✎ Редактировать</button>}
                   </div>
                 </div>
-                {balance && (balance.deposit > 0 || balance.bonus > 0) && (
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {balance.deposit > 0 && <span style={{ ...SL.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>Депозит: {balance.deposit.toLocaleString('ru-RU')} ₸</span>}
-                    {balance.bonus > 0 && <span style={{ ...SL.chip, background: 'var(--accent-soft, #ede9fe)', color: '#7c3aed' }}>{balance.bonus} б.</span>}
+              </div>
+
+              {/* Tags row */}
+              <div className="cp-tags" style={{ marginBottom: 10 }}>
+                {(summary?.system_tags ?? []).map(sk => {
+                  const def = SYSTEM_TAG_LABELS[sk];
+                  if (!def) return null;
+                  return <span key={sk} className="cp-tag" style={{ background: def.bg, color: def.color }}>{def.label}</span>;
+                })}
+                {(summary?.personal_tags ?? []).map(pt => (
+                  <span key={pt.id} className="cp-tag cp-tag--personal"
+                    style={{ background: pt.color + '22', color: pt.color, border: `1px solid ${pt.color}44` }}>
+                    {pt.name}
+                    {canEdit && <span style={{ marginLeft: 4, opacity: .7, fontSize: 10, cursor: 'pointer' }} onClick={() => removeTag(pt.id)}>✕</span>}
+                  </span>
+                ))}
+                {canEdit && (
+                  <div style={{ position: 'relative' }}>
+                    <button className="cp-btn" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setTagPickerOpen(v => !v)}>+ Метка</button>
+                    {tagPickerOpen && unassignedPersonalTags.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,.12)', zIndex: 10, minWidth: 160, padding: 4 }}>
+                        {unassignedPersonalTags.map(t => (
+                          <div key={t.id} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 6 }}
+                            onClick={() => addTag(t.id)}>
+                            <div style={{ width: 8, height: 8, borderRadius: 4, background: t.color }} />
+                            {t.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {tagPickerOpen && unassignedPersonalTags.length === 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: 'var(--text-3)', zIndex: 10, minWidth: 180 }}>
+                        Все метки уже назначены
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Client info rows */}
-              <div style={{ fontSize: 13, lineHeight: '1.6' }}>
-                {client.birth_date && <div className="cp-row"><span className="cp-row-key">Дата рождения</span><span className="cp-row-val">{fmtDate(client.birth_date)}</span></div>}
-                {source && <div className="cp-row"><span className="cp-row-key">Источник</span><span className="cp-row-val">{source.name}</span></div>}
-                {summary?.last_visit_at && <div className="cp-row"><span className="cp-row-key">Последний визит</span><span className="cp-row-val">{fmtDate(summary.last_visit_at)}</span></div>}
+              {/* Info rows */}
+              <div style={{ fontSize: 13, lineHeight: '1.6', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                {client.birth_date && (
+                  <div className="cp-row"><span className="cp-row-key">Дата рождения</span><span className="cp-row-val">{fmtDate(client.birth_date)}{ageFromDate(client.birth_date) && ` (${ageFromDate(client.birth_date)})`}</span></div>
+                )}
+                {source && (
+                  <div className="cp-row"><span className="cp-row-key">Источник</span><span className="cp-row-val">{source.name}{referrerName ? ` / ${referrerName}` : ''}</span></div>
+                )}
+                <div className="cp-row"><span className="cp-row-key">Клиент с</span><span className="cp-row-val">{fmtDate(client.created_at)}</span></div>
+                {summary?.last_visit_at && (
+                  <div className="cp-row"><span className="cp-row-key">Последний визит</span><span className="cp-row-val">{fmtDate(summary.last_visit_at)}</span></div>
+                )}
+                <div className="cp-row">
+                  <span className="cp-row-key">LTV</span>
+                  <span className="cp-row-val" style={{ color: 'var(--primary)', fontWeight: 700 }}>{summary ? summary.ltv.toLocaleString('ru-RU') + ' ₸' : '…'}</span>
+                </div>
+                <div className="cp-row">
+                  <span className="cp-row-key">Визитов</span>
+                  <span className="cp-row-val">{summary?.visits_attended_total ?? '…'}</span>
+                </div>
+                {balance && balance.deposit > 0 && (
+                  <div className="cp-row"><span className="cp-row-key">Депозит</span><span className="cp-row-val" style={{ color: 'var(--success)' }}>{balance.deposit.toLocaleString('ru-RU')} ₸</span></div>
+                )}
+                {balance && balance.bonus > 0 && (
+                  <div className="cp-row"><span className="cp-row-key">Бонусы</span><span className="cp-row-val">{balance.bonus} б.</span></div>
+                )}
               </div>
 
               {/* Active plan */}
-              {activePlan && (
+              {displayPlan && (
                 <div className="cp-window" style={{ marginTop: 12 }}>
-                  <div className="cp-window-hdr">Активный абонемент</div>
+                  <div className="cp-window-hdr">
+                    Активный абонемент
+                    {extraPlansCount > 0 && <span style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 400 }}>+ещё {extraPlansCount}</span>}
+                  </div>
                   <div className="cp-window-body">
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-                      {(activePlan.plan_name as string | null) ?? activePlan.name ?? 'Без названия'}
-                    </div>
-                    {activePlan.valid_until && (
-                      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>До: {fmtDate(activePlan.valid_until)}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{displayPlan.plan?.name ?? displayPlan.name ?? 'Без названия'}</div>
+                    {displayPlan.valid_until && (
+                      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>До: {fmtDate(displayPlan.valid_until)}</div>
                     )}
-                    {activePlan.sessions_left != null && (
-                      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
-                        Остаток: {activePlan.sessions_left}{activePlan.sessions_total != null ? `/${activePlan.sessions_total}` : ''} сеансов
+                    {displayPlan.crm_client_plan_items.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
+                        {displayPlan.crm_client_plan_items.map((it, i) => (
+                          <div key={i} style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                            {!it.device_type_code && it.device_type_codes?.length
+                              ? `${it.device_type_codes.map(c => dtNameMap[c] ?? c).join(' / ')}: ${it.is_unlimited ? (it.daily_limit ? '1 в день' : '∞') : `${it.sessions_left}/${it.sessions_total}`}`
+                              : it.is_unlimited
+                                ? `${it.device_type_code ? (dtNameMap[it.device_type_code] ?? it.device_type_code) : '?'}: без лимита${it.daily_limit ? ' · 1 в день' : ''}`
+                                : `${it.device_type_code ? (dtNameMap[it.device_type_code] ?? it.device_type_code) : '?'}: ${it.sessions_left}/${it.sessions_total}`
+                            }
+                          </div>
+                        ))}
                       </div>
                     )}
-                    {activePlan.status === 'active' && canEdit && (
-                      <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setFreezeId(activePlan.id)}>❄ Заморозить</button>
+                    {displayPlan.crm_client_plan_items.length === 0 && displayPlan.sessions_left != null && (
+                      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Остаток: {displayPlan.sessions_left}{displayPlan.sessions_total != null ? `/${displayPlan.sessions_total}` : ''} сеансов</div>
+                    )}
+                    {(() => {
+                      const st = PLAN_STATUS[displayPlan.status] ?? { text: displayPlan.status, color: 'var(--text-2)', bg: 'var(--surface-2)' };
+                      return <span className="cp-plan-status" style={{ background: st.bg, color: st.color }}>{st.text}</span>;
+                    })()}
+                    {displayPlan.status === 'active' && canEdit && (
+                      <button className="cp-btn" style={{ fontSize: 11, marginTop: 6 }} onClick={() => setFreezeId(displayPlan.id)}>❄ Заморозить</button>
                     )}
                   </div>
                 </div>
@@ -804,7 +854,12 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
                             {cp.crm_client_plan_items.map((it, i) => (
                               <span key={i} style={{ fontSize: 11, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 4 }}>
-                                {it.device_type_code}: {it.sessions_left}/{it.sessions_total}
+                                {!it.device_type_code && it.device_type_codes?.length
+                                  ? `${it.device_type_codes.map(c => dtNameMap[c] ?? c).join('/')}: ${it.is_unlimited ? (it.daily_limit ? '1/д' : '∞') : `${it.sessions_left}/${it.sessions_total}`}`
+                                  : it.is_unlimited
+                                    ? `${it.device_type_code ? (dtNameMap[it.device_type_code] ?? it.device_type_code) : '?'}: без лимита`
+                                    : `${it.device_type_code ? (dtNameMap[it.device_type_code] ?? it.device_type_code) : '?'}: ${it.sessions_left}/${it.sessions_total}`
+                                }
                               </span>
                             ))}
                           </div>
@@ -896,14 +951,64 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                       </div>
                       {summary.inbody_latest && (
                         <div style={{ fontSize: 13 }}>
-                          {summary.inbody_latest.weight != null && <div className="cp-row"><span className="cp-row-key">Вес</span><span className="cp-row-val">{String(summary.inbody_latest.weight)} кг</span></div>}
-                          {summary.inbody_latest.body_fat_percent != null && <div className="cp-row"><span className="cp-row-key">% жира</span><span className="cp-row-val">{String(summary.inbody_latest.body_fat_percent)}%</span></div>}
-                          {summary.inbody_latest.smm != null && <div className="cp-row"><span className="cp-row-key">СММ</span><span className="cp-row-val">{String(summary.inbody_latest.smm)} кг</span></div>}
-                          {summary.inbody_latest.visceral_fat != null && <div className="cp-row"><span className="cp-row-key">Висц. жир</span><span className="cp-row-val">{String(summary.inbody_latest.visceral_fat)}</span></div>}
+                          {summary.inbody_latest.weight != null && (
+                            <div className="cp-row">
+                              <span className="cp-row-key">Вес</span>
+                              <span className="cp-row-val">
+                                {String(summary.inbody_latest.weight)} кг
+                                {summary.inbody_prev?.weight != null && (() => {
+                                  const d = Number(summary.inbody_latest!.weight) - Number(summary.inbody_prev!.weight);
+                                  if (d === 0) return null;
+                                  return <span className={d < 0 ? 'cp-delta-pos' : 'cp-delta-neg'}> {d > 0 ? '+' : ''}{d.toFixed(1)}</span>;
+                                })()}
+                              </span>
+                            </div>
+                          )}
+                          {summary.inbody_latest.pbf != null && (
+                            <div className="cp-row">
+                              <span className="cp-row-key">% жира</span>
+                              <span className="cp-row-val">
+                                {String(summary.inbody_latest.pbf)}%
+                                {summary.inbody_prev?.pbf != null && (() => {
+                                  const d = Number(summary.inbody_latest!.pbf) - Number(summary.inbody_prev!.pbf);
+                                  if (d === 0) return null;
+                                  return <span className={d < 0 ? 'cp-delta-pos' : 'cp-delta-neg'}> {d > 0 ? '+' : ''}{d.toFixed(1)}</span>;
+                                })()}
+                              </span>
+                            </div>
+                          )}
+                          {summary.inbody_latest.weight != null && summary.inbody_latest.ffm != null && (
+                            <div className="cp-row">
+                              <span className="cp-row-key">Жир кг</span>
+                              <span className="cp-row-val">
+                                {(Number(summary.inbody_latest.weight) - Number(summary.inbody_latest.ffm)).toFixed(1)} кг
+                                {summary.inbody_prev?.weight != null && summary.inbody_prev?.ffm != null && (() => {
+                                  const cur = Number(summary.inbody_latest!.weight) - Number(summary.inbody_latest!.ffm);
+                                  const prv = Number(summary.inbody_prev!.weight) - Number(summary.inbody_prev!.ffm);
+                                  const d = cur - prv;
+                                  if (d === 0) return null;
+                                  return <span className={d < 0 ? 'cp-delta-pos' : 'cp-delta-neg'}> {d > 0 ? '+' : ''}{d.toFixed(1)}</span>;
+                                })()}
+                              </span>
+                            </div>
+                          )}
+                          {summary.inbody_latest.smm != null && (
+                            <div className="cp-row">
+                              <span className="cp-row-key">Мышцы</span>
+                              <span className="cp-row-val">
+                                {String(summary.inbody_latest.smm)} кг
+                                {summary.inbody_prev?.smm != null && (() => {
+                                  const d = Number(summary.inbody_latest!.smm) - Number(summary.inbody_prev!.smm);
+                                  if (d === 0) return null;
+                                  return <span className={d > 0 ? 'cp-delta-pos' : 'cp-delta-neg'}> {d > 0 ? '+' : ''}{d.toFixed(1)}</span>;
+                                })()}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
                       {summary.body_client_id && (
-                        <a href={`/kviz/zamery?body_client_id=${summary.body_client_id}`} target="_self"
+                        <a href={`/reports/client/${summary.body_client_id}`} target="_self"
                           style={{ display: 'block', marginTop: 8, fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>
                           → Открыть отчёт
                         </a>
@@ -931,10 +1036,21 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                       </div>
                       {summary.measure_latest && (
                         <div style={{ fontSize: 13 }}>
-                          {summary.measure_latest.weight != null && <div className="cp-row"><span className="cp-row-key">Вес</span><span className="cp-row-val">{String(summary.measure_latest.weight)} кг</span></div>}
-                          {summary.measure_latest.waist_cm != null && <div className="cp-row"><span className="cp-row-key">Талия</span><span className="cp-row-val">{String(summary.measure_latest.waist_cm)} см</span></div>}
-                          {summary.measure_latest.hips_cm != null && <div className="cp-row"><span className="cp-row-key">Бёдра</span><span className="cp-row-val">{String(summary.measure_latest.hips_cm)} см</span></div>}
-                          {summary.measure_latest.total_cm != null && <div className="cp-row"><span className="cp-row-key">Итого</span><span className="cp-row-val">{String(summary.measure_latest.total_cm)} см</span></div>}
+                          {summary.measure_latest.total_cm != null && (
+                            <div className="cp-row">
+                              <span className="cp-row-key">Обхваты</span>
+                              <span className="cp-row-val">
+                                {String(summary.measure_latest.total_cm)} см
+                                {summary.measure_first?.total_cm != null && summary.measure_first.total_cm !== summary.measure_latest.total_cm && (() => {
+                                  const d = Number(summary.measure_latest!.total_cm) - Number(summary.measure_first!.total_cm);
+                                  return <span className={d < 0 ? 'cp-delta-pos' : 'cp-delta-neg'}> {d > 0 ? '+' : ''}{d.toFixed(0)} со старта</span>;
+                                })()}
+                              </span>
+                            </div>
+                          )}
+                          {summary.measure_latest.weight != null && (
+                            <div className="cp-row"><span className="cp-row-key">Вес</span><span className="cp-row-val">{String(summary.measure_latest.weight)} кг</span></div>
+                          )}
                         </div>
                       )}
                     </>

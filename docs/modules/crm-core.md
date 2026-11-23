@@ -48,6 +48,13 @@
 - `SettingsPage`: sidebar скрывается при выборе раздела (`settings-sidebar--hidden`), кнопка `← Назад` в заголовке контента.
 
 ## Сделано
+### 23.11.2026 · (task 86 доработка) · Карточка клиента — попап 92vw/vh, 3 равных колонки, левая колонка полная
+- `ClientsPage.tsx`: удалена шапка (`cp-header`), закрытие — крестик `cp-close-btn` (absolute top-right); аватар/ФИО/телефон (кнопка копирования)/Fitbase-бейдж/кнопка «Редактировать»/метки перенесены в верх ЛЕВОЙ колонки; добавлены строки: Дата рождения+возраст, Источник+реферер, Клиент с, LTV, Визитов, Депозит/Бонусы; активный абонемент берётся из `plans` (не из summary), показывается первый по valid_until + «+ещё N»; сеансы по аппарату: pool (`device_type_codes`) и unlimited (`is_unlimited`) — с именами аппаратов через `dtNameMap`.
+- InBody: исправлены поля `pbf` (не body_fat_percent) и `ffm` (не visceral_fat); показываются вес, % жира, жир кг (weight-ffm), мышцы (smm) + дельта к предыдущему тесту (`inbody_prev`); ссылка исправлена на `/reports/client/:body_client_id`.
+- Замеры: показывает total_cm + изменение со старта (`measure_first.total_cm`); добавлены `cp-delta-pos/neg` классы.
+- `src/http/crm.ts`: summary возвращает `inbody_prev` (2-й InBody ряд по дате убывания), `measure_first` (первый замер по дате возрастания для дельты со старта).
+- `index.css`: popup 92vw×92vh, закрыт overflow, добавлен `cp-close-btn`, header скрыт, body `1fr 1fr 1fr`.
+
 ### 23.11.2026 · (task 86) · Карточка клиента v2 — попап, метки, заморозка, лента
 - `ClientsPage.tsx` полностью переписан (~780 строк): правая панель заменена на `ClientPopup` (overlay, 3 колонки: лево=клиент, центр=3 окна, право=InBody+замеры); URL-синхронизация через hash `#client=:id`; новые компоненты `FreezeDialog`, `SplitDialog`; inline-редактирование «Важного»; лента с вкладками и полем для комментариев.
 - `index.css`: добавлены `.cp-*` классы (`.cp-overlay`, `.cp-popup`, `.cp-body` 3-col grid, `.cp-window`, `.cp-feed-*`, `.cp-timer`); адаптив ≤1024px (2 col) и ≤640px (1 col, bottom sheet).
