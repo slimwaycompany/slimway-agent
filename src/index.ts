@@ -34,6 +34,7 @@ import { runScriptologReminders, JOB_NAME as REMINDERS_JOB } from './jobs/script
 import { runControl, runControlRange } from './jobs/control';
 import { syncControlSheet, shouldSyncSheet } from './jobs/controlSheetSync';
 import { runProbeControl } from './jobs/probeControl';
+import { runProbeClientHistory } from './jobs/probeClientHistory';
 import { POSITION_PRESETS } from './core/permissions';
 import { mountTelegramRoute } from './http/telegram';
 import { buildCheckinRouter } from './http/checkin';
@@ -369,6 +370,18 @@ async function handleProbeControl(req: express.Request, res: express.Response): 
 }
 app.get('/run/probe-control',  handleProbeControl);
 app.post('/run/probe-control', handleProbeControl);
+
+// probe-client-history: synchronous, read-only Fitbase + Supabase exploration
+async function handleProbeClientHistory(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  try {
+    const { client_ids, phone } = req.query as Record<string, string>;
+    const result = await runProbeClientHistory({ client_ids, phone });
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+}
+app.get('/run/probe-client-history',  handleProbeClientHistory);
+app.post('/run/probe-client-history', handleProbeClientHistory);
 
 // pbx-sync: pull last 2h from OnlinePBX API
 async function handlePbxSync(req: express.Request, res: express.Response): Promise<void> {

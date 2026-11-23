@@ -16,7 +16,7 @@
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 19.11.2026 | task 72: фикс ReferenceError в PlanFactSection (Fragment без импорта React) |
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 17.11.2026 | task 64: живой фон (blob-анимация), тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка, эффекты в редакторе |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
-| CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 23.11.2026 | task 83-1: BranchSection — socials как 4 поля, select-списки часовых поясов/валют/языков, валидации БИН/телефона/часов |
+| CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 23.11.2026 | task 84: зонд /run/probe-client-history (Fitbase: контракты/оплаты/визиты + Supabase: crm↔body_clients сверка) |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 23.11.2026 | task 83-1: BranchSection — socials/поля-списки/валидации; ждёт проверки на проде |
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 21.11.2026 | task 81: единый формат вариантов id/label, none_option, not_none, checklist без потерь, sw.js |
