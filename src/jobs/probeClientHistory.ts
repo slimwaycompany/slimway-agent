@@ -143,6 +143,23 @@ export async function runProbeClientHistory(
         if (clientIds.length >= 8) break;
       }
     }
+
+    // Fallback: pick from body_clients.fitbase_client_id when other sources empty
+    if (clientIds.length < 4) {
+      const { data: bcRows } = await supabase
+        .from('body_clients')
+        .select('fitbase_client_id')
+        .not('fitbase_client_id', 'is', null)
+        .order('id', { ascending: false })
+        .limit(20);
+      for (const r of (bcRows ?? []) as Record<string, unknown>[]) {
+        const id = Number(r.fitbase_client_id);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        clientIds.push(id);
+        if (clientIds.length >= 8) break;
+      }
+    }
   }
 
   // ── 2. Global totals (page_size=1 → total_count header) ──────────────────
