@@ -495,9 +495,16 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
         for (const [orderKey, orderSteps] of orderMap) {
           const orderId = Number(orderSteps[0].order_id);
 
-          const { data: existing } = await supabase
+          const { data: existingSale } = await supabase
             .from('crm_sales').select('id').eq('fitbase_order_id', orderId).maybeSingle();
-          if (existing) { job.stats.sales_upserted++; continue; }
+          const isNewSale = !existingSale;
+          // For existing sales: delete items/payments so they're re-inserted with
+          // fitbase_contract_id/fitbase_item_id (needed for refund matching)
+          if (existingSale) {
+            const eid = (existingSale as { id: string }).id;
+            await supabase.from('crm_sale_items').delete().eq('sale_id', eid);
+            await supabase.from('crm_sale_payments').delete().eq('sale_id', eid);
+          }
 
           // Validate item types and build inserts BEFORE touching the DB
           let orderValid = true;
@@ -573,25 +580,27 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
           const manager = ((orderSteps[0].manager as Record<string,unknown> | null)?.name ?? null) as string | null;
           const paidAt  = tsToIso(orderSteps[0].pay_date ?? orderSteps[0].created_at);
 
-          const { data: saleRow, error: saleErr } = await supabase
-            .from('crm_sales')
-            .insert({
-              branch_id: BRANCH_ID, client_id: clientId,
-              cashier, manager, subtotal: total, total,
-              discount_kind: 'none', status: 'completed',
-              source: 'fitbase', fitbase_order_id: orderId,
-              paid_at: paidAt, shift_id: null,
-            })
-            .select('id').single();
+          let saleId = existingSale ? (existingSale as { id: string }).id : '';
+          if (isNewSale) {
+            const { data: saleRow, error: saleErr } = await supabase
+              .from('crm_sales')
+              .insert({
+                branch_id: BRANCH_ID, client_id: clientId,
+                cashier, manager, subtotal: total, total,
+                discount_kind: 'none', status: 'completed',
+                source: 'fitbase', fitbase_order_id: orderId,
+                paid_at: paidAt, shift_id: null,
+              })
+              .select('id').single();
 
-          if (saleErr || !saleRow) {
-            const msg = `client ${fid} order ${orderKey}: sale insert: ${saleErr?.message}`;
-            console.error('[history-import]', msg);
-            job.errors.push(msg);
-            continue;
+            if (saleErr || !saleRow) {
+              const msg = `client ${fid} order ${orderKey}: sale insert: ${saleErr?.message}`;
+              console.error('[history-import]', msg);
+              job.errors.push(msg);
+              continue;
+            }
+            saleId = (saleRow as { id: string }).id;
           }
-
-          const saleId = (saleRow as { id: string }).id;
           for (const item of itemInserts) item.sale_id = saleId;
           for (const pay  of payInserts)  pay.sale_id  = saleId;
 
@@ -601,7 +610,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
               const msg = `client ${fid} order ${orderKey}: items: ${itemErr.message}`;
               console.error('[history-import]', msg);
               job.errors.push(msg);
-              await rollbackSale(saleId);
+              if (isNewSale) await rollbackSale(saleId);
               continue;
             }
           }
@@ -611,31 +620,33 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
               const msg = `client ${fid} order ${orderKey}: payments: ${payErr.message}`;
               console.error('[history-import]', msg);
               job.errors.push(msg);
-              await rollbackSale(saleId);
+              if (isNewSale) await rollbackSale(saleId);
+              else await supabase.from('crm_sale_items').delete().eq('sale_id', saleId);
               continue;
             }
           }
 
-          // balance_ops for deposit top-ups
-          for (const step of orderSteps) {
-            const s = step as Record<string, unknown>;
-            if (ITEM_TYPE_MAP[String(s.item_type ?? '').toLowerCase().trim()] === 'deposit' && Number(s.amount) > 0) {
-              const { error: balErr } = await supabase.from('crm_balance_ops').insert({
-                client_id: clientId, wallet: 'deposit', amount: Number(s.amount),
-                reason: 'Пополнение депозита (Fitbase)', created_by: 'fitbase_import',
-                created_at: tsToIso(s.created_at),
-              });
-              if (balErr) {
-                const msg = `client ${fid} order ${orderKey}: balance_ops: ${balErr.message}`;
-                console.error('[history-import]', msg);
-                job.errors.push(msg);
+          // balance_ops for deposit top-ups — only on first insert (avoid duplicates)
+          if (isNewSale) {
+            for (const step of orderSteps) {
+              const s = step as Record<string, unknown>;
+              if (ITEM_TYPE_MAP[String(s.item_type ?? '').toLowerCase().trim()] === 'deposit' && Number(s.amount) > 0) {
+                const { error: balErr } = await supabase.from('crm_balance_ops').insert({
+                  client_id: clientId, wallet: 'deposit', amount: Number(s.amount),
+                  reason: 'Пополнение депозита (Fitbase)', created_by: 'fitbase_import',
+                  created_at: tsToIso(s.created_at),
+                });
+                if (balErr) {
+                  const msg = `client ${fid} order ${orderKey}: balance_ops: ${balErr.message}`;
+                  console.error('[history-import]', msg);
+                  job.errors.push(msg);
+                }
               }
             }
           }
 
           cPays += payInserts.length;
-          job.stats.sales_upserted++;
-          cSales++;
+          if (isNewSale) { job.stats.sales_upserted++; cSales++; }
         }
 
         // Refunds — log diagnostics + match by contract/item, not order_id
