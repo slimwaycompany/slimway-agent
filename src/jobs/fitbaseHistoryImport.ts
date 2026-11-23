@@ -396,6 +396,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly'): Promise
               client_id:        clientId,
               cashier:          cashier,
               manager:          manager,
+              subtotal:         total,
               total:            total,
               discount_kind:    'none',
               status:           'completed',
