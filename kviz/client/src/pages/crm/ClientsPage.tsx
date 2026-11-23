@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Component } from 'react';
+import type { ReactNode } from 'react';
 import { showConfirm } from '../../lib/confirm';
 import { toast } from '../../lib/toast';
 
@@ -18,8 +19,11 @@ interface ClientFull extends ClientRow {
   photo_path: string | null; contraindications: string | null; notes: string | null;
   source: string; branch_id: string; is_deleted: boolean;
   gender: string | null; address: string | null;
-  important_note: string | null; skirt_size: string | null; device_settings: string | null;
+  important_note: string | null; skirt_size: string | null;
+  device_settings: Record<string, string> | null;
 }
+
+interface DeviceType { code: string; name: string; is_active: boolean }
 
 interface RefClient { id: string; full_name: string; phone: string | null }
 interface ClientBalance { deposit: number; bonus: number }
@@ -415,6 +419,27 @@ function SplitDialog({ plan, onDone, onClose }: { plan: ClientPlan; onDone: () =
   );
 }
 
+// ── ErrorBoundary ──────────────────────────────────────────────────────────────
+
+class PopupErrorBoundary extends Component<{ onClose: () => void; children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { onClose: () => void; children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) return (
+      <div className="cp-overlay" onClick={this.props.onClose}>
+        <div className="cp-popup" style={{ maxHeight: 180, justifyContent: 'center', alignItems: 'center', gap: 16 }} onClick={e => e.stopPropagation()}>
+          <p style={{ margin: 0, fontSize: 15, color: 'var(--text)' }}>Не удалось открыть карточку</p>
+          <button className="cp-btn cp-btn--primary" onClick={this.props.onClose}>Закрыть</button>
+        </div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 // ── ClientPopup ────────────────────────────────────────────────────────────────
 
 function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
@@ -438,7 +463,8 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   const [allTags, setAllTags] = useState<ClientTag[]>([]);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [importantEdit, setImportantEdit] = useState(false);
-  const [importantForm, setImportantForm] = useState({ skirt_size: '', device_settings: '', important_note: '', contraindications: '' });
+  const [importantForm, setImportantForm] = useState<{ skirt_size: string; device_settings: Record<string, string>; important_note: string; contraindications: string }>({ skirt_size: '', device_settings: {}, important_note: '', contraindications: '' });
+  const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
 
   const canEdit = role === 'admin' || role === 'manager';
 
@@ -465,9 +491,10 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
         fetch(`/kviz/api/crm/clients/${clientId}/photo-url`, { credentials: 'include' })
           .then(r => r.json()).then(d => { if (d.url) setPhotoUrl(d.url); }).catch(() => {});
       }
+      const rawDs = (cd as ClientFull).device_settings;
       setImportantForm({
         skirt_size: (cd as ClientFull).skirt_size ?? '',
-        device_settings: (cd as ClientFull).device_settings ?? '',
+        device_settings: (rawDs && typeof rawDs === 'object') ? rawDs as Record<string, string> : {},
         important_note: (cd as ClientFull).important_note ?? '',
         contraindications: (cd as ClientFull).contraindications ?? '',
       });
@@ -478,19 +505,25 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
       .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => setPlans([]));
     fetch('/kviz/api/crm/client-tags', { credentials: 'include' })
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setAllTags(d); }).catch(() => {});
+    fetch('/kviz/api/crm/device-types', { credentials: 'include' })
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setDeviceTypes(d.filter((x: DeviceType) => x.is_active)); }).catch(() => {});
   }, [clientId, loadSummary]);
 
   useEffect(() => { loadFeed(); }, [loadFeed]);
 
   async function saveImportant() {
+    const dsClean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(importantForm.device_settings)) {
+      if (v.trim()) dsClean[k] = v.trim();
+    }
     const { ok, data } = await apiJSON('PATCH', `/kviz/api/crm/clients/${clientId}`, {
       skirt_size: importantForm.skirt_size || null,
-      device_settings: importantForm.device_settings || null,
+      device_settings: dsClean,
       important_note: importantForm.important_note || null,
       contraindications: importantForm.contraindications || null,
     });
     if (!ok) { toast.error(data.error || 'Ошибка'); return; }
-    setClient(prev => prev ? { ...prev, ...importantForm as Partial<ClientFull> } : prev);
+    setClient(prev => prev ? { ...prev, skirt_size: importantForm.skirt_size || null, device_settings: dsClean, important_note: importantForm.important_note || null, contraindications: importantForm.contraindications || null } : prev);
     setImportantEdit(false);
     toast.success('Сохранено');
   }
@@ -700,15 +733,21 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                 <div className="cp-window-body">
                   {importantEdit ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {[
-                        ['skirt_size', 'Размер юбки'],
-                        ['device_settings', 'Настройки аппаратов'],
-                        ['important_note', 'Важное'],
-                        ['contraindications', 'Противопоказания'],
-                      ].map(([k, label]) => (
-                        <div key={k}>
-                          <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>{label}</label>
-                          <textarea value={importantForm[k as keyof typeof importantForm]} onChange={e => setImportantForm(f => ({ ...f, [k]: e.target.value }))}
+                      {(['skirt_size', 'important_note', 'contraindications'] as const).map(k => {
+                        const label = k === 'skirt_size' ? 'Размер юбки' : k === 'important_note' ? 'Важное' : 'Противопоказания';
+                        return (
+                          <div key={k}>
+                            <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>{label}</label>
+                            <textarea value={importantForm[k]} onChange={e => setImportantForm(f => ({ ...f, [k]: e.target.value }))}
+                              style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
+                          </div>
+                        );
+                      })}
+                      {deviceTypes.map(dt => (
+                        <div key={dt.code}>
+                          <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>{dt.name ?? dt.code}</label>
+                          <textarea value={importantForm.device_settings[dt.code] ?? ''}
+                            onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: e.target.value } }))}
                             style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
                         </div>
                       ))}
@@ -716,10 +755,13 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                   ) : (
                     <div style={{ fontSize: 13 }}>
                       {client.skirt_size && <div className="cp-row"><span className="cp-row-key">Юбка</span><span className="cp-row-val">{client.skirt_size}</span></div>}
-                      {client.device_settings && <div className="cp-row"><span className="cp-row-key">Аппараты</span><span className="cp-row-val">{client.device_settings}</span></div>}
+                      {deviceTypes.map(dt => {
+                        const val = client.device_settings?.[dt.code];
+                        return val ? <div key={dt.code} className="cp-row"><span className="cp-row-key">{dt.name ?? dt.code}</span><span className="cp-row-val">{val}</span></div> : null;
+                      })}
                       {client.important_note && <div style={{ padding: '4px 0', color: '#b45309', fontSize: 13 }}>⚠ {client.important_note}</div>}
                       {client.contraindications && <div style={{ padding: '4px 0', color: 'var(--danger)', fontSize: 13 }}>Противопоказания: {client.contraindications}</div>}
-                      {!client.skirt_size && !client.device_settings && !client.important_note && !client.contraindications && (
+                      {!client.skirt_size && !Object.values(client.device_settings ?? {}).some(v => v) && !client.important_note && !client.contraindications && (
                         <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет данных</div>
                       )}
                     </div>
@@ -1160,13 +1202,15 @@ export default function ClientsPage() {
 
       {/* Popup */}
       {popupId && (
-        <ClientPopup
-          clientId={popupId}
-          adSources={adSources}
-          role={role}
-          onClose={() => setPopupId(null)}
-          onEdit={() => openEdit(popupId)}
-        />
+        <PopupErrorBoundary onClose={() => setPopupId(null)}>
+          <ClientPopup
+            clientId={popupId}
+            adSources={adSources}
+            role={role}
+            onClose={() => setPopupId(null)}
+            onEdit={() => openEdit(popupId)}
+          />
+        </PopupErrorBoundary>
       )}
     </div>
   );
