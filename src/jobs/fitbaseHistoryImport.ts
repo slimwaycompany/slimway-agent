@@ -38,6 +38,10 @@ const PM_SYNONYMS: Record<string, string> = {
   'kaspi':                  'kaspi qr',
   'каспи qr':               'kaspi qr',
   'kaspi qr':               'kaspi qr',
+  'kaspi gold':             'kaspi qr',
+  'kaspi gold qr':          'kaspi qr',
+  'kaspi gold карта':       'kaspi qr',
+  'kaspi gold (qr / карта)': 'kaspi qr',
   'kaspi рассрочка':        'рассрочка kaspi 0-0-12',
   'рассрочка kaspi':        'рассрочка kaspi 0-0-12',
   'рассрочка каспи':        'рассрочка kaspi 0-0-12',
@@ -51,6 +55,16 @@ const PM_SYNONYMS: Record<string, string> = {
   'bonus':                  'бонусами',
   'бонусные':               'бонусами',
 };
+
+// Fitbase visit status number → crm_visit_history.status enum
+const VISIT_STATUS_MAP: Record<number, string> = { 0: 'unknown', 1: 'booked', 2: 'cancelled', 3: 'attended', 4: 'no_show' };
+function mapVisitStatus(raw: unknown): string {
+  const n = raw != null ? Number(raw) : 0;
+  return VISIT_STATUS_MAP[n] ?? 'unknown';
+}
+
+// Fitbase payment_method.system_name → CRM payment method kind (unambiguous 1:1 only)
+const PM_SYS_KIND: Record<string, string> = { cash: 'cash', deposit: 'deposit', bonus: 'bonus' };
 
 function yekDate(ts: number): string {
   const d = new Date(ts + YEK_MS);
@@ -82,7 +96,7 @@ export interface HistoryImportJob {
   run_id: string | null;
   total_clients: number;
   done_clients: number;
-  stats: { plans_upserted: number; sales_upserted: number; refunds_upserted: number; visits_upserted: number };
+  stats: { plans_upserted: number; sales_upserted: number; refunds_upserted: number; visits_upserted: number; unmatched_payment_methods: string[] };
   errors: string[];
   started_at: string;
   finished_at?: string;
@@ -97,7 +111,7 @@ export function startHistoryImport(kind: 'full' | 'nightly'): HistoryImportJob |
   _job = {
     status: 'running', kind, run_id: null,
     total_clients: 0, done_clients: 0,
-    stats: { plans_upserted: 0, sales_upserted: 0, refunds_upserted: 0, visits_upserted: 0 },
+    stats: { plans_upserted: 0, sales_upserted: 0, refunds_upserted: 0, visits_upserted: 0, unmatched_payment_methods: [] },
     errors: [], started_at: new Date().toISOString(),
   };
   return _job;
@@ -346,10 +360,12 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
 
     const { data: pmData } = await supabase.from('crm_payment_methods').select('id, name, kind');
     const pmByName = new Map<string, number>();
+    const pmByKind = new Map<string, number>();
     let depositPmId: number | null = null;
     let bonusPmId:   number | null = null;
     for (const pm of (pmData ?? []) as Array<{ id: number; name: string; kind: string }>) {
       pmByName.set(pm.name.toLowerCase().trim(), pm.id);
+      pmByKind.set(pm.kind, pm.id);
       if (pm.kind === 'deposit') depositPmId = pm.id;
       if (pm.kind === 'bonus')   bonusPmId   = pm.id;
     }
@@ -466,25 +482,33 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
             itemInserts.push({ sale_id: '', item_type: crmItemType, name: itemName, qty: 1, unit_price: stepAmt, total: stepAmt });
 
             if (stepAmt > 0) {
-              const ptRaw = ((s.payment_type    as Record<string,unknown> | null)?.name as string ?? '').trim();
-              const pmRaw = ((s.payment_method  as Record<string,unknown> | null)?.name as string ?? '').trim();
-              const pcRaw = ((s.payment_channel as Record<string,unknown> | null)?.name as string ?? '').trim();
-              const rawPmName  = (ptRaw || pmRaw || pcRaw).toLowerCase();
-
               if (pmDiagCount < 5) {
                 console.log(`[history-import] PAYMENT_OBJECT client ${fid} step ${s.id}: payment_type=${JSON.stringify(s.payment_type)}, payment_method=${JSON.stringify(s.payment_method)}, payment_channel=${JSON.stringify(s.payment_channel)}, priceDeposit=${s.priceDeposit}, priceBonus=${s.priceBonus}`);
                 pmDiagCount++;
               }
 
-              const resolvedName = PM_SYNONYMS[rawPmName] ?? rawPmName;
+              const sysName  = ((s.payment_method  as Record<string,unknown> | null)?.system_name as string ?? '').toLowerCase().trim();
+              const ptName   = ((s.payment_type    as Record<string,unknown> | null)?.name as string ?? '').toLowerCase().trim();
+              const pmName   = ((s.payment_method  as Record<string,unknown> | null)?.name as string ?? '').toLowerCase().trim();
+              const pcName   = ((s.payment_channel as Record<string,unknown> | null)?.name as string ?? '').toLowerCase().trim();
+              const rawPmName = ptName || pmName || pcName;
+
               const priceDeposit = Number(s.priceDeposit ?? 0);
               const priceBonus   = Number(s.priceBonus   ?? 0);
               const cashAmt      = stepAmt - priceDeposit - priceBonus;
 
               if (cashAmt > 0) {
-                const pmId = pmByName.get(resolvedName);
+                // 1. system_name → unambiguous kind
+                let pmId = (sysName && PM_SYS_KIND[sysName]) ? pmByKind.get(PM_SYS_KIND[sysName]) : undefined;
+                // 2. name + PM_SYNONYMS
+                if (pmId == null && rawPmName) {
+                  const resolved = PM_SYNONYMS[rawPmName] ?? rawPmName;
+                  pmId = pmByName.get(resolved);
+                }
                 if (pmId == null) {
-                  const msg = `client ${fid} order ${orderKey}: step ${s.id} pm="${rawPmName}" resolved="${resolvedName}" not found, order skipped`;
+                  const key = `${rawPmName || '(empty)'}${sysName ? '/sys:' + sysName : ''}`;
+                  if (!job.stats.unmatched_payment_methods.includes(key)) job.stats.unmatched_payment_methods.push(key);
+                  const msg = `client ${fid} order ${orderKey}: step ${s.id} pm="${rawPmName}" sys="${sysName}" not found, order skipped`;
                   console.error('[history-import]', msg);
                   job.errors.push(msg);
                   orderValid = false;
@@ -616,21 +640,26 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
         await sleep(200);
 
         const visitRows: Record<string, unknown>[] = [];
+        const uniqueStatuses = new Set<string>();
         for (const v of visits) {
           const vis = v as Record<string, unknown>;
           const ev  = (vis.event as Record<string, unknown> | null) ?? {};
           const tr  = (ev.training as Record<string, unknown> | null) ?? {};
           const cc  = vis.client_contract as Record<string, unknown> | null;
+          uniqueStatuses.add(vis.status != null ? String(vis.status) : 'null');
           visitRows.push({
             client_id:            clientId,
             client_fitbase_id:    fid,
             fitbase_reg_id:       Number(vis.id),
             fitbase_contract_id:  cc?.id != null ? Number(cc.id) : null,
-            status:               vis.status != null ? Number(vis.status) : 0,
+            status:               mapVisitStatus(vis.status),
+            status_raw:           vis.status != null ? Number(vis.status) : null,
             visit_at:             tsToIso(ev.date ?? null),
             training_name:        (tr.name as string | null) ?? null,
           });
         }
+        if (uniqueStatuses.size > 0)
+          console.log(`[history-import] client ${fid} visit status values: ${[...uniqueStatuses].join(', ')}`);
 
         for (let vi = 0; vi < visitRows.length; vi += 100) {
           const chunk = visitRows.slice(vi, vi + 100);
@@ -638,13 +667,13 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
             .upsert(chunk, { onConflict: 'fitbase_reg_id' });
           if (visErr) {
             const msg = `client ${fid} visits chunk ${vi}: ${visErr.message}`;
-            console.error('[history-import]', msg);
+            console.log('[history-import] ERR', msg);
             job.errors.push(msg);
           } else { job.stats.visits_upserted += chunk.length; cVisits += chunk.length; }
         }
       } catch (e) {
         const msg = `client ${fid} visits: ${(e as Error).message ?? String(e)}`;
-        console.error('[history-import]', msg);
+        console.log('[history-import] ERR', msg);
         job.errors.push(msg);
       }
 
