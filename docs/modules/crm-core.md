@@ -9,6 +9,7 @@
 - `kviz/client/src/pages/crm/SettingsPage.tsx` — вкладка «Настройки»: аппараты, абонементы/услуги (с составом), товары и поставки, поставщики, промокоды, виды оплаты, рекламные источники, занятия, сервис (crm_settings)
 - `kviz/client/src/pages/crm/ClientsPage.tsx` — вкладка «Клиенты»: список клиентов, анкета, карточка клиента (вкладки Анкета / Абонементы / Продажи), баланс депозита и бонусов
 - `src/http/crm.ts` — единственный серверный файл CRM (`buildCrmRouter`): все маршруты `/kviz/api/crm/*`, `runCrmLifecycle()`
+- `src/jobs/fitbaseHistoryImport.ts` — импорт истории Fitbase: `linkBodyClients`, `getLinkStats`, `startHistoryImport`, `runFitbaseHistoryImport`; маршруты `/run/fitbase-history-import` в `src/index.ts`
 
 ## Таблицы
 - `crm_branches` — филиалы (сейчас один `00000000-0000-0000-0000-000000000001`)
@@ -22,6 +23,9 @@
 - `crm_suppliers` (+ link), `crm_products`, `crm_product_supplies` (партии: quantity, remaining, закуп, розница, дата), вью `crm_product_stock`
 - `crm_promo_codes` (percent/fixed, лимиты, applies_to_all) + `crm_promo_targets` (plan/product)
 - `crm_audit_log`
+- `crm_visit_history` — визиты из Fitbase: fitbase_reg_id (unique), client_id, fitbase_contract_id, status (0–4), visit_date, training_name
+- `crm_fitbase_import_runs` — прогресс и чекпоинты импорта истории: kind, status, total_clients, processed, планы/продажи/возвраты/визиты, errors, last_client_fitbase_id
+- `body_clients` — добавлены `crm_client_id` (FK crm_clients) + `crm_link_method` ('fitbase_id'|'phone'|'manual')
 
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -41,6 +45,15 @@
 - `SettingsPage`: sidebar скрывается при выборе раздела (`settings-sidebar--hidden`), кнопка `← Назад` в заголовке контента.
 
 ## Сделано
+### 23.11.2026 · 2680116 · task 85 · Импорт истории Fitbase: связка InBody↔CRM, абонементы/продажи/возвраты/визиты, сводный API
+- `src/jobs/fitbaseHistoryImport.ts`: `linkBodyClients()` (по fitbase_client_id → crm_link_method='fitbase_id', затем по 10 цифрам телефона → 'phone'; manual не трогаем); `getLinkStats()` (linked/no_crm_pair/disputed); `startHistoryImport(kind)` / `runFitbaseHistoryImport(kind)`.
+- Импорт для каждого crm_client с fitbase_client_id: контракты → `crm_client_plans` (source='fitbase', fitbase_contract_id, upsert by fitbase_contract_id, needs_split, sessions_total/left); продажи → `crm_sales`+`crm_sale_items`+`crm_sale_payments` (grouped by order_id, source='fitbase', shift_id=null, fitbase_step_id); возвраты (amount<0) → `crm_refunds` (source='fitbase', upsert by fitbase_step_id); визиты → `crm_visit_history` (upsert by fitbase_reg_id, date windowing).
+- Checkpoint каждые 10 клиентов → `crm_fitbase_import_runs`; nightly-режим только активных клиентов + linkBodyClients; guard против двойного запуска.
+- `src/index.ts`: `POST/GET /run/fitbase-history-import` (CRON_SECRET), `/status`.
+- `src/http/crm.ts`: `POST /kviz/api/crm/fitbase-history-import` (admin, UI-триггер), `/status`; `GET /inbody-link-stats`, `POST /inbody-link-auto`; `POST /body-clients/:id/link|unlink`; `GET /clients/:id/summary` (ltv, active_plan, visits_attended_total, last_visit_at, inbody_last, measure_last, body_client_id); `/clients/:id/plans` теперь передаёт source, name, needs_split, sessions_total/left; lifecycle-auto-activate пропускает планы без plan_id.
+- `ClientsPage.tsx`: null-safe cashier/number в «Продажах», метка «Fitbase», cp.name/needs_split/sessions для Fitbase-планов.
+- `SettingsPage.tsx` (InBodySettingsSection): блок «Связь замеров с клиентами CRM» (счётчики, спорные, кнопка автопривязки); блок «Импорт истории из Fitbase» (полный / только активные, прогресс-бар, статистика).
+
 ### 23.11.2026 · (task 84) · Зонд Fitbase: история клиента — продажи, оплаты, сеансы + связка с InBody
 - `src/jobs/probeClientHistory.ts`: GET `/run/probe-client-history?client_ids=...` или `?phone=...`; по умолчанию авто-выборка ~8 клиентов (включая 87767681579) из fitbase_operations + fitbase_clients_cache.
 - Для каждого клиента: `/client/:id`, `/client-contract?client_id=`, `/till-order-steps?client_id=`, `/schedule-registration?client_id=&date_from=&date_to=`; суммирует контракты, оплаты, возвраты (amount<0), продажи товаров (item_type=product), визиты.
