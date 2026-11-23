@@ -35,7 +35,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'branch' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules';
+type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'branch' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'client-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -2181,6 +2181,61 @@ function LeadTagsSection() {
   );
 }
 
+// ── CRM: Client Tags ───────────────────────────────────────────────────────────
+
+interface ClientTagRow { id: string; name: string; color: string | null; is_system: boolean; is_active: boolean }
+
+function ClientTagsSection() {
+  const [tags, setTags] = useState<ClientTagRow[]>([]);
+  const [err, setErr] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newColor, setNewColor] = useState('#02BDB6');
+
+  async function load() {
+    const { ok, data } = await api('GET', '/kviz/api/crm/client-tags');
+    if (ok && Array.isArray(data)) setTags(data);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function create() {
+    if (!newName.trim()) return;
+    const { ok, data } = await api('POST', '/kviz/api/crm/client-tags', { name: newName.trim(), color: newColor });
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    setNewName(''); load();
+  }
+
+  async function del(tag: ClientTagRow) {
+    if (tag.is_system) { setErr('Системные метки нельзя удалить'); return; }
+    if (!await showConfirm(`Удалить метку «${tag.name}»?`)) return;
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/client-tags/${tag.id}`);
+    if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
+    load();
+  }
+
+  return (
+    <div style={S.section}>
+      {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <input style={{ ...S.inp, flex: 1, minWidth: 160 }} placeholder="Название метки" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && create()} />
+        <input type="color" value={newColor} onChange={e => setNewColor(e.target.value)} style={{ width: 36, height: 36, padding: 2, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} title="Цвет метки" />
+        <button style={S.addBtn} onClick={create}>+ Метка</button>
+      </div>
+      <div style={S.list}>
+        {tags.map(t => (
+          <div key={t.id} style={S.row}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {t.color && <span style={{ width: 12, height: 12, borderRadius: '50%', background: t.color, flexShrink: 0 }} />}
+              <span style={{ fontSize: 13, color: 'var(--text)' }}>{t.name}{t.is_system && <span style={S.badge}>системная</span>}</span>
+            </div>
+            {!t.is_system && <button style={S.delBtn} onClick={() => del(t)}>Удалить</button>}
+          </div>
+        ))}
+        {tags.length === 0 && <div style={S.empty}>Метки не созданы</div>}
+      </div>
+    </div>
+  );
+}
+
 // ── CRM: Task Types ────────────────────────────────────────────────────────────
 
 interface TaskTypeRow { id: string; name: string; is_active: boolean }
@@ -4171,6 +4226,7 @@ const NAV_GROUPS_DEF: NavGroupDef[] = [
     { id: 'sources',       label: 'Рекламные источники',  Icon: Megaphone,     permKey: 'settings.sources' },
     { id: 'lost-reasons',  label: 'Причины отказа',       Icon: XCircle,       permKey: 'settings.lost_reasons' },
     { id: 'lead-tags',     label: 'Теги заявок',          Icon: Hash,          permKey: 'settings.lead_tags' },
+    { id: 'client-tags',   label: 'Метки клиентов',       Icon: Tag,           permKey: 'settings.client_tags' },
     { id: 'task-types',    label: 'Типы задач',           Icon: CheckSquare,   permKey: 'settings.task_types' },
     { id: 'lead-rules',    label: 'Автоматизация',        Icon: Cpu,           permKey: 'settings.funnels' },
     { id: 'scriptolog',    label: 'Скриптолог',           Icon: MessageSquare, permKey: 'settings.scriptolog' },
@@ -4200,6 +4256,8 @@ const SYNONYMS: [string, string][] = [
   ['смены',       'control-schedule'],
   ['занятия',     'classes'],      ['расписание','classes'],
   ['филиал',      'branch'],       ['реквизиты', 'branch'],
+  ['метки',       'client-tags'],  ['ярлыки',    'client-tags'],
+  ['теги клиентов', 'client-tags'],
 ];
 
 // All sections flat (for label lookup)
@@ -4661,7 +4719,8 @@ export default function SettingsPage() {
         {section === 'finance'    && <FinanceSection />}
         {section === 'funnels'    && <FunnelsSection />}
         {section === 'lead-rules' && <LeadRulesSection />}
-        {section === 'lead-tags'  && <LeadTagsSection />}
+        {section === 'lead-tags'    && <LeadTagsSection />}
+        {section === 'client-tags'  && <ClientTagsSection />}
         {section === 'task-types' && <TaskTypesSection />}
         {section === 'lost-reasons' && <LostReasonsSection />}
         {section === 'fb-users'   && <FbUsersSection />}

@@ -1047,7 +1047,12 @@ export function buildCrmRouter(): Router {
         upd.iin = iin;
         if (iin && !b.birth_date) upd.birth_date = iinToDob(iin);
       }
-      for (const k of ['birth_date', 'ad_source_id', 'referrer_client_id', 'id_issued_by', 'id_valid_until', 'contraindications', 'notes', 'status', 'is_deleted']) {
+      if (b.gender !== undefined) {
+        const g = b.gender === null ? null : String(b.gender);
+        if (g && !['M', 'F'].includes(g)) { res.status(400).json({ error: 'Пол: M или F' }); return; }
+        upd.gender = g;
+      }
+      for (const k of ['birth_date', 'ad_source_id', 'referrer_client_id', 'id_issued_by', 'id_valid_until', 'contraindications', 'notes', 'status', 'is_deleted', 'address', 'important_note', 'skirt_size', 'device_settings']) {
         if (b[k] !== undefined) upd[k] = b[k];
       }
       // Compute profile_complete from merged state
@@ -1473,11 +1478,90 @@ export function buildCrmRouter(): Router {
       // Join with plan names (only for plans with plan_id)
       const planIds = [...new Set((cps || []).map(cp => cp.plan_id).filter(Boolean))];
       const { data: plans } = planIds.length
-        ? await supabase.from('crm_plans').select('id,name,kind').in('id', planIds)
+        ? await supabase.from('crm_plans').select('id,name,kind,freeze_days').in('id', planIds)
         : { data: [] };
       const planMap = new Map((plans || []).map((p: Record<string,unknown>) => [p.id, p]));
 
       res.json((cps || []).map(cp => ({ ...cp, plan: cp.plan_id ? (planMap.get(cp.plan_id) ?? null) : null })));
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Plan freeze / unfreeze / split ────────────────────────────────────────────
+
+  r.post('/kviz/api/crm/client-plans/:id/freeze', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const days = n0(b.days);
+      if (!days || days < 1 || days > 365) { res.status(400).json({ error: 'Укажите дни заморозки (1–365)' }); return; }
+      const { data: cp } = await supabase.from('crm_client_plans')
+        .select('id,status,freeze_days_used,plan_id').eq('id', req.params.id).single();
+      if (!cp) { res.status(404).json({ error: 'Абонемент не найден' }); return; }
+      if (cp.status !== 'active') { res.status(400).json({ error: 'Можно заморозить только активный абонемент' }); return; }
+      // Check limit unless admin
+      if (cp.plan_id && session.role !== 'admin') {
+        const { data: plan } = await supabase.from('crm_plans').select('freeze_days').eq('id', cp.plan_id).single();
+        const maxFreeze = Number((plan as Record<string,unknown>)?.freeze_days ?? 0);
+        const used = Number(cp.freeze_days_used ?? 0);
+        if (days > maxFreeze - used) {
+          res.status(400).json({ error: `Превышен лимит заморозки. Доступно: ${maxFreeze - used} дней` }); return;
+        }
+      }
+      const { error } = await supabase.rpc('crm_plan_freeze', { p_plan_id: req.params.id, p_days: days });
+      if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
+      await writeAudit('client_plan', req.params.id, `freeze:${days}d`, session.display_name);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/client-plans/:id/unfreeze', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const { data: cp } = await supabase.from('crm_client_plans')
+        .select('id,status').eq('id', req.params.id).single();
+      if (!cp) { res.status(404).json({ error: 'Абонемент не найден' }); return; }
+      if (cp.status !== 'frozen') { res.status(400).json({ error: 'Абонемент не заморожен' }); return; }
+      const { error } = await supabase.rpc('crm_plan_unfreeze', { p_plan_id: req.params.id });
+      if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
+      await writeAudit('client_plan', req.params.id, 'unfreeze', session.display_name);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/client-plans/:id/split', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const items = Array.isArray(b.items) ? b.items as { device_type_code: string; sessions: number; phase?: string }[] : [];
+      if (!items.length) { res.status(400).json({ error: 'Укажите распределение по аппаратам' }); return; }
+      const { data: cp } = await supabase.from('crm_client_plans')
+        .select('id,sessions_left').eq('id', req.params.id).single();
+      if (!cp) { res.status(404).json({ error: 'Абонемент не найден' }); return; }
+      const totalSessions = items.reduce((s, i) => s + Number(i.sessions ?? 0), 0);
+      if (totalSessions !== Number(cp.sessions_left ?? 0)) {
+        res.status(400).json({ error: `Сумма (${totalSessions}) должна равняться остатку (${cp.sessions_left})` }); return;
+      }
+      const codes = items.map(i => i.device_type_code);
+      const { data: dtypes } = await supabase.from('crm_device_types').select('code').in('code', codes);
+      const validCodes = new Set((dtypes ?? []).map((d: Record<string,unknown>) => d.code as string));
+      for (const code of codes) {
+        if (!validCodes.has(code)) { res.status(400).json({ error: `Неизвестный тип аппарата: ${code}` }); return; }
+      }
+      const inserts = items.map(i => ({
+        client_plan_id: req.params.id,
+        device_type_code: i.device_type_code,
+        sessions_total: Number(i.sessions),
+        sessions_left: Number(i.sessions),
+        phase: i.phase ?? 'active',
+      }));
+      const { error: insertErr } = await supabase.from('crm_client_plan_items').insert(inserts);
+      if (insertErr) { res.status(500).json({ error: insertErr.message }); return; }
+      await supabase.from('crm_client_plans').update({ needs_split: false }).eq('id', req.params.id);
+      await writeAudit('client_plan', req.params.id, 'split', session.display_name);
+      res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -1550,6 +1634,222 @@ export function buildCrmRouter(): Router {
         targets = t || [];
       }
       res.json({ id: promo.id, code: promo.code, discount_type: promo.discount_type, discount_value: promo.discount_value, applies_to_all: promo.applies_to_all, targets });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Client tags ───────────────────────────────────────────────────────────────
+
+  const SYSTEM_TAG_DEFS = [
+    { id: 'new_client',          name: 'Новый клиент',            color: '#6366f1', is_system: true },
+    { id: 'incomplete_profile',  name: 'Анкета неполная',         color: '#f59e0b', is_system: true },
+    { id: 'subscription_ending', name: 'Абонемент заканчивается', color: '#ef4444', is_system: true },
+    { id: 'measure_soon',        name: 'Замер скоро',             color: '#10b981', is_system: true },
+    { id: 'measure_overdue',     name: 'Замер просрочен',         color: '#dc2626', is_system: true },
+    { id: 'birthday',            name: 'День рождения',           color: '#ec4899', is_system: true },
+  ];
+
+  r.get('/kviz/api/crm/client-tags', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('crm_client_tags')
+        .select('id,name,color,is_active').eq('branch_id', BRANCH_ID).eq('is_active', true).order('name');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json([...SYSTEM_TAG_DEFS, ...(data ?? [])]);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/client-tags', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.client_tags', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      if (!b.name || !String(b.name).trim()) { res.status(400).json({ error: 'Укажите название' }); return; }
+      if (b.color && !/^#[0-9a-fA-F]{6}$/.test(String(b.color))) { res.status(400).json({ error: 'Цвет: #RRGGBB' }); return; }
+      const { data, error } = await supabase.from('crm_client_tags').insert({
+        branch_id: BRANCH_ID, name: String(b.name).trim(),
+        color: b.color ? String(b.color) : '#6366f1', is_active: true,
+      }).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/kviz/api/crm/client-tags/:id', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.client_tags', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const upd: Record<string, unknown> = {};
+      if (b.name !== undefined) upd.name = String(b.name).trim();
+      if (b.color !== undefined) {
+        if (!/^#[0-9a-fA-F]{6}$/.test(String(b.color))) { res.status(400).json({ error: 'Цвет: #RRGGBB' }); return; }
+        upd.color = String(b.color);
+      }
+      if (b.is_active !== undefined) upd.is_active = Boolean(b.is_active);
+      const { data, error } = await supabase.from('crm_client_tags').update(upd).eq('id', req.params.id).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.delete('/kviz/api/crm/client-tags/:id', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.client_tags', 'edit', session)) return;
+    try {
+      const { count } = await supabase.from('crm_client_tag_links')
+        .select('id', { count: 'exact', head: true }).eq('tag_id', req.params.id);
+      if (count && count > 0) {
+        res.status(400).json({ error: `Метка используется у ${count} клиентов. Сначала снимите её.` }); return;
+      }
+      const { error } = await supabase.from('crm_client_tags').delete().eq('id', req.params.id);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.get('/kviz/api/crm/clients/:id/tags', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data } = await supabase.from('crm_client_tag_links').select('tag_id').eq('client_id', req.params.id);
+      const tagIds = (data ?? []).map((l: Record<string,unknown>) => l.tag_id as string);
+      let tags: Record<string,unknown>[] = [];
+      if (tagIds.length) {
+        const { data: ts } = await supabase.from('crm_client_tags').select('id,name,color').in('id', tagIds).eq('is_active', true);
+        tags = (ts ?? []) as Record<string,unknown>[];
+      }
+      res.json(tags);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/clients/:id/tags', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    if (!can(session, 'clients.edit', 'edit') && session.role !== 'admin') {
+      res.status(403).json({ error: 'Нет прав для добавления меток' }); return;
+    }
+    try {
+      const b = req.body as Record<string, unknown>;
+      if (!b.tag_id) { res.status(400).json({ error: 'tag_id обязателен' }); return; }
+      const { error } = await supabase.from('crm_client_tag_links').upsert(
+        { client_id: req.params.id, tag_id: String(b.tag_id) }, { onConflict: 'client_id,tag_id' }
+      );
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      await writeAudit('client', req.params.id, `add_tag:${b.tag_id}`, session.display_name);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.delete('/kviz/api/crm/clients/:id/tags/:tagId', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    if (!can(session, 'clients.edit', 'edit') && session.role !== 'admin') {
+      res.status(403).json({ error: 'Нет прав для удаления меток' }); return;
+    }
+    try {
+      const { error } = await supabase.from('crm_client_tag_links')
+        .delete().eq('client_id', req.params.id).eq('tag_id', req.params.tagId);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      await writeAudit('client', req.params.id, `remove_tag:${req.params.tagId}`, session.display_name);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Client comments ───────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/clients/:id/comments', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('crm_client_comments')
+        .select('id,text,author,created_at,updated_at').eq('client_id', req.params.id)
+        .order('created_at', { ascending: false }).limit(50);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data ?? []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/clients/:id/comments', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const text = String(b.text ?? '').trim();
+      if (!text) { res.status(400).json({ error: 'Текст комментария обязателен' }); return; }
+      const { data, error } = await supabase.from('crm_client_comments').insert({
+        client_id: req.params.id, text, author: session.display_name,
+      }).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/kviz/api/crm/client-comments/:id', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const text = String(b.text ?? '').trim();
+      if (!text) { res.status(400).json({ error: 'Текст обязателен' }); return; }
+      const { data: existing } = await supabase.from('crm_client_comments').select('author').eq('id', req.params.id).single();
+      if ((existing as Record<string,unknown>)?.author !== session.display_name && session.role !== 'admin') {
+        res.status(403).json({ error: 'Только свои комментарии' }); return;
+      }
+      const { data, error } = await supabase.from('crm_client_comments')
+        .update({ text, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.delete('/kviz/api/crm/client-comments/:id', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const session = getSession(req)!;
+    try {
+      const { data: existing } = await supabase.from('crm_client_comments').select('author').eq('id', req.params.id).single();
+      if ((existing as Record<string,unknown>)?.author !== session.display_name && session.role !== 'admin') {
+        res.status(403).json({ error: 'Только свои комментарии' }); return;
+      }
+      const { error } = await supabase.from('crm_client_comments').delete().eq('id', req.params.id);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Client feed ───────────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/clients/:id/feed', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const clientId = req.params.id;
+      const kind = (req.query.kind as string) || 'all';
+      const before = (req.query.before as string) || new Date().toISOString();
+      const LIMIT = 30;
+      const items: { id: string; kind: string; at: string; text: string; author: string; extra?: Record<string,unknown> }[] = [];
+
+      if (kind === 'all' || kind === 'comments') {
+        const { data: comments } = await supabase.from('crm_client_comments')
+          .select('id,text,author,created_at').eq('client_id', clientId)
+          .lt('created_at', before).order('created_at', { ascending: false }).limit(LIMIT);
+        for (const c of (comments ?? []) as Record<string,unknown>[])
+          items.push({ id: c.id as string, kind: 'comment', at: c.created_at as string, text: c.text as string, author: c.author as string });
+      }
+      if (kind === 'all' || kind === 'tasks') {
+        const { data: tasks } = await supabase.from('crm_lead_tasks')
+          .select('id,description,status,due_at,created_by,created_at').eq('client_id', clientId)
+          .lt('created_at', before).order('created_at', { ascending: false }).limit(LIMIT);
+        for (const t of (tasks ?? []) as Record<string,unknown>[])
+          items.push({ id: t.id as string, kind: 'task', at: t.created_at as string, text: t.description as string,
+            author: (t.created_by as string) ?? '—', extra: { status: t.status as string, due_at: t.due_at as string | null } });
+      }
+      if (kind === 'all' || kind === 'log') {
+        const { data: logs } = await supabase.from('crm_audit_log')
+          .select('id,action,actor,created_at').eq('entity_type', 'client').eq('entity_id', clientId)
+          .lt('created_at', before).order('created_at', { ascending: false }).limit(LIMIT);
+        for (const l of (logs ?? []) as Record<string,unknown>[])
+          items.push({ id: l.id as string, kind: 'audit', at: l.created_at as string, text: l.action as string, author: l.actor as string });
+      }
+
+      items.sort((a, b) => b.at.localeCompare(a.at));
+      res.json(items.slice(0, LIMIT));
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -2269,74 +2569,132 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // ── Client summary (LTV, active plan, visits, last measure) ──────────────────
+  // ── Client summary (LTV, active plan, visits, tags, inbody, measures) ──────────
 
   r.get('/kviz/api/crm/clients/:id/summary', async (req, res) => {
     if (!requireAuth(req, res)) return;
     try {
       const clientId = req.params.id;
 
-      // LTV: sum of sale totals minus sum of refund amounts (simple approximation)
-      const [salesRes, refundsRes, activePlanRes, visitsRes, bodyRes] = await Promise.all([
-        supabase.from('crm_sales').select('total').eq('client_id', clientId).not('status', 'eq', 'refunded'),
-        supabase.from('crm_refunds').select('amount').eq('client_id', clientId),
+      // Client base info
+      const { data: client } = await supabase.from('crm_clients')
+        .select('phone,profile_complete,birth_date').eq('id', clientId).single();
+
+      // Cash/cashless payment method IDs for LTV
+      const { data: pmRows } = await supabase.from('crm_payment_methods').select('id').in('kind', ['cash', 'cashless']);
+      const pmIds = (pmRows ?? []).map((m: Record<string,unknown>) => m.id as string);
+
+      // Sale IDs for client
+      const { data: salesRows } = await supabase.from('crm_sales').select('id').eq('client_id', clientId);
+      const saleIds = (salesRows ?? []).map((s: Record<string,unknown>) => s.id as string);
+
+      // Parallel queries
+      const [activePlanRes, visitsRes, bodyRes, salePayRes, refundIdRes] = await Promise.all([
         supabase.from('crm_client_plans')
-          .select('id,name,plan_id,status,valid_until,sessions_left,source')
-          .eq('client_id', clientId)
-          .in('status', ['active', 'not_activated'])
-          .order('purchased_at', { ascending: false })
-          .limit(1),
-        supabase.from('crm_visit_history')
-          .select('visit_date,status')
-          .eq('client_id', clientId),
-        supabase.from('body_clients')
-          .select('id, fitbase_client_id')
-          .eq('crm_client_id', clientId)
-          .limit(1),
+          .select('id,name,plan_id,status,valid_until,sessions_left,source,freeze_days_used')
+          .eq('client_id', clientId).in('status', ['active', 'not_activated'])
+          .order('purchased_at', { ascending: false }).limit(1),
+        supabase.from('crm_visit_history').select('visit_date,status').eq('client_id', clientId),
+        supabase.from('body_clients').select('id').eq('crm_client_id', clientId).limit(1),
+        saleIds.length && pmIds.length
+          ? supabase.from('crm_sale_payments').select('amount').in('sale_id', saleIds).in('payment_method_id', pmIds)
+          : Promise.resolve({ data: [] as Record<string,unknown>[] }),
+        saleIds.length
+          ? supabase.from('crm_refunds').select('id').in('sale_id', saleIds)
+          : Promise.resolve({ data: [] as Record<string,unknown>[] }),
       ]);
 
-      const salesTotal   = (salesRes.data ?? []).reduce((s: number, r: Record<string,unknown>) => s + Number(r.total ?? 0), 0);
-      const refundsTotal = (refundsRes.data ?? []).reduce((s: number, r: Record<string,unknown>) => s + Number(r.amount ?? 0), 0);
-      const ltv = salesTotal - refundsTotal;
+      // LTV: cash/cashless sale payments − refund payments
+      const salesPayTotal = ((salePayRes as { data: Record<string,unknown>[] | null }).data ?? [])
+        .reduce((s: number, r) => s + Number(r.amount ?? 0), 0);
+      const refundIds = ((refundIdRes as { data: Record<string,unknown>[] | null }).data ?? []).map(r => r.id as string);
+      let refundPayTotal = 0;
+      if (refundIds.length && pmIds.length) {
+        const { data: rfp } = await supabase.from('crm_refund_payments')
+          .select('amount').in('refund_id', refundIds).in('payment_method_id', pmIds);
+        refundPayTotal = (rfp ?? []).reduce((s: number, r: Record<string,unknown>) => s + Number(r.amount ?? 0), 0);
+      }
+      const ltv = salesPayTotal - refundPayTotal;
 
+      // Active plan
       const activePlanRaw = (activePlanRes.data ?? [])[0] as Record<string,unknown> | null ?? null;
       let activePlanWithName: Record<string,unknown> | null = activePlanRaw;
       if (activePlanRaw?.plan_id) {
-        const { data: planRow } = await supabase.from('crm_plans').select('name').eq('id', activePlanRaw.plan_id as string).single();
-        if (planRow) activePlanWithName = { ...activePlanRaw, plan_name: (planRow as Record<string,unknown>).name };
+        const { data: planRow } = await supabase.from('crm_plans')
+          .select('name,freeze_days').eq('id', activePlanRaw.plan_id as string).single();
+        if (planRow) activePlanWithName = { ...activePlanRaw,
+          plan_name: (planRow as Record<string,unknown>).name,
+          freeze_days: (planRow as Record<string,unknown>).freeze_days };
       } else if (activePlanRaw?.name) {
         activePlanWithName = { ...activePlanRaw, plan_name: activePlanRaw.name };
       }
 
+      // Visits
       const attendedVisits = (visitsRes.data ?? []).filter((v: Record<string,unknown>) => v.status === 3);
       const visits_attended_total = attendedVisits.length;
-      const sortedDates = attendedVisits.map((v: Record<string,unknown>) => v.visit_date as string | null).filter(Boolean).sort();
+      const sortedDates = attendedVisits.map((v: Record<string,unknown>) => v.visit_date as string | null).filter(Boolean).sort() as string[];
       const last_visit_at = sortedDates.length ? sortedDates[sortedDates.length - 1] : null;
 
+      // Body client
       const bodyClient = (bodyRes.data ?? [])[0] as Record<string,unknown> | undefined;
       const body_client_id = bodyClient?.id ?? null;
 
-      // Last inbody_test via body_client_id
+      // InBody latest
       let inbody_last: string | null = null;
+      let inbody_latest: Record<string,unknown> | null = null;
       if (body_client_id) {
         const { data: ibRow } = await supabase.from('inbody_tests')
-          .select('tested_at').eq('body_client_id', body_client_id)
-          .order('tested_at', { ascending: false }).limit(1);
-        inbody_last = (ibRow ?? [])[0]?.tested_at ?? null;
+          .select('tested_at,weight,body_fat_percent,smm,protein_kg,minerals_kg,body_water_kg,visceral_fat')
+          .eq('body_client_id', body_client_id).order('tested_at', { ascending: false }).limit(1);
+        if (ibRow?.[0]) { inbody_last = (ibRow[0] as Record<string,unknown>).tested_at as string; inbody_latest = ibRow[0] as Record<string,unknown>; }
       }
 
-      // Last measurement via phone
-      const { data: clientRow } = await supabase.from('crm_clients').select('phone').eq('id', clientId).single();
+      // Measures latest (match by last 10 phone digits)
       let measure_last: string | null = null;
-      if (clientRow?.phone) {
-        const digits = (clientRow.phone as string).replace(/\D/g, '').slice(-10);
+      let measure_latest: Record<string,unknown> | null = null;
+      if (client?.phone) {
+        const digits = (client.phone as string).replace(/\D/g, '').slice(-10);
         const { data: mRow } = await supabase.from('measurements')
-          .select('measured_at').ilike('phone_digits', `%${digits}`)
-          .order('measured_at', { ascending: false }).limit(1);
-        measure_last = (mRow ?? [])[0]?.measured_at ?? null;
+          .select('measured_at,weight,waist_cm,hips_cm,chest_cm,total_cm')
+          .ilike('phone_digits', `%${digits}`).order('measured_at', { ascending: false }).limit(1);
+        if (mRow?.[0]) { measure_last = (mRow[0] as Record<string,unknown>).measured_at as string; measure_latest = mRow[0] as Record<string,unknown>; }
       }
 
-      res.json({ ltv, active_plan: activePlanWithName, visits_attended_total, last_visit_at, inbody_last, measure_last, body_client_id });
+      // System tags
+      const today = todayUtc5();
+      const systemTags: string[] = [];
+      if (visits_attended_total < 5) systemTags.push('new_client');
+      if (client && !client.profile_complete) systemTags.push('incomplete_profile');
+      if (activePlanWithName) {
+        const validUntil = activePlanWithName.valid_until as string | null;
+        const sessLeft = activePlanWithName.sessions_left as number | null;
+        if (validUntil) {
+          const diff = Math.ceil((new Date(validUntil).getTime() - new Date(today + 'T00:00:00+05:00').getTime()) / 86400000);
+          if (diff >= 0 && diff <= 7) systemTags.push('subscription_ending');
+        }
+        if (sessLeft != null && sessLeft <= 2 && !systemTags.includes('subscription_ending')) systemTags.push('subscription_ending');
+      }
+      if (measure_last) {
+        const diff = Math.ceil((new Date(today + 'T00:00:00+05:00').getTime() - new Date(measure_last.slice(0, 10) + 'T00:00:00+05:00').getTime()) / 86400000);
+        if (diff > 7) systemTags.push('measure_overdue');
+        else if (diff >= 5) systemTags.push('measure_soon');
+      }
+      if (client?.birth_date && (client.birth_date as string).slice(5) === today.slice(5)) systemTags.push('birthday');
+
+      // Personal tags
+      const { data: tagLinks } = await supabase.from('crm_client_tag_links').select('tag_id').eq('client_id', clientId);
+      const tagIds = (tagLinks ?? []).map((l: Record<string,unknown>) => l.tag_id as string);
+      let personal_tags: Record<string,unknown>[] = [];
+      if (tagIds.length) {
+        const { data: ts } = await supabase.from('crm_client_tags').select('id,name,color').in('id', tagIds).eq('is_active', true);
+        personal_tags = (ts ?? []) as Record<string,unknown>[];
+      }
+
+      res.json({
+        ltv, active_plan: activePlanWithName, visits_attended_total, last_visit_at,
+        inbody_last, inbody_latest, measure_last, measure_latest, body_client_id,
+        system_tags: systemTags, personal_tags,
+      });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

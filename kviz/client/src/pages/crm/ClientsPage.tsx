@@ -1,5 +1,6 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { showConfirm } from '../../lib/confirm';
+import { toast } from '../../lib/toast';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -16,21 +17,45 @@ interface ClientFull extends ClientRow {
   id_issued_by: string | null; id_valid_until: string | null;
   photo_path: string | null; contraindications: string | null; notes: string | null;
   source: string; branch_id: string; is_deleted: boolean;
+  gender: string | null; address: string | null;
+  important_note: string | null; skirt_size: string | null; device_settings: string | null;
 }
 
 interface RefClient { id: string; full_name: string; phone: string | null }
-
 interface ClientBalance { deposit: number; bonus: number }
+
 interface ClientPlan {
-  id: string; plan_id: string | null; source?: string; name?: string | null; status: string; purchased_at: string;
-  activated_at: string | null; valid_until: string | null;
+  id: string; plan_id: string | null; source?: string; name?: string | null; status: string;
+  purchased_at: string; activated_at: string | null; valid_until: string | null;
   sessions_total?: number | null; sessions_left?: number | null; needs_split?: boolean;
-  plan: { id: string; name: string; kind: string } | null;
+  freeze_days_used?: number | null;
+  plan: { id: string; name: string; kind: string; freeze_days?: number | null } | null;
   crm_client_plan_items: { device_type_code: string; sessions_total: number; sessions_left: number; phase: string }[];
 }
+
+interface ClientSummary {
+  ltv: number;
+  active_plan: ClientPlan | null;
+  visits_attended_total: number;
+  last_visit_at: string | null;
+  inbody_last: string | null;
+  inbody_latest: Record<string, unknown> | null;
+  measure_last: string | null;
+  measure_latest: Record<string, unknown> | null;
+  body_client_id: string | null;
+  system_tags: string[];
+  personal_tags: { id: string; name: string; color: string }[];
+}
+
+interface FeedItem {
+  id: string; kind: string; at: string; text: string; author: string;
+  extra?: { status?: string; due_at?: string | null };
+}
+
+interface ClientTag { id: string; name: string; color: string; is_system?: boolean }
 interface SaleRow {
-  id: string; number: number | null; total: number; status: string; created_at: string;
-  cashier: string | null; discount_kind: string | null; source?: string;
+  id: string; number: number | null; total: number; status: string;
+  created_at: string; cashier: string | null; discount_kind: string | null; source?: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -39,10 +64,11 @@ function fmtDate(iso: string | null) {
   if (!iso) return '—';
   return iso.slice(0, 10).split('-').reverse().join('.');
 }
-
-function maskPhone(phone: string | null) {
-  if (!phone) return '—';
-  return phone;
+function fmtDT(iso: string | null) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function iinToDob(iin: string): string {
@@ -62,13 +88,42 @@ async function apiJSON(method: string, url: string, body?: unknown) {
   return { ok: r.ok, data: d, status: r.status };
 }
 
-// ── Client form ────────────────────────────────────────────────────────────────
+function daysAgo(iso: string | null): number | null {
+  if (!iso) return null;
+  return Math.round((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+
+function dayLabel(days: number | null): { label: string; cls: string } | null {
+  if (days === null) return null;
+  if (days < 0) return { label: `через ${-days} д.`, cls: 'cp-timer--ok' };
+  if (days === 0) return { label: 'сегодня', cls: 'cp-timer--ok' };
+  if (days <= 7) return { label: `${days} д. назад`, cls: 'cp-timer--warn' };
+  return { label: `${days} д. назад`, cls: 'cp-timer--over' };
+}
+
+const SYSTEM_TAG_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  new_client:           { label: 'Новый клиент',            color: '#fff', bg: '#6366f1' },
+  incomplete_profile:   { label: 'Анкета неполная',         color: '#92400e', bg: '#fef3c7' },
+  subscription_ending:  { label: 'Абонемент заканчивается', color: '#fff', bg: '#ef4444' },
+  measure_soon:         { label: 'Замер скоро',             color: '#064e3b', bg: '#d1fae5' },
+  measure_overdue:      { label: 'Замер просрочен',         color: '#fff', bg: '#dc2626' },
+  birthday:             { label: 'День рождения',           color: '#831843', bg: '#fce7f3' },
+};
+
+const PLAN_STATUS: Record<string, { text: string; color: string; bg: string }> = {
+  not_activated: { text: 'Не активирован', color: '#92400e', bg: '#fef3c7' },
+  active:        { text: 'Активен',         color: '#064e3b', bg: '#d1fae5' },
+  frozen:        { text: 'Заморожен',        color: '#fff',    bg: '#6366f1' },
+  expired:       { text: 'Истёк',            color: '#fff',    bg: '#ef4444' },
+  refunded:      { text: 'Возвращён',        color: '#6b7280', bg: '#f3f4f6' },
+  cancelled:     { text: 'Отменён',          color: '#6b7280', bg: '#f3f4f6' },
+};
+
+// ── ClientForm ─────────────────────────────────────────────────────────────────
 
 function ClientForm({ client, adSources, onSave, onCancel }: {
-  client: ClientFull | null;
-  adSources: AdSource[];
-  onSave: (data: ClientFull) => void;
-  onCancel: () => void;
+  client: ClientFull | null; adSources: AdSource[];
+  onSave: (data: ClientFull) => void; onCancel: () => void;
 }) {
   const isNew = !client;
   const [form, setForm] = useState({
@@ -82,6 +137,8 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
     id_valid_until: client?.id_valid_until?.slice(0, 10) ?? '',
     contraindications: client?.contraindications ?? '',
     notes: client?.notes ?? '',
+    gender: client?.gender ?? '',
+    address: client?.address ?? '',
     profile_complete: client?.profile_complete ?? false,
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -118,10 +175,7 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
     const digits = v.replace(/\D/g, '').slice(0, 12);
     setForm(f => {
       const upd = { ...f, iin: digits };
-      if (digits.length === 12) {
-        const dob = iinToDob(digits);
-        if (dob && !f.birth_date) upd.birth_date = dob;
-      }
+      if (digits.length === 12) { const dob = iinToDob(digits); if (dob && !f.birth_date) upd.birth_date = dob; }
       return upd;
     });
   }
@@ -129,27 +183,19 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
   function onPhoneChange(v: string) {
     let digits = v.replace(/\D/g, '');
     if (digits.startsWith('8') && digits.length > 1) digits = '7' + digits.slice(1);
-    if (digits.startsWith('77') || digits.startsWith('7') && digits.length === 1) {
-      setForm(f => ({ ...f, phone: '+' + digits }));
-    } else {
-      setForm(f => ({ ...f, phone: v }));
-    }
+    if (digits.startsWith('77') || (digits.startsWith('7') && digits.length === 1)) setForm(f => ({ ...f, phone: '+' + digits }));
+    else setForm(f => ({ ...f, phone: v }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setErr(''); setLoading(true);
+    e.preventDefault(); setErr(''); setLoading(true);
     const body: Record<string, unknown> = {
-      full_name: form.full_name.trim(),
-      phone: form.phone || null,
-      iin: form.iin || null,
-      birth_date: form.birth_date || null,
-      ad_source_id: form.ad_source_id || null,
+      full_name: form.full_name.trim(), phone: form.phone || null, iin: form.iin || null,
+      birth_date: form.birth_date || null, ad_source_id: form.ad_source_id || null,
       referrer_client_id: form.referrer_client_id || null,
-      id_issued_by: form.id_issued_by || null,
-      id_valid_until: form.id_valid_until || null,
-      contraindications: form.contraindications || null,
-      notes: form.notes || null,
+      id_issued_by: form.id_issued_by || null, id_valid_until: form.id_valid_until || null,
+      contraindications: form.contraindications || null, notes: form.notes || null,
+      gender: form.gender || null, address: form.address || null,
       profile_complete: form.profile_complete,
     };
     const url = isNew ? '/kviz/api/crm/clients' : `/kviz/api/crm/clients/${client!.id}`;
@@ -161,15 +207,11 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
       reader.onload = async () => {
         const b64 = String(reader.result).split(',')[1];
         await apiJSON('POST', `/kviz/api/crm/clients/${saved.id}/photo`, { data: b64, mime: photoFile.type });
-        setLoading(false);
-        onSave(saved);
+        setLoading(false); onSave(saved);
       };
       reader.onerror = () => { setLoading(false); onSave(saved); };
       reader.readAsDataURL(photoFile);
-    } else {
-      setLoading(false);
-      onSave(saved);
-    }
+    } else { setLoading(false); onSave(saved); }
   }
 
   return (
@@ -179,7 +221,6 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
         <button type="button" style={SF.iconBtn} onClick={onCancel}>✕</button>
       </div>
       {err && <div style={SF.errBox}>{err}</div>}
-
       <div className="client-form-grid" style={SF.grid}>
         <div style={{ gridColumn: '1/-1' }}>
           <label style={SF.label}>ФИО *</label>
@@ -199,6 +240,14 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
           <input style={SF.inp} type="date" value={form.birth_date} onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))} />
         </div>
         <div>
+          <label style={SF.label}>Пол</label>
+          <select style={SF.inp} value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}>
+            <option value="">— не указан —</option>
+            <option value="F">Женский</option>
+            <option value="M">Мужской</option>
+          </select>
+        </div>
+        <div>
           <label style={SF.label}>Рекламный источник</label>
           <select style={SF.inp} value={form.ad_source_id} onChange={e => setForm(f => ({ ...f, ad_source_id: e.target.value, referrer_client_id: '' }))}>
             <option value="">— не указан —</option>
@@ -210,12 +259,8 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
             <label style={SF.label}>Реферер (кто привёл)</label>
             <div style={{ position: 'relative' }}>
               <input style={SF.inp} value={form.referrer_client_id ? referrerName : referrerSearch}
-                onChange={e => {
-                  if (form.referrer_client_id) { setForm(f => ({ ...f, referrer_client_id: '' })); setReferrerName(''); }
-                  setReferrerSearch(e.target.value); searchReferrer(e.target.value);
-                }}
-                placeholder="Поиск по имени или телефону"
-              />
+                onChange={e => { if (form.referrer_client_id) { setForm(f => ({ ...f, referrer_client_id: '' })); setReferrerName(''); } setReferrerSearch(e.target.value); searchReferrer(e.target.value); }}
+                placeholder="Поиск по имени или телефону" />
               {referrerResults.length > 0 && !form.referrer_client_id && (
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10 }}>
                   {referrerResults.map(c => (
@@ -237,6 +282,10 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
         <div>
           <label style={SF.label}>Действителен до</label>
           <input style={SF.inp} type="date" value={form.id_valid_until} onChange={e => setForm(f => ({ ...f, id_valid_until: e.target.value }))} />
+        </div>
+        <div style={{ gridColumn: '1/-1' }}>
+          <label style={SF.label}>Адрес</label>
+          <input style={SF.inp} value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="г. Астана, ул. ..." />
         </div>
         <div style={{ gridColumn: '1/-1' }}>
           <label style={SF.label}>Фото</label>
@@ -261,7 +310,6 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
           </label>
         </div>
       </div>
-
       <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
         <button type="button" style={SF.cancelBtn} onClick={onCancel}>Отмена</button>
         <button type="submit" style={SF.saveBtn} disabled={loading}>{loading ? '…' : 'Сохранить'}</button>
@@ -270,192 +318,627 @@ function ClientForm({ client, adSources, onSave, onCancel }: {
   );
 }
 
-// ── Client card ────────────────────────────────────────────────────────────────
+// ── FreezeDialog ───────────────────────────────────────────────────────────────
 
-function ClientCard({ clientId, adSources, role, onEdit, onClose }: {
+function FreezeDialog({ planId, maxDays, onDone, onClose }: {
+  planId: string; maxDays: number; onDone: () => void; onClose: () => void;
+}) {
+  const [days, setDays] = useState(7);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function submit() {
+    setLoading(true); setErr('');
+    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${planId}/freeze`, { days });
+    if (!ok) { setErr(data.error || 'Ошибка'); setLoading(false); return; }
+    toast.success('Абонемент заморожен');
+    onDone();
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onClose}>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 24, width: 320, boxShadow: '0 8px 32px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>Заморозить абонемент</h3>
+        {err && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+        <label style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>
+          Дней заморозки {maxDays > 0 && <span style={{ color: 'var(--text-2)' }}>(лимит: {maxDays})</span>}
+        </label>
+        <input type="number" min={1} max={maxDays || 365} value={days} onChange={e => setDays(Number(e.target.value))}
+          style={{ width: '100%', padding: '8px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+          <button style={SL.outlineBtn} onClick={onClose}>Отмена</button>
+          <button className="cp-btn cp-btn--primary" onClick={submit} disabled={loading}>{loading ? '…' : 'Заморозить'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── SplitDialog ────────────────────────────────────────────────────────────────
+
+function SplitDialog({ plan, onDone, onClose }: { plan: ClientPlan; onDone: () => void; onClose: () => void }) {
+  const [deviceTypes, setDeviceTypes] = useState<{ code: string; name: string }[]>([]);
+  const [items, setItems] = useState<{ device_type_code: string; sessions: number }[]>([
+    { device_type_code: '', sessions: plan.sessions_left ?? 0 }
+  ]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    fetch('/kviz/api/crm/device-types', { credentials: 'include' }).then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setDeviceTypes(d); }).catch(() => {});
+  }, []);
+
+  const total = items.reduce((s, i) => s + Number(i.sessions ?? 0), 0);
+  const left = plan.sessions_left ?? 0;
+
+  async function submit() {
+    if (items.some(i => !i.device_type_code)) { setErr('Выберите тип аппарата для каждой строки'); return; }
+    if (total !== left) { setErr(`Сумма сеансов (${total}) должна равняться остатку (${left})`); return; }
+    setLoading(true); setErr('');
+    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${plan.id}/split`, { items });
+    if (!ok) { setErr(data.error || 'Ошибка'); setLoading(false); return; }
+    toast.success('Сеансы распределены');
+    onDone();
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onClose}>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 24, width: 400, boxShadow: '0 8px 32px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700 }}>Распределить сеансы</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-2)' }}>Остаток: {left} сеансов</p>
+        {err && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+        {items.map((it, idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+            <select value={it.device_type_code} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, device_type_code: e.target.value } : p))}
+              style={{ flex: 1, padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}>
+              <option value="">— аппарат —</option>
+              {deviceTypes.map(dt => <option key={dt.code} value={dt.code}>{dt.name ?? dt.code}</option>)}
+            </select>
+            <input type="number" min={1} value={it.sessions} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, sessions: Number(e.target.value) } : p))}
+              style={{ width: 72, padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} />
+            {items.length > 1 && <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--danger)' }} onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}>✕</button>}
+          </div>
+        ))}
+        <div style={{ fontSize: 12, color: total === left ? 'var(--success)' : 'var(--danger)', marginBottom: 12 }}>
+          Итого: {total} / {left}
+        </div>
+        <button style={{ ...SL.outlineBtn, fontSize: 12, marginBottom: 16 }} onClick={() => setItems(prev => [...prev, { device_type_code: '', sessions: 0 }])}>+ Добавить аппарат</button>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button style={SL.outlineBtn} onClick={onClose}>Отмена</button>
+          <button className="cp-btn cp-btn--primary" onClick={submit} disabled={loading}>{loading ? '…' : 'Распределить'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ClientPopup ────────────────────────────────────────────────────────────────
+
+function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   clientId: string; adSources: AdSource[]; role: string;
-  onEdit: () => void; onClose: () => void;
+  onClose: () => void; onEdit: () => void;
 }) {
   const [client, setClient] = useState<ClientFull | null>(null);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [referrerName, setReferrerName] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'info' | 'plans' | 'sales'>('info');
-  const [balance, setBalance] = useState<ClientBalance | null>(null);
+  const [summary, setSummary] = useState<ClientSummary | null>(null);
   const [plans, setPlans] = useState<ClientPlan[] | null>(null);
-  const [sales, setSales] = useState<SaleRow[] | null>(null);
+  const [planFilter, setPlanFilter] = useState<'all' | 'active' | 'closed'>('all');
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [feedTab, setFeedTab] = useState<'all' | 'comments' | 'tasks' | 'log'>('all');
+  const [loading, setLoading] = useState(true);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [balance, setBalance] = useState<ClientBalance | null>(null);
+  const [newComment, setNewComment] = useState('');
+  const [savingComment, setSavingComment] = useState(false);
+  const [freezeId, setFreezeId] = useState<string | null>(null);
+  const [splitPlan, setSplitPlan] = useState<ClientPlan | null>(null);
+  const [allTags, setAllTags] = useState<ClientTag[]>([]);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [importantEdit, setImportantEdit] = useState(false);
+  const [importantForm, setImportantForm] = useState({ skirt_size: '', device_settings: '', important_note: '', contraindications: '' });
+
+  const canEdit = role === 'admin' || role === 'manager';
+
+  const loadSummary = useCallback(() => {
+    fetch(`/kviz/api/crm/clients/${clientId}/summary`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setSummary(d)).catch(() => {});
+  }, [clientId]);
+
+  const loadFeed = useCallback(async () => {
+    const r = await fetch(`/kviz/api/crm/clients/${clientId}/feed?kind=${feedTab}`, { credentials: 'include' });
+    const d = await r.json().catch(() => []);
+    setFeedItems(Array.isArray(d) ? d : []);
+  }, [clientId, feedTab]);
 
   useEffect(() => {
     setLoading(true);
-    setTab('info'); setBalance(null); setPlans(null); setSales(null);
-    fetch(`/kviz/api/crm/clients/${clientId}`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => { setClient(d); setLoading(false); })
-      .catch(() => setLoading(false));
-    fetch(`/kviz/api/crm/clients/${clientId}/balance`, { credentials: 'include' })
-      .then(r => r.json()).then(d => setBalance(d)).catch(() => {});
-  }, [clientId]);
+    Promise.all([
+      fetch(`/kviz/api/crm/clients/${clientId}`, { credentials: 'include' }).then(r => r.json()),
+      fetch(`/kviz/api/crm/clients/${clientId}/balance`, { credentials: 'include' }).then(r => r.json()),
+    ]).then(([cd, bd]) => {
+      setClient(cd as ClientFull);
+      setBalance(bd as ClientBalance);
+      if ((cd as ClientFull).photo_path) {
+        fetch(`/kviz/api/crm/clients/${clientId}/photo-url`, { credentials: 'include' })
+          .then(r => r.json()).then(d => { if (d.url) setPhotoUrl(d.url); }).catch(() => {});
+      }
+      setImportantForm({
+        skirt_size: (cd as ClientFull).skirt_size ?? '',
+        device_settings: (cd as ClientFull).device_settings ?? '',
+        important_note: (cd as ClientFull).important_note ?? '',
+        contraindications: (cd as ClientFull).contraindications ?? '',
+      });
+      setLoading(false);
+    }).catch(() => setLoading(false));
+    loadSummary();
+    fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => setPlans([]));
+    fetch('/kviz/api/crm/client-tags', { credentials: 'include' })
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setAllTags(d); }).catch(() => {});
+  }, [clientId, loadSummary]);
 
-  useEffect(() => {
-    if (!client) return;
-    if (client.photo_path) {
-      fetch(`/kviz/api/crm/clients/${clientId}/photo-url`, { credentials: 'include' })
-        .then(r => r.json()).then(d => { if (d.url) setPhotoUrl(d.url); }).catch(() => {});
-    }
-    if (client.referrer_client_id) {
-      fetch(`/kviz/api/crm/clients/${client.referrer_client_id}`, { credentials: 'include' })
-        .then(r => r.json()).then(d => { if (d.full_name) setReferrerName(d.full_name); }).catch(() => {});
-    }
-  }, [client, clientId]);
+  useEffect(() => { loadFeed(); }, [loadFeed]);
 
-  useEffect(() => {
-    if (tab === 'plans' && plans === null) {
-      fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
-        .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => setPlans([]));
-    }
-    if (tab === 'sales' && sales === null) {
-      fetch(`/kviz/api/crm/sales?client_id=${clientId}`, { credentials: 'include' })
-        .then(r => r.json()).then(d => setSales(Array.isArray(d) ? d : [])).catch(() => setSales([]));
-    }
-  }, [tab, clientId, plans, sales]);
-
-  if (loading) return <div style={{ padding: 20, color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>;
-  if (!client) return <div style={{ padding: 20, color: 'var(--danger)', fontSize: 13 }}>Клиент не найден</div>;
-
-  const source = adSources.find(s => s.id === client.ad_source_id);
-
-  function row(label: string, value: React.ReactNode) {
-    if (!value) return null;
-    return (
-      <div style={SC.row}>
-        <span style={SC.key}>{label}</span>
-        <span style={SC.val}>{value}</span>
-      </div>
-    );
+  async function saveImportant() {
+    const { ok, data } = await apiJSON('PATCH', `/kviz/api/crm/clients/${clientId}`, {
+      skirt_size: importantForm.skirt_size || null,
+      device_settings: importantForm.device_settings || null,
+      important_note: importantForm.important_note || null,
+      contraindications: importantForm.contraindications || null,
+    });
+    if (!ok) { toast.error(data.error || 'Ошибка'); return; }
+    setClient(prev => prev ? { ...prev, ...importantForm as Partial<ClientFull> } : prev);
+    setImportantEdit(false);
+    toast.success('Сохранено');
   }
 
-  const planStatusLabel: Record<string, { text: string; color: string }> = {
-    not_activated: { text: 'Не активирован', color: 'var(--warning)' },
-    active:        { text: 'Активен',         color: 'var(--success)' },
-    frozen:        { text: 'Заморожен',        color: '#6366f1' },
-    expired:       { text: 'Истёк',            color: 'var(--danger)' },
-    refunded:      { text: 'Возвращён',        color: 'var(--text-3)' },
-    cancelled:     { text: 'Отменён',          color: 'var(--text-3)' },
-  };
+  async function addComment() {
+    if (!newComment.trim()) return;
+    setSavingComment(true);
+    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/clients/${clientId}/comments`, { text: newComment.trim() });
+    if (!ok) { toast.error(data.error || 'Ошибка'); setSavingComment(false); return; }
+    setNewComment('');
+    setSavingComment(false);
+    loadFeed();
+  }
+
+  async function addTag(tagId: string) {
+    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/clients/${clientId}/tags`, { tag_id: tagId });
+    if (!ok) { toast.error(data.error || 'Ошибка'); return; }
+    loadSummary();
+    setTagPickerOpen(false);
+  }
+
+  async function removeTag(tagId: string) {
+    const { ok, data } = await apiJSON('DELETE', `/kviz/api/crm/clients/${clientId}/tags/${tagId}`);
+    if (!ok) { toast.error(data.error || 'Ошибка'); return; }
+    loadSummary();
+  }
+
+  async function unfreeze(planId: string) {
+    if (!await showConfirm('Разморозить абонемент?')) return;
+    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${planId}/unfreeze`, {});
+    if (!ok) { toast.error(data.error || 'Ошибка'); return; }
+    toast.success('Абонемент разморожен');
+    setPlans(null);
+    fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => setPlans([]));
+  }
+
+  if (loading) return (
+    <div className="cp-overlay" onClick={onClose}>
+      <div className="cp-popup" style={{ alignItems: 'center', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+        <div style={{ color: 'var(--text-3)', fontSize: 14 }}>Загрузка…</div>
+      </div>
+    </div>
+  );
+  if (!client) return null;
+
+  const source = adSources.find(s => s.id === client.ad_source_id);
+  const activePlan = summary?.active_plan ?? null;
+  const initials = client.full_name[0]?.toUpperCase() ?? '?';
+
+  // Plan list filter
+  const filteredPlans = (plans ?? []).filter(cp => {
+    if (planFilter === 'active') return ['active', 'not_activated', 'frozen'].includes(cp.status);
+    if (planFilter === 'closed') return ['expired', 'refunded', 'cancelled'].includes(cp.status);
+    return true;
+  });
+
+  // Personal tags that are not already on the client
+  const personalTagIds = new Set((summary?.personal_tags ?? []).map(t => t.id));
+  const unassignedPersonalTags = allTags.filter(t => !t.is_system && !personalTagIds.has(t.id));
 
   return (
-    <div style={{ height: '100%', overflow: 'auto' }}>
-      <div style={SC.header}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          {photoUrl ? <img src={photoUrl} alt="" style={{ width: 56, height: 56, borderRadius: 28, objectFit: 'cover', flexShrink: 0 }} /> : (
-            <div style={{ width: 56, height: 56, borderRadius: 28, background: 'linear-gradient(135deg,#02BDB6,#263CD9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--surface)', fontSize: 22, fontWeight: 700, flexShrink: 0 }}>
-              {client.full_name[0].toUpperCase()}
+    <>
+      <div className="cp-overlay" onClick={onClose}>
+        <div className="cp-popup" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+
+          {/* Header */}
+          <div className="cp-header">
+            <div className="cp-header-left">
+              {photoUrl
+                ? <img src={photoUrl} alt="" style={{ width: 44, height: 44, borderRadius: 22, objectFit: 'cover', flexShrink: 0 }} />
+                : <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg,#02BDB6,#263CD9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 700, flexShrink: 0 }}>{initials}</div>
+              }
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.full_name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 1 }}>{client.phone ?? 'Без телефона'}</div>
+              </div>
             </div>
-          )}
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 700 }}>{client.full_name}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>{client.phone ?? 'Без телефона'}</div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-              {client.profile_complete && <span style={SC.chip}>✓ Анкета</span>}
-              {client.fitbase_client_id && <span style={{ ...SC.chip, background: 'var(--info-soft)', color: '#1d4ed8' }}>Fitbase</span>}
-              {client.status !== 'active' && <span style={{ ...SC.chip, background: 'var(--danger-soft)', color: 'var(--danger)' }}>{client.status}</span>}
-              {balance && balance.deposit > 0 && <span style={{ ...SC.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>Депозит: {balance.deposit.toLocaleString('ru-RU')} ₸</span>}
-              {balance && balance.bonus > 0 && <span style={{ ...SC.chip, background: 'var(--accent-soft)', color: '#6d28d9' }}>{balance.bonus} б.</span>}
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              {canEdit && <button className="cp-btn" onClick={onEdit}>✎ Редактировать</button>}
+              <button className="cp-btn" style={{ fontSize: 18, padding: '4px 8px' }} onClick={onClose} aria-label="Закрыть">✕</button>
             </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={SC.editBtn} onClick={onEdit}>✎ Редактировать</button>
-          <button style={SC.closeBtn} onClick={onClose}>✕</button>
-        </div>
-      </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-        {(['info', 'plans', 'sales'] as const).map(t => (
-          <button key={t} style={{ padding: '5px 14px', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: tab === t ? 700 : 500, background: tab === t ? 'var(--primary)' : 'var(--surface-2)', color: tab === t ? 'var(--surface)' : 'var(--text)' }} onClick={() => setTab(t)}>
-            {t === 'info' ? 'Анкета' : t === 'plans' ? 'Абонементы' : 'Продажи'}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'info' && (
-        <div style={{ padding: '12px 20px' }}>
-          {row('Дата рождения', fmtDate(client.birth_date))}
-          {client.iin && row('ИИН', role === 'admin' ? client.iin : client.iin.replace(/\d{6}$/, '******'))}
-          {row('Источник', source?.name ?? client.ad_source_id)}
-          {referrerName && row('Реферер', referrerName)}
-          {row('Документ выдан', client.id_issued_by)}
-          {row('Документ действует до', fmtDate(client.id_valid_until))}
-          {row('Противопоказания', client.contraindications)}
-          {row('Заметки', client.notes)}
-          {row('Источник создания', client.source)}
-          {row('Добавлен', fmtDate(client.created_at))}
-        </div>
-      )}
-
-      {tab === 'plans' && (
-        <div style={{ padding: '12px 16px' }}>
-          {plans === null && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
-          {plans !== null && plans.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Абонементы не найдены</div>}
-          {(plans ?? []).map(cp => {
-            const st = planStatusLabel[cp.status] ?? { text: cp.status, color: 'var(--text-2)' };
-            return (
-              <div key={cp.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>{cp.plan?.name ?? cp.name ?? cp.plan_id ?? '—'}</span>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: st.color, background: st.color + '1a', padding: '2px 8px', borderRadius: 4 }}>{st.text}</span>
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>
-                  {cp.activated_at && <span>Активирован: {fmtDate(cp.activated_at)}</span>}
-                  {cp.valid_until && <span style={{ marginLeft: 8 }}>До: {fmtDate(cp.valid_until)}</span>}
-                  {cp.source === 'fitbase' && <span style={{ marginLeft: 8, color: 'var(--accent)', fontSize: 11 }}>Fitbase</span>}
-                </div>
-                {cp.needs_split && (
-                  <div style={{ fontSize: 11, color: 'var(--warning, #f59e0b)', marginTop: 2 }}>⚠ Нужно разделить по аппаратам</div>
-                )}
-                {cp.crm_client_plan_items.length > 0 && (
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                    {cp.crm_client_plan_items.map((it, i) => (
-                      <span key={i} style={{ fontSize: 11, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 4 }}>
-                        {it.device_type_code}: {it.sessions_left}/{it.sessions_total} сеансов
-                      </span>
+          {/* Tags bar */}
+          <div className="cp-tags">
+            {(summary?.system_tags ?? []).map(sk => {
+              const def = SYSTEM_TAG_LABELS[sk];
+              if (!def) return null;
+              return <span key={sk} className="cp-tag" style={{ background: def.bg, color: def.color }}>{def.label}</span>;
+            })}
+            {(summary?.personal_tags ?? []).map(pt => (
+              <span key={pt.id} className="cp-tag cp-tag--personal"
+                style={{ background: pt.color + '22', color: pt.color, border: `1px solid ${pt.color}44` }}
+                title="Нажмите ✕ чтобы снять"
+              >
+                {pt.name}
+                {canEdit && <span style={{ marginLeft: 4, opacity: .7, fontSize: 10 }} onClick={() => removeTag(pt.id)}>✕</span>}
+              </span>
+            ))}
+            {canEdit && (
+              <div style={{ position: 'relative' }}>
+                <button className="cp-btn" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setTagPickerOpen(v => !v)}>+ Метка</button>
+                {tagPickerOpen && unassignedPersonalTags.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,.12)', zIndex: 10, minWidth: 160, padding: 4 }}>
+                    {unassignedPersonalTags.map(t => (
+                      <div key={t.id} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 6 }}
+                        onClick={() => addTag(t.id)}>
+                        <div style={{ width: 8, height: 8, borderRadius: 4, background: t.color }} />
+                        {t.name}
+                      </div>
                     ))}
                   </div>
                 )}
-                {cp.source === 'fitbase' && cp.sessions_left != null && cp.crm_client_plan_items.length === 0 && (
-                  <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 4 }}>
-                    Остаток: {cp.sessions_left}{cp.sessions_total != null ? `/${cp.sessions_total}` : ''} сеансов
+                {tagPickerOpen && unassignedPersonalTags.length === 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: 'var(--text-3)', zIndex: 10, minWidth: 180 }}>
+                    Все метки уже назначены
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
-      )}
+            )}
+          </div>
 
-      {tab === 'sales' && (
-        <div style={{ padding: '12px 16px' }}>
-          {sales === null && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
-          {sales !== null && sales.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Продажи не найдены</div>}
-          {(sales ?? []).map(sale => (
-            <div key={sale.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>
-                  {sale.number != null ? `#${sale.number}` : 'Fitbase'} · {sale.total.toLocaleString('ru-RU')} ₸
-                </span>
-                {sale.status !== 'completed' && <span style={{ fontSize: 11, color: 'var(--danger)', background: 'var(--danger-soft)', padding: '1px 6px', borderRadius: 4 }}>{sale.status}</span>}
+          {/* Body: 3 columns */}
+          <div className="cp-body" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+
+            {/* ── Left column ── */}
+            <div className="cp-col cp-col-left">
+              {/* LTV + visits */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--primary)' }}>
+                      {summary ? summary.ltv.toLocaleString('ru-RU') + ' ₸' : '…'}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase' }}>LTV</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>{summary?.visits_attended_total ?? '…'}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase' }}>визитов</div>
+                  </div>
+                </div>
+                {balance && (balance.deposit > 0 || balance.bonus > 0) && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {balance.deposit > 0 && <span style={{ ...SL.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>Депозит: {balance.deposit.toLocaleString('ru-RU')} ₸</span>}
+                    {balance.bonus > 0 && <span style={{ ...SL.chip, background: 'var(--accent-soft, #ede9fe)', color: '#7c3aed' }}>{balance.bonus} б.</span>}
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
-                {sale.cashier ?? '—'} · {fmtDate(sale.created_at)}
-                {sale.discount_kind && sale.discount_kind !== 'none' && ` · скидка (${sale.discount_kind})`}
-                {sale.source === 'fitbase' && <span style={{ marginLeft: 6, color: 'var(--accent)', fontSize: 11 }}>Fitbase</span>}
+
+              {/* Client info rows */}
+              <div style={{ fontSize: 13, lineHeight: '1.6' }}>
+                {client.birth_date && <div className="cp-row"><span className="cp-row-key">Дата рождения</span><span className="cp-row-val">{fmtDate(client.birth_date)}</span></div>}
+                {source && <div className="cp-row"><span className="cp-row-key">Источник</span><span className="cp-row-val">{source.name}</span></div>}
+                {summary?.last_visit_at && <div className="cp-row"><span className="cp-row-key">Последний визит</span><span className="cp-row-val">{fmtDate(summary.last_visit_at)}</span></div>}
+              </div>
+
+              {/* Active plan */}
+              {activePlan && (
+                <div className="cp-window" style={{ marginTop: 12 }}>
+                  <div className="cp-window-hdr">Активный абонемент</div>
+                  <div className="cp-window-body">
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
+                      {(activePlan.plan_name as string | null) ?? activePlan.name ?? 'Без названия'}
+                    </div>
+                    {activePlan.valid_until && (
+                      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>До: {fmtDate(activePlan.valid_until)}</div>
+                    )}
+                    {activePlan.sessions_left != null && (
+                      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
+                        Остаток: {activePlan.sessions_left}{activePlan.sessions_total != null ? `/${activePlan.sessions_total}` : ''} сеансов
+                      </div>
+                    )}
+                    {activePlan.status === 'active' && canEdit && (
+                      <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setFreezeId(activePlan.id)}>❄ Заморозить</button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Details accordion */}
+              <button className="cp-accord-btn" onClick={() => setInfoOpen(v => !v)}>
+                {infoOpen ? '▴' : '▾'} Подробнее
+              </button>
+              {infoOpen && (
+                <div style={{ fontSize: 13, lineHeight: '1.7', paddingTop: 4 }}>
+                  {client.iin && <div className="cp-row"><span className="cp-row-key">ИИН</span><span className="cp-row-val">{role === 'admin' ? client.iin : client.iin.slice(0, 6) + '******'}</span></div>}
+                  {client.id_issued_by && <div className="cp-row"><span className="cp-row-key">Документ</span><span className="cp-row-val">{client.id_issued_by}</span></div>}
+                  {client.id_valid_until && <div className="cp-row"><span className="cp-row-key">Действует до</span><span className="cp-row-val">{fmtDate(client.id_valid_until)}</span></div>}
+                  {client.address && <div className="cp-row"><span className="cp-row-key">Адрес</span><span className="cp-row-val">{client.address}</span></div>}
+                  {client.gender && <div className="cp-row"><span className="cp-row-key">Пол</span><span className="cp-row-val">{client.gender === 'F' ? 'Женский' : 'Мужской'}</span></div>}
+                  {client.notes && <div className="cp-row"><span className="cp-row-key">Заметки</span><span className="cp-row-val">{client.notes}</span></div>}
+                </div>
+              )}
+            </div>
+
+            {/* ── Center column ── */}
+            <div className="cp-col cp-col-center">
+
+              {/* Важное */}
+              <div className="cp-window">
+                <div className="cp-window-hdr">
+                  Важное
+                  {canEdit && !importantEdit && <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setImportantEdit(true)}>✎</button>}
+                  {importantEdit && <div style={{ display: 'flex', gap: 4 }}><button className="cp-btn cp-btn--primary" style={{ fontSize: 11 }} onClick={saveImportant}>Сохранить</button><button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setImportantEdit(false)}>Отмена</button></div>}
+                </div>
+                <div className="cp-window-body">
+                  {importantEdit ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {[
+                        ['skirt_size', 'Размер юбки'],
+                        ['device_settings', 'Настройки аппаратов'],
+                        ['important_note', 'Важное'],
+                        ['contraindications', 'Противопоказания'],
+                      ].map(([k, label]) => (
+                        <div key={k}>
+                          <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>{label}</label>
+                          <textarea value={importantForm[k as keyof typeof importantForm]} onChange={e => setImportantForm(f => ({ ...f, [k]: e.target.value }))}
+                            style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13 }}>
+                      {client.skirt_size && <div className="cp-row"><span className="cp-row-key">Юбка</span><span className="cp-row-val">{client.skirt_size}</span></div>}
+                      {client.device_settings && <div className="cp-row"><span className="cp-row-key">Аппараты</span><span className="cp-row-val">{client.device_settings}</span></div>}
+                      {client.important_note && <div style={{ padding: '4px 0', color: '#b45309', fontSize: 13 }}>⚠ {client.important_note}</div>}
+                      {client.contraindications && <div style={{ padding: '4px 0', color: 'var(--danger)', fontSize: 13 }}>Противопоказания: {client.contraindications}</div>}
+                      {!client.skirt_size && !client.device_settings && !client.important_note && !client.contraindications && (
+                        <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет данных</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Пакеты */}
+              <div className="cp-window">
+                <div className="cp-window-hdr">
+                  Пакеты
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {(['all', 'active', 'closed'] as const).map(f => (
+                      <button key={f} className={`cp-btn${planFilter === f ? ' cp-btn--primary' : ''}`} style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setPlanFilter(f)}>
+                        {f === 'all' ? 'Все' : f === 'active' ? 'Активные' : 'Закрытые'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                  {plans === null && <div style={{ padding: 12, fontSize: 13, color: 'var(--text-3)' }}>Загрузка…</div>}
+                  {plans !== null && filteredPlans.length === 0 && <div style={{ padding: 12, fontSize: 13, color: 'var(--text-3)' }}>Пакеты не найдены</div>}
+                  {filteredPlans.map(cp => {
+                    const st = PLAN_STATUS[cp.status] ?? { text: cp.status, color: 'var(--text-2)', bg: 'var(--surface-2)' };
+                    const planName = (cp.plan?.name ?? cp.name ?? cp.plan_id ?? '—') as string;
+                    const freezeDays = (cp.plan?.freeze_days ?? 0) as number;
+                    const usedDays = (cp.freeze_days_used ?? 0) as number;
+                    return (
+                      <div key={cp.id} style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <span style={{ fontWeight: 600 }}>{planName}</span>
+                          <span className="cp-plan-status" style={{ background: st.bg, color: st.color, flexShrink: 0 }}>{st.text}</span>
+                        </div>
+                        <div style={{ color: 'var(--text-2)', fontSize: 12, marginTop: 2 }}>
+                          {cp.activated_at && <span>Активирован: {fmtDate(cp.activated_at)}</span>}
+                          {cp.valid_until && <span style={{ marginLeft: 8 }}>До: {fmtDate(cp.valid_until)}</span>}
+                          {cp.source === 'fitbase' && <span style={{ marginLeft: 8, color: 'var(--accent)', fontSize: 11 }}>Fitbase</span>}
+                        </div>
+                        {cp.crm_client_plan_items.length > 0 && (
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                            {cp.crm_client_plan_items.map((it, i) => (
+                              <span key={i} style={{ fontSize: 11, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 4 }}>
+                                {it.device_type_code}: {it.sessions_left}/{it.sessions_total}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {cp.source === 'fitbase' && cp.sessions_left != null && cp.crm_client_plan_items.length === 0 && (
+                          <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
+                            Остаток: {cp.sessions_left}{cp.sessions_total != null ? `/${cp.sessions_total}` : ''} сеансов
+                          </div>
+                        )}
+                        {canEdit && (
+                          <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                            {cp.status === 'active' && (
+                              <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setFreezeId(cp.id)}>❄ Заморозить</button>
+                            )}
+                            {cp.status === 'frozen' && (
+                              <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => unfreeze(cp.id)}>▶ Разморозить</button>
+                            )}
+                            {cp.needs_split && (
+                              <button className="cp-btn" style={{ fontSize: 11, color: 'var(--warning)' }} onClick={() => setSplitPlan(cp)}>⚡ Распределить</button>
+                            )}
+                            {freezeDays > 0 && cp.status === 'active' && (
+                              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>❄ {freezeDays - usedDays} д. осталось</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Лента */}
+              <div className="cp-window">
+                <div className="cp-window-hdr">Лента</div>
+                <div className="cp-feed-tabs">
+                  {(['all', 'comments', 'tasks', 'log'] as const).map(t => (
+                    <button key={t} className={`cp-feed-tab${feedTab === t ? ' cp-feed-tab--active' : ''}`} onClick={() => setFeedTab(t)}>
+                      {t === 'all' ? 'Всё' : t === 'comments' ? 'Комментарии' : t === 'tasks' ? 'Задачи' : 'Лог'}
+                    </button>
+                  ))}
+                </div>
+                {(feedTab === 'all' || feedTab === 'comments') && canEdit && (
+                  <div style={{ padding: '8px 14px', display: 'flex', gap: 6 }}>
+                    <input value={newComment} onChange={e => setNewComment(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && !e.shiftKey && addComment()}
+                      placeholder="Добавить комментарий…"
+                      style={{ flex: 1, padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} />
+                    <button className="cp-btn cp-btn--primary" style={{ fontSize: 12 }} onClick={addComment} disabled={savingComment}>+</button>
+                  </div>
+                )}
+                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                  {feedItems.length === 0 && <div style={{ padding: 12, fontSize: 13, color: 'var(--text-3)' }}>Нет записей</div>}
+                  {feedItems.map(item => (
+                    <div key={item.id} className="cp-feed-item">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 2 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: item.kind === 'comment' ? 'var(--primary)' : item.kind === 'task' ? 'var(--accent)' : 'var(--text-3)' }}>
+                          {item.kind === 'comment' ? '💬' : item.kind === 'task' ? '✓' : '·'} {item.author}
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--text-3)', flexShrink: 0 }}>{fmtDT(item.at)}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--text)' }}>{item.text}</div>
+                      {item.extra?.status && (
+                        <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>
+                          Статус: {item.extra.status}{item.extra.due_at ? ` · до ${fmtDate(item.extra.due_at)}` : ''}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          ))}
+
+            {/* ── Right column ── */}
+            <div className="cp-col cp-col-right">
+
+              {/* InBody */}
+              <div className="cp-window">
+                <div className="cp-window-hdr">InBody</div>
+                <div className="cp-window-body">
+                  {summary?.inbody_last ? (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmtDate(summary.inbody_last)}</span>
+                        {(() => {
+                          const d = daysAgo(summary.inbody_last);
+                          const lbl = dayLabel(d ? 7 - d : null);
+                          return lbl ? <span className={`cp-timer ${lbl.cls}`}>{lbl.label}</span> : null;
+                        })()}
+                      </div>
+                      {summary.inbody_latest && (
+                        <div style={{ fontSize: 13 }}>
+                          {summary.inbody_latest.weight != null && <div className="cp-row"><span className="cp-row-key">Вес</span><span className="cp-row-val">{String(summary.inbody_latest.weight)} кг</span></div>}
+                          {summary.inbody_latest.body_fat_percent != null && <div className="cp-row"><span className="cp-row-key">% жира</span><span className="cp-row-val">{String(summary.inbody_latest.body_fat_percent)}%</span></div>}
+                          {summary.inbody_latest.smm != null && <div className="cp-row"><span className="cp-row-key">СММ</span><span className="cp-row-val">{String(summary.inbody_latest.smm)} кг</span></div>}
+                          {summary.inbody_latest.visceral_fat != null && <div className="cp-row"><span className="cp-row-key">Висц. жир</span><span className="cp-row-val">{String(summary.inbody_latest.visceral_fat)}</span></div>}
+                        </div>
+                      )}
+                      {summary.body_client_id && (
+                        <a href={`/kviz/zamery?body_client_id=${summary.body_client_id}`} target="_self"
+                          style={{ display: 'block', marginTop: 8, fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>
+                          → Открыть отчёт
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Нет InBody</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Замеры */}
+              <div className="cp-window">
+                <div className="cp-window-hdr">Замеры тела</div>
+                <div className="cp-window-body">
+                  {summary?.measure_last ? (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmtDate(summary.measure_last)}</span>
+                        {(() => {
+                          const d = daysAgo(summary.measure_last);
+                          const lbl = dayLabel(d != null ? 7 - d : null);
+                          return lbl ? <span className={`cp-timer ${lbl.cls}`}>{lbl.label}</span> : null;
+                        })()}
+                      </div>
+                      {summary.measure_latest && (
+                        <div style={{ fontSize: 13 }}>
+                          {summary.measure_latest.weight != null && <div className="cp-row"><span className="cp-row-key">Вес</span><span className="cp-row-val">{String(summary.measure_latest.weight)} кг</span></div>}
+                          {summary.measure_latest.waist_cm != null && <div className="cp-row"><span className="cp-row-key">Талия</span><span className="cp-row-val">{String(summary.measure_latest.waist_cm)} см</span></div>}
+                          {summary.measure_latest.hips_cm != null && <div className="cp-row"><span className="cp-row-key">Бёдра</span><span className="cp-row-val">{String(summary.measure_latest.hips_cm)} см</span></div>}
+                          {summary.measure_latest.total_cm != null && <div className="cp-row"><span className="cp-row-key">Итого</span><span className="cp-row-val">{String(summary.measure_latest.total_cm)} см</span></div>}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Нет замеров</div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Freeze dialog */}
+      {freezeId && (() => {
+        const cp = (plans ?? []).find(p => p.id === freezeId);
+        const freezeDays = (cp?.plan?.freeze_days ?? 0) as number;
+        const usedDays = (cp?.freeze_days_used ?? 0) as number;
+        return (
+          <FreezeDialog
+            planId={freezeId}
+            maxDays={role === 'admin' ? 365 : freezeDays - usedDays}
+            onDone={() => {
+              setFreezeId(null);
+              fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
+                .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => {});
+            }}
+            onClose={() => setFreezeId(null)}
+          />
+        );
+      })()}
+
+      {/* Split dialog */}
+      {splitPlan && (
+        <SplitDialog
+          plan={splitPlan}
+          onDone={() => {
+            setSplitPlan(null);
+            fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
+              .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => {});
+          }}
+          onClose={() => setSplitPlan(null)}
+        />
       )}
-    </div>
+    </>
   );
 }
 
@@ -491,15 +974,9 @@ function FitbaseImport({ onDone }: { onDone: () => void }) {
       const r = await fetch('/kviz/api/crm/clients/fitbase-import', { method: 'POST', credentials: 'include' });
       const d = await r.json().catch(() => null);
       if (!r.ok && r.status !== 409) {
-        setJob({ status: 'idle' });
-        setError(d?.error || `Сервер вернул ошибку (${r.status}), попробуйте ещё раз`);
-        return;
+        setJob({ status: 'idle' }); setError(d?.error || `Сервер вернул ошибку (${r.status})`); return;
       }
-    } catch {
-      setJob({ status: 'idle' });
-      setError('Не удалось запустить импорт. Попробуйте ещё раз.');
-      return;
-    }
+    } catch { setJob({ status: 'idle' }); setError('Не удалось запустить импорт.'); return; }
     timerRef.current = setInterval(pollStatus, 2000);
     pollStatus();
   }
@@ -510,7 +987,6 @@ function FitbaseImport({ onDone }: { onDone: () => void }) {
   return (
     <div style={{ background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 12 }}>
       <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Импорт из Fitbase</div>
-      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10 }}>Загрузит всех клиентов из Fitbase. Дубли (по fitbase_client_id) пропускаются.</div>
       {error && <div style={{ background: 'var(--danger-soft)', color: 'var(--danger)', padding: '6px 10px', borderRadius: 6, fontSize: 12, marginBottom: 8 }}>{error}</div>}
       {running && (
         <div style={{ marginBottom: 10 }}>
@@ -521,9 +997,7 @@ function FitbaseImport({ onDone }: { onDone: () => void }) {
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{job.processed} / {job.total} ({pct}%)</div>
             </>
-          ) : (
-            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>Загрузка данных…</div>
-          )}
+          ) : <div style={{ fontSize: 12, color: 'var(--text-2)' }}>Загрузка данных…</div>}
         </div>
       )}
       {job.status === 'done' && (
@@ -549,7 +1023,10 @@ export default function ClientsPage() {
   const [filterSource, setFilterSource] = useState('');
   const [filterComplete, setFilterComplete] = useState('');
   const [loading, setLoading]   = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [popupId, setPopupId]   = useState<string | null>(() => {
+    const m = window.location.hash.match(/^#client=(.+)$/);
+    return m ? m[1] : null;
+  });
   const [editClient, setEditClient] = useState<ClientFull | null | 'new'>(null);
   const [role, setRole]         = useState('manager');
   const [showImport, setShowImport] = useState(false);
@@ -560,9 +1037,14 @@ export default function ClientsPage() {
     fetch('/kviz/api/me', { credentials: 'include' }).then(r => r.json()).then(d => { if (d.role) setRole(d.role); }).catch(() => {});
   }, []);
 
+  // Sync popup ID to URL hash
+  useEffect(() => {
+    if (popupId) history.replaceState(null, '', window.location.pathname + window.location.search + `#client=${popupId}`);
+    else history.replaceState(null, '', window.location.pathname + window.location.search);
+  }, [popupId]);
+
   const load = useCallback(async () => {
-    setLoading(true);
-    setOffset(0);
+    setLoading(true); setOffset(0);
     const params = new URLSearchParams({ limit: '100', offset: '0' });
     if (search) params.set('search', search);
     if (filterSource) params.set('ad_source_id', filterSource);
@@ -570,9 +1052,7 @@ export default function ClientsPage() {
     const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
     const d = await r.json();
     const items: ClientRow[] = d?.items ?? (Array.isArray(d) ? d : []);
-    setClients(items);
-    setTotal(d?.total ?? items.length);
-    setOffset(items.length);
+    setClients(items); setTotal(d?.total ?? items.length); setOffset(items.length);
     setLoading(false);
   }, [search, filterSource, filterComplete]);
 
@@ -585,8 +1065,7 @@ export default function ClientsPage() {
     const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
     const d = await r.json();
     const items: ClientRow[] = d?.items ?? (Array.isArray(d) ? d : []);
-    setClients(prev => [...prev, ...items]);
-    setOffset(prev => prev + items.length);
+    setClients(prev => [...prev, ...items]); setOffset(prev => prev + items.length);
     setLoading(false);
   }
 
@@ -600,24 +1079,17 @@ export default function ClientsPage() {
     const r = await fetch(`/kviz/api/crm/clients/${id}`, { credentials: 'include' });
     const d = await r.json();
     setEditClient(d as ClientFull);
-    setSelectedId(null);
-  }
-
-  async function archiveClient(id: string) {
-    if (!await showConfirm('Архивировать клиента?')) return;
-    await apiJSON('DELETE', `/kviz/api/crm/clients/${id}`);
-    setSelectedId(null); load();
+    setPopupId(null);
   }
 
   function onSaved(data: ClientFull) {
     setEditClient(null);
-    setSelectedId(data.id);
+    setPopupId(data.id);
     load();
   }
 
   const sourceMap = new Map(adSources.map(s => [s.id, s.name]));
 
-  // edit mode: full screen form
   if (editClient !== null) {
     return (
       <div style={{ height: '100vh', overflow: 'auto', background: 'var(--surface-2)', fontFamily: "'Manrope',system-ui,sans-serif" }}>
@@ -632,71 +1104,69 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="clients-wrap" style={{ display: 'flex', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
-      {/* Left: list */}
-      <div className={selectedId ? 'clients-list--detail' : ''} style={{ width: selectedId ? 360 : '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: selectedId ? '1px solid var(--border)' : 'none', background: 'var(--surface)' }}>
-        {/* Toolbar */}
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input style={SL.search} value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по имени или телефону" />
-          <select style={SL.filter} value={filterSource} onChange={e => setFilterSource(e.target.value)}>
-            <option value="">Все источники</option>
-            {adSources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <select style={SL.filter} value={filterComplete} onChange={e => setFilterComplete(e.target.value)}>
-            <option value="">Все анкеты</option>
-            <option value="true">Заполнена</option>
-            <option value="false">Не заполнена</option>
-          </select>
-          <button style={SL.addBtn} onClick={() => setEditClient('new')}>+ Клиент</button>
-          {role === 'admin' && <button style={SL.outlineBtn} onClick={() => setShowImport(v => !v)}>↓ Fitbase</button>}
-        </div>
-        {showImport && role === 'admin' && <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}><FitbaseImport onDone={load} /></div>}
-        {/* List */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {loading && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
-          {!loading && !clients.length && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Клиенты не найдены</div>}
-          {clients.map(c => (
-            <div key={c.id} style={{ ...SL.row, background: selectedId === c.id ? 'rgba(2,189,182,0.06)' : 'var(--surface)', borderLeft: selectedId === c.id ? '3px solid var(--primary)' : '3px solid transparent' }}
-              onClick={() => setSelectedId(selectedId === c.id ? null : c.id)}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
-                  {maskPhone(c.phone)}
-                  {c.birth_date && <span style={{ marginLeft: 8 }}>{fmtDate(c.birth_date)}</span>}
-                </div>
-                {(c.ad_source_id || c.profile_complete) && (
-                  <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
-                    {c.ad_source_id && <span style={SL.chip}>{sourceMap.get(c.ad_source_id) ?? '?'}</span>}
-                    {c.profile_complete && <span style={{ ...SL.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>✓</span>}
-                  </div>
-                )}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
+      {/* Toolbar */}
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', background: 'var(--surface)', flexShrink: 0 }}>
+        <input style={SL.search} value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по имени или телефону" />
+        <select style={SL.filter} value={filterSource} onChange={e => setFilterSource(e.target.value)}>
+          <option value="">Все источники</option>
+          {adSources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select style={SL.filter} value={filterComplete} onChange={e => setFilterComplete(e.target.value)}>
+          <option value="">Все анкеты</option>
+          <option value="true">Заполнена</option>
+          <option value="false">Не заполнена</option>
+        </select>
+        <button style={SL.addBtn} onClick={() => setEditClient('new')}>+ Клиент</button>
+        {role === 'admin' && <button style={SL.outlineBtn} onClick={() => setShowImport(v => !v)}>↓ Fitbase</button>}
+      </div>
+      {showImport && role === 'admin' && <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}><FitbaseImport onDone={load} /></div>}
+
+      {/* List */}
+      <div style={{ flex: 1, overflowY: 'auto', background: 'var(--surface)' }}>
+        {loading && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
+        {!loading && !clients.length && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Клиенты не найдены</div>}
+        {clients.map(c => (
+          <div key={c.id}
+            style={{ ...SL.row, background: popupId === c.id ? 'rgba(2,189,182,0.06)' : 'var(--surface)', borderLeft: popupId === c.id ? '3px solid var(--primary)' : '3px solid transparent' }}
+            onClick={() => setPopupId(c.id)}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
+                {c.phone ?? '—'}
+                {c.birth_date && <span style={{ marginLeft: 8 }}>{fmtDate(c.birth_date)}</span>}
               </div>
+              {(c.ad_source_id || c.profile_complete) && (
+                <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                  {c.ad_source_id && <span style={SL.chip}>{sourceMap.get(c.ad_source_id) ?? '?'}</span>}
+                  {c.profile_complete && <span style={{ ...SL.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>✓</span>}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-        {clients.length < total && !loading && (
-          <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
-            <button style={{ ...SL.outlineBtn, width: '100%', fontSize: 12 }} onClick={loadMore}>
-              Показать ещё ({total - clients.length})
-            </button>
           </div>
-        )}
-        <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)' }}>
-          {clients.length} из {total} клиентов
-        </div>
+        ))}
       </div>
 
-      {/* Right: card */}
-      {selectedId && (
-        <div className="clients-detail" style={{ flex: 1, overflow: 'auto', background: 'var(--surface-2)' }}>
-          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, background: 'var(--surface)', flexWrap: 'wrap' }}>
-            <button className="clients-back-btn" style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, fontWeight: 600, padding: '0 4px', fontFamily: 'inherit' }}
-              onClick={() => setSelectedId(null)}>← Список</button>
-            <button style={SL.outlineBtn} onClick={() => openEdit(selectedId)}>✎ Редактировать</button>
-            {role === 'admin' && <button style={{ ...SL.outlineBtn, color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => archiveClient(selectedId)}>Архивировать</button>}
-          </div>
-          <ClientCard clientId={selectedId} adSources={adSources} role={role} onEdit={() => openEdit(selectedId)} onClose={() => setSelectedId(null)} />
+      {clients.length < total && !loading && (
+        <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+          <button style={{ ...SL.outlineBtn, width: '100%', fontSize: 12 }} onClick={loadMore}>
+            Показать ещё ({total - clients.length})
+          </button>
         </div>
+      )}
+      <div style={{ padding: '6px 12px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)', background: 'var(--surface)' }}>
+        {clients.length} из {total} клиентов
+      </div>
+
+      {/* Popup */}
+      {popupId && (
+        <ClientPopup
+          clientId={popupId}
+          adSources={adSources}
+          role={role}
+          onClose={() => setPopupId(null)}
+          onEdit={() => openEdit(popupId)}
+        />
       )}
     </div>
   );
@@ -723,14 +1193,4 @@ const SL: Record<string, React.CSSProperties> = {
   outlineBtn: { padding: '7px 12px', background: 'none', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' },
   row:     { padding: '10px 14px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.1s' },
   chip:    { display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 11, background: 'var(--surface-2)', color: 'var(--text-2)', fontWeight: 500 },
-};
-
-const SC: Record<string, React.CSSProperties> = {
-  header:  { padding: '14px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
-  row:     { display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid #f8fafc', fontSize: 13 },
-  key:     { color: 'var(--text-2)', minWidth: 140, flexShrink: 0, fontSize: 13 },
-  val:     { color: 'var(--text)', fontWeight: 500 },
-  chip:    { display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, background: 'var(--success-soft)', color: 'var(--success)', fontWeight: 600 },
-  editBtn: { padding: '6px 14px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-  closeBtn: { padding: '6px 10px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-2)' },
 };
