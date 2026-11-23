@@ -1,5 +1,6 @@
 import { supabase } from '../db/supabase';
 import { rawGet, getTillOrderSteps, paginateGet } from '../http/fitbase';
+import { VISIT_STATUS_BOOKED, VISIT_STATUS_CONFIRMED, VISIT_STATUS_REFUSED, VISIT_STATUS_VISITED, VISIT_STATUS_NOSHOW } from '../config';
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -56,11 +57,13 @@ const PM_SYNONYMS: Record<string, string> = {
   'бонусные':               'бонусами',
 };
 
-// Fitbase visit status number → crm_visit_history.status enum
-const VISIT_STATUS_MAP: Record<number, string> = { 0: 'unknown', 1: 'booked', 2: 'cancelled', 3: 'attended', 4: 'no_show' };
 function mapVisitStatus(raw: unknown): string {
-  const n = raw != null ? Number(raw) : 0;
-  return VISIT_STATUS_MAP[n] ?? 'unknown';
+  const n = raw != null ? Number(raw) : -1;
+  if (n === VISIT_STATUS_BOOKED || n === VISIT_STATUS_CONFIRMED) return 'booked';
+  if (n === VISIT_STATUS_REFUSED)  return 'cancelled';
+  if (n === VISIT_STATUS_VISITED)  return 'attended';
+  if (n === VISIT_STATUS_NOSHOW)   return 'no_show';
+  return 'unknown';
 }
 
 // Fitbase payment_method.system_name → CRM payment method kind (unambiguous 1:1 only)
@@ -672,17 +675,21 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
             continue;
           }
 
-          const stepId     = Number(s.id);
-          const amount     = Math.abs(Number(s.amount));
+          const stepId        = Number(s.id);
+          const amount        = Math.abs(Number(s.amount));
           if (amount <= 0) continue;
 
-          const contractId = s.contract_id != null ? Number(s.contract_id) : null;
-          const fbItemId   = (s.item as Record<string,unknown> | null)?.id != null ? Number((s.item as Record<string,unknown>).id) : null;
-          const refundDate = tsToIso(s.created_at);
+          // For plan/contract items: item.id IS the fitbase_contract_id in crm_sale_items
+          const rawRefType    = String(s.item_type ?? '').toLowerCase().trim();
+          const isContractRef = ITEM_TYPE_MAP[rawRefType] === 'plan';
+          const refFbId       = (s.item as Record<string,unknown> | null)?.id != null ? Number((s.item as Record<string,unknown>).id) : null;
+          const refContractId = isContractRef ? refFbId : null;
+          const refProductId  = isContractRef ? null    : refFbId;
+          const refundDate    = tsToIso(s.created_at);
 
-          const saleId = await findSaleForRefund(clientId, contractId, fbItemId, refundDate);
+          const saleId = await findSaleForRefund(clientId, refContractId, refProductId, refundDate);
           if (!saleId) {
-            job.errors.push(`client ${fid}: refund step ${stepId} contractId=${contractId} itemId=${fbItemId} no matching sale, skipped`);
+            job.errors.push(`client ${fid}: refund step ${stepId} item_type=${rawRefType} item_id=${refFbId} no matching sale`);
             continue;
           }
 
@@ -698,7 +705,30 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
             const msg = `client ${fid} refund step ${stepId}: ${refErr.message}`;
             console.error('[history-import]', msg);
             job.errors.push(msg);
-          } else job.stats.refunds_upserted++;
+            continue;
+          }
+          job.stats.refunds_upserted++;
+
+          // Update sale refunded_total + status
+          const { data: allRefunds } = await supabase
+            .from('crm_refunds').select('amount').eq('sale_id', saleId);
+          const refundedTotal = (allRefunds ?? []).reduce(
+            (acc: number, r: Record<string,unknown>) => acc + Number(r.amount), 0,
+          );
+          const { data: saleRow } = await supabase
+            .from('crm_sales').select('total').eq('id', saleId).single();
+          const saleTotal = Number((saleRow as Record<string,unknown> | null)?.total ?? 0);
+          await supabase.from('crm_sales').update({
+            refunded_total: refundedTotal,
+            status: refundedTotal >= saleTotal ? 'refunded' : 'partially_refunded',
+          }).eq('id', saleId);
+
+          // If abonement refund: mark plan as refunded
+          if (isContractRef && refContractId) {
+            await supabase.from('crm_client_plans')
+              .update({ status: 'refunded' })
+              .eq('fitbase_contract_id', refContractId);
+          }
         }
       } catch (e) {
         const msg = `client ${fid} sales/refunds: ${(e as Error).message ?? String(e)}`;
