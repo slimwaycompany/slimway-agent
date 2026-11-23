@@ -6,6 +6,52 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
 const YEK_MS    = 5 * 3600_000;
 
+// Fitbase item_type → crm_sale_items.item_type
+const ITEM_TYPE_MAP: Record<string, 'plan' | 'product' | 'deposit'> = {
+  contract:     'plan',
+  subscription: 'plan',
+  service:      'plan',
+  ticket:       'plan',
+  product:      'product',
+  item:         'product',
+  товар:        'product',
+  deposit:      'deposit',
+  prepayment:   'deposit',
+};
+
+// Fitbase payment name synonyms → lowercase CRM name
+// CRM: Наличные(1/cash), Карта(2/cashless), Kaspi QR(4), Рассрочка Kaspi 0-0-12(5), Рассрочка Halyk(6), С депозита(7/deposit), Бонусами(8/bonus)
+const PM_SYNONYMS: Record<string, string> = {
+  'нал':                    'наличные',
+  'наличными':              'наличные',
+  'наличный':               'наличные',
+  'cash':                   'наличные',
+  'картой':                 'карта',
+  'карточкой':              'карта',
+  'безнал':                 'карта',
+  'безналичные':            'карта',
+  'безналичный':            'карта',
+  'терминал':               'карта',
+  'terminal':               'карта',
+  'card':                   'карта',
+  'каспи':                  'kaspi qr',
+  'kaspi':                  'kaspi qr',
+  'каспи qr':               'kaspi qr',
+  'kaspi qr':               'kaspi qr',
+  'kaspi рассрочка':        'рассрочка kaspi 0-0-12',
+  'рассрочка kaspi':        'рассрочка kaspi 0-0-12',
+  'рассрочка каспи':        'рассрочка kaspi 0-0-12',
+  'halyk':                  'рассрочка halyk',
+  'халык':                  'рассрочка halyk',
+  'депозит':                'с депозита',
+  'deposit':                'с депозита',
+  'с баланса':              'с депозита',
+  'баланс':                 'с депозита',
+  'бонус':                  'бонусами',
+  'bonus':                  'бонусами',
+  'бонусные':               'бонусами',
+};
+
 function yekDate(ts: number): string {
   const d = new Date(ts + YEK_MS);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
@@ -35,11 +81,8 @@ export interface HistoryImportJob {
   kind: 'full' | 'nightly';
   run_id: string | null;
   total_clients: number;
-  processed: number;
-  plans_upserted: number;
-  sales_upserted: number;
-  refunds_upserted: number;
-  visits_upserted: number;
+  done_clients: number;
+  stats: { plans_upserted: number; sales_upserted: number; refunds_upserted: number; visits_upserted: number };
   errors: string[];
   started_at: string;
   finished_at?: string;
@@ -53,8 +96,8 @@ export function startHistoryImport(kind: 'full' | 'nightly'): HistoryImportJob |
   if (_job?.status === 'running') return null; // already running
   _job = {
     status: 'running', kind, run_id: null,
-    total_clients: 0, processed: 0,
-    plans_upserted: 0, sales_upserted: 0, refunds_upserted: 0, visits_upserted: 0,
+    total_clients: 0, done_clients: 0,
+    stats: { plans_upserted: 0, sales_upserted: 0, refunds_upserted: 0, visits_upserted: 0 },
     errors: [], started_at: new Date().toISOString(),
   };
   return _job;
@@ -206,6 +249,12 @@ async function fetchVisitsForClient(clientId: number): Promise<Record<string, un
   }
 }
 
+async function rollbackSale(saleId: string): Promise<void> {
+  await supabase.from('crm_sale_payments').delete().eq('sale_id', saleId);
+  await supabase.from('crm_sale_items').delete().eq('sale_id', saleId);
+  await supabase.from('crm_sales').delete().eq('id', saleId);
+}
+
 // ── Main import ───────────────────────────────────────────────────────────────
 
 export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientIds?: number[]): Promise<void> {
@@ -227,11 +276,8 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
     if (!runId) return;
     try {
       const { error } = await supabase.from('crm_fitbase_import_runs').update({
-        processed:               job.processed,
-        plans_upserted:          job.plans_upserted,
-        sales_upserted:          job.sales_upserted,
-        refunds_upserted:        job.refunds_upserted,
-        visits_upserted:         job.visits_upserted,
+        done_clients:            job.done_clients,
+        stats:                   job.stats,
         errors:                  job.errors.slice(-50),
         last_client_fitbase_id:  lastFid || null,
       }).eq('id', runId);
@@ -310,6 +356,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
 
     // 4. Per-client loop
     console.log(`[history-import] starting loop: ${clients.length} clients`);
+    let pmDiagCount = 0; // log first few payment objects to diagnose pm name field
 
     for (let i = 0; i < clients.length; i++) {
       const { id: clientId, fitbase_client_id: fid } = clients[i];
@@ -339,9 +386,9 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
 
           const { error: planErr } = await supabase.from('crm_client_plans').upsert({
             client_id:            clientId,
-            branch_id:            BRANCH_ID,
             fitbase_contract_id:  Number(contract.id),
             source:               'fitbase',
+            kind:                 'abonement',
             name:                 planName || null,
             plan_id:              matched?.id ?? null,
             status,
@@ -358,7 +405,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
             const msg = `client ${fid} contract ${contract.id}: ${planErr.message}`;
             console.error('[history-import]', msg);
             job.errors.push(msg);
-          } else { job.plans_upserted++; cPlans++; }
+          } else { job.stats.plans_upserted++; cPlans++; }
         }
       } catch (e) {
         const msg = `client ${fid} contracts: ${(e as Error).message ?? String(e)}`;
@@ -372,28 +419,88 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
         const steps = await getTillOrderSteps({ client_id: fid });
         await sleep(300 + Math.random() * 200);
 
+        const refundSteps = (steps as Record<string, unknown>[]).filter(
+          s => Number((s as Record<string,unknown>).amount) < 0 || (s as Record<string,unknown>).operation_type === 'refund',
+        );
+
         const orderMap = new Map<string, Record<string, unknown>[]>();
-        for (const step of steps) {
-          const s = step as Record<string, unknown>;
-          if (Number(s.amount) < 0 || s.operation_type === 'refund') continue;
-          const key = s.order_id != null ? String(s.order_id) : `step_${s.id}`;
+        for (const step of steps as Record<string, unknown>[]) {
+          if (Number(step.amount) < 0 || step.operation_type === 'refund') continue;
+          if (step.order_id == null) {
+            job.errors.push(`client ${fid}: step ${step.id} has no order_id, skipped`);
+            continue;
+          }
+          const key = String(step.order_id);
           if (!orderMap.has(key)) orderMap.set(key, []);
-          orderMap.get(key)!.push(s);
+          orderMap.get(key)!.push(step);
         }
 
         for (const [orderKey, orderSteps] of orderMap) {
-          const orderId = orderSteps[0]?.order_id != null ? Number(orderSteps[0].order_id) : null;
+          const orderId = Number(orderSteps[0].order_id);
 
-          if (orderId !== null) {
-            const { data: existing } = await supabase
-              .from('crm_sales').select('id').eq('fitbase_order_id', orderId).maybeSingle();
-            if (existing) { job.sales_upserted++; continue; }
-          } else {
-            job.errors.push(`client ${fid}: step ${orderSteps[0].id} has no order_id, skipped`);
-            continue;
+          const { data: existing } = await supabase
+            .from('crm_sales').select('id').eq('fitbase_order_id', orderId).maybeSingle();
+          if (existing) { job.stats.sales_upserted++; continue; }
+
+          // Validate item types and build inserts BEFORE touching the DB
+          let orderValid = true;
+          const itemInserts: Record<string, unknown>[] = [];
+          const payInserts:  Record<string, unknown>[] = [];
+
+          for (const step of orderSteps) {
+            const s = step as Record<string, unknown>;
+            const rawItemType = String(s.item_type ?? '').toLowerCase().trim();
+            const crmItemType = ITEM_TYPE_MAP[rawItemType];
+
+            console.log(`[history-import] client ${fid} order ${orderKey} step ${s.id} item_type="${rawItemType}"`);
+            if (!crmItemType) {
+              const msg = `client ${fid} order ${orderKey}: unknown item_type="${rawItemType}", order skipped`;
+              console.error('[history-import]', msg);
+              job.errors.push(msg);
+              orderValid = false;
+              break;
+            }
+
+            const itemName = (s.item as Record<string,unknown> | null)?.name as string ?? null;
+            const stepAmt  = Number(s.amount);
+            itemInserts.push({ sale_id: '', item_type: crmItemType, name: itemName, qty: 1, unit_price: stepAmt, total: stepAmt });
+
+            if (stepAmt > 0) {
+              const ptRaw = ((s.payment_type    as Record<string,unknown> | null)?.name as string ?? '').trim();
+              const pmRaw = ((s.payment_method  as Record<string,unknown> | null)?.name as string ?? '').trim();
+              const pcRaw = ((s.payment_channel as Record<string,unknown> | null)?.name as string ?? '').trim();
+              const rawPmName  = (ptRaw || pmRaw || pcRaw).toLowerCase();
+
+              if (pmDiagCount < 5) {
+                console.log(`[history-import] PAYMENT_OBJECT client ${fid} step ${s.id}: payment_type=${JSON.stringify(s.payment_type)}, payment_method=${JSON.stringify(s.payment_method)}, payment_channel=${JSON.stringify(s.payment_channel)}, priceDeposit=${s.priceDeposit}, priceBonus=${s.priceBonus}`);
+                pmDiagCount++;
+              }
+
+              const resolvedName = PM_SYNONYMS[rawPmName] ?? rawPmName;
+              const priceDeposit = Number(s.priceDeposit ?? 0);
+              const priceBonus   = Number(s.priceBonus   ?? 0);
+              const cashAmt      = stepAmt - priceDeposit - priceBonus;
+
+              if (cashAmt > 0) {
+                const pmId = pmByName.get(resolvedName);
+                if (pmId == null) {
+                  const msg = `client ${fid} order ${orderKey}: step ${s.id} pm="${rawPmName}" resolved="${resolvedName}" not found, order skipped`;
+                  console.error('[history-import]', msg);
+                  job.errors.push(msg);
+                  orderValid = false;
+                  break;
+                }
+                payInserts.push({ sale_id: '', payment_method_id: pmId, amount: cashAmt, fitbase_step_id: Number(s.id) });
+              }
+              if (priceDeposit > 0 && depositPmId !== null)
+                payInserts.push({ sale_id: '', payment_method_id: depositPmId, amount: priceDeposit });
+              if (priceBonus > 0 && bonusPmId !== null)
+                payInserts.push({ sale_id: '', payment_method_id: bonusPmId, amount: priceBonus });
+            }
           }
+          if (!orderValid) continue;
 
-          const total   = orderSteps.reduce((s, step) => s + Number(step.amount), 0);
+          const total   = orderSteps.reduce((acc, s) => acc + Number(s.amount), 0);
           const cashier = ((orderSteps[0].created_by_user as Record<string,unknown> | null)?.name ?? null) as string | null;
           const manager = ((orderSteps[0].manager as Record<string,unknown> | null)?.name ?? null) as string | null;
           const paidAt  = tsToIso(orderSteps[0].pay_date ?? orderSteps[0].created_at);
@@ -417,53 +524,8 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
           }
 
           const saleId = (saleRow as { id: string }).id;
-          const itemInserts: Record<string, unknown>[] = [];
-          const payInserts:  Record<string, unknown>[] = [];
-
-          for (const step of orderSteps) {
-            const s = step as Record<string, unknown>;
-            const fbItemType  = String(s.item_type ?? 'product');
-            const crmItemType = fbItemType === 'contract' ? 'plan' : fbItemType;
-            const itemName    = (s.item as Record<string,unknown> | null)?.name as string ?? null;
-            const stepAmt     = Number(s.amount);
-            const pmName      = ((s.payment_type as Record<string,unknown> | null)?.name as string ?? '').toLowerCase().trim();
-            const pmId        = pmByName.get(pmName) ?? null;
-
-            itemInserts.push({ sale_id: saleId, item_type: crmItemType, name: itemName, qty: 1, unit_price: stepAmt, total: stepAmt });
-
-            if (stepAmt > 0) {
-              const priceDeposit = Number(s.priceDeposit ?? 0);
-              const priceBonus   = Number(s.priceBonus   ?? 0);
-              const cashAmt      = stepAmt - priceDeposit - priceBonus;
-
-              if (cashAmt > 0) {
-                if (pmId === null) {
-                  const msg = `client ${fid} order ${orderKey}: step ${s.id} pm "${pmName}" not found, inserted with null`;
-                  console.error('[history-import]', msg);
-                  job.errors.push(msg);
-                }
-                payInserts.push({ sale_id: saleId, payment_method_id: pmId, amount: cashAmt, fitbase_step_id: Number(s.id) });
-                cPays++;
-              }
-              if (priceDeposit > 0 && depositPmId !== null)
-                payInserts.push({ sale_id: saleId, payment_method_id: depositPmId, amount: priceDeposit });
-              if (priceBonus > 0 && bonusPmId !== null)
-                payInserts.push({ sale_id: saleId, payment_method_id: bonusPmId, amount: priceBonus });
-
-              if (fbItemType === 'deposit') {
-                const { error: balErr } = await supabase.from('crm_balance_ops').insert({
-                  client_id: clientId, wallet: 'deposit', amount: stepAmt,
-                  reason: 'Пополнение депозита (Fitbase)', created_by: 'fitbase_import',
-                  created_at: tsToIso(s.created_at),
-                });
-                if (balErr) {
-                  const msg = `client ${fid} order ${orderKey}: balance_ops: ${balErr.message}`;
-                  console.error('[history-import]', msg);
-                  job.errors.push(msg);
-                }
-              }
-            }
-          }
+          for (const item of itemInserts) item.sale_id = saleId;
+          for (const pay  of payInserts)  pay.sale_id  = saleId;
 
           if (itemInserts.length) {
             const { error: itemErr } = await supabase.from('crm_sale_items').insert(itemInserts);
@@ -471,6 +533,8 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
               const msg = `client ${fid} order ${orderKey}: items: ${itemErr.message}`;
               console.error('[history-import]', msg);
               job.errors.push(msg);
+              await rollbackSale(saleId);
+              continue;
             }
           }
           if (payInserts.length) {
@@ -479,42 +543,66 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
               const msg = `client ${fid} order ${orderKey}: payments: ${payErr.message}`;
               console.error('[history-import]', msg);
               job.errors.push(msg);
+              await rollbackSale(saleId);
+              continue;
             }
           }
 
-          job.sales_upserted++;
+          // balance_ops for deposit top-ups
+          for (const step of orderSteps) {
+            const s = step as Record<string, unknown>;
+            if (ITEM_TYPE_MAP[String(s.item_type ?? '').toLowerCase().trim()] === 'deposit' && Number(s.amount) > 0) {
+              const { error: balErr } = await supabase.from('crm_balance_ops').insert({
+                client_id: clientId, wallet: 'deposit', amount: Number(s.amount),
+                reason: 'Пополнение депозита (Fitbase)', created_by: 'fitbase_import',
+                created_at: tsToIso(s.created_at),
+              });
+              if (balErr) {
+                const msg = `client ${fid} order ${orderKey}: balance_ops: ${balErr.message}`;
+                console.error('[history-import]', msg);
+                job.errors.push(msg);
+              }
+            }
+          }
+
+          cPays += payInserts.length;
+          job.stats.sales_upserted++;
           cSales++;
         }
 
         // Refunds
-        const refundSteps = (steps as Record<string, unknown>[]).filter(
-          s => Number(s.amount) < 0 || s.operation_type === 'refund',
-        );
-        for (const s of refundSteps) {
+        for (const step of refundSteps) {
+          const s      = step as Record<string, unknown>;
           const stepId = Number(s.id);
           const amount = Math.abs(Number(s.amount));
           if (amount <= 0) continue;
 
-          let saleId: string | null = null;
-          if (s.order_id != null) {
-            const { data: matchSale } = await supabase
-              .from('crm_sales').select('id').eq('fitbase_order_id', Number(s.order_id)).maybeSingle();
-            saleId = (matchSale as { id: string } | null)?.id ?? null;
+          if (s.order_id == null) {
+            job.errors.push(`client ${fid}: refund step ${stepId} has no order_id, skipped`);
+            continue;
+          }
+
+          const { data: matchSale } = await supabase
+            .from('crm_sales').select('id').eq('fitbase_order_id', Number(s.order_id)).maybeSingle();
+          const saleId = (matchSale as { id: string } | null)?.id ?? null;
+          if (!saleId) {
+            job.errors.push(`client ${fid}: refund step ${stepId} order ${s.order_id} no matching sale, skipped`);
+            continue;
           }
 
           const { error: refErr } = await supabase.from('crm_refunds').upsert({
-            client_id: clientId, source: 'fitbase', fitbase_step_id: stepId,
+            source: 'fitbase', fitbase_step_id: stepId,
             sale_id: saleId, shift_id: null, amount,
             reason: 'Возврат из Fitbase',
             created_by: ((s.created_by_user as Record<string,unknown> | null)?.name as string ?? 'fitbase_import'),
-            status: 'completed', created_at: tsToIso(s.created_at),
+            created_at: tsToIso(s.created_at),
           }, { onConflict: 'fitbase_step_id' });
 
           if (refErr) {
             const msg = `client ${fid} refund step ${stepId}: ${refErr.message}`;
             console.error('[history-import]', msg);
             job.errors.push(msg);
-          } else job.refunds_upserted++;
+          } else job.stats.refunds_upserted++;
         }
       } catch (e) {
         const msg = `client ${fid} sales/refunds: ${(e as Error).message ?? String(e)}`;
@@ -534,12 +622,13 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
           const tr  = (ev.training as Record<string, unknown> | null) ?? {};
           const cc  = vis.client_contract as Record<string, unknown> | null;
           visitRows.push({
-            client_id:           clientId,
-            fitbase_reg_id:      Number(vis.id),
-            fitbase_contract_id: cc?.id != null ? Number(cc.id) : null,
-            status:              vis.status != null ? Number(vis.status) : 0,
-            visit_at:            tsToIso(ev.date ?? null),
-            training_name:       (tr.name as string | null) ?? null,
+            client_id:            clientId,
+            client_fitbase_id:    fid,
+            fitbase_reg_id:       Number(vis.id),
+            fitbase_contract_id:  cc?.id != null ? Number(cc.id) : null,
+            status:               vis.status != null ? Number(vis.status) : 0,
+            visit_at:             tsToIso(ev.date ?? null),
+            training_name:        (tr.name as string | null) ?? null,
           });
         }
 
@@ -551,7 +640,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
             const msg = `client ${fid} visits chunk ${vi}: ${visErr.message}`;
             console.error('[history-import]', msg);
             job.errors.push(msg);
-          } else { job.visits_upserted += chunk.length; cVisits += chunk.length; }
+          } else { job.stats.visits_upserted += chunk.length; cVisits += chunk.length; }
         }
       } catch (e) {
         const msg = `client ${fid} visits: ${(e as Error).message ?? String(e)}`;
@@ -561,8 +650,8 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
 
       console.log(`[history-import] client ${fid} (${i + 1}/${clients.length}): plans ${cPlans}, sales ${cSales}, payments ${cPays}, visits ${cVisits}`);
 
-      job.processed++;
-      if (job.processed % 10 === 0 || i === clients.length - 1) await checkpoint();
+      job.done_clients++;
+      if (job.done_clients % 10 === 0 || i === clients.length - 1) await checkpoint();
     }
 
     // Nightly: also run linkBodyClients
@@ -578,14 +667,11 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
   } finally {
     if (runId) {
       await supabase.from('crm_fitbase_import_runs').update({
-        status:           job.status,
-        finished_at:      job.finished_at,
-        processed:        job.processed,
-        plans_upserted:   job.plans_upserted,
-        sales_upserted:   job.sales_upserted,
-        refunds_upserted: job.refunds_upserted,
-        visits_upserted:  job.visits_upserted,
-        errors:           job.errors.slice(-50),
+        status:       job.status,
+        finished_at:  job.finished_at,
+        done_clients: job.done_clients,
+        stats:        job.stats,
+        errors:       job.errors.slice(-50),
       }).eq('id', runId);
     }
   }
