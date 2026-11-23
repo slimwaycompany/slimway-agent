@@ -99,7 +99,7 @@ export interface HistoryImportJob {
   run_id: string | null;
   total_clients: number;
   done_clients: number;
-  stats: { plans_upserted: number; sales_upserted: number; refunds_upserted: number; visits_upserted: number; unmatched_payment_methods: string[]; negative_other: Record<string, number> };
+  stats: { plans_upserted: number; sales_upserted: number; refunds_upserted: number; visits_upserted: number; unmatched_payment_methods: string[]; negative_other: Record<string, number>; skipped_tiny: number };
   errors: string[];
   started_at: string;
   finished_at?: string;
@@ -114,7 +114,7 @@ export function startHistoryImport(kind: 'full' | 'nightly'): HistoryImportJob |
   _job = {
     status: 'running', kind, run_id: null,
     total_clients: 0, done_clients: 0,
-    stats: { plans_upserted: 0, sales_upserted: 0, refunds_upserted: 0, visits_upserted: 0, unmatched_payment_methods: [], negative_other: {} },
+    stats: { plans_upserted: 0, sales_upserted: 0, refunds_upserted: 0, visits_upserted: 0, unmatched_payment_methods: [], negative_other: {}, skipped_tiny: 0 },
     errors: [], started_at: new Date().toISOString(),
   };
   return _job;
@@ -279,6 +279,7 @@ async function findSaleForRefund(
   clientId: string,
   contractId: number | null,
   itemId: number | null,
+  itemType: string | null,
   beforeDate: string | null,
 ): Promise<string | null> {
   let saleIds: string[] = [];
@@ -291,9 +292,8 @@ async function findSaleForRefund(
   }
 
   if (!saleIds.length && itemId) {
-    const { data } = await supabase
-      .from('crm_sale_items').select('sale_id')
-      .eq('fitbase_item_id', itemId);
+    const qItem = supabase.from('crm_sale_items').select('sale_id').eq('fitbase_item_id', itemId);
+    const { data } = await (itemType ? qItem.eq('item_type', itemType) : qItem);
     saleIds = (data ?? []).map((r: Record<string,unknown>) => r.sale_id as string).filter(Boolean);
   }
 
@@ -529,8 +529,11 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
 
             const itemName       = (s.item as Record<string,unknown> | null)?.name as string ?? null;
             const stepAmt        = Number(s.amount);
-            const fbContractId   = s.contract_id != null ? Number(s.contract_id) : null;
             const fbItemId       = (s.item as Record<string,unknown> | null)?.id != null ? Number((s.item as Record<string,unknown>).id) : null;
+            // For contract/ticket: contract_id is the authoritative FK; fall back to item.id (same object)
+            const fbContractId   = (rawItemType === 'contract' || rawItemType === 'ticket')
+              ? (s.contract_id != null ? Number(s.contract_id) : fbItemId)
+              : (s.contract_id != null ? Number(s.contract_id) : null);
             itemInserts.push({ sale_id: '', item_type: crmItemType, name: itemName, qty: 1, unit_price: stepAmt, total: stepAmt,
               fitbase_contract_id: fbContractId, fitbase_item_id: fbItemId });
 
@@ -607,13 +610,27 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
           for (const pay  of payInserts)  pay.sale_id  = saleId;
 
           if (itemInserts.length) {
-            const { error: itemErr } = await supabase.from('crm_sale_items').insert(itemInserts);
+            const { data: insertedItems, error: itemErr } = await supabase
+              .from('crm_sale_items').insert(itemInserts).select('id, fitbase_contract_id, total');
             if (itemErr) {
               const msg = `client ${fid} order ${orderKey}: items: ${itemErr.message}`;
               console.error('[history-import]', msg);
               job.errors.push(msg);
               if (isNewSale) await rollbackSale(saleId);
               continue;
+            }
+            // Link plans → sale; backfill price if plan.price = 0
+            for (const item of (insertedItems ?? []) as Array<{ id: string; fitbase_contract_id: number | null; total: number }>) {
+              if (!item.fitbase_contract_id) continue;
+              const planUpdate: Record<string, unknown> = { sale_id: saleId, sale_item_id: item.id };
+              if (item.total > 0) {
+                const { data: planRow } = await supabase.from('crm_client_plans')
+                  .select('price').eq('fitbase_contract_id', item.fitbase_contract_id).maybeSingle();
+                if (planRow && Number((planRow as Record<string,unknown>).price ?? 0) === 0)
+                  planUpdate.price = item.total;
+              }
+              await supabase.from('crm_client_plans').update(planUpdate)
+                .eq('fitbase_contract_id', item.fitbase_contract_id);
             }
           }
           if (payInserts.length) {
@@ -676,7 +693,7 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
 
           const stepId        = Number(s.id);
           const amount        = Math.abs(Number(s.amount));
-          if (amount <= 0) continue;
+          if (amount < 1) { job.stats.skipped_tiny++; continue; }
 
           const isContractRef = crmRefType === 'plan';
           const refFbId       = (s.item as Record<string,unknown> | null)?.id != null ? Number((s.item as Record<string,unknown>).id) : null;
@@ -684,7 +701,8 @@ export async function runFitbaseHistoryImport(kind: 'full' | 'nightly', clientId
           const refProductId  = isContractRef ? null    : refFbId;
           const refundDate    = tsToIso(s.created_at);
 
-          const saleId = await findSaleForRefund(clientId, refContractId, refProductId, refundDate);
+          const refItemType = isContractRef ? null : (crmRefType ?? null);
+          const saleId = await findSaleForRefund(clientId, refContractId, refProductId, refItemType, refundDate);
           if (!saleId) {
             job.errors.push(`client ${fid}: refund step ${stepId} item_type=${rawRefType} item_id=${refFbId} no matching sale`);
             continue;
