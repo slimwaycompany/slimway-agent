@@ -1152,7 +1152,7 @@ function InBodySettingsSection() {
   useEffect(() => () => { if (hiTimerRef.current) clearInterval(hiTimerRef.current); }, []);
 
   async function loadLinkStats() {
-    setLinkLoading(true); setLinkError(''); setLinkResult(null);
+    setLinkLoading(true); setLinkError('');
     try {
       const r = await fetch('/kviz/api/crm/inbody-link-stats', { credentials: 'include' });
       if (!r.ok) { setLinkError('Ошибка загрузки'); return; }
