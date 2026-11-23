@@ -6,17 +6,19 @@
 Вкладка «Расписание»: запись клиентов на аппараты по абонементам/услугам, бронь аппаратов, отметка «Пришёл» и списание сеансов.
 
 ## Где код
-- `kviz/client/src/pages/crm/SchedulePage.tsx` — главная страница расписания: сетка блоков по видам аппаратов, карточки броней, форма записи, детальная модалка, SMS-диалог
-- `kviz/client/src/pages/crm/SettingsPage.tsx` — `ClassesSection`: часы работы, правила отмены, шаг сетки по видам, цветовые этикетки
-- `src/http/crm.ts` — API расписания (schedule/day, client-options, free-devices, suggest, bookings CRUD), API этикеток, GET/PUT settings/classes, PATCH device-types (grid_step_minutes)
+- `kviz/client/src/pages/crm/SchedulePage.tsx` — главная страница расписания: сетка блоков по видам аппаратов, карточки броней (badge-этикетки), форма записи, детальная модалка, SMS-диалог
+- `kviz/client/src/pages/crm/SettingsPage.tsx` — `ClassesSection`: правила отмены, шаг сетки по видам, цветовые этикетки (short_name); `BranchSection`: реквизиты филиала, часы работы по дням
+- `src/http/crm.ts` — API расписания (schedule/day с `crm_day_hours` RPC, client-options, free-devices, suggest, bookings CRUD), API этикеток (short_name), GET/PUT settings/classes, PATCH device-types, GET/PUT /kviz/api/crm/branch
 
 ## Таблицы
 - `crm_bookings` — брони: device_id, group_id (связка фаз), client_id, client_plan_id/item_id, plan_id (для бесплатных), kind (plan/free), status (booked/confirmed/attended/no_show/late_cancel/cancelled), starts_at/ends_at UTC, session_burned, note, trainer, cancel_reason; exclusion constraint по device_id + tsrange на пересечение, exclusion по client_id + tsrange
-- `crm_booking_labels` — этикетки: name, color (hex), sort, is_active, is_system
+- `crm_booking_labels` — этикетки: name, short_name (1–4 символа), color (hex), sort, is_active, is_system
 - `crm_booking_label_links` — связь брони и этикеток
 - `crm_device_types.grid_step_minutes` — шаг сетки в минутах (по умолчанию null → берётся session_minutes+10)
-- `crm_settings`: `schedule.day_start` (07:00), `schedule.day_end` (22:00), `lessons.early_cancel_minutes` (720), `lessons.late_cancel_burns_session` (true), `lessons.no_show_burns_session` (false), `lessons.trial_minutes` (20), `labels.renewal_sessions_left` (2)
-- RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`
+- `crm_settings`: `schedule.day_start` / `schedule.day_end` — запасной fallback когда `crm_day_hours` вернул null; `lessons.*`, `labels.*`
+- `crm_branches` — реквизиты: legal_name, bin, country, city, address, phone, timezone, currency, language, socials (jsonb)
+- `crm_branch_hours` — часы работы: branch_id, weekday (1–7, пн=1), is_open, open_time, close_time
+- RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`, `crm_day_hours(p_date)` → (is_open, open_time, close_time)
 
 ## Ключевые решения (собраны 27.10)
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
@@ -87,6 +89,20 @@
 
 ## Сделано
 
+### 23.11.2026 · (task 83) · визуальные правки, баги поиска и времени, часы из филиала, badge-этикетки
+- **Баги**: поиск клиента в форме записи `?q=` → `?search=`; убрали `top: HDR_H + rowIdx*ROW_H` со sticky-времени (прибивало каждую строку к точному пикселю вместо sticky left).
+- **Визуал**: ROW_H=64, TIME_W=44, DEV_W=96; шрифты — заголовок блока 12, колонка 11, подпись 9, время 10; compact-кнопки h=22 font=10; карточка — имя в 2 строки (line-clamp 2); flex блока динамический `${n} 1 0` без minWidth 280.
+- **Один вертикальный скролл**: убраны `maxHeight`+`overflowY:auto` из `gridWrap`; `blockHdr` стал sticky top:0 zIndex:4; `cellHdr` теперь sticky top:BLK_H (37px).
+- **Badge-этикетки** (`LabelBadge`): вместо точек — чип h=14 с `short_name` (или первые 4 символа названия), цвет фона = цвет этикетки, текст по luminance.
+- **Закрытый день**: `crm_day_hours` RPC вызывается в schedule/day и suggest; если `is_open=false` — сервер возвращает пустые блоки+брони с флагом, клиент показывает «Филиал в этот день не работает».
+- **BranchSection** (Настройки → Студия → Филиал): реквизиты филиала + таблица часов по дням; `GET/PUT /kviz/api/crm/branch`; право `settings.branch` (добавлено в PERM_CATALOG + presets branch_manager/company_manager).
+- **ClassesSection**: убраны поля «Начало/Конец дня» (переехали в BranchSection), добавлено поле `short_name` в форму этикетки.
+- `crm_booking_labels` POST/PATCH поддерживают `short_name` (1–4 символа, обязательно для новых).
+- `short_name` добавлен в select labelsRes в schedule/day.
+- `CLOSED_DAY` добавлен в SCHEDULE_RPC_ERRORS.
+- `src/core/permissions.ts`: добавлен `settings.branch` в PERM_CATALOG и presets.
+- `scripts/check-mobile.js`: добавлена секция `branch`.
+
 ### 23.11.2026 · (task 82) · день по аппаратам, брони, этикетки, настройки занятий
 - **Server** (`src/http/crm.ts`): PATCH device-types поддерживает `grid_step_minutes`; GET/PUT `settings/classes` (часы, правила отмены, порог продления); CRUD `booking-labels`; `GET schedule/day` (блоки+брони+этикетки, UTC+5); `GET schedule/client-options`; `GET schedule/free-devices`; `GET schedule/suggest`; POST bookings, POST status/cancel/move, PATCH note/trainer, PUT labels.
 - **SchedulePage** (`kviz/client/src/pages/crm/SchedulePage.tsx`): сетка блоков по видам аппаратов (колонки = конкретные аппараты), шаг сетки свой у каждого блока, карточки броней (цвет = первая этикетка, точки = остальные, красный для отменённых/неявок), линия текущего времени. Панель записи (клиент → абонемент/бесплатно → время/аппарат/тренер/заметка, подсказки свободных слотов). Детальная модалка (группа броней, статусы, перенос, отмена, этикетки, заметка). SMS-диалог (WhatsApp-ссылки). Настройки блока: показ отменённых, аппаратов в ремонте.
@@ -97,7 +113,8 @@
 - (нет)
 
 ## Следующее
-- **Проверить на проде** с клиентом «ТЕСТ Тестов»: создать запись, отметить «Пришёл», отменить, проверить этикетки.
+- **Проверить на проде** (task 83): запись/статус/этикетки; суббота с часами (is_open=true); проверить закрытый день (is_open=false); badge-этикетки в карточках; BranchSection → сохранить реквизиты и часы.
+- **Проверить на проде** (task 82): создать запись, отметить «Пришёл», отменить, проверить этикетки.
 - **Профиль клиента: раздел «Записи» (требования к профилю клиента, 23.11.2026, ТЗ не собирать до команды)** — в карточке клиента CRM (crm-core):
   - Дата и время записи, выбранные аппараты по времени (например 14:00 Vacu, 14:40 Rollshape), статус посещения, история записей.
   - Хранить всю историю, включая «сгоревшие» записи, на которые клиент не пришёл.

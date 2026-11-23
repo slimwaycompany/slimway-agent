@@ -1634,8 +1634,11 @@ export function buildCrmRouter(): Router {
       const b = req.body as Record<string, unknown>;
       if (!b.name) { res.status(400).json({ error: 'Укажите название' }); return; }
       if (!b.color || !/^#[0-9a-fA-F]{6}$/.test(String(b.color))) { res.status(400).json({ error: 'Укажите цвет (#RRGGBB)' }); return; }
+      const shortName = String(b.short_name ?? '').trim();
+      if (!shortName) { res.status(400).json({ error: 'Укажите аббревиатуру (1–4 символа)' }); return; }
+      if (shortName.length > 4) { res.status(400).json({ error: 'Аббревиатура не более 4 символов' }); return; }
       const { data, error } = await supabase.from('crm_booking_labels')
-        .insert({ name: b.name, color: b.color, sort: n0(b.sort), is_active: true, is_system: false })
+        .insert({ name: b.name, color: b.color, sort: n0(b.sort), short_name: shortName, is_active: true, is_system: false })
         .select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data);
@@ -1657,6 +1660,11 @@ export function buildCrmRouter(): Router {
       }
       if (b.sort !== undefined) upd.sort = n0(b.sort);
       if (b.is_active !== undefined) upd.is_active = Boolean(b.is_active);
+      if (b.short_name !== undefined) {
+        const sn = String(b.short_name).trim();
+        if (sn.length > 4) { res.status(400).json({ error: 'Аббревиатура не более 4 символов' }); return; }
+        upd.short_name = sn;
+      }
       if (lbl.is_system && b.code !== undefined) { res.status(400).json({ error: 'Код системной этикетки нельзя менять' }); return; }
       const { data, error } = await supabase.from('crm_booking_labels').update(upd).eq('id', req.params.id).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -1684,6 +1692,45 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // ── Branch settings ───────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/branch', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.branch', 'view', session)) return;
+    try {
+      const [branchRes, hoursRes] = await Promise.all([
+        supabase.from('crm_branches').select('*').eq('id', BRANCH_ID).single(),
+        supabase.from('crm_branch_hours').select('*').eq('branch_id', BRANCH_ID).order('weekday'),
+      ]);
+      if (branchRes.error) { res.status(500).json({ error: branchRes.error.message }); return; }
+      res.json({ branch: branchRes.data, hours: hoursRes.data || [] });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.put('/kviz/api/crm/branch', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.branch', 'edit', session)) return;
+    try {
+      const { branch, hours } = req.body as { branch: Record<string, unknown>; hours?: unknown[] };
+      const allowed = ['legal_name','bin','country','city','address','phone','timezone','currency','language','socials'];
+      const branchUpd: Record<string, unknown> = {};
+      for (const k of allowed) if (branch && k in branch) branchUpd[k] = branch[k];
+      if (Object.keys(branchUpd).length > 0) {
+        const { error } = await supabase.from('crm_branches').update(branchUpd).eq('id', BRANCH_ID);
+        if (error) { res.status(500).json({ error: error.message }); return; }
+      }
+      if (Array.isArray(hours)) {
+        const rows = hours.map((h: unknown) => {
+          const hr = h as Record<string, unknown>;
+          return { branch_id: BRANCH_ID, weekday: Number(hr.weekday), is_open: Boolean(hr.is_open), open_time: hr.open_time || null, close_time: hr.close_time || null };
+        });
+        const { error } = await supabase.from('crm_branch_hours').upsert(rows, { onConflict: 'branch_id,weekday' });
+        if (error) { res.status(500).json({ error: error.message }); return; }
+      }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // ── Schedule: day view ────────────────────────────────────────────────────────
 
   r.get('/kviz/api/crm/schedule/day', async (req, res) => {
@@ -1693,16 +1740,27 @@ export function buildCrmRouter(): Router {
       const dateStr = String(req.query.date || todayUtc5());
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) { res.status(400).json({ error: 'Неверная дата' }); return; }
 
-      const [settingsRows, deviceTypesRaw, devicesRaw] = await Promise.all([
+      const [settingsRows, deviceTypesRaw, devicesRaw, dayHoursRes] = await Promise.all([
         supabase.from('crm_settings').select('key,value').in('key', ['schedule.day_start','schedule.day_end']),
         supabase.from('crm_device_types').select('code,name,sort,grid_step_minutes').order('sort'),
         supabase.from('crm_devices').select('id,type_code,number,status,session_minutes').eq('branch_id', BRANCH_ID).not('status', 'eq', 'disabled').order('number'),
+        supabase.rpc('crm_day_hours', { p_date: dateStr }),
       ]);
 
       const settingsMap: Record<string, string> = {};
       for (const s of settingsRows.data || []) settingsMap[s.key as string] = s.value as string;
-      const dayStart = settingsMap['schedule.day_start'] ?? '07:00';
-      const dayEnd   = settingsMap['schedule.day_end']   ?? '22:00';
+      const fallbackStart = settingsMap['schedule.day_start'] ?? '07:00';
+      const fallbackEnd   = settingsMap['schedule.day_end']   ?? '22:00';
+
+      const dh = Array.isArray(dayHoursRes.data) ? (dayHoursRes.data as Record<string,unknown>[])[0] : dayHoursRes.data as Record<string,unknown> | null;
+      const is_open  = dh ? Boolean(dh.is_open) : true; // null row = no config = open
+      const dayStart = (dh?.open_time  as string | null) ?? fallbackStart;
+      const dayEnd   = (dh?.close_time as string | null) ?? fallbackEnd;
+
+      if (!is_open) {
+        res.json({ date: dateStr, day_start: dayStart, day_end: dayEnd, now: new Date().toISOString(), blocks: [], bookings: [], is_open: false });
+        return;
+      }
 
       const devsByType: Record<string, typeof devicesRaw.data> = {};
       for (const d of devicesRaw.data || []) {
@@ -1728,7 +1786,7 @@ export function buildCrmRouter(): Router {
         bookingIds.length ? supabase.from('crm_clients').select('id,full_name,phone').in('id', (bookingsRaw||[]).map((b: Record<string,unknown>) => b.client_id as string).filter(Boolean)) : Promise.resolve({ data: [] }),
         bookingIds.length ? supabase.from('crm_plans').select('id,name').in('id', [...new Set((bookingsRaw||[]).map((b:Record<string,unknown>) => b.plan_id as string).filter(Boolean))]) : Promise.resolve({ data: [] }),
         bookingIds.length ? supabase.from('crm_client_plan_items').select('id,sessions_left,sessions_total').in('id', (bookingsRaw||[]).map((b:Record<string,unknown>) => b.client_plan_item_id as string).filter(Boolean)) : Promise.resolve({ data: [] }),
-        bookingIds.length ? supabase.from('crm_booking_label_links').select('booking_id,label_id,crm_booking_labels(id,name,color,sort)').in('booking_id', bookingIds) : Promise.resolve({ data: [] }),
+        bookingIds.length ? supabase.from('crm_booking_label_links').select('booking_id,label_id,crm_booking_labels(id,name,color,sort,short_name)').in('booking_id', bookingIds) : Promise.resolve({ data: [] }),
       ]);
 
       const clientMap = new Map((clientsRes.data||[]).map((c:Record<string,unknown>) => [c.id, c]));
@@ -1755,7 +1813,7 @@ export function buildCrmRouter(): Router {
       });
 
       const now = new Date().toISOString();
-      res.json({ date: dateStr, day_start: dayStart, day_end: dayEnd, now, blocks, bookings });
+      res.json({ date: dateStr, day_start: dayStart, day_end: dayEnd, now, blocks, bookings, is_open: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -1842,14 +1900,16 @@ export function buildCrmRouter(): Router {
       const { client_plan_id, type, date, time } = req.query as Record<string,string>;
       if (!type || !date) { res.status(400).json({ error: 'type, date обязательны' }); return; }
 
-      const [settingsRes, dtRes] = await Promise.all([
+      const [settingsRes, dtRes, dayHoursSugRes] = await Promise.all([
         supabase.from('crm_settings').select('key,value').in('key',['schedule.day_start','schedule.day_end']),
         supabase.from('crm_device_types').select('code,grid_step_minutes').eq('code', type).single(),
+        supabase.rpc('crm_day_hours', { p_date: date }),
       ]);
       const sm: Record<string,string> = {};
       for (const s of settingsRes.data || []) sm[s.key as string] = s.value as string;
-      const dayStart = sm['schedule.day_start'] ?? '07:00';
-      const dayEnd   = sm['schedule.day_end']   ?? '22:00';
+      const dhSug = Array.isArray(dayHoursSugRes.data) ? (dayHoursSugRes.data as Record<string,unknown>[])[0] : dayHoursSugRes.data as Record<string,unknown> | null;
+      const dayStart = (dhSug?.open_time  as string | null) ?? sm['schedule.day_start'] ?? '07:00';
+      const dayEnd   = (dhSug?.close_time as string | null) ?? sm['schedule.day_end']   ?? '22:00';
       const step = (dtRes.data as Record<string,unknown>)?.grid_step_minutes as number ?? 40;
 
       // Find finishing type (if plan has finishing item for another type)
@@ -1974,6 +2034,7 @@ export function buildCrmRouter(): Router {
     NOT_YET:             'Отметить «Пришёл / Не пришёл» можно только в день занятия или позже',
     NOTHING_TO_CANCEL:   'Нечего отменять',
     CANNOT_MOVE:         'Перенести нельзя: по записи уже отмечено посещение',
+    CLOSED_DAY:          'Филиал в этот день не работает',
   };
 
   function translateScheduleRpcError(msg: string): string {

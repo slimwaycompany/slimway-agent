@@ -7,7 +7,7 @@ import { showConfirm } from '../../lib/confirm';
 
 interface DeviceInfo { id: string; number: string; status: string; session_minutes: number | null }
 interface DayBlock { type_code: string; name: string; grid_step_minutes: number; devices: DeviceInfo[] }
-interface BookingLabel { id: number; name: string; color: string; sort: number }
+interface BookingLabel { id: number; name: string; color: string; sort: number; short_name?: string | null }
 interface BookingData {
   id: string; group_id: string; booking_date: string;
   starts_at: string; ends_at: string;
@@ -24,7 +24,7 @@ interface BookingData {
 }
 interface DayData {
   date: string; day_start: string; day_end: string; now: string;
-  blocks: DayBlock[]; bookings: BookingData[];
+  blocks: DayBlock[]; bookings: BookingData[]; is_open?: boolean;
 }
 interface ClientOption {
   id: string; plan_id: string; status: string;
@@ -88,10 +88,28 @@ const STATUS_LABEL: Record<string, string> = {
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const ROW_H = 48;    // px per slot row
-const TIME_W = 64;   // px for time column
-const DEV_W = 130;   // min px per device column
+const ROW_H = 64;    // px per slot row
+const TIME_W = 44;   // px for time column
+const DEV_W = 96;    // min px per device column
 const HDR_H = 36;    // px for column header row
+const BLK_H = 37;    // px for block header (sticky offset for column headers)
+
+// ── LabelBadge ───────────────────────────────────────────────────────────────
+
+function LabelBadge({ label, onCard }: { label: BookingLabel; onCard: boolean }) {
+  const fg = textOnHex(label.color);
+  const border = onCard ? '1px solid rgba(255,255,255,0.5)' : '1px solid rgba(0,0,0,0.15)';
+  return (
+    <span title={label.name} style={{
+      display: 'inline-block', background: label.color, color: fg,
+      height: 14, padding: '0 4px', borderRadius: 3,
+      fontWeight: 700, fontSize: 9, lineHeight: '14px',
+      border, whiteSpace: 'nowrap', flexShrink: 0,
+    }}>
+      {label.short_name ?? label.name.slice(0, 4)}
+    </span>
+  );
+}
 
 // ── BookingCard ───────────────────────────────────────────────────────────────
 
@@ -100,24 +118,19 @@ function BookingCard({ b }: { b: BookingData }) {
   const isRed = ['no_show', 'late_cancel', 'cancelled'].includes(b.status);
   const cardBg = isRed ? '#7f1d1d' : (bg ?? 'var(--surface)');
   const cardFg = isRed ? '#ffffff' : textOnHex(bg);
-  const extra = b.labels.slice(1);
+  const hasColorBg = isRed || !!bg;
   return (
-    <div style={{ background: cardBg, borderRadius: 4, padding: '2px 5px', height: '100%', boxSizing: 'border-box', overflow: 'hidden', cursor: 'pointer' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
-        <span style={{ flex: 1, fontWeight: 700, fontSize: 12, color: cardFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {b.client?.full_name ?? '—'}
-        </span>
-        {extra.map(l => <span key={l.id} style={{ width: 7, height: 7, borderRadius: '50%', background: l.color, flexShrink: 0 }} />)}
+    <div style={{ background: cardBg, borderRadius: 4, padding: '2px 4px', height: '100%', boxSizing: 'border-box', overflow: 'hidden', cursor: 'pointer' }}>
+      <div style={{ fontWeight: 700, fontSize: 11, color: cardFg, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.3 }}>
+        {b.client?.full_name ?? '—'}
       </div>
       {b.note && <div style={{ fontSize: 10, color: cardFg, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.note}</div>}
       <div style={{ fontSize: 10, color: cardFg, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {b.plan_name ?? (b.kind === 'free' ? '⚡ Бесплатно' : '—')}
       </div>
-      <div style={{ display: 'flex', gap: 4, fontSize: 11, color: cardFg, opacity: 0.9, marginTop: 1 }}>
-        <span title={STATUS_LABEL[b.status]}>{STATUS_ICON[b.status]}</span>
-        {b.phase === 'active' && <span title="Активная">А</span>}
-        {b.phase === 'finishing' && <span title="Завершающая">З</span>}
-        {b.kind === 'free' && <span title="Бесплатное">⚡</span>}
+      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginTop: 1, alignItems: 'center' }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: cardFg, opacity: 0.9, marginRight: 1 }} title={STATUS_LABEL[b.status]}>{STATUS_ICON[b.status]}</span>
+        {b.labels.map(l => <LabelBadge key={l.id} label={l} onCard={hasColorBg} />)}
       </div>
     </div>
   );
@@ -164,7 +177,7 @@ function BookingFormPanel({
     if (qRef.current) clearTimeout(qRef.current);
     if (!q.trim()) { setClients([]); return; }
     qRef.current = setTimeout(async () => {
-      const { ok, data } = await apiJ('GET', `/kviz/api/crm/clients?q=${encodeURIComponent(q)}&limit=8`);
+      const { ok, data } = await apiJ('GET', `/kviz/api/crm/clients?search=${encodeURIComponent(q)}&limit=8`);
       if (ok) setClients((data as { items: typeof clients }).items ?? []);
     }, 300);
   }
@@ -329,7 +342,7 @@ function BookingDetailModal({
   canBook: boolean; canAttend: boolean; isAdmin: boolean;
   onClose: () => void; onDone: (changed: boolean) => void; onRefresh: () => void;
 }) {
-  const [labels, setLabels]       = useState<{ id: number; name: string; color: string; is_active: boolean }[]>([]);
+  const [labels, setLabels]       = useState<{ id: number; name: string; color: string; short_name?: string | null; is_active: boolean }[]>([]);
   const [selLabels, setSelLabels] = useState(new Set(booking.labels.map(l => l.id)));
   const [note, setNote]           = useState(booking.note ?? '');
   const [trainer, setTrainer]     = useState(booking.trainer ?? '');
@@ -489,7 +502,7 @@ function BookingDetailModal({
                   <input type="checkbox" checked={selLabels.has(l.id)} onChange={e => {
                     setSelLabels(prev => { const s = new Set(prev); e.target.checked ? s.add(l.id) : s.delete(l.id); return s; });
                   }} />
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: l.color, display: 'inline-block' }} />
+                  <LabelBadge label={l} onCard={false} />
                   {l.name}
                 </label>
               ))}
@@ -599,8 +612,15 @@ export default function SchedulePage() {
         {loading && <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 8 }}>загрузка…</span>}
       </div>
 
+      {/* Closed day */}
+      {dayData && dayData.is_open === false && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: 'var(--text-2,#64748b)' }}>
+          Филиал в этот день не работает
+        </div>
+      )}
+
       {/* Blocks */}
-      {dayData && (
+      {dayData && dayData.is_open !== false && (
         <div className="sched-blocks" style={SS.blocksWrap}>
           {dayData.blocks.map(block => {
             const cfg = blockCfg[block.type_code] || { showCancelled: false, showRepair: false };
@@ -614,7 +634,7 @@ export default function SchedulePage() {
             void nowTick; // trigger re-render for time line
 
             return (
-              <div key={block.type_code} className="sched-block" style={SS.block}>
+              <div key={block.type_code} className="sched-block" style={{ ...SS.block, flex: `${visDevices.length} 1 0`, minWidth: TIME_W + visDevices.length * DEV_W }}>
                 {/* Header */}
                 <div style={SS.blockHdr}>
                   <span style={SS.blockTitle}>{block.name.toUpperCase()}</span>
@@ -657,14 +677,14 @@ export default function SchedulePage() {
                         background: dev.status !== 'working' ? 'var(--surface-muted,#f1f5f9)' : 'var(--surface-2)',
                         color: dev.status !== 'working' ? 'var(--text-3)' : 'var(--text)',
                       }}>
-                        {dev.status !== 'working' ? 'Ремонт' : <div>{dev.number}.<br /><span style={{ fontSize: 10, fontWeight: 400 }}>Аппарат</span></div>}
+                        {dev.status !== 'working' ? 'Ремонт' : <div>{dev.number}.<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Аппарат</span></div>}
                       </div>
                     ))}
 
                     {/* Data rows */}
                     {slots.map((slotTime, rowIdx) => (
                       <>
-                        <div key={slotTime + '_t'} style={{ ...SS.cell, ...SS.cellTime, top: HDR_H + rowIdx * ROW_H }}>{slotTime}</div>
+                        <div key={slotTime + '_t'} style={{ ...SS.cell, ...SS.cellTime }}>{slotTime}</div>
                         {visDevices.map(dev => {
                           const bk = bkgs.find(b => b.device_id === dev.id && bookingSlotTime(b.starts_at) === slotTime);
                           const isRepair = dev.status !== 'working';
@@ -730,17 +750,17 @@ const SS: Record<string, React.CSSProperties> = {
   navBtnActive: { background: 'var(--primary,#02BDB6)', color: '#fff', borderColor: 'var(--primary,#02BDB6)' },
   dateInput: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, padding: '4px 8px', fontSize: 13, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)' },
   dateLabel: { fontSize: 14, fontWeight: 600, color: 'var(--text,#1a202c)' },
-  blocksWrap: { flex: 1, display: 'flex', gap: 8, padding: 12, overflowX: 'auto', overflowY: 'auto', alignItems: 'flex-start' },
-  block: { flex: '1 1 280px', minWidth: 280, border: '1px solid var(--border,#e2e8f0)', borderRadius: 10, background: 'var(--surface,#fff)', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-  blockHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderBottom: '1px solid var(--border,#e2e8f0)', background: 'var(--surface-2,#f8fafc)' },
-  blockTitle: { fontWeight: 800, fontSize: 13, color: 'var(--text,#1a202c)', letterSpacing: 0.5 },
-  hdrBtn: { padding: '3px 8px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 5, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 12 },
+  blocksWrap: { flex: 1, display: 'flex', gap: 8, padding: 12, overflowX: 'auto', overflowY: 'auto' },
+  block: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 10, background: 'var(--surface,#fff)', display: 'flex', flexDirection: 'column' },
+  blockHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderBottom: '1px solid var(--border,#e2e8f0)', background: 'var(--surface-2,#f8fafc)', position: 'sticky', top: 0, zIndex: 4, borderRadius: '10px 10px 0 0' },
+  blockTitle: { fontWeight: 800, fontSize: 12, color: 'var(--text,#1a202c)', letterSpacing: 0.5 },
+  hdrBtn: { padding: '0 6px', height: 22, border: '1px solid var(--border,#e2e8f0)', borderRadius: 5, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 10, lineHeight: '22px' },
   popover: { position: 'absolute', right: 0, top: '100%', zIndex: 20, background: 'var(--surface,#fff)', border: '1px solid var(--border,#e2e8f0)', borderRadius: 8, padding: 10, minWidth: 200, boxShadow: '0 4px 16px rgba(0,0,0,.1)' },
   checkLabel: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, cursor: 'pointer', marginBottom: 6 },
-  gridWrap: { overflowX: 'auto', flex: 1, overflowY: 'auto', maxHeight: 'calc(100vh - 180px)' },
+  gridWrap: { overflowX: 'auto', flex: 1 },
   cell: { height: ROW_H, borderBottom: '1px solid var(--border,#e2e8f0)', borderRight: '1px solid var(--border,#e2e8f0)', background: 'var(--surface,#fff)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', padding: 0, overflow: 'hidden' },
-  cellHdr: { height: HDR_H, background: 'var(--surface-2,#f8fafc)', fontWeight: 700, fontSize: 12, position: 'sticky', top: 0, zIndex: 2 },
-  cellTime: { fontSize: 11, color: 'var(--text-2,#64748b)', background: 'var(--surface,#fff)', position: 'sticky', left: 0, zIndex: 1, fontWeight: 600 },
+  cellHdr: { height: HDR_H, background: 'var(--surface-2,#f8fafc)', fontWeight: 700, fontSize: 11, position: 'sticky', top: BLK_H, zIndex: 2 },
+  cellTime: { fontSize: 10, color: 'var(--text-2,#64748b)', background: 'var(--surface,#fff)', position: 'sticky', left: 0, zIndex: 1, fontWeight: 600 },
   loading: { padding: 40, textAlign: 'center', color: 'var(--text-3,#94a3b8)', fontSize: 14 },
   // Form panel
   panelOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 100, display: 'flex', justifyContent: 'flex-end' },

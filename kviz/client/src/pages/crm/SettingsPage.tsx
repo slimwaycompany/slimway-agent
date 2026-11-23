@@ -19,7 +19,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Palette, Cpu, CalendarDays, Monitor, Ticket, Sparkles, Tag, Package, Truck,
   CreditCard, Banknote, Filter, Megaphone, XCircle, Hash, CheckSquare,
-  MessageSquare, Users, CalendarCheck, BarChart2, Layers, Laptop, Link, Phone, Activity, User,
+  MessageSquare, Users, CalendarCheck, BarChart2, Layers, Laptop, Link, Phone, Activity, User, Building2,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules';
+type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'branch' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -4013,7 +4013,8 @@ const NAV_GROUPS_DEF: NavGroupDef[] = [
     { id: 'appearance', label: 'Оформление',           Icon: Palette },
   ]},
   { id: 'studio', label: 'Студия',        sections: [
-    { id: 'devices',  label: 'Аппараты',              Icon: Cpu,          permKey: 'settings.devices' },
+    { id: 'branch',   label: 'Филиал',                 Icon: Building2,    permKey: 'settings.branch' },
+    { id: 'devices',  label: 'Аппараты',               Icon: Cpu,          permKey: 'settings.devices' },
     { id: 'classes',  label: 'Занятия и расписание',   Icon: CalendarDays, permKey: 'settings.classes' },
     { id: 'tv',       label: 'ТВ-экран',               Icon: Monitor,      permKey: 'settings.tv' },
   ]},
@@ -4061,6 +4062,7 @@ const SYNONYMS: [string, string][] = [
   ['темная',      'appearance'],   ['fitbase',   'fb-users'],
   ['смены',       'control-schedule'],
   ['занятия',     'classes'],      ['расписание','classes'],
+  ['филиал',      'branch'],       ['реквизиты', 'branch'],
 ];
 
 // All sections flat (for label lookup)
@@ -4068,7 +4070,7 @@ const ALL_SECTIONS = NAV_GROUPS_DEF.flatMap(g => g.sections);
 
 // ── Classes Section ────────────────────────────────────────────────────────────
 
-interface BookingLabelRow { id: number; name: string; color: string; sort: number; is_active: boolean; is_system: boolean }
+interface BookingLabelRow { id: number; name: string; short_name: string; color: string; sort: number; is_active: boolean; is_system: boolean }
 
 function ClassesSection() {
   const [settings, setSettings] = useState<Record<string, unknown>>({});
@@ -4100,8 +4102,6 @@ function ClassesSection() {
     e.preventDefault(); setSaving(true); setErr('');
     const fd = new FormData(e.currentTarget);
     const body: Record<string, unknown> = {
-      'schedule.day_start':             fd.get('day_start'),
-      'schedule.day_end':               fd.get('day_end'),
       'lessons.early_cancel_minutes':   Number(fd.get('early_cancel_minutes') || 720),
       'lessons.late_cancel_burns_session': fd.get('late_cancel_burns_session') === 'on',
       'lessons.no_show_burns_session':  fd.get('no_show_burns_session') === 'on',
@@ -4125,7 +4125,9 @@ function ClassesSection() {
   async function saveLabel(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setErr('');
     const fd = new FormData(e.currentTarget);
-    const body = { name: fd.get('name'), color: fd.get('color'), sort: Number(fd.get('sort') || 0), is_active: fd.get('is_active') === 'on' };
+    const shortName = String(fd.get('short_name') ?? '').trim();
+    if (!shortName || shortName.length > 4) { setErr('Аббревиатура: 1–4 символа'); return; }
+    const body = { name: fd.get('name'), short_name: shortName, color: fd.get('color'), sort: Number(fd.get('sort') || 0), is_active: fd.get('is_active') === 'on' };
     const isNew = editLabel === 'new';
     const { ok, data } = await api(isNew ? 'POST' : 'PATCH',
       isNew ? '/kviz/api/crm/booking-labels' : `/kviz/api/crm/booking-labels/${(editLabel as BookingLabelRow).id}`, body);
@@ -4146,22 +4148,16 @@ function ClassesSection() {
 
   return (
     <div style={S.section}>
-      {/* Schedule hours + lesson rules */}
-      <form onSubmit={saveSettings}>
-        <div style={{ marginBottom: 20 }}>
-          <div style={S.subTitle}>Часы работы</div>
-          <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 140 }}>
-              <label style={S.label}>Начало дня</label>
-              <input style={S.inp} name="day_start" type="time" defaultValue={v('schedule.day_start', '07:00')} required />
-            </div>
-            <div style={{ flex: 1, minWidth: 140 }}>
-              <label style={S.label}>Конец дня</label>
-              <input style={S.inp} name="day_end" type="time" defaultValue={v('schedule.day_end', '22:00')} required />
-            </div>
-          </div>
-        </div>
+      {/* Note about hours */}
+      <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--primary-soft,#e0faf9)', borderRadius: 8, fontSize: 13, color: 'var(--text,#1a202c)' }}>
+        Часы работы студии — в <button type="button" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--primary,#02BDB6)', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit' }}
+          onClick={() => { try { sessionStorage.setItem('crm-settings-section','branch'); } catch {} window.location.reload(); }}>
+          Настройки → Филиал
+        </button>
+      </div>
 
+      {/* Lesson rules */}
+      <form onSubmit={saveSettings}>
         <div style={{ marginBottom: 20 }}>
           <div style={S.subTitle}>Правила отмены</div>
           <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
@@ -4248,6 +4244,10 @@ function ClassesSection() {
             <Field label="Название">
               <input style={S.inp} name="name" required defaultValue={editLabel === 'new' ? '' : (editLabel as BookingLabelRow).name} />
             </Field>
+            <Field label="Аббревиатура (1–4 символа)">
+              <input style={S.inp} name="short_name" required maxLength={4}
+                defaultValue={editLabel === 'new' ? '' : (editLabel as BookingLabelRow).short_name ?? ''} />
+            </Field>
             <Field label="Цвет (hex)">
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input style={{ width: 56, height: 36, padding: 2, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
@@ -4273,6 +4273,135 @@ function ClassesSection() {
           </form>
         </Modal>
       )}
+    </div>
+  );
+}
+
+// ── Branch Section ─────────────────────────────────────────────────────────────
+
+const WEEKDAYS = ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
+
+function BranchSection() {
+  const [branch, setBranch]   = useState<Record<string, unknown>>({});
+  const [hours, setHours]     = useState<{ weekday: number; is_open: boolean; open_time: string; close_time: string }[]>([]);
+  const [saving, setSaving]   = useState(false);
+  const [err, setErr]         = useState('');
+
+  const load = useCallback(async () => {
+    const r = await fetch('/kviz/api/crm/branch', { credentials: 'include' });
+    const d = await r.json();
+    if (d.branch) setBranch(d.branch as Record<string,unknown>);
+    const rawHours: Record<string,unknown>[] = Array.isArray(d.hours) ? d.hours : [];
+    setHours(Array.from({ length: 7 }, (_, i) => {
+      const ex = rawHours.find(h => Number(h.weekday) === i + 1);
+      return ex
+        ? { weekday: i + 1, is_open: Boolean(ex.is_open), open_time: String(ex.open_time ?? '07:00'), close_time: String(ex.close_time ?? '22:00') }
+        : { weekday: i + 1, is_open: true, open_time: '07:00', close_time: '22:00' };
+    }));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setSaving(true); setErr('');
+    const fd = new FormData(e.currentTarget);
+    const branchBody: Record<string, unknown> = {};
+    for (const k of ['legal_name','bin','country','city','address','phone','timezone','currency','language']) {
+      branchBody[k] = fd.get(k) || null;
+    }
+    const socialsStr = String(fd.get('socials') ?? '').trim();
+    if (socialsStr) {
+      try { branchBody.socials = JSON.parse(socialsStr); }
+      catch { setErr('Поле «Соцсети» должно быть в формате JSON'); setSaving(false); return; }
+    } else { branchBody.socials = null; }
+
+    const { ok, data } = await api('PUT', '/kviz/api/crm/branch', { branch: branchBody, hours });
+    setSaving(false);
+    if (ok) toast.success('Сохранено');
+    else setErr((data as { error?: string }).error || 'Ошибка');
+  }
+
+  function setHour(idx: number, field: string, val: unknown) {
+    setHours(prev => prev.map((h, i) => i === idx ? { ...h, [field]: val } : h));
+  }
+
+  const sv = (key: string, def = '') => branch[key] !== undefined && branch[key] !== null ? String(branch[key]) : def;
+
+  return (
+    <div style={S.section}>
+      <form onSubmit={save}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={S.subTitle}>Реквизиты</div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 2, minWidth: 200 }}>
+              <label style={S.label}>Юридическое название</label>
+              <input style={S.inp} name="legal_name" defaultValue={sv('legal_name')} />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={S.label}>БИН</label>
+              <input style={S.inp} name="bin" defaultValue={sv('bin')} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={S.label}>Страна</label>
+              <input style={S.inp} name="country" defaultValue={sv('country', 'Казахстан')} />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={S.label}>Город</label>
+              <input style={S.inp} name="city" defaultValue={sv('city', 'Астана')} />
+            </div>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <label style={S.label}>Адрес</label>
+            <input style={S.inp} name="address" defaultValue={sv('address')} />
+          </div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={S.label}>Телефон</label>
+              <input style={S.inp} name="phone" defaultValue={sv('phone')} />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={S.label}>Часовой пояс</label>
+              <input style={S.inp} name="timezone" defaultValue={sv('timezone', 'Asia/Yekaterinburg')} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={S.label}>Валюта</label>
+              <input style={S.inp} name="currency" defaultValue={sv('currency', 'KZT')} />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={S.label}>Язык</label>
+              <input style={S.inp} name="language" defaultValue={sv('language', 'ru')} />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={S.subTitle}>Часы работы</div>
+          <div style={{ marginTop: 10, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            {hours.map((h, i) => (
+              <div key={h.weekday} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 12px', flexWrap: 'wrap', borderBottom: i < 6 ? '1px solid var(--border)' : undefined }}>
+                <span style={{ width: 110, fontSize: 13, flexShrink: 0 }}>{WEEKDAYS[i]}</span>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, flexShrink: 0 }}>
+                  <input type="checkbox" checked={h.is_open} onChange={e => setHour(i, 'is_open', e.target.checked)} />
+                  Открыто
+                </label>
+                {h.is_open && (
+                  <>
+                    <input type="time" style={{ ...S.inp, width: 100, marginBottom: 0 }} value={h.open_time} onChange={e => setHour(i, 'open_time', e.target.value)} />
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>—</span>
+                    <input type="time" style={{ ...S.inp, width: 100, marginBottom: 0 }} value={h.close_time} onChange={e => setHour(i, 'close_time', e.target.value)} />
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {err && <div style={S.errBox}>{err}</div>}
+        <button type="submit" style={S.saveBtn} disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить'}</button>
+      </form>
     </div>
   );
 }
@@ -4343,6 +4472,7 @@ export default function SettingsPage() {
         {section === 'payments'   && <PaymentMethodsSection />}
         {section === 'sources'    && <AdSourcesSection />}
         {section === 'classes'    && <ClassesSection />}
+        {section === 'branch'     && <BranchSection />}
         {section === 'service'    && <ServiceSection />}
         {section === 'finance'    && <FinanceSection />}
         {section === 'funnels'    && <FunnelsSection />}

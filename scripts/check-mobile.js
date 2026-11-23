@@ -44,7 +44,7 @@ const THEMES = ['light', 'dark'];
 // Settings sections — navigate via sessionStorage
 const SETTINGS_SECTIONS = [
   'appearance', 'devices', 'tv', 'abonements', 'services', 'products',
-  'payments', 'funnels', 'staff', 'control', 'fb-users', 'pbx', 'service', 'classes',
+  'payments', 'funnels', 'staff', 'control', 'fb-users', 'pbx', 'service', 'classes', 'branch',
 ];
 
 function buildPages() {
