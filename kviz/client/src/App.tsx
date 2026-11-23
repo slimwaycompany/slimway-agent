@@ -17,6 +17,7 @@ import SharePage from './pages/measure/SharePage';
 import InBodyImportPage from './pages/measure/InBodyImportPage';
 import InBodyScanPage from './pages/measure/InBodyScanPage';
 import PlaceholderPage from './pages/crm/PlaceholderPage';
+import SchedulePage from './pages/crm/SchedulePage';
 import SettingsPage from './pages/crm/SettingsPage';
 import ClientsPage from './pages/crm/ClientsPage';
 import KassaPage from './pages/crm/KassaPage';
@@ -133,7 +134,7 @@ export default function App() {
       <Route path="/metrics" element={<Navigate to="/reports" replace />} />
       <Route path="/crm/clients" element={<RequireAuth><ClientsPage /></RequireAuth>} />
       <Route path="/crm/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
-      <Route path="/crm/schedule" element={<RequireAuth><PlaceholderPage title="Расписание" /></RequireAuth>} />
+      <Route path="/crm/schedule" element={<RequireAuth><SchedulePage /></RequireAuth>} />
       <Route path="/crm/funnel" element={<RequireAuth><FunnelPage /></RequireAuth>} />
       <Route path="/crm/cashier" element={<RequireAuth><KassaPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />

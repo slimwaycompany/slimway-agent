@@ -246,6 +246,11 @@ export function buildCrmRouter(): Router {
       const upd: Record<string, unknown> = {};
       if (b.name !== undefined) upd.name = b.name;
       if (b.sort !== undefined) upd.sort = n0(b.sort);
+      if (b.grid_step_minutes !== undefined) {
+        const v = n0(b.grid_step_minutes);
+        if (v < 10 || v > 180) { res.status(400).json({ error: 'Шаг сетки: 10–180 мин' }); return; }
+        upd.grid_step_minutes = v;
+      }
       const { data, error } = await supabase.from('crm_device_types')
         .update(upd).eq('code', req.params.code).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -1544,6 +1549,524 @@ export function buildCrmRouter(): Router {
         targets = t || [];
       }
       res.json({ id: promo.id, code: promo.code, discount_type: promo.discount_type, discount_value: promo.discount_value, applies_to_all: promo.applies_to_all, targets });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── CRM lifecycle (plan activation/expiry) ────────────────────────────────────
+
+  r.post('/kviz/api/crm/lifecycle', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const result = await runCrmLifecycle();
+      res.json({ ok: true, ...result });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Settings: classes ─────────────────────────────────────────────────────────
+
+  const CLASSES_KEYS = ['schedule.day_start','schedule.day_end','lessons.early_cancel_minutes',
+    'lessons.late_cancel_burns_session','lessons.no_show_burns_session','lessons.trial_minutes',
+    'labels.renewal_sessions_left'];
+
+  r.get('/kviz/api/crm/settings/classes', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.classes', 'view', session)) return;
+    try {
+      const { data } = await supabase.from('crm_settings').select('key,value').in('key', CLASSES_KEYS);
+      const out: Record<string, unknown> = {};
+      for (const row of data || []) out[row.key as string] = row.value;
+      res.json(out);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.put('/kviz/api/crm/settings/classes', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.classes', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const ds = b['schedule.day_start'] as string | undefined;
+      const de = b['schedule.day_end']   as string | undefined;
+      if (ds && !/^\d{2}:\d{2}$/.test(ds)) { res.status(400).json({ error: 'Неверный формат начала дня' }); return; }
+      if (de && !/^\d{2}:\d{2}$/.test(de)) { res.status(400).json({ error: 'Неверный формат конца дня' }); return; }
+      if (ds && de && ds >= de)             { res.status(400).json({ error: 'Начало дня должно быть раньше конца' }); return; }
+      const ecm = b['lessons.early_cancel_minutes'];
+      if (ecm !== undefined) {
+        const v = Number(ecm);
+        if (!Number.isInteger(v) || v < 0 || v > 10080) { res.status(400).json({ error: 'Минуты ранней отмены: 0–10080' }); return; }
+      }
+      const rsl = b['labels.renewal_sessions_left'];
+      if (rsl !== undefined) {
+        const v = Number(rsl);
+        if (!Number.isInteger(v) || v < 0 || v > 20) { res.status(400).json({ error: 'Порог продления: 0–20' }); return; }
+      }
+      const keyMap: Record<string, unknown> = {
+        'schedule.day_start':             ds !== undefined ? ds : undefined,
+        'schedule.day_end':               de !== undefined ? de : undefined,
+        'lessons.early_cancel_minutes':   ecm !== undefined ? Number(ecm) : undefined,
+        'lessons.late_cancel_burns_session': b['lessons.late_cancel_burns_session'] !== undefined ? Boolean(b['lessons.late_cancel_burns_session']) : undefined,
+        'lessons.no_show_burns_session':  b['lessons.no_show_burns_session'] !== undefined ? Boolean(b['lessons.no_show_burns_session']) : undefined,
+        'lessons.trial_minutes':          b['lessons.trial_minutes'] !== undefined ? Number(b['lessons.trial_minutes']) : undefined,
+        'labels.renewal_sessions_left':   rsl !== undefined ? Number(rsl) : undefined,
+      };
+      for (const [key, value] of Object.entries(keyMap)) {
+        if (value === undefined) continue;
+        await supabase.from('crm_settings').upsert({ key, value }, { onConflict: 'key' });
+      }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Booking labels ────────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/booking-labels', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data, error } = await supabase.from('crm_booking_labels').select('*').order('sort').order('id');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/booking-labels', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.classes', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      if (!b.name) { res.status(400).json({ error: 'Укажите название' }); return; }
+      if (!b.color || !/^#[0-9a-fA-F]{6}$/.test(String(b.color))) { res.status(400).json({ error: 'Укажите цвет (#RRGGBB)' }); return; }
+      const { data, error } = await supabase.from('crm_booking_labels')
+        .insert({ name: b.name, color: b.color, sort: n0(b.sort), is_active: true, is_system: false })
+        .select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/kviz/api/crm/booking-labels/:id', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.classes', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const { data: lbl } = await supabase.from('crm_booking_labels').select('is_system').eq('id', req.params.id).single();
+      if (!lbl) { res.status(404).json({ error: 'Этикетка не найдена' }); return; }
+      const upd: Record<string, unknown> = {};
+      if (b.name !== undefined) upd.name = b.name;
+      if (b.color !== undefined) {
+        if (!/^#[0-9a-fA-F]{6}$/.test(String(b.color))) { res.status(400).json({ error: 'Цвет должен быть #RRGGBB' }); return; }
+        upd.color = b.color;
+      }
+      if (b.sort !== undefined) upd.sort = n0(b.sort);
+      if (b.is_active !== undefined) upd.is_active = Boolean(b.is_active);
+      if (lbl.is_system && b.code !== undefined) { res.status(400).json({ error: 'Код системной этикетки нельзя менять' }); return; }
+      const { data, error } = await supabase.from('crm_booking_labels').update(upd).eq('id', req.params.id).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.delete('/kviz/api/crm/booking-labels/:id', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.classes', 'edit', session)) return;
+    try {
+      const { data: lbl } = await supabase.from('crm_booking_labels').select('is_system').eq('id', req.params.id).single();
+      if (!lbl) { res.status(404).json({ error: 'Этикетка не найдена' }); return; }
+      if (lbl.is_system) { res.status(409).json({ error: 'Системные этикетки удалять нельзя' }); return; }
+      const { count } = await supabase.from('crm_booking_label_links').select('booking_id', { count: 'exact', head: true }).eq('label_id', req.params.id);
+      if (count && count > 0) {
+        const { error } = await supabase.from('crm_booking_labels').update({ is_active: false }).eq('id', req.params.id);
+        if (error) { res.status(500).json({ error: error.message }); return; }
+        res.json({ ok: true, archived: true });
+        return;
+      }
+      const { error } = await supabase.from('crm_booking_labels').delete().eq('id', req.params.id);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true, archived: false });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Schedule: day view ────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/schedule/day', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.main', 'view', session)) return;
+    try {
+      const dateStr = String(req.query.date || todayUtc5());
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) { res.status(400).json({ error: 'Неверная дата' }); return; }
+
+      const [settingsRows, deviceTypesRaw, devicesRaw] = await Promise.all([
+        supabase.from('crm_settings').select('key,value').in('key', ['schedule.day_start','schedule.day_end']),
+        supabase.from('crm_device_types').select('code,name,sort,grid_step_minutes').order('sort'),
+        supabase.from('crm_devices').select('id,type_code,number,status,session_minutes').eq('branch_id', BRANCH_ID).not('status', 'eq', 'disabled').order('number'),
+      ]);
+
+      const settingsMap: Record<string, string> = {};
+      for (const s of settingsRows.data || []) settingsMap[s.key as string] = s.value as string;
+      const dayStart = settingsMap['schedule.day_start'] ?? '07:00';
+      const dayEnd   = settingsMap['schedule.day_end']   ?? '22:00';
+
+      const devsByType: Record<string, typeof devicesRaw.data> = {};
+      for (const d of devicesRaw.data || []) {
+        if (!devsByType[d.type_code]) devsByType[d.type_code] = [];
+        devsByType[d.type_code]!.push(d);
+      }
+
+      const blocks = (deviceTypesRaw.data || [])
+        .filter(dt => devsByType[dt.code]?.length)
+        .map(dt => ({
+          type_code: dt.code, name: dt.name,
+          grid_step_minutes: dt.grid_step_minutes ?? 40,
+          devices: (devsByType[dt.code] || []).map(d => ({ id: d.id, number: d.number, status: d.status, session_minutes: d.session_minutes })),
+        }));
+
+      // Bookings for the day
+      const { data: bookingsRaw } = await supabase.from('crm_bookings')
+        .select('*').eq('branch_id', BRANCH_ID).eq('booking_date', dateStr);
+      const bookingIds = (bookingsRaw || []).map((b: Record<string, unknown>) => b.id as string);
+
+      // Parallel: clients, plans, items, labels
+      const [clientsRes, plansRes, itemsRes, labelsRes] = await Promise.all([
+        bookingIds.length ? supabase.from('crm_clients').select('id,full_name,phone').in('id', (bookingsRaw||[]).map((b: Record<string,unknown>) => b.client_id as string).filter(Boolean)) : Promise.resolve({ data: [] }),
+        bookingIds.length ? supabase.from('crm_plans').select('id,name').in('id', [...new Set((bookingsRaw||[]).map((b:Record<string,unknown>) => b.plan_id as string).filter(Boolean))]) : Promise.resolve({ data: [] }),
+        bookingIds.length ? supabase.from('crm_client_plan_items').select('id,sessions_left,sessions_total').in('id', (bookingsRaw||[]).map((b:Record<string,unknown>) => b.client_plan_item_id as string).filter(Boolean)) : Promise.resolve({ data: [] }),
+        bookingIds.length ? supabase.from('crm_booking_label_links').select('booking_id,label_id,crm_booking_labels(id,name,color,sort)').in('booking_id', bookingIds) : Promise.resolve({ data: [] }),
+      ]);
+
+      const clientMap = new Map((clientsRes.data||[]).map((c:Record<string,unknown>) => [c.id, c]));
+      const planMap   = new Map((plansRes.data||[]).map((p:Record<string,unknown>) => [p.id, p]));
+      const itemMap   = new Map((itemsRes.data||[]).map((i:Record<string,unknown>) => [i.id, i]));
+      const labelsMap: Record<string, unknown[]> = {};
+      for (const ll of labelsRes.data || []) {
+        const lid = (ll as Record<string,unknown>).booking_id as string;
+        if (!labelsMap[lid]) labelsMap[lid] = [];
+        const lbl = (ll as Record<string,unknown>).crm_booking_labels;
+        if (lbl) labelsMap[lid].push(lbl);
+      }
+
+      const bookings = (bookingsRaw || []).map((b: Record<string, unknown>) => {
+        const item = b.client_plan_item_id ? itemMap.get(b.client_plan_item_id as string) : null;
+        return {
+          ...b,
+          client: clientMap.get(b.client_id as string) ?? null,
+          plan_name: b.plan_id ? (planMap.get(b.plan_id as string) as Record<string,unknown>)?.name ?? null : null,
+          sessions_left: (item as Record<string,unknown> | null)?.sessions_left ?? null,
+          sessions_total: (item as Record<string,unknown> | null)?.sessions_total ?? null,
+          labels: (labelsMap[b.id as string] || []).sort((a: unknown, b: unknown) => ((a as Record<string,unknown>).sort as number) - ((b as Record<string,unknown>).sort as number)),
+        };
+      });
+
+      const now = new Date().toISOString();
+      res.json({ date: dateStr, day_start: dayStart, day_end: dayEnd, now, blocks, bookings });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Schedule: client options ──────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/schedule/client-options', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.book', 'edit', session)) return;
+    try {
+      const clientId = req.query.client_id as string;
+      if (!clientId) { res.status(400).json({ error: 'client_id обязателен' }); return; }
+
+      const [plansRes, freeRes, bookedRes] = await Promise.all([
+        supabase.from('crm_client_plans')
+          .select('id,plan_id,status,valid_until,extra_until,activated_at,crm_plans!plan_id(id,name),crm_client_plan_items(id,device_type_code,phase,sessions_left,sessions_total)')
+          .eq('client_id', clientId).in('status', ['active','not_activated']),
+        supabase.from('crm_plans').select('id,name').eq('kind','service').eq('is_free_booking',true).eq('is_active',true),
+        supabase.from('crm_bookings').select('client_plan_item_id').eq('client_id', clientId).in('status',['booked','confirmed']).not('client_plan_item_id','is',null),
+      ]);
+
+      const bookedAhead: Record<string, number> = {};
+      for (const b of bookedRes.data || []) {
+        const iid = (b as Record<string,unknown>).client_plan_item_id as string;
+        bookedAhead[iid] = (bookedAhead[iid] ?? 0) + 1;
+      }
+
+      const plans = (plansRes.data || []).map((cp: Record<string,unknown>) => ({
+        ...cp,
+        items: ((cp.crm_client_plan_items as Record<string,unknown>[]) || []).map((it: Record<string,unknown>) => ({
+          ...it, booked_ahead: bookedAhead[it.id as string] ?? 0,
+        })),
+      }));
+
+      res.json({ plans, free_services: freeRes.data || [] });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Schedule: free devices for a slot ────────────────────────────────────────
+
+  r.get('/kviz/api/crm/schedule/free-devices', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.book', 'edit', session)) return;
+    try {
+      const { type, date, time, exclude_group } = req.query as Record<string,string>;
+      if (!type || !date || !time) { res.status(400).json({ error: 'type, date, time обязательны' }); return; }
+
+      const { data: dt } = await supabase.from('crm_device_types').select('grid_step_minutes').eq('code', type).single();
+      const step = (dt as Record<string,unknown>)?.grid_step_minutes as number ?? 40;
+      const startMs = new Date(`${date}T${time}:00+05:00`).getTime();
+      const endMs   = startMs + step * 60_000;
+
+      const { data: devices } = await supabase.from('crm_devices').select('id,number,status,session_minutes')
+        .eq('branch_id', BRANCH_ID).eq('type_code', type).eq('status', 'working');
+
+      const startIso = new Date(startMs).toISOString();
+      const endIso   = new Date(endMs).toISOString();
+      const { data: busyBookings } = await supabase.from('crm_bookings')
+        .select('device_id').in('status',['booked','confirmed','attended','no_show'])
+        .eq('booking_date', date).eq('device_type_code', type)
+        .gte('starts_at', startIso).lt('ends_at', endIso); // simplified overlap: same slot
+
+      const busyDeviceIds = new Set((busyBookings || []).map((b:Record<string,unknown>) => b.device_id as string));
+      // More precise overlap: ends_at > startIso AND starts_at < endIso
+      const { data: busyOverlap } = await supabase.from('crm_bookings')
+        .select('device_id').in('status',['booked','confirmed','attended','no_show'])
+        .eq('device_type_code', type).lt('starts_at', endIso).gt('ends_at', startIso);
+      const busyAll = new Set([...busyDeviceIds, ...(busyOverlap||[]).map((b:Record<string,unknown>) => b.device_id as string)]);
+      if (exclude_group) {
+        const { data: grpDevs } = await supabase.from('crm_bookings').select('device_id').eq('group_id', exclude_group);
+        for (const g of grpDevs || []) busyAll.delete((g as Record<string,unknown>).device_id as string);
+      }
+
+      const free = (devices || []).filter((d:Record<string,unknown>) => !busyAll.has(d.id as string));
+      res.json(free);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Schedule: suggest free slots ─────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/schedule/suggest', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.book', 'edit', session)) return;
+    try {
+      const { client_plan_id, type, date, time } = req.query as Record<string,string>;
+      if (!type || !date) { res.status(400).json({ error: 'type, date обязательны' }); return; }
+
+      const [settingsRes, dtRes] = await Promise.all([
+        supabase.from('crm_settings').select('key,value').in('key',['schedule.day_start','schedule.day_end']),
+        supabase.from('crm_device_types').select('code,grid_step_minutes').eq('code', type).single(),
+      ]);
+      const sm: Record<string,string> = {};
+      for (const s of settingsRes.data || []) sm[s.key as string] = s.value as string;
+      const dayStart = sm['schedule.day_start'] ?? '07:00';
+      const dayEnd   = sm['schedule.day_end']   ?? '22:00';
+      const step = (dtRes.data as Record<string,unknown>)?.grid_step_minutes as number ?? 40;
+
+      // Find finishing type (if plan has finishing item for another type)
+      let finishingType: string | null = null;
+      let finishingStep = 0;
+      if (client_plan_id) {
+        const { data: items } = await supabase.from('crm_client_plan_items')
+          .select('device_type_code,phase,sessions_left').eq('client_plan_id', client_plan_id);
+        const finItem = (items || []).find((i:Record<string,unknown>) => i.phase === 'finishing' && (i.sessions_left as number) > 0);
+        if (finItem) {
+          finishingType = (finItem as Record<string,unknown>).device_type_code as string;
+          const { data: fdt } = await supabase.from('crm_device_types').select('grid_step_minutes').eq('code', finishingType).single();
+          finishingStep = (fdt as Record<string,unknown>)?.grid_step_minutes as number ?? 40;
+        }
+      }
+
+      function slotMins(t: string): number {
+        const [h, m] = t.split(':').map(Number); return h * 60 + m;
+      }
+      function minsToStr(m: number): string {
+        return String(Math.floor(m / 60)).padStart(2,'0') + ':' + String(m % 60).padStart(2,'0');
+      }
+
+      const [sh, em] = [slotMins(dayStart), slotMins(dayEnd)];
+      const afterMins = time ? slotMins(time) : sh;
+
+      // Collect slots for today and tomorrow
+      const dates = [date];
+      const tomorrow = new Date(date + 'T00:00:00Z');
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      dates.push(tomorrow.toISOString().slice(0,10));
+
+      // Load bookings for both dates
+      const { data: allBookings } = await supabase.from('crm_bookings')
+        .select('device_id,device_type_code,client_id,starts_at,ends_at,status,group_id')
+        .in('booking_date', dates)
+        .in('status',['booked','confirmed','attended','no_show']);
+
+      // Load working devices
+      const typeCodes = [type, ...(finishingType ? [finishingType] : [])];
+      const { data: allDevices } = await supabase.from('crm_devices')
+        .select('id,type_code,number').eq('branch_id', BRANCH_ID).eq('status','working').in('type_code', typeCodes);
+
+      const mainDevices = (allDevices || []).filter((d:Record<string,unknown>) => d.type_code === type);
+      const finDevices  = finishingType ? (allDevices || []).filter((d:Record<string,unknown>) => d.type_code === finishingType) : [];
+
+      function isBusy(devList: { id: string }[], startMs: number, endMs: number, clientId?: string): boolean {
+        const slotStart = new Date(startMs).toISOString();
+        const slotEnd   = new Date(endMs).toISOString();
+        const devIds = new Set(devList.map(d => d.id));
+        if (devIds.size === 0) return true; // no devices → can't book
+        const busyDevIds = new Set<string>();
+        for (const b of (allBookings || [])) {
+          const bs = b as Record<string,unknown>;
+          if (!devIds.has(bs.device_id as string)) continue;
+          if ((bs.starts_at as string) < slotEnd && (bs.ends_at as string) > slotStart) {
+            busyDevIds.add(bs.device_id as string);
+          }
+        }
+        if (devIds.size === busyDevIds.size) return true; // all devices busy
+        if (clientId && (allBookings || []).some((b:Record<string,unknown>) => {
+          const bs = b as Record<string,unknown>;
+          return bs.client_id === clientId && (bs.starts_at as string) < slotEnd && (bs.ends_at as string) > slotStart;
+        })) return true;
+        return false;
+      }
+
+      const suggestions: { date: string; time: string }[] = [];
+      let clientId: string | undefined;
+      // Try to get client_id from plan
+      if (client_plan_id) {
+        const { data: cp } = await supabase.from('crm_client_plans').select('client_id').eq('id', client_plan_id).single();
+        if (cp) clientId = (cp as Record<string,unknown>).client_id as string;
+      }
+
+      outer: for (const d of dates) {
+        const isToday = d === date;
+        for (let t = sh; t + step <= em; t += step) {
+          if (isToday && t < afterMins + step) continue; // skip current and past slots
+          const slotMs  = new Date(`${d}T${minsToStr(t)}:00+05:00`).getTime();
+          const slotEndMs = slotMs + step * 60_000;
+          if (isBusy(mainDevices, slotMs, slotEndMs, clientId)) continue;
+          if (finishingType && finDevices.length) {
+            const finMs    = slotEndMs;
+            const finEndMs = finMs + finishingStep * 60_000;
+            const dayEndMs = new Date(`${d}T${dayEnd}:00+05:00`).getTime();
+            if (finEndMs > dayEndMs) continue;
+            if (isBusy(finDevices, finMs, finEndMs, clientId)) continue;
+          }
+          suggestions.push({ date: d, time: minsToStr(t) });
+          if (suggestions.length >= 3) break outer;
+        }
+      }
+
+      res.json(suggestions);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Schedule: bookings ────────────────────────────────────────────────────────
+
+  const SCHEDULE_RPC_ERRORS: Record<string, string> = {
+    BAD_PARAMS:          'Не хватает данных для записи',
+    CLIENT_NOT_FOUND:    'Клиент не найден',
+    IN_PAST:             'Нельзя записать на прошедший день',
+    BAD_DEVICE_TYPE:     'Неизвестный вид аппарата',
+    OUT_OF_HOURS:        'Время вне рабочих часов',
+    DEVICE_UNAVAILABLE:  'Этот аппарат сейчас не работает',
+    NO_FREE_DEVICE:      'На это время все аппараты этого вида заняты',
+    PLAN_NOT_FOUND:      'Абонемент не найден у этого клиента',
+    PLAN_FROZEN:         'Абонемент заморожен',
+    PLAN_INACTIVE:       'Абонемент закончился или возвращён',
+    PLAN_EXPIRES:        'Абонемент закончится раньше этой даты',
+    TYPE_NOT_IN_PLAN:    'Этого аппарата нет в абонементе',
+    NO_SESSIONS:         'Сеансы на этот аппарат закончились (с учётом будущих записей)',
+    NO_FINISHING_SLOT:   'Нет места на завершающую фазу сразу после активной',
+    NOT_FREE_SERVICE:    'Эта услуга не бесплатная',
+    CLIENT_BUSY:         'Клиент уже записан на это время',
+    DEVICE_BUSY:         'Аппарат уже занят на это время',
+    BAD_STATUS:          'Неверный статус',
+    BOOKING_NOT_FOUND:   'Запись не найдена',
+    BOOKING_CANCELLED:   'Запись уже отменена',
+    NOT_YET:             'Отметить «Пришёл / Не пришёл» можно только в день занятия или позже',
+    NOTHING_TO_CANCEL:   'Нечего отменять',
+    CANNOT_MOVE:         'Перенести нельзя: по записи уже отмечено посещение',
+  };
+
+  function translateScheduleRpcError(msg: string): string {
+    for (const [code, text] of Object.entries(SCHEDULE_RPC_ERRORS)) {
+      if (msg.includes(code)) return text;
+    }
+    console.error('[schedule rpc] unhandled error:', msg);
+    return 'Не удалось выполнить действие, попробуйте ещё раз';
+  }
+
+  r.post('/kviz/api/crm/schedule/bookings', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.book', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const payload = { ...b, created_by: session.display_name };
+      const { data, error } = await supabase.rpc('crm_booking_create', { p: payload });
+      if (error) {
+        const msg = translateScheduleRpcError(error.message);
+        // For NO_FINISHING_SLOT / NO_FREE_DEVICE: client calls /suggest with same params
+        res.status(409).json({ error: msg, needs_suggest: error.message.includes('NO_FINISHING_SLOT') || error.message.includes('NO_FREE_DEVICE') });
+        return;
+      }
+      await writeAudit('booking', (data as Record<string,unknown>)?.group_id as string, 'create', session.display_name);
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/schedule/bookings/:id/status', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.attend', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const { data, error } = await supabase.rpc('crm_booking_set_status', { p: { booking_id: req.params.id, status: b.status, by: session.display_name } });
+      if (error) { res.status(409).json({ error: translateScheduleRpcError(error.message) }); return; }
+      await writeAudit('booking', req.params.id, `status:${b.status}`, session.display_name);
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/schedule/bookings/:id/cancel', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.book', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const forceEarly = Boolean(b.force_early) && session.role === 'admin';
+      const { data, error } = await supabase.rpc('crm_booking_cancel', { p: { booking_id: req.params.id, reason: b.reason, by: session.display_name, force_early: forceEarly } });
+      if (error) { res.status(409).json({ error: translateScheduleRpcError(error.message) }); return; }
+      await writeAudit('booking', req.params.id, 'cancel', session.display_name);
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/schedule/bookings/:id/move', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.book', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const { data, error } = await supabase.rpc('crm_booking_move', { p: { booking_id: req.params.id, date: b.date, time: b.time, device_id: b.device_id ?? null } });
+      if (error) { res.status(409).json({ error: translateScheduleRpcError(error.message) }); return; }
+      await writeAudit('booking', req.params.id, 'move', session.display_name);
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/kviz/api/crm/schedule/bookings/:id', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.book', 'edit', session)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const upd: Record<string, unknown> = {};
+      if (b.note    !== undefined) upd.note    = b.note;
+      if (b.trainer !== undefined) upd.trainer = b.trainer;
+      if (!Object.keys(upd).length) { res.status(400).json({ error: 'Нечего обновлять' }); return; }
+      const { data, error } = await supabase.from('crm_bookings').update(upd).eq('id', req.params.id).select().single();
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.put('/kviz/api/crm/schedule/bookings/:id/labels', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.book', 'edit', session)) return;
+    try {
+      const { label_ids } = req.body as { label_ids: number[] };
+      if (!Array.isArray(label_ids)) { res.status(400).json({ error: 'label_ids должен быть массивом' }); return; }
+      await supabase.from('crm_booking_label_links').delete().eq('booking_id', req.params.id);
+      if (label_ids.length) {
+        await supabase.from('crm_booking_label_links').insert(
+          label_ids.map(lid => ({ booking_id: req.params.id, label_id: lid, set_by: session.display_name }))
+        );
+      }
+      res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

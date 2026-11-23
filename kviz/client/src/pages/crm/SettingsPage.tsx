@@ -24,7 +24,7 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface DeviceType { code: string; name: string; sort: number }
+interface DeviceType { code: string; name: string; sort: number; grid_step_minutes?: number }
 interface Device { id: string; branch_id: string; type_code: string; number: string; default_phase: string | null; session_minutes: number | null; status: string; notes: string | null }
 interface Plan { id: string; kind: string; name: string; description: string | null; price: number; is_promo: boolean; is_free_booking: boolean; validity_days: number | null; extra_days: number | null; freeze_days: number | null; guest_visits: number | null; auto_activate_days: number | null; max_deferred_start_days: number | null; is_active: boolean; is_system: boolean; sort: number; items?: PlanItem[] }
 interface PlanItem { id: string; plan_id: string; device_type_code: string; phase: string | null; sessions: number; sort: number }
@@ -4066,6 +4066,217 @@ const SYNONYMS: [string, string][] = [
 // All sections flat (for label lookup)
 const ALL_SECTIONS = NAV_GROUPS_DEF.flatMap(g => g.sections);
 
+// ── Classes Section ────────────────────────────────────────────────────────────
+
+interface BookingLabelRow { id: number; name: string; color: string; sort: number; is_active: boolean; is_system: boolean }
+
+function ClassesSection() {
+  const [settings, setSettings] = useState<Record<string, unknown>>({});
+  const [types, setTypes]       = useState<DeviceType[]>([]);
+  const [labels, setLabels]     = useState<BookingLabelRow[]>([]);
+  const [saving, setSaving]     = useState(false);
+  const [stepEdits, setStepEdits] = useState<Record<string, string>>({});
+  const [editLabel, setEditLabel] = useState<BookingLabelRow | null | 'new'>(null);
+  const [err, setErr] = useState('');
+
+  const load = useCallback(async () => {
+    const [s, t, l] = await Promise.all([
+      fetch('/kviz/api/crm/settings/classes', { credentials: 'include' }).then(r => r.json()),
+      fetch('/kviz/api/crm/device-types', { credentials: 'include' }).then(r => r.json()),
+      fetch('/kviz/api/crm/booking-labels', { credentials: 'include' }).then(r => r.json()),
+    ]);
+    setSettings(s && typeof s === 'object' && !s.error ? s : {});
+    if (Array.isArray(t)) {
+      setTypes(t);
+      const init: Record<string, string> = {};
+      for (const dt of t) init[dt.code] = String(dt.grid_step_minutes ?? '');
+      setStepEdits(init);
+    }
+    setLabels(Array.isArray(l) ? l : []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function saveSettings(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setSaving(true); setErr('');
+    const fd = new FormData(e.currentTarget);
+    const body: Record<string, unknown> = {
+      'schedule.day_start':             fd.get('day_start'),
+      'schedule.day_end':               fd.get('day_end'),
+      'lessons.early_cancel_minutes':   Number(fd.get('early_cancel_minutes') || 720),
+      'lessons.late_cancel_burns_session': fd.get('late_cancel_burns_session') === 'on',
+      'lessons.no_show_burns_session':  fd.get('no_show_burns_session') === 'on',
+      'lessons.trial_minutes':          Number(fd.get('trial_minutes') || 20),
+      'labels.renewal_sessions_left':   Number(fd.get('renewal_sessions_left') || 2),
+    };
+    const { ok, data } = await api('PUT', '/kviz/api/crm/settings/classes', body);
+    setSaving(false);
+    if (ok) toast.success('Настройки сохранены');
+    else setErr((data as { error?: string }).error || 'Ошибка');
+  }
+
+  async function saveStep(code: string) {
+    const v = Number(stepEdits[code]);
+    if (!v || v < 10 || v > 180) { toast.error('Шаг сетки: 10–180 мин'); return; }
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/device-types/${code}`, { grid_step_minutes: v });
+    if (ok) { toast.success('Шаг сохранён'); load(); }
+    else toast.error((data as { error?: string }).error || 'Ошибка');
+  }
+
+  async function saveLabel(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setErr('');
+    const fd = new FormData(e.currentTarget);
+    const body = { name: fd.get('name'), color: fd.get('color'), sort: Number(fd.get('sort') || 0), is_active: fd.get('is_active') === 'on' };
+    const isNew = editLabel === 'new';
+    const { ok, data } = await api(isNew ? 'POST' : 'PATCH',
+      isNew ? '/kviz/api/crm/booking-labels' : `/kviz/api/crm/booking-labels/${(editLabel as BookingLabelRow).id}`, body);
+    if (ok) { setEditLabel(null); load(); }
+    else setErr((data as { error?: string }).error || 'Ошибка');
+  }
+
+  async function deleteLabel(id: number) {
+    const ok2 = await showConfirm({ title: 'Удалить этикетку?', confirmLabel: 'Удалить', cancelLabel: 'Отмена' });
+    if (!ok2) return;
+    const { ok, data } = await api('DELETE', `/kviz/api/crm/booking-labels/${id}`);
+    if (ok) load();
+    else toast.error((data as { error?: string }).error || 'Ошибка');
+  }
+
+  const v = (key: string, def: unknown = '') => settings[key] !== undefined ? String(settings[key]) : String(def);
+  const bool = (key: string, def = false) => settings[key] !== undefined ? Boolean(settings[key]) : def;
+
+  return (
+    <div style={S.section}>
+      {/* Schedule hours + lesson rules */}
+      <form onSubmit={saveSettings}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={S.subTitle}>Часы работы</div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={S.label}>Начало дня</label>
+              <input style={S.inp} name="day_start" type="time" defaultValue={v('schedule.day_start', '07:00')} required />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={S.label}>Конец дня</label>
+              <input style={S.inp} name="day_end" type="time" defaultValue={v('schedule.day_end', '22:00')} required />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={S.subTitle}>Правила отмены</div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <label style={S.label}>Ранняя отмена до (мин)</label>
+              <input style={S.inp} name="early_cancel_minutes" type="number" min={0} max={10080} defaultValue={v('lessons.early_cancel_minutes', 720)} />
+            </div>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <label style={S.label}>Пробное занятие (мин)</label>
+              <input style={S.inp} name="trial_minutes" type="number" min={5} max={120} defaultValue={v('lessons.trial_minutes', 20)} />
+            </div>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <label style={S.label}>Порог продления (сеансов)</label>
+              <input style={S.inp} name="renewal_sessions_left" type="number" min={0} max={20} defaultValue={v('labels.renewal_sessions_left', 2)} />
+            </div>
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" name="late_cancel_burns_session" defaultChecked={bool('lessons.late_cancel_burns_session', true)} />
+              Поздняя отмена сжигает сеанс
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" name="no_show_burns_session" defaultChecked={bool('lessons.no_show_burns_session', false)} />
+              Неявка сжигает сеанс
+            </label>
+          </div>
+        </div>
+
+        {err && <div style={S.errBox}>{err}</div>}
+        <button type="submit" style={S.saveBtn} disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить настройки'}</button>
+      </form>
+
+      {/* Grid step per device type */}
+      {types.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div style={S.subTitle}>Шаг сетки по виду аппарата (мин)</div>
+          <div style={S.list}>
+            {types.map(dt => (
+              <div key={dt.code} style={{ ...S.row, gap: 12 }}>
+                <span style={{ flex: 1, fontSize: 13 }}>{dt.name}</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="number" min={10} max={180} style={{ ...S.inp, width: 80, padding: '5px 8px' }}
+                    value={stepEdits[dt.code] ?? ''}
+                    onChange={e => setStepEdits(prev => ({ ...prev, [dt.code]: e.target.value }))} />
+                  <button style={S.editBtn} onClick={() => saveStep(dt.code)}>Сохранить</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Booking labels */}
+      <div style={{ marginTop: 28 }}>
+        <div style={S.subheader}>
+          <div style={S.subTitle}>Цветовые этикетки</div>
+          <button style={S.addBtn} onClick={() => setEditLabel('new')}>+ Добавить</button>
+        </div>
+        <div style={S.list}>
+          {labels.length === 0 && <div style={S.empty}>Нет этикеток</div>}
+          {labels.map(l => (
+            <div key={l.id} style={S.row}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                <span style={{ width: 14, height: 14, borderRadius: '50%', background: l.color, flexShrink: 0, border: '1px solid var(--border)' }} />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{l.name}</span>
+                {!l.is_active && <span style={S.badge}>Выкл</span>}
+                {l.is_system && <span style={{ ...S.badge, background: 'var(--primary-soft)', color: 'var(--primary)' }}>Системная</span>}
+                <span style={{ fontSize: 11, color: 'var(--text-3)' }}>#{l.sort}</span>
+              </div>
+              <div style={S.rowActions}>
+                <button style={S.editBtn} onClick={() => setEditLabel(l)}>Изм.</button>
+                {!l.is_system && <button style={S.delBtn} onClick={() => deleteLabel(l.id)}>Удалить</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Label form modal */}
+      {editLabel !== null && (
+        <Modal title={editLabel === 'new' ? 'Новая этикетка' : 'Изменить этикетку'} onClose={() => { setEditLabel(null); setErr(''); }}>
+          <form onSubmit={saveLabel}>
+            {err && <div style={S.errBox}>{err}</div>}
+            <Field label="Название">
+              <input style={S.inp} name="name" required defaultValue={editLabel === 'new' ? '' : (editLabel as BookingLabelRow).name} />
+            </Field>
+            <Field label="Цвет (hex)">
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input style={{ width: 56, height: 36, padding: 2, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+                  type="color" name="color_pick"
+                  defaultValue={editLabel === 'new' ? '#02BDB6' : (editLabel as BookingLabelRow).color}
+                  onChange={e => { const inp = e.currentTarget.form?.elements.namedItem('color') as HTMLInputElement | null; if (inp) inp.value = e.target.value; }} />
+                <input style={{ ...S.inp, flex: 1 }} name="color" required pattern="#[0-9a-fA-F]{6}"
+                  defaultValue={editLabel === 'new' ? '#02BDB6' : (editLabel as BookingLabelRow).color}
+                  placeholder="#02BDB6" />
+              </div>
+            </Field>
+            <Field label="Порядок">
+              <input style={S.inp} name="sort" type="number" defaultValue={editLabel === 'new' ? labels.length : (editLabel as BookingLabelRow).sort} />
+            </Field>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', marginBottom: 16 }}>
+              <input type="checkbox" name="is_active" defaultChecked={editLabel === 'new' ? true : (editLabel as BookingLabelRow).is_active} />
+              Активна
+            </label>
+            <div style={S.mBtns}>
+              <button type="button" style={S.cancelBtn} onClick={() => { setEditLabel(null); setErr(''); }}>Отмена</button>
+              <button type="submit" style={S.saveBtn}>Сохранить</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { role, perms } = useContext(PermContext);
 
@@ -4131,14 +4342,7 @@ export default function SettingsPage() {
         {section === 'promos'     && <PromoCodesSection />}
         {section === 'payments'   && <PaymentMethodsSection />}
         {section === 'sources'    && <AdSourcesSection />}
-        {section === 'classes'    && (
-          <div style={S.section}>
-            <div style={{ textAlign: 'center', color: 'var(--text-3)', paddingTop: 40 }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>🚧</div>
-              <div style={{ fontSize: 15, color: 'var(--text-2)' }}>В разработке</div>
-            </div>
-          </div>
-        )}
+        {section === 'classes'    && <ClassesSection />}
         {section === 'service'    && <ServiceSection />}
         {section === 'finance'    && <FinanceSection />}
         {section === 'funnels'    && <FunnelsSection />}

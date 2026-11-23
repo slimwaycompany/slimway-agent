@@ -1,0 +1,761 @@
+import { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { PermContext, usePerm } from '../../lib/permContext';
+import { toast } from '../../lib/toast';
+import { showConfirm } from '../../lib/confirm';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface DeviceInfo { id: string; number: string; status: string; session_minutes: number | null }
+interface DayBlock { type_code: string; name: string; grid_step_minutes: number; devices: DeviceInfo[] }
+interface BookingLabel { id: number; name: string; color: string; sort: number }
+interface BookingData {
+  id: string; group_id: string; booking_date: string;
+  starts_at: string; ends_at: string;
+  device_id: string; device_type_code: string;
+  client_id: string; kind: string;
+  client_plan_id: string | null; client_plan_item_id: string | null;
+  plan_id: string | null; phase: string | null; status: string;
+  session_burned: boolean; note: string | null; trainer: string | null;
+  cancel_reason: string | null;
+  client: { full_name: string; phone: string | null } | null;
+  plan_name: string | null;
+  sessions_left: number | null; sessions_total: number | null;
+  labels: BookingLabel[];
+}
+interface DayData {
+  date: string; day_start: string; day_end: string; now: string;
+  blocks: DayBlock[]; bookings: BookingData[];
+}
+interface ClientOption {
+  id: string; plan_id: string; status: string;
+  valid_until: string | null; extra_until: string | null;
+  crm_plans: { id: string; name: string } | null;
+  items: { id: string; device_type_code: string; phase: string; sessions_left: number; sessions_total: number; booked_ahead: number }[];
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function todayISO(): string { return new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10); }
+function pad2(n: number): string { return String(n).padStart(2, '0'); }
+function minsToStr(m: number): string { return pad2(Math.floor(m / 60)) + ':' + pad2(m % 60); }
+function strToMins(s: string): number { const [h, m] = s.split(':').map(Number); return h * 60 + m; }
+function getSlots(start: string, end: string, step: number): string[] {
+  const s = strToMins(start), e = strToMins(end);
+  const r: string[] = [];
+  for (let t = s; t + step <= e; t += step) r.push(minsToStr(t));
+  return r;
+}
+function bookingSlotTime(startsAt: string): string {
+  const d = new Date(new Date(startsAt).getTime() + 5 * 3600_000);
+  return pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes());
+}
+function nowLineOffset(dayStart: string, step: number, rowH: number): number | null {
+  const d = new Date(Date.now() + 5 * 3600_000);
+  const nowMins = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const startMins = strToMins(dayStart);
+  if (nowMins < startMins) return null;
+  return ((nowMins - startMins) / step) * rowH;
+}
+function labelBg(labels: BookingLabel[]): string | null {
+  return [...labels].sort((a, b) => a.sort - b.sort)[0]?.color ?? null;
+}
+function textOnHex(hex: string | null): string {
+  if (!hex) return 'var(--text)';
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return 0.2126 * (r / 255) + 0.7152 * (g / 255) + 0.0722 * (b / 255) > 0.4 ? '#1a202c' : '#ffffff';
+}
+function fmtWeekday(iso: string): string {
+  const d = new Date(iso + 'T12:00:00+05:00');
+  const days = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
+  const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  return days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()];
+}
+async function apiJ(method: string, url: string, body?: unknown) {
+  const o: RequestInit = { method, credentials: 'include' };
+  if (body) { o.headers = { 'Content-Type': 'application/json' }; o.body = JSON.stringify(body); }
+  const r = await fetch(url, o);
+  const d = await r.json().catch(() => ({}));
+  return { ok: r.ok, data: d };
+}
+
+const STATUS_ICON: Record<string, string> = {
+  booked: '?', confirmed: '✓', attended: '✓✓', no_show: '×', late_cancel: '×', cancelled: '×',
+};
+const STATUS_LABEL: Record<string, string> = {
+  booked: 'Записан', confirmed: 'Подтверждено', attended: 'Пришёл',
+  no_show: 'Не пришёл', late_cancel: 'Поздняя отмена', cancelled: 'Отменена',
+};
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+
+const ROW_H = 48;    // px per slot row
+const TIME_W = 64;   // px for time column
+const DEV_W = 130;   // min px per device column
+const HDR_H = 36;    // px for column header row
+
+// ── BookingCard ───────────────────────────────────────────────────────────────
+
+function BookingCard({ b }: { b: BookingData }) {
+  const bg = labelBg(b.labels);
+  const isRed = ['no_show', 'late_cancel', 'cancelled'].includes(b.status);
+  const cardBg = isRed ? '#7f1d1d' : (bg ?? 'var(--surface)');
+  const cardFg = isRed ? '#ffffff' : textOnHex(bg);
+  const extra = b.labels.slice(1);
+  return (
+    <div style={{ background: cardBg, borderRadius: 4, padding: '2px 5px', height: '100%', boxSizing: 'border-box', overflow: 'hidden', cursor: 'pointer' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+        <span style={{ flex: 1, fontWeight: 700, fontSize: 12, color: cardFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {b.client?.full_name ?? '—'}
+        </span>
+        {extra.map(l => <span key={l.id} style={{ width: 7, height: 7, borderRadius: '50%', background: l.color, flexShrink: 0 }} />)}
+      </div>
+      {b.note && <div style={{ fontSize: 10, color: cardFg, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.note}</div>}
+      <div style={{ fontSize: 10, color: cardFg, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {b.plan_name ?? (b.kind === 'free' ? '⚡ Бесплатно' : '—')}
+      </div>
+      <div style={{ display: 'flex', gap: 4, fontSize: 11, color: cardFg, opacity: 0.9, marginTop: 1 }}>
+        <span title={STATUS_LABEL[b.status]}>{STATUS_ICON[b.status]}</span>
+        {b.phase === 'active' && <span title="Активная">А</span>}
+        {b.phase === 'finishing' && <span title="Завершающая">З</span>}
+        {b.kind === 'free' && <span title="Бесплатное">⚡</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── BookingFormPanel ──────────────────────────────────────────────────────────
+
+function BookingFormPanel({
+  ctx, date, dayData, displayName, onClose, onDone,
+}: {
+  ctx: { type_code: string; slot?: string; device_id?: string };
+  date: string; dayData: DayData; displayName: string;
+  onClose: () => void; onDone: () => void;
+}) {
+  const [mode, setMode]           = useState<'plan' | 'free'>('plan');
+  const [clientQ, setClientQ]     = useState('');
+  const [clients, setClients]     = useState<{ id: string; full_name: string; phone: string | null }[]>([]);
+  const [selClient, setSelClient] = useState<{ id: string; full_name: string } | null>(null);
+  const [options, setOptions]     = useState<{ plans: ClientOption[]; free_services: { id: string; name: string }[] } | null>(null);
+  const [planId, setPlanId]       = useState('');
+  const [serviceId, setServiceId] = useState('');
+  const [slot, setSlot]           = useState(ctx.slot ?? '');
+  const [device, setDevice]       = useState(ctx.device_id ?? '');
+  const [note, setNote]           = useState('');
+  const [trainer, setTrainer]     = useState(displayName);
+  const [users, setUsers]         = useState<{ display_name: string }[]>([]);
+  const [withFin, setWithFin]     = useState(true);
+  const [suggestions, setSuggestions] = useState<{ date: string; time: string }[]>([]);
+  const [saving, setSaving]       = useState(false);
+  const qRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const block = dayData.blocks.find(b => b.type_code === ctx.type_code)!;
+  const slots = block ? getSlots(dayData.day_start, dayData.day_end, block.grid_step_minutes) : [];
+
+  useEffect(() => { fetch('/kviz/api/crm/users', { credentials: 'include' }).then(r => r.json()).then(setUsers).catch(() => {}); }, []);
+
+  useEffect(() => {
+    if (!selClient) { setOptions(null); return; }
+    apiJ('GET', `/kviz/api/crm/schedule/client-options?client_id=${selClient.id}`)
+      .then(({ ok, data }) => { if (ok) setOptions(data as typeof options); });
+  }, [selClient]);
+
+  function searchClients(q: string) {
+    if (qRef.current) clearTimeout(qRef.current);
+    if (!q.trim()) { setClients([]); return; }
+    qRef.current = setTimeout(async () => {
+      const { ok, data } = await apiJ('GET', `/kviz/api/crm/clients?q=${encodeURIComponent(q)}&limit=8`);
+      if (ok) setClients((data as { items: typeof clients }).items ?? []);
+    }, 300);
+  }
+
+  const selPlan = options?.plans.find(p => p.id === planId);
+  const matchItem = selPlan?.items.find(it => it.device_type_code === ctx.type_code);
+  const hasFinishing = selPlan?.items.some(it => it.phase === 'finishing' && it.sessions_left > 0);
+
+  async function submit() {
+    if (!selClient) { toast.error('Выберите клиента'); return; }
+    if (!slot)      { toast.error('Выберите время'); return; }
+    if (mode === 'plan' && !planId) { toast.error('Выберите абонемент'); return; }
+    if (mode === 'free' && !serviceId) { toast.error('Выберите услугу'); return; }
+    setSaving(true);
+    const payload: Record<string, unknown> = {
+      client_id: selClient.id,
+      kind: mode,
+      device_type_code: ctx.type_code,
+      date,
+      time: slot,
+      with_finishing: withFin,
+      note: note || null,
+      trainer: trainer || null,
+    };
+    if (device) payload.device_id = device;
+    if (mode === 'plan') { payload.client_plan_id = planId; }
+    else { payload.plan_id = serviceId; }
+    const { ok, data } = await apiJ('POST', '/kviz/api/crm/schedule/bookings', payload);
+    setSaving(false);
+    if (ok) { toast.success('Запись создана'); onDone(); }
+    else {
+      toast.error((data as { error: string }).error);
+      if ((data as { needs_suggest?: boolean }).needs_suggest) {
+        const sq = await apiJ('GET', `/kviz/api/crm/schedule/suggest?client_plan_id=${planId}&type=${ctx.type_code}&date=${date}&time=${slot}`);
+        if (sq.ok) setSuggestions(sq.data as typeof suggestions);
+      }
+    }
+  }
+
+  return (
+    <div style={SS.panelOverlay} onClick={onClose}>
+      <div className="sched-panel" style={SS.panel} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Новая запись · {block?.name}</h3>
+          <button style={SS.iconBtn} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Client search */}
+        <label style={SS.lbl}>Клиент</label>
+        {selClient
+          ? <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ flex: 1, fontSize: 13 }}>{selClient.full_name}</span>
+              <button style={SS.smallBtn} onClick={() => { setSelClient(null); setOptions(null); setPlanId(''); }}>Сменить</button>
+            </div>
+          : <div style={{ marginBottom: 10 }}>
+              <input style={SS.inp} placeholder="Поиск по имени или телефону…" value={clientQ}
+                onChange={e => { setClientQ(e.target.value); searchClients(e.target.value); }} />
+              {clients.length > 0 && (
+                <div style={SS.dropdown}>
+                  {clients.map(c => (
+                    <div key={c.id} style={SS.dropItem} onClick={() => { setSelClient(c); setClientQ(''); setClients([]); }}>
+                      {c.full_name} {c.phone ? <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{c.phone}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+        }
+
+        {/* Mode toggle */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <button style={{ ...SS.tabBtn, ...(mode === 'plan' ? SS.tabBtnActive : {}) }} onClick={() => setMode('plan')}>По абонементу</button>
+          <button style={{ ...SS.tabBtn, ...(mode === 'free' ? SS.tabBtnActive : {}) }} onClick={() => setMode('free')}>Бесплатно</button>
+        </div>
+
+        {/* Plan selection */}
+        {mode === 'plan' && options && (
+          <>
+            {options.plans.length === 0
+              ? <div style={SS.warn}>Нет активных абонементов</div>
+              : <select style={SS.inp} value={planId} onChange={e => setPlanId(e.target.value)}>
+                  <option value="">— выберите абонемент —</option>
+                  {options.plans.map(p => <option key={p.id} value={p.id}>{p.crm_plans?.name} · {p.status}</option>)}
+                </select>
+            }
+            {selPlan && !matchItem && (
+              <div style={SS.warn}>Нет абонемента с этим аппаратом. <a href="#" onClick={(e) => { e.preventDefault(); window.location.href = '/kviz/crm/cashier'; }}>Открыть Кассу</a></div>
+            )}
+            {selPlan && matchItem && (
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
+                {ctx.type_code}: {matchItem.sessions_left - matchItem.booked_ahead}/{matchItem.sessions_total} сеансов
+              </div>
+            )}
+            {hasFinishing && (
+              <label style={SS.checkLabel}>
+                <input type="checkbox" checked={withFin} onChange={e => setWithFin(e.target.checked)} />
+                + завершающая (аппарат подберётся сам)
+              </label>
+            )}
+          </>
+        )}
+        {mode === 'free' && options && (
+          <select style={SS.inp} value={serviceId} onChange={e => setServiceId(e.target.value)}>
+            <option value="">— выберите услугу —</option>
+            {options.free_services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        )}
+
+        {/* Time */}
+        <label style={SS.lbl}>Время</label>
+        <select style={SS.inp} value={slot} onChange={e => setSlot(e.target.value)}>
+          <option value="">— время —</option>
+          {slots.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        {/* Device */}
+        <label style={SS.lbl}>Аппарат (необязательно)</label>
+        <select style={SS.inp} value={device} onChange={e => setDevice(e.target.value)}>
+          <option value="">Автоматически</option>
+          {(block?.devices ?? []).filter(d => d.status === 'working').map(d => (
+            <option key={d.id} value={d.id}>{d.number}. Аппарат</option>
+          ))}
+        </select>
+
+        {/* Trainer + Note */}
+        <label style={SS.lbl}>Тренер</label>
+        <select style={SS.inp} value={trainer} onChange={e => setTrainer(e.target.value)}>
+          {users.map(u => <option key={u.display_name} value={u.display_name}>{u.display_name}</option>)}
+        </select>
+        <label style={SS.lbl}>Заметка</label>
+        <input style={SS.inp} value={note} onChange={e => setNote(e.target.value)} placeholder="Необязательно" />
+
+        {/* Suggestions */}
+        {suggestions.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Ближайшие свободные слоты:</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {suggestions.map(s => (
+                <button key={s.date+s.time} style={SS.smallBtn} onClick={() => { setSlot(s.time); setSuggestions([]); }}>
+                  {s.date !== date ? s.date + ' ' : ''}{s.time}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button style={{ ...SS.submitBtn, opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={submit}>
+          {saving ? 'Создаём…' : 'Записать'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── BookingDetailModal ────────────────────────────────────────────────────────
+
+function BookingDetailModal({
+  booking, allBookings, canBook, canAttend, isAdmin,
+  onClose, onDone, onRefresh,
+}: {
+  booking: BookingData; allBookings: BookingData[];
+  canBook: boolean; canAttend: boolean; isAdmin: boolean;
+  onClose: () => void; onDone: (changed: boolean) => void; onRefresh: () => void;
+}) {
+  const [labels, setLabels]       = useState<{ id: number; name: string; color: string; is_active: boolean }[]>([]);
+  const [selLabels, setSelLabels] = useState(new Set(booking.labels.map(l => l.id)));
+  const [note, setNote]           = useState(booking.note ?? '');
+  const [trainer, setTrainer]     = useState(booking.trainer ?? '');
+  const [users, setUsers]         = useState<{ display_name: string }[]>([]);
+  const [busy, setBusy]           = useState<string | null>(null);
+  const [showMove, setShowMove]   = useState(false);
+  const [showCancel, setShowCancel] = useState(false);
+  const [moveDate, setMoveDate]   = useState(booking.booking_date);
+  const [moveTime, setMoveTime]   = useState(bookingSlotTime(booking.starts_at));
+  const [cancelReason, setCancelReason] = useState('');
+  const [forceEarly, setForceEarly]     = useState(false);
+
+  const group = allBookings.filter(b => b.group_id === booking.group_id).sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+
+  useEffect(() => {
+    apiJ('GET', '/kviz/api/crm/booking-labels').then(({ ok, data }) => { if (ok) setLabels(data as typeof labels); });
+    fetch('/kviz/api/crm/users', { credentials: 'include' }).then(r => r.json()).then(setUsers).catch(() => {});
+  }, []);
+
+  async function setStatus(status: string) {
+    setBusy(status);
+    const { ok, data } = await apiJ('POST', `/kviz/api/crm/schedule/bookings/${booking.id}/status`, { status });
+    setBusy(null);
+    if (ok) { toast.success('Статус обновлён'); onDone(true); }
+    else toast.error((data as { error: string }).error);
+  }
+
+  async function saveLabels() {
+    const { ok, data } = await apiJ('PUT', `/kviz/api/crm/schedule/bookings/${booking.id}/labels`, { label_ids: [...selLabels] });
+    if (!ok) toast.error((data as { error: string }).error);
+  }
+
+  async function saveNote() {
+    const { ok, data } = await apiJ('PATCH', `/kviz/api/crm/schedule/bookings/${booking.id}`, { note, trainer });
+    if (ok) { toast.success('Сохранено'); onRefresh(); }
+    else toast.error((data as { error: string }).error);
+  }
+
+  async function doMove() {
+    setBusy('move');
+    const { ok, data } = await apiJ('POST', `/kviz/api/crm/schedule/bookings/${booking.id}/move`, { date: moveDate, time: moveTime });
+    setBusy(null);
+    if (ok) { toast.success('Запись перенесена'); onDone(true); }
+    else toast.error((data as { error: string }).error);
+  }
+
+  async function doCancel() {
+    if (!cancelReason.trim()) { toast.error('Укажите причину отмены'); return; }
+    const confirmed = await showConfirm({ title: 'Отменить запись?', message: cancelReason, confirmLabel: 'Отменить', cancelLabel: 'Нет' });
+    if (!confirmed) return;
+    setBusy('cancel');
+    const { ok, data } = await apiJ('POST', `/kviz/api/crm/schedule/bookings/${booking.id}/cancel`, { reason: cancelReason, force_early: forceEarly });
+    setBusy(null);
+    if (ok) { toast.success('Запись отменена'); onDone(true); }
+    else toast.error((data as { error: string }).error);
+  }
+
+  const isCancelled = ['cancelled', 'late_cancel'].includes(booking.status);
+  const isAttended  = ['attended', 'no_show'].includes(booking.status);
+
+  return (
+    <div style={SS.overlay} onClick={onClose}>
+      <div style={{ ...SS.modal, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{booking.client?.full_name ?? '—'}</h3>
+          <button style={SS.iconBtn} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Group bookings */}
+        <div style={{ marginBottom: 12 }}>
+          {group.map(b => (
+            <div key={b.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-2)', minWidth: 48 }}>{bookingSlotTime(b.starts_at)}</span>
+              <span style={{ flex: 1 }}>{b.device_type_code} · {b.phase === 'active' ? 'А' : b.phase === 'finishing' ? 'З' : '—'}</span>
+              <span style={{ color: 'var(--text-2)', fontSize: 12 }}>{STATUS_LABEL[b.status]}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Plan/sessions info */}
+        {booking.plan_name && (
+          <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10 }}>
+            {booking.plan_name}
+            {booking.sessions_left !== null && <> · осталось: {booking.sessions_left}/{booking.sessions_total}</>}
+          </div>
+        )}
+
+        {/* Status buttons */}
+        {canAttend && !isCancelled && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+            {!isAttended && booking.status !== 'confirmed' && (
+              <button style={SS.smallBtn} disabled={!!busy} onClick={() => setStatus('confirmed')}>Подтверждено</button>
+            )}
+            {!isAttended && (
+              <button style={{ ...SS.smallBtn, background: 'var(--success)', color: '#fff' }} disabled={!!busy} onClick={() => setStatus('attended')}>Пришёл</button>
+            )}
+            {!isAttended && (
+              <button style={{ ...SS.smallBtn, background: 'var(--danger)', color: '#fff' }} disabled={!!busy} onClick={() => setStatus('no_show')}>Не пришёл</button>
+            )}
+            {isAttended && (
+              <button style={SS.smallBtn} disabled={!!busy} onClick={() => setStatus('booked')}>Вернуть в «Записан»</button>
+            )}
+          </div>
+        )}
+
+        {/* Move */}
+        {canBook && !isCancelled && !isAttended && (
+          <div style={{ marginBottom: 10 }}>
+            <button style={SS.smallBtn} onClick={() => setShowMove(!showMove)}>Перенести</button>
+            {showMove && (
+              <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div>
+                  <label style={SS.lbl}>Дата</label>
+                  <input type="date" style={SS.inp} value={moveDate} onChange={e => setMoveDate(e.target.value)} />
+                </div>
+                <div>
+                  <label style={SS.lbl}>Время</label>
+                  <input type="time" step={60} style={SS.inp} value={moveTime} onChange={e => setMoveTime(e.target.value)} />
+                </div>
+                <button style={{ ...SS.smallBtn, background: 'var(--primary)', color: '#fff' }} disabled={busy === 'move'} onClick={doMove}>
+                  {busy === 'move' ? '…' : 'Перенести'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Cancel */}
+        {canBook && !isCancelled && (
+          <div style={{ marginBottom: 12 }}>
+            <button style={{ ...SS.smallBtn, color: 'var(--danger)' }} onClick={() => setShowCancel(!showCancel)}>Отменить…</button>
+            {showCancel && (
+              <div style={{ marginTop: 8 }}>
+                <input style={SS.inp} placeholder="Причина отмены (обязательно)" value={cancelReason} onChange={e => setCancelReason(e.target.value)} />
+                {isAdmin && (
+                  <label style={SS.checkLabel}>
+                    <input type="checkbox" checked={forceEarly} onChange={e => setForceEarly(e.target.checked)} />
+                    Считать ранней отменой
+                  </label>
+                )}
+                <button style={{ ...SS.smallBtn, background: 'var(--danger)', color: '#fff', marginTop: 6 }}
+                  disabled={busy === 'cancel'} onClick={doCancel}>
+                  {busy === 'cancel' ? '…' : 'Подтвердить отмену'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Labels */}
+        {canBook && labels.filter(l => l.is_active).length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 4 }}>Этикетки</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {labels.filter(l => l.is_active).map(l => (
+                <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={selLabels.has(l.id)} onChange={e => {
+                    setSelLabels(prev => { const s = new Set(prev); e.target.checked ? s.add(l.id) : s.delete(l.id); return s; });
+                  }} />
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: l.color, display: 'inline-block' }} />
+                  {l.name}
+                </label>
+              ))}
+            </div>
+            <button style={{ ...SS.smallBtn, marginTop: 6 }} onClick={saveLabels}>Сохранить этикетки</button>
+          </div>
+        )}
+
+        {/* Note + Trainer */}
+        {canBook && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={SS.lbl}>Заметка</label>
+            <input style={SS.inp} value={note} onChange={e => setNote(e.target.value)} />
+            <label style={SS.lbl}>Тренер</label>
+            <select style={SS.inp} value={trainer} onChange={e => setTrainer(e.target.value)}>
+              <option value="">—</option>
+              {users.map(u => <option key={u.display_name} value={u.display_name}>{u.display_name}</option>)}
+            </select>
+            <button style={{ ...SS.smallBtn, marginTop: 4 }} onClick={saveNote}>Сохранить</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── SmsDialog ─────────────────────────────────────────────────────────────────
+
+function SmsDialog({ type_code, bookings, onClose }: { type_code: string; bookings: BookingData[]; onClose: () => void }) {
+  return (
+    <div style={SS.overlay} onClick={onClose}>
+      <div style={SS.modal} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Клиенты блока {type_code.toUpperCase()}</h3>
+          <button style={SS.iconBtn} onClick={onClose}>✕</button>
+        </div>
+        {bookings.length === 0
+          ? <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет записей</div>
+          : bookings.map(b => (
+            <div key={b.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ flex: 1 }}>{bookingSlotTime(b.starts_at)} · {b.client?.full_name}</span>
+              {b.client?.phone && (
+                <a href={`https://wa.me/${b.client.phone}`} target="_blank" rel="noreferrer"
+                  style={{ fontSize: 12, color: '#25D366', textDecoration: 'none', background: '#d1fae5', padding: '2px 8px', borderRadius: 4 }}>
+                  WhatsApp
+                </a>
+              )}
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+export default function SchedulePage() {
+  const { display_name, role } = useContext(PermContext);
+  const canBook    = usePerm('schedule.book', 'edit');
+  const canAttend  = usePerm('schedule.attend', 'edit');
+  const isAdmin    = role === 'admin';
+
+  const [date, setDate]         = useState(todayISO);
+  const [dayData, setDayData]   = useState<DayData | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [nowTick, setNowTick]   = useState(0); // triggers time-line re-render
+  const [blockCfg, setBlockCfg] = useState<Record<string, { showCancelled: boolean; showRepair: boolean }>>(() => {
+    try { return JSON.parse(localStorage.getItem('sched-block-cfg') || '{}'); } catch { return {}; }
+  });
+  const [cfgOpen, setCfgOpen]   = useState<string | null>(null);
+  const [smsBlock, setSmsBlock] = useState<string | null>(null);
+  const [formCtx, setFormCtx]   = useState<{ type_code: string; slot?: string; device_id?: string } | null>(null);
+  const [detail, setDetail]     = useState<BookingData | null>(null);
+
+  const loadDay = useCallback(async (d: string) => {
+    setLoading(true);
+    const { ok, data } = await apiJ('GET', `/kviz/api/crm/schedule/day?date=${d}`);
+    setLoading(false);
+    if (ok) setDayData(data as DayData);
+    else toast.error((data as { error: string }).error || 'Не удалось загрузить расписание');
+  }, []);
+
+  useEffect(() => { loadDay(date); }, [date, loadDay]);
+  useEffect(() => { const t = setInterval(() => setNowTick(n => n + 1), 60_000); return () => clearInterval(t); }, []);
+
+  function saveBlockCfg(tc: string, cfg: Partial<{ showCancelled: boolean; showRepair: boolean }>) {
+    setBlockCfg(prev => {
+      const next = { ...prev, [tc]: { showCancelled: false, showRepair: false, ...prev[tc], ...cfg } };
+      try { localStorage.setItem('sched-block-cfg', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  const today = todayISO();
+  const isPast = date < today;
+
+  return (
+    <div style={SS.page} onClick={() => { if (cfgOpen) setCfgOpen(null); }}>
+      {/* Date navigation */}
+      <div style={SS.dateNav}>
+        <button style={SS.navBtn} onClick={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate()-1); return n.toISOString().slice(0,10); })}>← Вчера</button>
+        <button style={{ ...SS.navBtn, ...(date === today ? SS.navBtnActive : {}) }} onClick={() => setDate(today)}>Сегодня</button>
+        <button style={SS.navBtn} onClick={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate()+1); return n.toISOString().slice(0,10); })}>Завтра →</button>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} style={SS.dateInput} />
+        <span style={SS.dateLabel}>{(() => { const s = fmtWeekday(date); return s.charAt(0).toUpperCase() + s.slice(1); })()}</span>
+        {loading && <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 8 }}>загрузка…</span>}
+      </div>
+
+      {/* Blocks */}
+      {dayData && (
+        <div className="sched-blocks" style={SS.blocksWrap}>
+          {dayData.blocks.map(block => {
+            const cfg = blockCfg[block.type_code] || { showCancelled: false, showRepair: false };
+            const slots = getSlots(dayData.day_start, dayData.day_end, block.grid_step_minutes);
+            const visDevices = block.devices.filter(d => d.status === 'working' || (cfg.showRepair && d.status !== 'disabled'));
+            const bkgs = dayData.bookings.filter(b =>
+              b.device_type_code === block.type_code &&
+              (cfg.showCancelled || !['cancelled', 'late_cancel'].includes(b.status))
+            );
+            const nowTop = date === today ? nowLineOffset(dayData.day_start, block.grid_step_minutes, ROW_H) : null;
+            void nowTick; // trigger re-render for time line
+
+            return (
+              <div key={block.type_code} className="sched-block" style={SS.block}>
+                {/* Header */}
+                <div style={SS.blockHdr}>
+                  <span style={SS.blockTitle}>{block.name.toUpperCase()}</span>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {canBook && !isPast && (
+                      <button style={SS.hdrBtn} title="Новая запись" onClick={e => { e.stopPropagation(); setFormCtx({ type_code: block.type_code }); }}>📅+</button>
+                    )}
+                    <div style={{ position: 'relative' }}>
+                      <button style={SS.hdrBtn} title="Настройки блока" onClick={e => { e.stopPropagation(); setCfgOpen(cfgOpen === block.type_code ? null : block.type_code); }}>⚙</button>
+                      {cfgOpen === block.type_code && (
+                        <div style={SS.popover} onClick={e => e.stopPropagation()}>
+                          <label style={SS.checkLabel}>
+                            <input type="checkbox" checked={cfg.showCancelled} onChange={e => saveBlockCfg(block.type_code, { showCancelled: e.target.checked })} />
+                            Показывать отменённые
+                          </label>
+                          <label style={SS.checkLabel}>
+                            <input type="checkbox" checked={cfg.showRepair} onChange={e => saveBlockCfg(block.type_code, { showRepair: e.target.checked })} />
+                            Аппараты в ремонте
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                    <button style={{ ...SS.hdrBtn, background: '#ef4444', color: '#fff' }} title="Список клиентов" onClick={e => { e.stopPropagation(); setSmsBlock(block.type_code); }}>SMS</button>
+                  </div>
+                </div>
+
+                {/* Grid */}
+                <div style={SS.gridWrap}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: `${TIME_W}px ${visDevices.map(() => `minmax(${DEV_W}px,1fr)`).join(' ')}`,
+                    minWidth: TIME_W + visDevices.length * DEV_W,
+                    position: 'relative',
+                  }}>
+                    {/* Column headers */}
+                    <div style={{ ...SS.cell, ...SS.cellHdr, position: 'sticky', left: 0, zIndex: 3 }}>Час</div>
+                    {visDevices.map(dev => (
+                      <div key={dev.id} style={{
+                        ...SS.cell, ...SS.cellHdr,
+                        background: dev.status !== 'working' ? 'var(--surface-muted,#f1f5f9)' : 'var(--surface-2)',
+                        color: dev.status !== 'working' ? 'var(--text-3)' : 'var(--text)',
+                      }}>
+                        {dev.status !== 'working' ? 'Ремонт' : <div>{dev.number}.<br /><span style={{ fontSize: 10, fontWeight: 400 }}>Аппарат</span></div>}
+                      </div>
+                    ))}
+
+                    {/* Data rows */}
+                    {slots.map((slotTime, rowIdx) => (
+                      <>
+                        <div key={slotTime + '_t'} style={{ ...SS.cell, ...SS.cellTime, top: HDR_H + rowIdx * ROW_H }}>{slotTime}</div>
+                        {visDevices.map(dev => {
+                          const bk = bkgs.find(b => b.device_id === dev.id && bookingSlotTime(b.starts_at) === slotTime);
+                          const isRepair = dev.status !== 'working';
+                          return (
+                            <div key={dev.id + '_' + slotTime}
+                              style={{
+                                ...SS.cell,
+                                background: isRepair ? 'var(--surface-muted,#f1f5f9)' : undefined,
+                                cursor: !isRepair && canBook && !isPast ? 'pointer' : 'default',
+                                padding: bk ? 2 : 0,
+                              }}
+                              onClick={() => {
+                                if (bk) setDetail(bk);
+                                else if (!isRepair && canBook && !isPast) setFormCtx({ type_code: block.type_code, slot: slotTime, device_id: dev.id });
+                              }}
+                            >
+                              {bk && <BookingCard b={bk} />}
+                            </div>
+                          );
+                        })}
+                      </>
+                    ))}
+
+                    {/* Now line */}
+                    {nowTop !== null && nowTop > 0 && (
+                      <div style={{ position: 'absolute', left: 0, right: 0, top: HDR_H + nowTop, height: 2, background: 'var(--primary,#02BDB6)', zIndex: 10, pointerEvents: 'none' }} />
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Panels / modals */}
+      {formCtx && canBook && dayData && (
+        <BookingFormPanel ctx={formCtx} date={date} dayData={dayData} displayName={display_name}
+          onClose={() => setFormCtx(null)} onDone={() => { setFormCtx(null); loadDay(date); }} />
+      )}
+      {detail && dayData && (
+        <BookingDetailModal booking={detail} allBookings={dayData.bookings}
+          canBook={canBook} canAttend={canAttend} isAdmin={isAdmin}
+          onClose={() => setDetail(null)}
+          onDone={(ch) => { if (ch) loadDay(date); setDetail(null); }}
+          onRefresh={() => loadDay(date)} />
+      )}
+      {smsBlock && dayData && (
+        <SmsDialog type_code={smsBlock}
+          bookings={dayData.bookings.filter(b => b.device_type_code === smsBlock && ['booked','confirmed','attended'].includes(b.status))}
+          onClose={() => setSmsBlock(null)} />
+      )}
+    </div>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const SS: Record<string, React.CSSProperties> = {
+  page:   { height: '100vh', height: '100dvh' as unknown as React.CSSProperties['height'], display: 'flex', flexDirection: 'column', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--bg,#f8fafc)', overflow: 'hidden' },
+  dateNav: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--surface,#fff)', borderBottom: '1px solid var(--border,#e2e8f0)', flexShrink: 0, flexWrap: 'wrap' },
+  navBtn:  { padding: '5px 12px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)', cursor: 'pointer', fontSize: 13 },
+  navBtnActive: { background: 'var(--primary,#02BDB6)', color: '#fff', borderColor: 'var(--primary,#02BDB6)' },
+  dateInput: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, padding: '4px 8px', fontSize: 13, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)' },
+  dateLabel: { fontSize: 14, fontWeight: 600, color: 'var(--text,#1a202c)' },
+  blocksWrap: { flex: 1, display: 'flex', gap: 8, padding: 12, overflowX: 'auto', overflowY: 'auto', alignItems: 'flex-start' },
+  block: { flex: '1 1 280px', minWidth: 280, border: '1px solid var(--border,#e2e8f0)', borderRadius: 10, background: 'var(--surface,#fff)', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  blockHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderBottom: '1px solid var(--border,#e2e8f0)', background: 'var(--surface-2,#f8fafc)' },
+  blockTitle: { fontWeight: 800, fontSize: 13, color: 'var(--text,#1a202c)', letterSpacing: 0.5 },
+  hdrBtn: { padding: '3px 8px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 5, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 12 },
+  popover: { position: 'absolute', right: 0, top: '100%', zIndex: 20, background: 'var(--surface,#fff)', border: '1px solid var(--border,#e2e8f0)', borderRadius: 8, padding: 10, minWidth: 200, boxShadow: '0 4px 16px rgba(0,0,0,.1)' },
+  checkLabel: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, cursor: 'pointer', marginBottom: 6 },
+  gridWrap: { overflowX: 'auto', flex: 1, overflowY: 'auto', maxHeight: 'calc(100vh - 180px)' },
+  cell: { height: ROW_H, borderBottom: '1px solid var(--border,#e2e8f0)', borderRight: '1px solid var(--border,#e2e8f0)', background: 'var(--surface,#fff)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', padding: 0, overflow: 'hidden' },
+  cellHdr: { height: HDR_H, background: 'var(--surface-2,#f8fafc)', fontWeight: 700, fontSize: 12, position: 'sticky', top: 0, zIndex: 2 },
+  cellTime: { fontSize: 11, color: 'var(--text-2,#64748b)', background: 'var(--surface,#fff)', position: 'sticky', left: 0, zIndex: 1, fontWeight: 600 },
+  loading: { padding: 40, textAlign: 'center', color: 'var(--text-3,#94a3b8)', fontSize: 14 },
+  // Form panel
+  panelOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 100, display: 'flex', justifyContent: 'flex-end' },
+  panel: { width: 360, maxWidth: '100vw', background: 'var(--surface,#fff)', height: '100%', overflowY: 'auto', padding: 16, boxSizing: 'border-box', borderLeft: '1px solid var(--border,#e2e8f0)' },
+  inp: { width: '100%', padding: '7px 10px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, fontSize: 14, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)', boxSizing: 'border-box', marginBottom: 6 },
+  lbl: { display: 'block', fontSize: 12, color: 'var(--text-2,#64748b)', marginBottom: 2, fontWeight: 600 },
+  dropdown: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, background: 'var(--surface,#fff)', boxShadow: '0 4px 12px rgba(0,0,0,.08)', maxHeight: 200, overflowY: 'auto', marginBottom: 6 },
+  dropItem: { padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border,#e2e8f0)' },
+  warn: { fontSize: 12, color: 'var(--warning,#f59e0b)', background: 'var(--warning-soft,#fef3c7)', padding: '6px 10px', borderRadius: 6, marginBottom: 6 },
+  tabBtn: { padding: '5px 12px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 12 },
+  tabBtnActive: { background: 'var(--primary,#02BDB6)', color: '#fff', borderColor: 'var(--primary,#02BDB6)' },
+  submitBtn: { width: '100%', padding: '10px', background: 'var(--primary,#02BDB6)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', marginTop: 8 },
+  smallBtn: { padding: '4px 10px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 5, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 12 },
+  iconBtn: { padding: '4px 8px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, color: 'var(--text-2,#64748b)' },
+  // Modal
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  modal: { background: 'var(--surface,#fff)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.2)', boxSizing: 'border-box' },
+};

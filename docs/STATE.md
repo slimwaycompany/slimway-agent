@@ -18,12 +18,13 @@
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 29.10.2026 | Пагинация списка клиентов, bypass 1000-row, счётчик, «Показать ещё» |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |
-| CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | ⚪ | 28.10.2026 | Требования собраны, следующий этап после кассы |
+| CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 23.11.2026 | task 82: сетка дня по аппаратам, брони, этикетки, ClassesSection в Настройках — ждёт проверки на проде |
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 21.11.2026 | task 81: единый формат вариантов id/label, none_option, not_none, checklist без потерь, sw.js |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | 🟡 | 19.11.2026 | task 71: меню кружка поверх iframe (#top-bar stacking context fix) |
 | Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 18.11.2026 | task 66: каталог проверок, линейки ролей (версии), движок v2, конструктор в Настройках, API, temp экран |
 | Telegram-бот клиентов | `modules/telegram-bot.md` | Telegram-бот клиентов | 🟡 | 17.11.2026 | task 60: InBody детальный экран — 4 блока (состав/до цели/с прошлого/со старта), навигация ‹/›, ideal_weight |
+| Виртуальная АТС (OnlinePBX) | `modules/pbx.md` | АТС (OnlinePBX) | 🟡 | 21.11.2026 | модуль создан; приёмник вебхука из task 65, объём «виртуальной АТС» уточняется |
 
 Вкладка «Воронка» — модуль `modules/crm-leads.md` (пока заглушка, собираем требования).
 
