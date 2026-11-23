@@ -50,6 +50,11 @@
 - Модальные окна (MovementModal, CloseShiftModal, RefundDialog) используют `width: '90%', maxWidth: 420` — уже адаптивны.
 
 ## Сделано
+### 23.11.2026 · 2680116 · task 85 — fitbase-продажи исключены из расчётов смены
+- `crm_sales` получила колонку `source text check in ('crm','fitbase') default 'crm'`. Fitbase-импортированные продажи пишутся с `source='fitbase'` и `shift_id=null` → автоматически не попадают в суммы смены и расчёт ожидаемой наличности. Код кассы не менялся — фильтрация по `shift_id IS NOT NULL` уже работала.
+- `crm_sales` также получила `fitbase_order_id bigint` и `paid_at timestamptz` для связки с историей Fitbase.
+- Karточка клиента: вкладка «Продажи» отображает `source='fitbase'`-продажи с меткой «Fitbase» вместо номера чека; поле cashier может быть null — показывается «—».
+
 ### 29.10.2026 · (текущий) · payload checkout/refund — явная сборка, правильные ключи
 - `crm_checkout` payload: больше нет `{ ...b }`. Сервер собирает payload явно: `items[].type` (не `item_type`), `unit_price` (из БД, не из браузера), `start_date` (null если start_mode != 'date'). `payments[].method_id` — Number(). Если план/товар не найден в БД — 400 без вызова RPC. Ответ `{sale_id, number, total}` (объект, не UUID).
 - `crm_refund` payload: аналогично явная сборка — `sale_id`, `shift_id` (с сервера), `reason`, `created_by`, `items`, `payments[].method_id` Number(). Ответ `{refund_id, amount}`.

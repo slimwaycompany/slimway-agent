@@ -43,6 +43,13 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
+### 23.11.2026 · 2680116 · task 85 — связка body_clients ↔ crm_clients, UI в Настройках
+- `body_clients` получила колонки `crm_client_id uuid references crm_clients` и `crm_link_method text check in ('fitbase_id','phone','manual')`.
+- `src/jobs/fitbaseHistoryImport.ts`: `linkBodyClients()` — автосвязка по `fitbase_client_id`, затем по последним 10 цифрам телефона (только уникальное совпадение); не перезаписывает `crm_link_method='manual'`; `getLinkStats()` — счётчики (linked, no_crm_pair, disputed).
+- `src/http/crm.ts`: новые эндпоинты `GET /kviz/api/crm/inbody-link-stats`, `POST /kviz/api/crm/inbody-link-auto`, `POST /kviz/api/crm/body-clients/:id/link`, `POST /kviz/api/crm/body-clients/:id/unlink`.
+- `kviz/client/src/pages/crm/SettingsPage.tsx`: в разделе «Данные InBody» — счётчики связей (linked/disputed/no_crm_pair), список спорных записей, кнопки «Автосвязь», ручная привязка/отвязка.
+- Нightly-импорт вызывает `linkBodyClients()` автоматически.
+
 ### 20.11.2026 · task 77 · карточка клиента — NormBar без нормы показывает значение; Row dp-пропс; Минералы 2 знака
 
 - **ClientPage.tsx** `NormBar`: если норма отсутствует (`lo/hi == null`), показывает значение числом без полосы (раньше ставил `—`).
