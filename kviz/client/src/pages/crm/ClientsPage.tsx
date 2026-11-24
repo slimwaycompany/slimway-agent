@@ -27,7 +27,7 @@ interface ClientFull extends ClientRow {
   instagram: string | null; tiktok: string | null; email: string | null;
 }
 
-interface DeviceType { code: string; name: string; is_active: boolean }
+interface DeviceType { code: string; name: string }
 
 interface RefClient { id: string; full_name: string; phone: string | null }
 interface ClientBalance { deposit: number; bonus: number }
@@ -594,7 +594,7 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     fetch('/kviz/api/crm/client-tags', { credentials: 'include' })
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setAllTags(d); }).catch(() => {});
     fetch('/kviz/api/crm/device-types', { credentials: 'include' })
-      .then(r => r.json()).then(d => { if (Array.isArray(d)) setDeviceTypes(d.filter((x: DeviceType) => x.is_active)); }).catch(() => {});
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setDeviceTypes(d); }).catch(() => {});
   }, [clientId, loadSummary]);
 
   useEffect(() => { loadFeed(); }, [loadFeed]);
