@@ -18,9 +18,24 @@
 - `crm_settings`: `schedule.day_start` / `schedule.day_end` — запасной fallback когда `crm_day_hours` вернул null; `lessons.*`, `labels.*`
 - `crm_branches` — реквизиты: legal_name, bin, country, city, address, phone, timezone, currency, language, socials (jsonb)
 - `crm_branch_hours` — часы работы: branch_id, weekday (1–7, пн=1), is_open, open_time, close_time
+- `crm_devices.is_virtual` — булев флаг; виртуальные аппараты не выдаются в `GET /devices` (настройки/отчёты), но возвращаются в `schedule/day` как `virtual_devices` и в `free-devices?include_virtual=1`
 - RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`, `crm_day_hours(p_date)` → (is_open, open_time, close_time)
 
 ## Сделано
+### 24.11.2026 · task 90-1 + 91 · Граница прокрутки, время на строках, конец дня, брони по времени, ЛКМ/ПКМ, запись вне слота, доп. аппараты
+- **`src/http/crm.ts`**: `GET /devices` фильтрует `is_virtual=false`; `schedule/day` добавляет `is_virtual` в select, режет `open_time`/`close_time` до `'HH:MM'` (`.slice(0,5)`), делит аппараты на `realByType` + `virtByType`, блок имеет `devices` (реальные) и `virtual_devices` (виртуальные, только `id+number`); `free-devices` принимает `include_virtual=1` и возвращает виртуальные по запросу.
+- **`kviz/client/src/pages/crm/ClientsPage.tsx`**: `function ClientPopup` → `export function ClientPopup` (только этот экспорт, остальное без изменений).
+- **`kviz/client/src/pages/crm/SchedulePage.tsx`** — полный рефакторинг (~1029 строк):
+  - **Граница прокрутки (ч.1):** `blocksWrap.padding = '0 12px 12px'` — нет верхнего отступа, строки не выплывают за sticky-шапку.
+  - **Время на строках (ч.2):** `alignItems: 'flex-start'` на ячейке времени — метка прижата к верху.
+  - **Конец дня (ч.3):** `grayH = max(0, (dayEndMins−lastSlotEndMins)×PX_PER_MIN)` — серая полоса после последнего слота; «закрывающая» строка `height=HDR_H` с `borderTop='2px solid'` и меткой времени `day_end` на одной высоте во всех блоках.
+  - **Брони по времени (ч.4):** макет колонок — flex (не CSS grid); каждая колонка `position:relative`; оверлей `position:absolute; top:HDR_H; height:bodyH`; карточка: `top=(startMins−dayStartMins)×PX_PER_MIN`, `height=max(18, durationMins×PX_PER_MIN−1)`; `showTime` prop показывает `HH:MM` на карточке вне слота.
+  - **ЛКМ/ПКМ (ч.5):** ЛКМ → `setDetail(b)`; ПКМ → `setClientPopupId(b.client_id)`; `ClientPopup` рендерится в overlay при `clientPopupId !== null`; `onEdit` → `navigate('/crm/clients#client=…')`; «Карточка клиента» кнопка в `BookingDetailModal`; tooltip на карточке.
+  - **Запись вне слота (ч.6):** CalendarPlus кнопка открывает форму с `freeTime=true` → `<input type="time" step={60}>`; клик по ячейке — слот как прежде; валидация `[day_start, day_end)` при freeTime.
+  - **Доп. аппараты (ч.7):** `extraVirtual: 0|1|2|3` в `blockCfg` (localStorage); виртуальные колонки с hatched bg и dashed border, заголовок «Доп. N / сверх»; кнопки `[+1][+2][+3][Скрыть]` в поповере настроек; колонка с бронью всегда видна; запись на вирт. аппарат — спец. подсказка `NO_FINISHING_SLOT`.
+  - Now-линия перенесена в абсолютный оверлей каждой колонки.
+  - `adSources` подгружаются в `useEffect` для формы записи.
+
 ### 24.11.2026 · task 89 (2) · Пара броней + ограничение абонемента по дням/времени
 - **Сервер `src/http/crm.ts`**:
   - `POST /status`: добавлен параметр `only_this`; RPC возвращает `{ booking_ids[], status, plan_activated }` → аудит пишется по каждому `booking_id` в массиве.
@@ -36,6 +51,12 @@
 
 ### 24.11.2026 · task 89 · Cross-абонементы: matchItem находит пул, itemLabel в форме записи
 - **`SchedulePage.tsx`**: `ClientOption.items` — `device_type_code: string | null`, `device_type_codes?`, `is_unlimited?`, `daily_limit?`, `sessions_left/sessions_total: number | null`. `matchItem` теперь находит строку пула (`device_type_codes.includes(ctx.type_code)`). `hasFinishing` исключает пул-строки. Информация о выбранном абонементе использует `itemLabel(matchItem, dtNameMap)` (dtNameMap строится из `dayData.blocks`).
+
+## Ключевые решения (добавлены task 90-1+91)
+- **Брони — абсолютное позиционирование по времени**: каждая колонка аппарата `position:relative`; оверлей `height=bodyH`; `top=(startMins−dayStartMins)×PX_PER_MIN`. Брони вне слота видны там, где они фактически стоят.
+- **Доп. аппараты = виртуальные `crm_devices.is_virtual`**: реальные не меняются; виртуальные — колонки со штриховкой. `extraVirtual` (0–3) в localStorage; колонка с бронью всегда видна.
+- **ПКМ по брони → `ClientPopup`**: `clientPopupId` state → `ClientPopup` из `ClientsPage.tsx` (только `export` добавлен). `onEdit` → navigate к `/crm/clients#client=…`.
+- **`crm_day_hours` возвращает `HH:MM:SS`**: режем до `'HH:MM'` на сервере (`.slice(0,5)`) до передачи клиенту.
 
 ## Ключевые решения (добавлены task 90, сетка)
 - **Единый масштаб `PX_PER_MIN = 1.9`** — все блоки используют одно значение; высота строки = `grid_step_minutes × PX_PER_MIN`. При одинаковом `day_start` у всех блоков одинаковое время стоит на одной высоте. При изменении масштаба — поменять одну константу.
@@ -167,6 +188,9 @@
 ## Открытые баги
 
 ## Следующее
+- **(план ТЗ от 24.11.2026):** 92 (заметки дня — блок под сеткой, мини-чат) → 93 (автометки клиента: SQL + расписание, показ в списке клиентов).
+- **Зависимые (автоматические) метки-теги клиента:** Новый клиент · Нужен замер тела · Нужен InBody · Кончился абонемент · Кончается абонемент (≤2 занятий или ≤7 дней) · Давно не посещал (>7 дней) · Стоит вес (плато — Δ InBody <0.3 кг за 2 теста) · Нерегулярно ходит (<2 р/нед за 2 недели) · Неполный платёж · Проблемный клиент (ручная). Метка у клиента — видна в списке и плашкой на бронях. Пороги в Настройках.
+- **Заметки менеджеров (задача 92):** блок под сеткой на конкретный день, автор + время.
 - **Проверить на проде** (task 90 сетка): прокрутка без полос; 12:00 у VACU и InfraStep на одной высоте; «VacuActiv 1…3» в заголовках; кнопка «календарь+» есть во всех блоках; мобиле (375px) — snap-прокрутка блоков.
 - **Проверить на проде** (task 83): запись/статус/этикетки; суббота с часами (is_open=true); проверить закрытый день (is_open=false); badge-этикетки в карточках; BranchSection → сохранить реквизиты и часы.
 - **Проверить на проде** (task 82): создать запись, отметить «Пришёл», отменить, проверить этикетки.

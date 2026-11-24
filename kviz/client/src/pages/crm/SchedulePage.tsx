@@ -1,15 +1,23 @@
 import { useState, useEffect, useCallback, useContext, useRef } from 'react';
 import { CalendarPlus, SlidersHorizontal } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { PermContext, usePerm } from '../../lib/permContext';
 import { toast } from '../../lib/toast';
 import { showConfirm } from '../../lib/confirm';
 import { itemLabel } from '../../utils/planItemLabel';
 import { planMatchesSlot } from '../../lib/planRestriction';
+import { ClientPopup } from './ClientsPage';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean }
 interface DeviceInfo { id: string; number: string; status: string; session_minutes: number | null }
-interface DayBlock { type_code: string; name: string; grid_step_minutes: number; devices: DeviceInfo[] }
+interface VirtualDevice { id: string; number: string }
+interface DayBlock {
+  type_code: string; name: string; grid_step_minutes: number;
+  devices: DeviceInfo[];
+  virtual_devices?: VirtualDevice[];
+}
 interface BookingLabel { id: number; name: string; color: string; sort: number; short_name?: string | null }
 interface BookingData {
   id: string; group_id: string; booking_date: string;
@@ -53,6 +61,13 @@ function bookingSlotTime(startsAt: string): string {
   const d = new Date(new Date(startsAt).getTime() + 5 * 3600_000);
   return pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes());
 }
+function bookingTimeMins(isoStr: string): number {
+  const d = new Date(new Date(isoStr).getTime() + 5 * 3600_000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+function bookingDurationMins(b: BookingData): number {
+  return Math.round((new Date(b.ends_at).getTime() - new Date(b.starts_at).getTime()) / 60_000);
+}
 function nowLineOffset(dayStart: string): number | null {
   const d = new Date(Date.now() + 5 * 3600_000);
   const nowMins = d.getUTCHours() * 60 + d.getUTCMinutes();
@@ -93,11 +108,11 @@ const STATUS_RU: Record<string, string> = { active: 'активен', not_activa
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const PX_PER_MIN = 1.9;  // unified px/min scale — 40 min ≈ 76 px, 30 min ≈ 57 px
-const TIME_W = 44;        // px for time column
-const DEV_W = 96;         // min px per device column
-const HDR_H = 26;         // px for column header row
-const BLK_H = 32;         // px for block title row (sticky offset for column headers)
+const PX_PER_MIN = 1.9;
+const TIME_W = 44;
+const DEV_W  = 96;
+const HDR_H  = 26;
+const BLK_H  = 32;
 
 // ── LabelBadge ───────────────────────────────────────────────────────────────
 
@@ -118,7 +133,7 @@ function LabelBadge({ label, onCard }: { label: BookingLabel; onCard: boolean })
 
 // ── BookingCard ───────────────────────────────────────────────────────────────
 
-function BookingCard({ b }: { b: BookingData }) {
+function BookingCard({ b, showTime }: { b: BookingData; showTime?: boolean }) {
   const bg = labelBg(b.labels);
   const isRed = ['no_show', 'late_cancel', 'cancelled'].includes(b.status);
   const cardBg = isRed ? '#7f1d1d' : (bg ?? 'var(--surface)');
@@ -133,9 +148,14 @@ function BookingCard({ b }: { b: BookingData }) {
       <div style={{ fontSize: 10, color: cardFg, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {b.plan_name ?? (b.kind === 'free' ? '⚡ Бесплатно' : '—')}
       </div>
-      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginTop: 1, alignItems: 'center' }}>
-        <span style={{ fontSize: 9, fontWeight: 700, color: cardFg, opacity: 0.9, marginRight: 1 }} title={STATUS_LABEL[b.status]}>{STATUS_ICON[b.status]}</span>
-        {b.labels.map(l => <LabelBadge key={l.id} label={l} onCard={hasColorBg} />)}
+      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginTop: 1, alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: cardFg, opacity: 0.9 }} title={STATUS_LABEL[b.status]}>{STATUS_ICON[b.status]}</span>
+          {b.labels.map(l => <LabelBadge key={l.id} label={l} onCard={hasColorBg} />)}
+        </div>
+        {showTime && (
+          <span style={{ fontSize: 9, color: cardFg, opacity: 0.7, flexShrink: 0 }}>{bookingSlotTime(b.starts_at)}</span>
+        )}
       </div>
     </div>
   );
@@ -146,7 +166,7 @@ function BookingCard({ b }: { b: BookingData }) {
 function BookingFormPanel({
   ctx, date, dayData, displayName, onClose, onDone,
 }: {
-  ctx: { type_code: string; slot?: string; device_id?: string };
+  ctx: { type_code: string; slot?: string; device_id?: string; freeTime?: boolean; isVirtualDevice?: boolean };
   date: string; dayData: DayData; displayName: string;
   onClose: () => void; onDone: () => void;
 }) {
@@ -171,6 +191,7 @@ function BookingFormPanel({
 
   const block = dayData.blocks.find(b => b.type_code === ctx.type_code)!;
   const slots = block ? getSlots(dayData.day_start, dayData.day_end, block.grid_step_minutes) : [];
+  const freeTime = !!ctx.freeTime;
 
   useEffect(() => { fetch('/kviz/api/crm/users', { credentials: 'include' }).then(r => r.json()).then(setUsers).catch(() => {}); }, []);
 
@@ -218,11 +239,28 @@ function BookingFormPanel({
     )
   );
 
+  // All device options for selector (real + virtual for this block type)
+  const realDevices = (dayData.blocks.find(b => b.type_code === deviceTypeCode)?.devices ?? []).filter(d => d.status === 'working');
+  const virtDevices = (dayData.blocks.find(b => b.type_code === ctx.type_code)?.virtual_devices ?? []);
+
   async function submit() {
     if (!selClient) { toast.error('Выберите клиента'); return; }
-    if (!slot)      { toast.error('Выберите время'); return; }
+    if (!slot) { toast.error('Выберите время'); return; }
     if (mode === 'plan' && !planId) { toast.error('Выберите абонемент'); return; }
     if (mode === 'free' && !serviceId) { toast.error('Выберите услугу'); return; }
+
+    // Validate free-time bounds
+    if (freeTime) {
+      const slotMins = strToMins(slot);
+      const dayStartMins = strToMins(dayData.day_start);
+      const dayEndMins = strToMins(dayData.day_end);
+      const step = block?.grid_step_minutes ?? 40;
+      if (slotMins < dayStartMins || slotMins + step > dayEndMins) {
+        toast.error('Время вне рабочих часов');
+        return;
+      }
+    }
+
     setSaving(true);
     const payload: Record<string, unknown> = {
       client_id: selClient.id,
@@ -243,7 +281,12 @@ function BookingFormPanel({
     setSaving(false);
     if (ok) { toast.success('Запись создана'); onDone(); }
     else {
-      toast.error((data as { error: string }).error);
+      const errMsg = (data as { error: string }).error;
+      if (ctx.isVirtualDevice && errMsg?.includes('NO_FINISHING_SLOT')) {
+        toast.error('Все реальные аппараты завершающей заняты — поставьте галочку "Без завершающей" и запишите завершающую отдельно (можно на доп. колонку)');
+      } else {
+        toast.error(errMsg);
+      }
       if ((data as { needs_suggest?: boolean }).needs_suggest) {
         const sq = await apiJ('GET', `/kviz/api/crm/schedule/suggest?client_plan_id=${planId}&type=${ctx.type_code}&date=${date}&time=${slot}`);
         if (sq.ok) setSuggestions(sq.data as typeof suggestions);
@@ -255,7 +298,9 @@ function BookingFormPanel({
     <div style={SS.panelOverlay} onClick={onClose}>
       <div className="sched-panel" style={SS.panel} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Новая запись · {block?.name}</h3>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
+            {freeTime ? '📅+ Запись · ' : 'Новая запись · '}{block?.name}
+          </h3>
           <button style={SS.iconBtn} onClick={onClose}>✕</button>
         </div>
 
@@ -336,10 +381,13 @@ function BookingFormPanel({
 
         {/* Time */}
         <label style={SS.lbl}>Время</label>
-        <select style={SS.inp} value={slot} onChange={e => setSlot(e.target.value)}>
-          <option value="">— время —</option>
-          {slots.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        {freeTime
+          ? <input type="time" step={60} style={SS.inp} value={slot} onChange={e => setSlot(e.target.value)} />
+          : <select style={SS.inp} value={slot} onChange={e => setSlot(e.target.value)}>
+              <option value="">— время —</option>
+              {slots.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+        }
 
         {/* Вид аппарата (Cross pool) */}
         {mode === 'plan' && isCrossPool && (
@@ -356,11 +404,12 @@ function BookingFormPanel({
         <label style={SS.lbl}>Аппарат (необязательно)</label>
         <select style={SS.inp} value={device} onChange={e => setDevice(e.target.value)}>
           <option value="">Автоматически</option>
-          {(dayData.blocks.find(b => b.type_code === deviceTypeCode)?.devices ?? [])
-            .filter(d => d.status === 'working')
-            .map(d => (
-              <option key={d.id} value={d.id}>{dtNameMap[deviceTypeCode] ?? deviceTypeCode} {d.number}</option>
-            ))}
+          {realDevices.map(d => (
+            <option key={d.id} value={d.id}>{dtNameMap[deviceTypeCode] ?? deviceTypeCode} {d.number}</option>
+          ))}
+          {virtDevices.map(d => (
+            <option key={d.id} value={d.id}>Доп. {d.number} (сверх)</option>
+          ))}
         </select>
         {/* Аппарат завершающей фазы */}
         {mode === 'plan' && hasFinishingPool && (
@@ -409,11 +458,12 @@ function BookingFormPanel({
 
 function BookingDetailModal({
   booking, allBookings, canBook, canAttend, isAdmin,
-  onClose, onDone, onRefresh,
+  onClose, onDone, onRefresh, onClientPopup,
 }: {
   booking: BookingData; allBookings: BookingData[];
   canBook: boolean; canAttend: boolean; isAdmin: boolean;
   onClose: () => void; onDone: (changed: boolean) => void; onRefresh: () => void;
+  onClientPopup: () => void;
 }) {
   const [labels, setLabels]       = useState<{ id: number; name: string; color: string; short_name?: string | null; sort: number; is_active: boolean }[]>([]);
   const [selLabels, setSelLabels] = useState(new Set(booking.labels.map(l => l.id)));
@@ -482,7 +532,10 @@ function BookingDetailModal({
       <div style={{ ...SS.modal, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{booking.client?.full_name ?? '—'}</h3>
-          <button style={SS.iconBtn} onClick={onClose}>✕</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button style={{ ...SS.smallBtn, fontSize: 11 }} onClick={onClientPopup}>Карточка клиента</button>
+            <button style={SS.iconBtn} onClick={onClose}>✕</button>
+          </div>
         </div>
 
         {/* Group bookings */}
@@ -644,21 +697,24 @@ function SmsDialog({ type_code, bookings, onClose }: { type_code: string; bookin
 
 export default function SchedulePage() {
   const { display_name, role } = useContext(PermContext);
-  const canBook    = usePerm('schedule.book', 'edit');
-  const canAttend  = usePerm('schedule.attend', 'edit');
-  const isAdmin    = role === 'admin';
+  const navigate    = useNavigate();
+  const canBook     = usePerm('schedule.book', 'edit');
+  const canAttend   = usePerm('schedule.attend', 'edit');
+  const isAdmin     = role === 'admin';
 
-  const [date, setDate]         = useState(todayISO);
-  const [dayData, setDayData]   = useState<DayData | null>(null);
-  const [loading, setLoading]   = useState(false);
-  const [nowTick, setNowTick]   = useState(0); // triggers time-line re-render
-  const [blockCfg, setBlockCfg] = useState<Record<string, { showCancelled: boolean; showRepair: boolean }>>(() => {
+  const [date, setDate]           = useState(todayISO);
+  const [dayData, setDayData]     = useState<DayData | null>(null);
+  const [loading, setLoading]     = useState(false);
+  const [nowTick, setNowTick]     = useState(0);
+  const [adSources, setAdSources] = useState<AdSource[]>([]);
+  const [clientPopupId, setClientPopupId] = useState<string | null>(null);
+  const [blockCfg, setBlockCfg]   = useState<Record<string, { showCancelled: boolean; showRepair: boolean; extraVirtual: 0 | 1 | 2 | 3 }>>(() => {
     try { return JSON.parse(localStorage.getItem('sched-block-cfg') || '{}'); } catch { return {}; }
   });
-  const [cfgOpen, setCfgOpen]   = useState<string | null>(null);
-  const [smsBlock, setSmsBlock] = useState<string | null>(null);
-  const [formCtx, setFormCtx]   = useState<{ type_code: string; slot?: string; device_id?: string } | null>(null);
-  const [detail, setDetail]     = useState<BookingData | null>(null);
+  const [cfgOpen, setCfgOpen]     = useState<string | null>(null);
+  const [smsBlock, setSmsBlock]   = useState<string | null>(null);
+  const [formCtx, setFormCtx]     = useState<{ type_code: string; slot?: string; device_id?: string; freeTime?: boolean; isVirtualDevice?: boolean } | null>(null);
+  const [detail, setDetail]       = useState<BookingData | null>(null);
 
   const loadDay = useCallback(async (d: string) => {
     setLoading(true);
@@ -670,10 +726,13 @@ export default function SchedulePage() {
 
   useEffect(() => { loadDay(date); }, [date, loadDay]);
   useEffect(() => { const t = setInterval(() => setNowTick(n => n + 1), 60_000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    fetch('/kviz/api/crm/ad-sources', { credentials: 'include' }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAdSources(d); }).catch(() => {});
+  }, []);
 
-  function saveBlockCfg(tc: string, cfg: Partial<{ showCancelled: boolean; showRepair: boolean }>) {
+  function saveBlockCfg(tc: string, cfg: Partial<{ showCancelled: boolean; showRepair: boolean; extraVirtual: 0 | 1 | 2 | 3 }>) {
     setBlockCfg(prev => {
-      const defaults = { showCancelled: false, showRepair: false };
+      const defaults = { showCancelled: false, showRepair: false, extraVirtual: 0 as const };
       const next = { ...prev, [tc]: { ...defaults, ...prev[tc], ...cfg } };
       try { localStorage.setItem('sched-block-cfg', JSON.stringify(next)); } catch {}
       return next;
@@ -706,37 +765,70 @@ export default function SchedulePage() {
       {dayData && dayData.is_open !== false && (
         <div className="sched-scroll sched-blocks" style={SS.blocksWrap}>
           {dayData.blocks.map(block => {
-            const cfg = blockCfg[block.type_code] || { showCancelled: false, showRepair: false };
+            const cfg = blockCfg[block.type_code] || { showCancelled: false, showRepair: false, extraVirtual: 0 };
             const slots = getSlots(dayData.day_start, dayData.day_end, block.grid_step_minutes);
-            const visDevices = block.devices.filter(d => d.status === 'working' || (cfg.showRepair && d.status !== 'disabled'));
+            const dayStartMins = strToMins(dayData.day_start);
+            const dayEndMins   = strToMins(dayData.day_end);
+            const bodyH = (dayEndMins - dayStartMins) * PX_PER_MIN;
+            const lastSlotEndMins = dayStartMins + slots.length * block.grid_step_minutes;
+            const grayH = Math.max(0, (dayEndMins - lastSlotEndMins) * PX_PER_MIN);
+            const rowH  = block.grid_step_minutes * PX_PER_MIN;
+            const nowTop = date === today ? nowLineOffset(dayData.day_start) : null;
+            void nowTick;
+
+            const realDevices = block.devices.filter(d => d.status === 'working' || (cfg.showRepair && d.status !== 'disabled'));
+            const virtDevices = block.virtual_devices ?? [];
+
+            // Virtual columns: show extraVirtual, plus always show if has booking today
+            const extraCount = cfg.extraVirtual as number;
+            const hasBookingOnVirt = (vd: VirtualDevice) => dayData.bookings.some(b => b.device_id === vd.id);
+            const shownVirtual = virtDevices.filter((vd, idx) => idx < extraCount || hasBookingOnVirt(vd));
+
             const bkgs = dayData.bookings.filter(b =>
               b.device_type_code === block.type_code &&
               (cfg.showCancelled || !['cancelled', 'late_cancel'].includes(b.status))
             );
-            const rowH = block.grid_step_minutes * PX_PER_MIN;
-            const nowTop = date === today ? nowLineOffset(dayData.day_start) : null;
-            void nowTick; // trigger re-render for time line
+
+            const totalCols = realDevices.length + shownVirtual.length;
+            const blockMinW = TIME_W + totalCols * DEV_W;
 
             return (
-              <div key={block.type_code} className="sched-block" style={{ ...SS.block, flex: `${visDevices.length} 1 0`, minWidth: TIME_W + visDevices.length * DEV_W }}>
+              <div key={block.type_code} className="sched-block"
+                style={{ ...SS.block, flex: `${totalCols} 1 0`, minWidth: blockMinW }}>
                 {/* Header */}
                 <div style={SS.blockHdr}>
                   <span style={{ ...SS.blockTitle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{block.name.toUpperCase()}</span>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                    {/* Calendar+ for free-time booking */}
                     <button
                       style={{ ...SS.hdrBtn, opacity: (!canBook || isPast) ? 0.4 : 1, cursor: (!canBook || isPast) ? 'default' : 'pointer' }}
-                      title={!canBook ? 'Нет права записи' : isPast ? 'Запись на прошедший день недоступна' : 'Новая запись'}
+                      title={!canBook ? 'Нет права записи' : isPast ? 'Запись на прошедший день недоступна' : 'Запись на любое время'}
                       disabled={!canBook || isPast}
-                      onClick={e => { e.stopPropagation(); if (canBook && !isPast) setFormCtx({ type_code: block.type_code }); }}
+                      onClick={e => { e.stopPropagation(); if (canBook && !isPast) setFormCtx({ type_code: block.type_code, freeTime: true }); }}
                     >
                       <CalendarPlus size={14} />
                     </button>
+                    {/* Settings */}
                     <div style={{ position: 'relative' }}>
                       <button style={SS.hdrBtn} title="Настройки блока" onClick={e => { e.stopPropagation(); setCfgOpen(cfgOpen === block.type_code ? null : block.type_code); }}>
                         <SlidersHorizontal size={14} />
                       </button>
                       {cfgOpen === block.type_code && (
                         <div style={SS.popover} onClick={e => e.stopPropagation()}>
+                          {/* Virtual device columns */}
+                          {virtDevices.length > 0 && (
+                            <div style={{ marginBottom: 8 }}>
+                              <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 4, fontWeight: 600 }}>Доп. аппараты:</div>
+                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                {([1, 2, 3] as const).filter(n => n <= virtDevices.length).map(n => (
+                                  <button key={n} style={{ ...SS.smallBtn, ...(extraCount === n ? { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' } : {}) }}
+                                    onClick={() => saveBlockCfg(block.type_code, { extraVirtual: n })}>+{n}</button>
+                                ))}
+                                <button style={{ ...SS.smallBtn, ...(extraCount === 0 ? { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' } : {}) }}
+                                  onClick={() => saveBlockCfg(block.type_code, { extraVirtual: 0 })}>Скрыть</button>
+                              </div>
+                            </div>
+                          )}
                           <label style={SS.checkLabel}>
                             <input type="checkbox" checked={cfg.showCancelled} onChange={e => saveBlockCfg(block.type_code, { showCancelled: e.target.checked })} />
                             Показывать отменённые
@@ -752,63 +844,109 @@ export default function SchedulePage() {
                   </div>
                 </div>
 
-                {/* Grid */}
-                <div style={SS.gridWrap}>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: `${TIME_W}px ${visDevices.map(() => `minmax(${DEV_W}px,1fr)`).join(' ')}`,
-                    minWidth: TIME_W + visDevices.length * DEV_W,
-                    position: 'relative',
-                  }}>
-                    {/* Column headers */}
-                    <div style={{ ...SS.cell, ...SS.cellHdr, position: 'sticky', left: 0, zIndex: 3 }}>Время</div>
-                    {visDevices.map(dev => (
-                      <div key={dev.id} style={{
-                        ...SS.cell, ...SS.cellHdr,
-                        background: dev.status !== 'working' ? 'var(--surface-muted,#f1f5f9)' : 'var(--surface-2)',
-                        color: dev.status !== 'working' ? 'var(--text-3)' : 'var(--text)',
-                        flexDirection: 'column', gap: 1,
-                      }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
-                          title={`${block.name} ${dev.number}`}>
-                          {block.name} {dev.number}
-                        </span>
-                        {dev.status !== 'working' && <span style={{ fontSize: 9, fontWeight: 400 }}>Ремонт</span>}
+                {/* Grid — flex layout: time column + device columns */}
+                <div style={{ overflow: 'visible' }}>
+                  <div style={{ display: 'flex', minWidth: blockMinW, position: 'relative' }}>
+
+                    {/* Time column */}
+                    <div style={{ width: TIME_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 3, background: 'var(--surface,#fff)' }}>
+                      {/* Column header */}
+                      <div style={{ ...SS.cellHdr, background: 'var(--surface-2,#f8fafc)', borderRight: '1px solid var(--border,#e2e8f0)', borderBottom: '1px solid var(--border,#e2e8f0)' }}>Время</div>
+                      {/* Slot rows */}
+                      {slots.map(s => (
+                        <div key={s} style={{ height: rowH, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start', paddingTop: 2, paddingLeft: 4, boxSizing: 'border-box', borderBottom: '1px solid var(--border,#e2e8f0)', borderRight: '1px solid var(--border,#e2e8f0)', fontSize: 10, color: 'var(--text-2,#64748b)', fontWeight: 600, background: 'var(--surface,#fff)' }}>
+                          {s}
+                        </div>
+                      ))}
+                      {/* Gray strip */}
+                      {grayH > 0 && (
+                        <div style={{ height: grayH, borderRight: '1px solid var(--border,#e2e8f0)', background: 'var(--surface,#fff)' }} />
+                      )}
+                      {/* Closing time label */}
+                      <div style={{ height: HDR_H, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: 4, boxSizing: 'border-box', borderTop: '2px solid var(--border,#e2e8f0)', borderRight: '1px solid var(--border,#e2e8f0)', fontSize: 10, color: 'var(--text-2,#64748b)', fontWeight: 700, background: 'var(--surface,#fff)' }}>
+                        {dayData.day_end}
                       </div>
-                    ))}
+                    </div>
 
-                    {/* Data rows */}
-                    {slots.map((slotTime) => (
-                      <>
-                        <div key={slotTime + '_t'} style={{ ...SS.cell, height: rowH, ...SS.cellTime }}>{slotTime}</div>
-                        {visDevices.map(dev => {
-                          const bk = bkgs.find(b => b.device_id === dev.id && bookingSlotTime(b.starts_at) === slotTime);
-                          const isRepair = dev.status !== 'working';
-                          return (
-                            <div key={dev.id + '_' + slotTime}
-                              style={{
-                                ...SS.cell,
-                                height: rowH,
-                                background: isRepair ? 'var(--surface-muted,#f1f5f9)' : undefined,
-                                cursor: !isRepair && canBook && !isPast ? 'pointer' : 'default',
-                                padding: bk ? 2 : 0,
-                              }}
+                    {/* Device columns (real + virtual) */}
+                    {[
+                      ...realDevices.map(d => ({ ...d, isVirtual: false })),
+                      ...shownVirtual.map(d => ({ ...d, status: 'working' as const, session_minutes: null, isVirtual: true })),
+                    ].map((dev, _devIdx) => {
+                      const isVirt = dev.isVirtual;
+                      const isRepair = !isVirt && dev.status !== 'working';
+                      const devBookings = bkgs.filter(b => b.device_id === dev.id);
+                      const colBg = isVirt
+                        ? 'repeating-linear-gradient(45deg, var(--surface,#fff) 0px, var(--surface,#fff) 6px, var(--surface-muted,#f1f5f9) 6px, var(--surface-muted,#f1f5f9) 12px)'
+                        : isRepair ? 'var(--surface-muted,#f1f5f9)' : 'var(--surface,#fff)';
+                      const cellBorder = isVirt ? '1px dashed var(--border,#e2e8f0)' : '1px solid var(--border,#e2e8f0)';
+
+                      return (
+                        <div key={dev.id} style={{ flex: `1 1 ${DEV_W}px`, minWidth: DEV_W, position: 'relative' }}>
+                          {/* Column header */}
+                          <div style={{
+                            ...SS.cellHdr,
+                            background: (isRepair || isVirt) ? 'var(--surface-muted,#f1f5f9)' : 'var(--surface-2,#f8fafc)',
+                            color: isRepair ? 'var(--text-3)' : 'var(--text)',
+                            borderRight: cellBorder,
+                            borderBottom: '1px solid var(--border,#e2e8f0)',
+                            flexDirection: 'column', gap: 1,
+                          }}>
+                            {isVirt
+                              ? <><span style={{ fontWeight: 700 }}>Доп. {dev.number}</span><span style={{ fontSize: 9, fontWeight: 400, color: 'var(--text-3)' }}>сверх</span></>
+                              : <><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={`${block.name} ${dev.number}`}>{block.name} {dev.number}</span>
+                                  {isRepair && <span style={{ fontSize: 9, fontWeight: 400 }}>Ремонт</span>}</>
+                            }
+                          </div>
+
+                          {/* Slot click rows */}
+                          {slots.map(s => (
+                            <div key={s}
+                              style={{ height: rowH, background: colBg, borderBottom: cellBorder, borderRight: cellBorder, boxSizing: 'border-box', cursor: (!isRepair && canBook && !isPast) ? 'pointer' : 'default' }}
                               onClick={() => {
-                                if (bk) setDetail(bk);
-                                else if (!isRepair && canBook && !isPast) setFormCtx({ type_code: block.type_code, slot: slotTime, device_id: dev.id });
+                                if (!isRepair && canBook && !isPast) {
+                                  setFormCtx({ type_code: block.type_code, slot: s, device_id: dev.id, isVirtualDevice: isVirt });
+                                }
                               }}
-                            >
-                              {bk && <BookingCard b={bk} />}
-                            </div>
-                          );
-                        })}
-                      </>
-                    ))}
+                            />
+                          ))}
 
-                    {/* Now line */}
-                    {nowTop !== null && nowTop > 0 && (
-                      <div style={{ position: 'absolute', left: 0, right: 0, top: HDR_H + nowTop, height: 2, background: 'var(--primary,#02BDB6)', zIndex: 10, pointerEvents: 'none' }} />
-                    )}
+                          {/* Gray strip (non-clickable) */}
+                          {grayH > 0 && (
+                            <div style={{ height: grayH, background: 'var(--surface-muted,#f1f5f9)', borderBottom: cellBorder, borderRight: cellBorder, boxSizing: 'border-box' }} />
+                          )}
+
+                          {/* Closing line */}
+                          <div style={{ height: HDR_H, background: 'var(--surface-2,#f8fafc)', borderTop: '2px solid var(--border,#e2e8f0)', borderRight: cellBorder, boxSizing: 'border-box' }} />
+
+                          {/* Booking overlay — absolute, starts right after column header */}
+                          <div style={{ position: 'absolute', top: HDR_H, left: 0, right: 0, height: bodyH, pointerEvents: 'none', zIndex: 2 }}>
+                            {devBookings.map(b => {
+                              const startMins = bookingTimeMins(b.starts_at);
+                              const dur = bookingDurationMins(b);
+                              const top = (startMins - dayStartMins) * PX_PER_MIN;
+                              const height = Math.max(18, dur * PX_PER_MIN - 1);
+                              const isNonSlot = !slots.includes(minsToStr(startMins));
+                              return (
+                                <div key={b.id}
+                                  style={{ position: 'absolute', top, left: 2, right: 2, height, zIndex: 1, pointerEvents: 'auto', cursor: 'pointer' }}
+                                  title="ЛКМ — запись, ПКМ — карточка клиента"
+                                  onClick={e => { e.stopPropagation(); setDetail(b); }}
+                                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setClientPopupId(b.client_id); }}
+                                >
+                                  <BookingCard b={b} showTime={isNonSlot} />
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Now line */}
+                          {nowTop !== null && nowTop >= 0 && nowTop <= bodyH && (
+                            <div style={{ position: 'absolute', left: 0, right: 0, top: HDR_H + nowTop, height: 2, background: 'var(--primary,#02BDB6)', zIndex: 10, pointerEvents: 'none' }} />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -827,12 +965,28 @@ export default function SchedulePage() {
           canBook={canBook} canAttend={canAttend} isAdmin={isAdmin}
           onClose={() => setDetail(null)}
           onDone={(ch) => { if (ch) loadDay(date); setDetail(null); }}
-          onRefresh={() => loadDay(date)} />
+          onRefresh={() => loadDay(date)}
+          onClientPopup={() => { setClientPopupId(detail.client_id); setDetail(null); }} />
       )}
       {smsBlock && dayData && (
         <SmsDialog type_code={smsBlock}
           bookings={dayData.bookings.filter(b => b.device_type_code === smsBlock && ['booked','confirmed','attended'].includes(b.status))}
           onClose={() => setSmsBlock(null)} />
+      )}
+
+      {/* Client popup (RMB or button) */}
+      {clientPopupId && (
+        <div style={SS.overlay} onClick={() => setClientPopupId(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ maxWidth: '95vw', maxHeight: '92vh', overflowY: 'auto', borderRadius: 12 }}>
+            <ClientPopup
+              clientId={clientPopupId}
+              adSources={adSources}
+              role={role}
+              onClose={() => setClientPopupId(null)}
+              onEdit={() => { setClientPopupId(null); navigate(`/crm/clients#client=${clientPopupId}`); }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -841,38 +995,35 @@ export default function SchedulePage() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const SS: Record<string, React.CSSProperties> = {
-  page:   { height: '100dvh' as unknown as React.CSSProperties['height'], display: 'flex', flexDirection: 'column', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--bg,#f8fafc)', overflow: 'hidden' },
+  page:    { height: '100dvh' as unknown as React.CSSProperties['height'], display: 'flex', flexDirection: 'column', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--bg,#f8fafc)', overflow: 'hidden' },
   dateNav: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--surface,#fff)', borderBottom: '1px solid var(--border,#e2e8f0)', flexShrink: 0, flexWrap: 'wrap' },
   navBtn:  { padding: '5px 12px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)', cursor: 'pointer', fontSize: 13 },
   navBtnActive: { background: 'var(--primary,#02BDB6)', color: '#fff', borderColor: 'var(--primary,#02BDB6)' },
   dateInput: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, padding: '4px 8px', fontSize: 13, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)' },
   dateLabel: { fontSize: 14, fontWeight: 600, color: 'var(--text,#1a202c)' },
-  blocksWrap: { flex: 1, display: 'flex', gap: 8, padding: 12, overflowX: 'auto', overflowY: 'auto', alignItems: 'flex-start' },
-  block: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 10, background: 'var(--surface,#fff)', display: 'flex', flexDirection: 'column' },
+  blocksWrap: { flex: 1, display: 'flex', gap: 8, padding: '0 12px 12px', overflowX: 'auto', overflowY: 'auto', alignItems: 'flex-start' },
+  block:   { border: '1px solid var(--border,#e2e8f0)', borderRadius: 10, background: 'var(--surface,#fff)', display: 'flex', flexDirection: 'column' },
   blockHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px', height: BLK_H, borderBottom: '1px solid var(--border,#e2e8f0)', background: 'var(--surface-2,#f8fafc)', position: 'sticky', top: 0, zIndex: 4, borderRadius: '10px 10px 0 0', boxSizing: 'border-box', flexShrink: 0 },
   blockTitle: { fontWeight: 800, fontSize: 12, color: 'var(--text,#1a202c)', letterSpacing: 0.5 },
-  hdrBtn: { padding: '0 6px', height: 24, border: '1px solid var(--border,#e2e8f0)', borderRadius: 5, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 },
-  popover: { position: 'absolute', right: 0, top: '100%', zIndex: 20, background: 'var(--surface,#fff)', border: '1px solid var(--border,#e2e8f0)', borderRadius: 8, padding: 10, minWidth: 200, boxShadow: '0 4px 16px rgba(0,0,0,.1)' },
+  hdrBtn:  { padding: '0 6px', height: 24, border: '1px solid var(--border,#e2e8f0)', borderRadius: 5, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 },
+  popover: { position: 'absolute', right: 0, top: '100%', zIndex: 20, background: 'var(--surface,#fff)', border: '1px solid var(--border,#e2e8f0)', borderRadius: 8, padding: 10, minWidth: 220, boxShadow: '0 4px 16px rgba(0,0,0,.1)' },
   checkLabel: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, cursor: 'pointer', marginBottom: 6 },
-  gridWrap: { overflow: 'visible', flex: 1 },
-  cell: { borderBottom: '1px solid var(--border,#e2e8f0)', borderRight: '1px solid var(--border,#e2e8f0)', background: 'var(--surface,#fff)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', padding: 0, overflow: 'hidden' },
-  cellHdr: { height: HDR_H, background: 'var(--surface-2,#f8fafc)', fontWeight: 700, fontSize: 10, position: 'sticky', top: BLK_H, zIndex: 2 },
-  cellTime: { fontSize: 10, color: 'var(--text-2,#64748b)', background: 'var(--surface,#fff)', position: 'sticky', left: 0, zIndex: 1, fontWeight: 600 },
+  cellHdr: { height: HDR_H, background: 'var(--surface-2,#f8fafc)', fontWeight: 700, fontSize: 10, position: 'sticky', top: BLK_H, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' },
   loading: { padding: 40, textAlign: 'center', color: 'var(--text-3,#94a3b8)', fontSize: 14 },
   // Form panel
   panelOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 100, display: 'flex', justifyContent: 'flex-end' },
-  panel: { width: 360, maxWidth: '100vw', background: 'var(--surface,#fff)', height: '100%', overflowY: 'auto', padding: 16, boxSizing: 'border-box', borderLeft: '1px solid var(--border,#e2e8f0)' },
-  inp: { width: '100%', padding: '7px 10px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, fontSize: 14, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)', boxSizing: 'border-box', marginBottom: 6 },
-  lbl: { display: 'block', fontSize: 12, color: 'var(--text-2,#64748b)', marginBottom: 2, fontWeight: 600 },
+  panel:   { width: 360, maxWidth: '100vw', background: 'var(--surface,#fff)', height: '100%', overflowY: 'auto', padding: 16, boxSizing: 'border-box', borderLeft: '1px solid var(--border,#e2e8f0)' },
+  inp:     { width: '100%', padding: '7px 10px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, fontSize: 14, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)', boxSizing: 'border-box', marginBottom: 6 },
+  lbl:     { display: 'block', fontSize: 12, color: 'var(--text-2,#64748b)', marginBottom: 2, fontWeight: 600 },
   dropdown: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, background: 'var(--surface,#fff)', boxShadow: '0 4px 12px rgba(0,0,0,.08)', maxHeight: 200, overflowY: 'auto', marginBottom: 6 },
   dropItem: { padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border,#e2e8f0)' },
-  warn: { fontSize: 12, color: 'var(--warning,#f59e0b)', background: 'var(--warning-soft,#fef3c7)', padding: '6px 10px', borderRadius: 6, marginBottom: 6 },
-  tabBtn: { padding: '5px 12px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 12 },
+  warn:    { fontSize: 12, color: 'var(--warning,#f59e0b)', background: 'var(--warning-soft,#fef3c7)', padding: '6px 10px', borderRadius: 6, marginBottom: 6 },
+  tabBtn:  { padding: '5px 12px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 12 },
   tabBtnActive: { background: 'var(--primary,#02BDB6)', color: '#fff', borderColor: 'var(--primary,#02BDB6)' },
   submitBtn: { width: '100%', padding: '10px', background: 'var(--primary,#02BDB6)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', marginTop: 8 },
   smallBtn: { padding: '4px 10px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 5, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 12 },
   iconBtn: { padding: '4px 8px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, color: 'var(--text-2,#64748b)' },
   // Modal
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  modal: { background: 'var(--surface,#fff)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.2)', boxSizing: 'border-box' },
+  modal:   { background: 'var(--surface,#fff)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.2)', boxSizing: 'border-box' },
 };

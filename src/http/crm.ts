@@ -485,7 +485,7 @@ export function buildCrmRouter(): Router {
     if (!requireAuth(req, res)) return;
     try {
       const { data, error } = await supabase.from('crm_devices')
-        .select('*').eq('branch_id', BRANCH_ID).order('type_code').order('number');
+        .select('*').eq('branch_id', BRANCH_ID).eq('is_virtual', false).order('type_code').order('number');
       if (error) { res.status(500).json({ error: error.message }); return; }
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -2591,7 +2591,7 @@ export function buildCrmRouter(): Router {
       const [settingsRows, deviceTypesRaw, devicesRaw, dayHoursRes] = await Promise.all([
         supabase.from('crm_settings').select('key,value').in('key', ['schedule.day_start','schedule.day_end']),
         supabase.from('crm_device_types').select('code,name,sort,grid_step_minutes').order('sort'),
-        supabase.from('crm_devices').select('id,type_code,number,status,session_minutes').eq('branch_id', BRANCH_ID).not('status', 'eq', 'disabled').order('number'),
+        supabase.from('crm_devices').select('id,type_code,number,status,session_minutes,is_virtual').eq('branch_id', BRANCH_ID).not('status', 'eq', 'disabled').order('number'),
         supabase.rpc('crm_day_hours', { p_date: dateStr }),
       ]);
 
@@ -2602,26 +2602,35 @@ export function buildCrmRouter(): Router {
 
       const dh = Array.isArray(dayHoursRes.data) ? (dayHoursRes.data as Record<string,unknown>[])[0] : dayHoursRes.data as Record<string,unknown> | null;
       const is_open  = dh ? Boolean(dh.is_open) : true; // null row = no config = open
-      const dayStart = (dh?.open_time  as string | null) ?? fallbackStart;
-      const dayEnd   = (dh?.close_time as string | null) ?? fallbackEnd;
+      // slice to HH:MM — Postgres time type may return HH:MM:SS
+      const dayStart = ((dh?.open_time  as string | null) ?? fallbackStart).slice(0, 5);
+      const dayEnd   = ((dh?.close_time as string | null) ?? fallbackEnd).slice(0, 5);
 
       if (!is_open) {
         res.json({ date: dateStr, day_start: dayStart, day_end: dayEnd, now: new Date().toISOString(), blocks: [], bookings: [], is_open: false });
         return;
       }
 
-      const devsByType: Record<string, typeof devicesRaw.data> = {};
+      const realByType: Record<string, { id: string; number: string; status: string; session_minutes: number | null }[]> = {};
+      const virtByType: Record<string, { id: string; number: string }[]> = {};
       for (const d of devicesRaw.data || []) {
-        if (!devsByType[d.type_code]) devsByType[d.type_code] = [];
-        devsByType[d.type_code]!.push(d);
+        const isVirt = !!(d as Record<string,unknown>).is_virtual;
+        if (isVirt) {
+          if (!virtByType[d.type_code]) virtByType[d.type_code] = [];
+          virtByType[d.type_code]!.push({ id: d.id, number: d.number });
+        } else {
+          if (!realByType[d.type_code]) realByType[d.type_code] = [];
+          realByType[d.type_code]!.push({ id: d.id, number: d.number, status: d.status, session_minutes: d.session_minutes });
+        }
       }
 
       const blocks = (deviceTypesRaw.data || [])
-        .filter(dt => devsByType[dt.code]?.length)
+        .filter(dt => realByType[dt.code]?.length)
         .map(dt => ({
           type_code: dt.code, name: dt.name,
           grid_step_minutes: dt.grid_step_minutes ?? 40,
-          devices: (devsByType[dt.code] || []).map(d => ({ id: d.id, number: d.number, status: d.status, session_minutes: d.session_minutes })),
+          devices: (realByType[dt.code] || []),
+          virtual_devices: (virtByType[dt.code] || []),
         }));
 
       // Bookings for the day
@@ -2713,8 +2722,10 @@ export function buildCrmRouter(): Router {
       const startMs = new Date(`${date}T${time}:00+05:00`).getTime();
       const endMs   = startMs + step * 60_000;
 
-      const { data: devices } = await supabase.from('crm_devices').select('id,number,status,session_minutes')
-        .eq('branch_id', BRANCH_ID).eq('type_code', type).eq('status', 'working');
+      const includeVirtual = req.query.include_virtual === '1';
+      let devQ = supabase.from('crm_devices').select('id,number,status,session_minutes').eq('branch_id', BRANCH_ID).eq('type_code', type).eq('status', 'working');
+      if (!includeVirtual) devQ = devQ.eq('is_virtual', false);
+      const { data: devices } = await devQ;
 
       const startIso = new Date(startMs).toISOString();
       const endIso   = new Date(endMs).toISOString();

@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 90-1 + 91 | crm-schedule | Граница прокрутки, время на строках, конец дня, брони по фактическому времени (absolute overlay), ЛКМ/ПКМ, запись вне слота (CalendarPlus), виртуальные доп. аппараты | ТЗ в чате | ✅ готово (см. Журнал) |
 | 89b-1 | crm-schedule, crm-core | Хотфикс: showConfirm принимает строку, белый экран при отмене записи (React error #31); TS-фиксы в SchedulePage + SettingsPage | ТЗ в чате | ✅ готово (см. Журнал) |
 | 90 (сетка) | crm-schedule | Сетка расписания: одна невидимая прокрутка, PX_PER_MIN единый масштаб, реальные имена аппаратов, Lucide-кнопки, mobile snap | ТЗ в чате | ✅ готово (см. Журнал) |
 | 90 | crm-core, crm-schedule | Cross доработки: фаза вручную у каждой строки и у пула, дубли запрещены, список планов по аппарату, выбор вида аппарата для Cross, подписи №, DAILY_LIMIT | ТЗ в чате | ✅ готово (cda6471) |
@@ -155,6 +156,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 24.11.2026 | Claude Code | 90-1+91 crm-schedule: blocksWrap padding 0 12px 12px; время flex-start; гray-strip + closing line по day_end; брони по абсолютному времени (flex-колонки + absolute overlay); ЛКМ=detail / ПКМ=ClientPopup; CalendarPlus → freeTime input[type=time]; виртуальные аппараты (is_virtual) — hatched колонки +1/+2/+3; сервер: /devices is_virtual=false, schedule/day split real+virtual, free-devices include_virtual=1; ClientsPage: export ClientPopup. | pending | build ✅. Нужен SQL для crm_day_hours weekday bug (см. ниже). Нужна проверка на проде. |
 | 24.11.2026 | Claude Code | 89b-1 хотфикс: showConfirm принимает строку (React error #31 — белый экран при отмене записи); TS-фиксы в SchedulePage + SettingsPage. | a98e321 | build ✅, check:mobile 0 fail. Нужна проверка на проде: отмена записи → не должно быть белого экрана. |
 | 24.11.2026 | Claude Code | 90 (сетка) Одна прокрутка, PX_PER_MIN, имена аппаратов, Lucide-кнопки, mobile snap: `PX_PER_MIN=1.9`, `gridWrap: overflow:visible`, `blocksWrap` = единый scroll-контейнер, `.sched-scroll` в index.css, `blockHdr` h=32, `cellHdr` h=26 sticky top=32, «Время», колонки «VacuActiv 1», CalendarPlus/SlidersHorizontal, кнопка «+» всегда, snap на mobile/tablet. | pending | build ✅. Нужна проверка на проде. |
 | 24.11.2026 | Claude Code | 90 Cross доработки | cda6471 | фаза вручную, дубли, список планов по аппарату, вид/номер аппарата, DAILY_LIMIT |

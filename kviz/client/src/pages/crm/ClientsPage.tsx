@@ -649,7 +649,7 @@ class PopupErrorBoundary extends Component<{ onClose: () => void; children: Reac
 
 // ── ClientPopup ────────────────────────────────────────────────────────────────
 
-function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
+export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   clientId: string; adSources: AdSource[]; role: string;
   onClose: () => void; onEdit: () => void;
 }) {
