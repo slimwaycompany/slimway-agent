@@ -53,6 +53,8 @@ interface ClientSummary {
   measure_last: string | null;
   measure_latest: Record<string, unknown> | null;
   measure_first: Record<string, unknown> | null;
+  measure_count: number;
+  measure_points: { measured_at: string; total_cm: number }[];
   body_client_id: string | null;
   system_tags: string[];
   personal_tags: { id: string; name: string; color: string }[];
@@ -86,7 +88,8 @@ function iinToDob(iin: string): string {
   if (iin.length < 7) return '';
   const yy = iin.slice(0, 2), mm = iin.slice(2, 4), dd = iin.slice(4, 6);
   const c = parseInt(iin[6]);
-  const century = c <= 2 ? '19' : c <= 4 ? '20' : '18';
+  // RK IIN: 7th digit 1-2=1800s, 3-4=1900s, 5-6=2000s
+  const century = c <= 2 ? '18' : c <= 4 ? '19' : '20';
   if (parseInt(mm) < 1 || parseInt(mm) > 12 || parseInt(dd) < 1 || parseInt(dd) > 31) return '';
   return `${century}${yy}-${mm}-${dd}`;
 }
@@ -108,8 +111,10 @@ function ageFromDate(bd: string | null): string {
   if (!bd) return '';
   const birth = new Date(bd);
   const now = new Date();
+  if (birth > now) { console.warn('[ageFromDate] future birth date:', bd); return ''; }
   let age = now.getFullYear() - birth.getFullYear();
   if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) age--;
+  if (age < 0) return '';
   return `${age} л.`;
 }
 
@@ -122,16 +127,38 @@ function fmtPhone(p: string | null): string {
 
 function timerLabel(lastIso: string | null): { label: string; cls: string; pct: number } | null {
   if (!lastIso) return null;
-  const d = daysAgo(lastIso);
-  if (d === null) return null;
-  const nextIn = 7 - d;
-  const nextDate = new Date(new Date(lastIso).getTime() + 7 * 86400000);
-  const nf = `${String(nextDate.getDate()).padStart(2,'0')}.${String(nextDate.getMonth()+1).padStart(2,'0')}`;
+  // Use date-only comparison in UTC+5 (Asia/Yekaterinburg) to avoid off-by-one from timestamp math
+  const lastDateMs = new Date(lastIso.slice(0, 10)).getTime(); // midnight UTC of last date
+  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Yekaterinburg' }); // "YYYY-MM-DD"
+  const todayMs = new Date(todayStr).getTime();
+  const d = Math.round((todayMs - lastDateMs) / 86400000);
+  const nextDate = new Date(lastDateMs + 7 * 86400000);
+  const nf = `${String(nextDate.getUTCDate()).padStart(2,'0')}.${String(nextDate.getUTCMonth()+1).padStart(2,'0')}`;
   const pct = Math.min(Math.round((d / 7) * 100), 100);
+  const nextIn = 7 - d;
   if (nextIn > 2) return { label: `Следующий через ${nextIn} дн. (${nf})`, cls: 'cp-timer--ok', pct };
   if (nextIn > 0) return { label: `Скоро · через ${nextIn} дн. (${nf})`, cls: 'cp-timer--warn', pct };
   if (nextIn === 0) return { label: 'Сегодня', cls: 'cp-timer--warn', pct: 100 };
   return { label: `Просрочено на ${-nextIn} дн.`, cls: 'cp-timer--over', pct: 100 };
+}
+
+const ZONE_LABELS: Record<string, string> = {
+  neck: 'Шея', chest: 'Грудь', arm_l: 'Л.рука', arm_r: 'П.рука',
+  waist: 'Талия', belly: 'Живот', glutes: 'Ягодицы',
+  thigh_l: 'Л.бедро', thigh_r: 'П.бедро', shin_l: 'Л.голень', shin_r: 'П.голень',
+};
+
+function Sparkline({ pts }: { pts: { x: number; y: number }[] }) {
+  if (pts.length < 2) return null;
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = 150, H = 32, pad = 3;
+  const rx = maxX - minX || 1, ry = maxY - minY || 1;
+  const sx = (x: number) => pad + ((x - minX) / rx) * (W - 2 * pad);
+  const sy = (y: number) => H - pad - ((y - minY) / ry) * (H - 2 * pad);
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(' ');
+  return <svg width={W} height={H} style={{ display: 'block', marginBottom: 6 }}><path d={d} fill="none" stroke="var(--primary)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" /></svg>;
 }
 
 const SYSTEM_TAG_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -580,12 +607,12 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     }
     const { ok, data } = await apiJSON('PATCH', `/kviz/api/crm/clients/${clientId}`, {
       skirt_size: importantForm.skirt_size || null,
-      device_settings: Object.keys(dsClean).length ? dsClean : null,
+      device_settings: Object.keys(dsClean).length ? dsClean : {},
       important_note: importantForm.important_note || null,
       contraindications: importantForm.contraindications || null,
     });
     if (!ok) { toast.error(data.error || 'Ошибка'); return; }
-    setClient(prev => prev ? { ...prev, skirt_size: importantForm.skirt_size || null, device_settings: Object.keys(dsClean).length ? dsClean : null, important_note: importantForm.important_note || null, contraindications: importantForm.contraindications || null } : prev);
+    setClient(prev => prev ? { ...prev, skirt_size: importantForm.skirt_size || null, device_settings: Object.keys(dsClean).length ? dsClean : {}, important_note: importantForm.important_note || null, contraindications: importantForm.contraindications || null } : prev);
     setImportantEdit(false);
     toast.success('Сохранено');
   }
@@ -633,7 +660,6 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   if (!client) return null;
 
   const source = adSources.find(s => s.id === client.ad_source_id);
-  const initials = client.full_name[0]?.toUpperCase() ?? '?';
   const dtNameMap = Object.fromEntries(deviceTypes.map(dt => [dt.code, dt.name ?? dt.code]));
 
   // Plan list filter
@@ -672,15 +698,9 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
             {/* ── Left column ── */}
             <div className="cp-col cp-col-left">
 
-              {/* Identity block */}
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8, paddingRight: 28 }}>
-                {photoUrl
-                  ? <img src={photoUrl} alt="" style={{ width: 44, height: 44, borderRadius: 22, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />
-                  : <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg,#02BDB6,#263CD9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 700, flexShrink: 0, marginTop: 2 }}>{initials}</div>
-                }
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 22, fontWeight: 700, lineHeight: '1.25', wordBreak: 'break-word' }}>{client.full_name}</div>
-                </div>
+              {/* Identity block — no avatar, name directly */}
+              <div style={{ marginBottom: 8, paddingRight: 28 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: '1.25', wordBreak: 'break-word' }}>{client.full_name}</div>
               </div>
 
               {/* Phone row */}
@@ -769,7 +789,7 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
               </div>
 
               {/* Info rows */}
-              <div style={{ fontSize: 13, lineHeight: '1.6', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+              <div style={{ fontSize: 14, lineHeight: '1.6', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                 {source && (
                   <div className="cp-row"><span className="cp-row-key">Источник</span><span className="cp-row-val">{source.name}{referrerName ? ` / ${referrerName}` : ''}</span></div>
                 )}
@@ -877,21 +897,21 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                             style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
                         </div>
                       ))}
-                      {deviceTypes.map(dt => {
+                      {deviceTypes.filter(dt => ['vacuactiv', 'infrashape'].includes(dt.code)).map(dt => {
                         const dv = importantForm.device_settings[dt.code] ?? { vacu: '', ik: '' };
                         return (
                           <div key={dt.code}>
                             <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>{dt.name ?? dt.code}</label>
                             <div style={{ display: 'flex', gap: 8 }}>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>Вакуум</div>
-                                <input type="number" min={0} max={9} value={dv.vacu}
+                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>Vacu</div>
+                                <input type="number" inputMode="numeric" min={0} max={99} value={dv.vacu}
                                   onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, vacu: e.target.value } } }))}
                                   style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
                               </div>
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>ИК</div>
-                                <input type="number" min={0} max={9} value={dv.ik}
+                                <input type="number" inputMode="numeric" min={0} max={99} value={dv.ik}
                                   onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, ik: e.target.value } } }))}
                                   style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
                               </div>
@@ -903,13 +923,13 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                   ) : (
                     <div style={{ fontSize: 13 }}>
                       {client.skirt_size && <div className="cp-row"><span className="cp-row-key">Юбка</span><span className="cp-row-val">{client.skirt_size}</span></div>}
-                      {deviceTypes.map(dt => {
+                      {deviceTypes.filter(dt => ['vacuactiv', 'infrashape'].includes(dt.code)).map(dt => {
                         const val = client.device_settings?.[dt.code];
                         if (!val || typeof val !== 'object') return null;
                         const parts: string[] = [];
-                        if (val.vacu != null) parts.push(`Вакуум: ${val.vacu}`);
-                        if (val.ik != null) parts.push(`ИК: ${val.ik}`);
-                        return parts.length ? <div key={dt.code} className="cp-row"><span className="cp-row-key">{dt.name ?? dt.code}</span><span className="cp-row-val">{parts.join(' · ')}</span></div> : null;
+                        if (val.vacu != null) parts.push(`Vacu ${val.vacu}`);
+                        if (val.ik != null) parts.push(`ИК ${val.ik}`);
+                        return parts.length ? <div key={dt.code} style={{ padding: '2px 0', fontSize: 13 }}>{dt.name ?? dt.code} — {parts.join(' · ')}</div> : null;
                       })}
                       {client.important_note && <div style={{ padding: '4px 0', color: '#b45309', fontSize: 13 }}>⚠ {client.important_note}</div>}
                       {client.contraindications && <div style={{ padding: '4px 0', color: 'var(--danger)', fontSize: 13 }}>Противопоказания: {client.contraindications}</div>}
@@ -1152,12 +1172,21 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
               </div>
 
               {/* Замеры */}
-              <div className="cp-window">
-                <div className="cp-window-hdr">Замеры тела</div>
+              <div className="cp-window" style={{ cursor: summary?.body_client_id ? 'pointer' : undefined }}
+                onClick={() => { if (summary?.body_client_id) window.location.href = `/reports/client/${summary.body_client_id}`; }}>
+                <div className="cp-window-hdr">
+                  Замеры тела
+                  {(summary?.measure_count ?? 0) > 0 && (
+                    <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-2)' }}>
+                      Замеров: {summary!.measure_count}, первый {fmtDate(summary!.measure_first?.measured_at as string ?? summary!.measure_last!)}
+                    </span>
+                  )}
+                </div>
                 <div className="cp-window-body">
                   {summary?.measure_last ? (
                     <>
-                      <div style={{ marginBottom: 6 }}>
+                      {/* Timer */}
+                      <div style={{ marginBottom: 8 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                           <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmtDate(summary.measure_last)}</span>
                           {(() => {
@@ -1172,23 +1201,41 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                           return <div style={{ background: 'var(--border)', borderRadius: 2, height: 3 }}><div style={{ background: color, height: '100%', width: `${lbl.pct}%`, borderRadius: 2 }} /></div>;
                         })()}
                       </div>
+                      {/* Total cm — big */}
+                      {summary.measure_latest?.total_cm != null && (
+                        <div style={{ marginBottom: 6 }}>
+                          <span style={{ fontSize: 20, fontWeight: 700 }}>{String(summary.measure_latest.total_cm)} см</span>
+                          {summary.measure_first?.total_cm != null && summary.measure_first.total_cm !== summary.measure_latest.total_cm && (() => {
+                            const d = Number(summary.measure_latest!.total_cm) - Number(summary.measure_first!.total_cm);
+                            return <span className={d < 0 ? 'cp-delta-pos' : 'cp-delta-neg'} style={{ fontSize: 14, marginLeft: 6 }}>{d > 0 ? '+' : ''}{d} со старта</span>;
+                          })()}
+                        </div>
+                      )}
+                      {/* Sparkline */}
+                      {(summary.measure_points?.length ?? 0) >= 2 && (
+                        <Sparkline pts={(summary.measure_points!).map(p => ({ x: new Date(p.measured_at).getTime(), y: p.total_cm }))} />
+                      )}
+                      {/* Zone list */}
                       {summary.measure_latest && (
                         <div style={{ fontSize: 13 }}>
-                          {summary.measure_latest.total_cm != null && (
-                            <div className="cp-row">
-                              <span className="cp-row-key">Обхваты</span>
-                              <span className="cp-row-val">
-                                {String(summary.measure_latest.total_cm)} см
-                                {summary.measure_first?.total_cm != null && summary.measure_first.total_cm !== summary.measure_latest.total_cm && (() => {
-                                  const d = Number(summary.measure_latest!.total_cm) - Number(summary.measure_first!.total_cm);
-                                  return <span className={d < 0 ? 'cp-delta-pos' : 'cp-delta-neg'}> {d > 0 ? '+' : ''}{d.toFixed(0)} со старта</span>;
-                                })()}
-                              </span>
-                            </div>
-                          )}
                           {summary.measure_latest.weight != null && (
                             <div className="cp-row"><span className="cp-row-key">Вес</span><span className="cp-row-val">{String(summary.measure_latest.weight)} кг</span></div>
                           )}
+                          {Object.entries(ZONE_LABELS).map(([zk, zlabel]) => {
+                            const cur = summary.measure_latest![zk];
+                            if (cur == null) return null;
+                            const first = summary.measure_first?.[zk];
+                            const delta = first != null && first !== cur ? Number(cur) - Number(first) : null;
+                            return (
+                              <div key={zk} className="cp-row">
+                                <span className="cp-row-key">{zlabel}</span>
+                                <span className="cp-row-val">
+                                  {String(cur)} см
+                                  {delta != null && <span className={delta < 0 ? 'cp-delta-pos' : 'cp-delta-neg'}> {delta > 0 ? '+' : ''}{delta}</span>}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </>

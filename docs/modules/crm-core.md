@@ -48,6 +48,16 @@
 - `SettingsPage`: sidebar скрывается при выборе раздела (`settings-sidebar--hidden`), кнопка `← Назад` в заголовке контента.
 
 ## Сделано
+### 24.11.2026 · (task 87.2) · Карточка клиента: фиксы task 87
+- **device_settings NOT NULL:** `saveImportant` отправляет `{}` вместо `null`; сервер PATCH заменяет null/не-объект на `{}`.
+- **InBody регрессия:** summary использует `client.phone` как fallback если `body_clients.phone_digits` null.
+- **ДР из ИИН:** исправлен век в `iinToDob` — 1–2→1800-е, 3–4→1900-е, 5–6→2000-е (было инвертировано); `ageFromDate` не показывает возраст при дате рождения в будущем.
+- **Таймер замеров:** `timerLabel` теперь использует чистые даты в UTC+5 (`toLocaleDateString('sv-SE', {timeZone:'Asia/Yekaterinburg'})`) без округления миллисекунд — исправляет сдвиг на 1 день.
+- **Аватар удалён:** кружок с буквой и фото убраны из левой колонки; ФИО сразу первой строкой.
+- **Нижняя информация:** fontSize 13→14 в блоке Источник/Клиент с/LTV/Визитов/Последний визит/Депозит.
+- **Аппараты (device_settings):** только VacuActiv и InfraShape в форме (filter по `['vacuactiv','infrashape']`); label «Vacu» (не «Вакуум»); max=99; просмотр формат «DeviceName — Vacu N · ИК M».
+- **Замеры тела:** заголовок «Замеров: N, первый ДД.ММ.ГГГГ»; крупный total_cm с дельтой со старта; SVG спарклайн (inline, без библиотеки); список всех зон с дельтой; клик по блоку → отчёт клиента. Сервер: добавлены zone-колонки в measure_latest/first, `measure_count`, `measure_points`.
+
 ### 23.11.2026 · (task 87) · Карточка клиента: доработки по замечаниям
 - **Part 1:** `src/http/crm.ts`: `normSocial()` хелпер (убирает @, домен, trailing slash); PATCH добавлены `gender` (валидация 'female'|'male'|null, '' → null), `instagram`/`tiktok` через normSocial, `email` (toLower); POST: gender default 'female' (не ''), те же поля.
 - **Part 1 UI:** `ClientsPage.tsx`: `fmtPhone()` форматирует `+7 777 618 61 87`; левая колонка: 22px bold ФИО, отдельная строка телефона с кнопками WhatsApp/Позвонить, строка ДР+возраст, строка соцсетей (instagram/tiktok/email если заполнены); `ClientForm`: поля instagram/tiktok/email, gender select 'female'/'male'/null; gender display 'female'→'Женский'.

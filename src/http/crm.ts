@@ -1222,9 +1222,11 @@ export function buildCrmRouter(): Router {
       if (b.instagram !== undefined) upd.instagram = normSocial(b.instagram);
       if (b.tiktok !== undefined) upd.tiktok = normSocial(b.tiktok);
       if (b.email !== undefined) upd.email = !b.email ? null : String(b.email).trim().toLowerCase() || null;
-      for (const k of ['birth_date', 'ad_source_id', 'referrer_client_id', 'id_issued_by', 'id_valid_until', 'contraindications', 'notes', 'status', 'is_deleted', 'address', 'important_note', 'skirt_size', 'device_settings']) {
+      for (const k of ['birth_date', 'ad_source_id', 'referrer_client_id', 'id_issued_by', 'id_valid_until', 'contraindications', 'notes', 'status', 'is_deleted', 'address', 'important_note', 'skirt_size']) {
         if (b[k] !== undefined) upd[k] = b[k];
       }
+      // device_settings NOT NULL — never store null
+      if (b.device_settings !== undefined) upd.device_settings = (b.device_settings && typeof b.device_settings === 'object') ? b.device_settings : {};
       // Compute profile_complete from merged state
       const { data: cur } = await supabase.from('crm_clients').select('full_name,phone,birth_date,iin,id_issued_by,id_valid_until,ad_source_id,referrer_client_id').eq('id', req.params.id).single();
       if (cur) {
@@ -2815,33 +2817,40 @@ export function buildCrmRouter(): Router {
       const body_client_id = bodyClient?.id ?? null;
       const bodyPhoneDigits = bodyClient?.phone_digits as string | null ?? null;
 
-      // InBody: query by phone_digits
+      // InBody: query by phone_digits (fallback: use crm_client.phone directly)
+      const phoneForInBody = bodyPhoneDigits ?? (client?.phone as string | null ?? null);
       let inbody_last: string | null = null;
       let inbody_latest: Record<string,unknown> | null = null;
       let inbody_prev: Record<string,unknown> | null = null;
       let inbody_count = 0;
       let inbody_first: string | null = null;
-      if (bodyPhoneDigits) {
+      if (phoneForInBody) {
         const { data: ibRows } = await supabase.from('inbody_tests')
           .select('tested_at,weight,pbf,smm,ffm,vfl,bfm,bmi,bmr,tbw,inbody_score')
-          .eq('phone_digits', bodyPhoneDigits).order('tested_at', { ascending: false });
+          .eq('phone_digits', phoneForInBody).order('tested_at', { ascending: false });
         inbody_count = (ibRows ?? []).length;
         if (ibRows?.[0]) { inbody_last = (ibRows[0] as Record<string,unknown>).tested_at as string; inbody_latest = ibRows[0] as Record<string,unknown>; }
         if (ibRows?.[1]) inbody_prev = ibRows[1] as Record<string,unknown>;
         if (ibRows && ibRows.length > 0) inbody_first = (ibRows[ibRows.length - 1] as Record<string,unknown>).tested_at as string;
       }
 
-      // Measures: latest + first via body_measurements (linked by body_clients.id)
+      // Measures: latest + first + all points via body_measurements (linked by body_clients.id)
+      const ZONE_SEL = 'neck,chest,arm_l,arm_r,waist,belly,glutes,thigh_l,thigh_r,shin_l,shin_r';
       let measure_last: string | null = null;
       let measure_latest: Record<string,unknown> | null = null;
       let measure_first: Record<string,unknown> | null = null;
+      let measure_count = 0;
+      let measure_points: { measured_at: string; total_cm: number }[] = [];
       if (body_client_id) {
-        const [mLatestRes, mFirstRes] = await Promise.all([
-          supabase.from('body_measurements').select('measured_at,total_cm,weight').eq('client_id', body_client_id as string).order('measured_at', { ascending: false }).limit(1),
-          supabase.from('body_measurements').select('measured_at,total_cm,weight').eq('client_id', body_client_id as string).order('measured_at', { ascending: true }).limit(1),
+        const [mLatestRes, mFirstRes, mAllRes] = await Promise.all([
+          supabase.from('body_measurements').select(`measured_at,total_cm,weight,${ZONE_SEL}`).eq('client_id', body_client_id as string).order('measured_at', { ascending: false }).limit(1),
+          supabase.from('body_measurements').select(`measured_at,total_cm,weight,${ZONE_SEL}`).eq('client_id', body_client_id as string).order('measured_at', { ascending: true }).limit(1),
+          supabase.from('body_measurements').select('measured_at,total_cm').eq('client_id', body_client_id as string).order('measured_at', { ascending: true }),
         ]);
         if (mLatestRes.data?.[0]) { measure_last = (mLatestRes.data[0] as Record<string,unknown>).measured_at as string; measure_latest = mLatestRes.data[0] as Record<string,unknown>; }
         if (mFirstRes.data?.[0] && measure_last && (mFirstRes.data[0] as Record<string,unknown>).measured_at !== measure_last) measure_first = mFirstRes.data[0] as Record<string,unknown>;
+        measure_points = ((mAllRes.data ?? []) as Record<string,unknown>[]).map(r => ({ measured_at: r.measured_at as string, total_cm: Number(r.total_cm ?? 0) }));
+        measure_count = measure_points.length;
       }
 
       // System tags
@@ -2877,7 +2886,7 @@ export function buildCrmRouter(): Router {
       res.json({
         ltv, active_plan: activePlanWithName, visits_attended_total, last_visit_at,
         inbody_last, inbody_latest, inbody_prev, inbody_count, inbody_first,
-        measure_last, measure_latest, measure_first, body_client_id,
+        measure_last, measure_latest, measure_first, measure_count, measure_points, body_client_id,
         system_tags: systemTags, personal_tags,
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
