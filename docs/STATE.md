@@ -16,11 +16,12 @@
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 19.11.2026 | task 72: фикс ReferenceError в PlanFactSection (Fragment без импорта React) |
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 17.11.2026 | task 64: живой фон (blob-анимация), тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка, эффекты в редакторе |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
-| CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 24.11.2026 | task 87.3+: DeviceType.is_active убран → VacuActiv/InfraShape поля в Важное видны; InBody 5 тестов, router-навигация |
+| CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟡 | 24.11.2026 | task 88: таблица клиентов 14 колонок, resize/reorder, sort+dir, all-scan LTV/deposit/plan, localStorage; ждёт проверки на проде |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 29.10.2026 | checkout/refund payload явный; правильные ключи RPC; ответ {sale_id,number,total}; ждёт проверки на проде |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 23.11.2026 | task 83-1: BranchSection — socials/поля-списки/валидации; ждёт проверки на проде |
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 21.11.2026 | task 81: единый формат вариантов id/label, none_option, not_none, checklist без потерь, sw.js |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
+| Агрегатор мессенджеров | `modules/aggregator.md` | Агрегатор мессенджеров | ⚪ | 24.11.2026 | модуль заведён: сравнение Wazzup24, Green-API, ChatPlace, SendPulse, Umnico; вопросы Сергею |
 | UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | 🟡 | 19.11.2026 | task 71: меню кружка поверх iframe (#top-bar stacking context fix) |
 | Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 18.11.2026 | task 66: каталог проверок, линейки ролей (версии), движок v2, конструктор в Настройках, API, temp экран |
 | Telegram-бот клиентов | `modules/telegram-bot.md` | Telegram-бот клиентов | 🟡 | 17.11.2026 | task 60: InBody детальный экран — 4 блока (состав/до цели/с прошлого/со старта), навигация ‹/›, ideal_weight |

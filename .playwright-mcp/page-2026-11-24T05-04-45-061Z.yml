@@ -1,0 +1,227 @@
+- generic [ref=f6e1]:
+  - generic [ref=f6e2]:
+    - generic [ref=f6e3]:
+      - generic [ref=f6e4]:
+        - button "Менеджер" [ref=f6e5] [cursor=pointer]
+        - button "Агент 16" [ref=f6e10] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f6e14]: "16"
+        - button "Расписание" [ref=f6e15] [cursor=pointer]
+        - button "Клиенты" [ref=f6e18] [cursor=pointer]
+        - button "Воронка" [ref=f6e24] [cursor=pointer]
+        - button "Касса" [ref=f6e27] [cursor=pointer]
+        - button "Замеры" [ref=f6e32] [cursor=pointer]
+        - button "Отчёты" [ref=f6e39] [cursor=pointer]
+        - button "Настройки" [ref=f6e42] [cursor=pointer]
+      - button "Меню пользователя" [ref=f6e47] [cursor=pointer]: С
+    - generic [ref=f6e49]:
+      - button "Расписание" [ref=f6e50] [cursor=pointer]
+      - iframe [active] [ref=f6e52]:
+        - generic [ref=f8e2]:
+          - generic [ref=f8e1004]:
+            - generic [ref=f8e1006]:
+              - button "← Назад" [ref=f8e1007] [cursor=pointer]
+              - generic [ref=f8e1008]: 📏 Замеры
+            - generic [ref=f8e1010]:
+              - generic [ref=f8e1011]:
+                - button "← Назад" [ref=f8e1012] [cursor=pointer]
+                - button "← К клиенту" [ref=f8e1013] [cursor=pointer]
+                - generic [ref=f8e1014]: Сергей
+                - button "🖨 Бланк" [ref=f8e1015] [cursor=pointer]
+                - button "📷 InBody по QR" [ref=f8e1016] [cursor=pointer]
+                - button "🔗 Привязать InBody" [ref=f8e1017] [cursor=pointer]
+                - button "🔗 Ссылка" [ref=f8e1018] [cursor=pointer]
+                - button "+ Замер" [ref=f8e1019] [cursor=pointer]
+              - generic [ref=f8e1020]:
+                - generic [ref=f8e1021]: +7 776•••-••-79
+                - generic [ref=f8e1022]: "ID: 4E1B7C"
+                - generic [ref=f8e1023]: "Замеров: 1"
+                - generic [ref=f8e1024]: "Старт: 17.11.26"
+                - generic [ref=f8e1025]: "Fitbase #4"
+              - button "№1 · 17.11.26" [ref=f8e1027] [cursor=pointer]
+              - generic [ref=f8e1028]:
+                - complementary [ref=f8e1029]:
+                  - generic [ref=f8e1030]:
+                    - img "Силуэт фигуры" [ref=f8e1031]
+                    - generic [ref=f8e1032] [cursor=pointer]:
+                      - generic [ref=f8e1033]: Шея
+                      - strong [ref=f8e1034]: 30.0 см
+                    - generic [ref=f8e1035] [cursor=pointer]:
+                      - generic [ref=f8e1036]: Грудь
+                      - strong [ref=f8e1037]: 80.0 см
+                    - generic [ref=f8e1038] [cursor=pointer]:
+                      - generic [ref=f8e1039]: П.рука
+                      - strong [ref=f8e1040]: 25.0 см
+                    - generic [ref=f8e1041] [cursor=pointer]:
+                      - generic [ref=f8e1042]: Л.рука
+                      - strong [ref=f8e1043]: 25.0 см
+                    - generic [ref=f8e1044] [cursor=pointer]:
+                      - generic [ref=f8e1045]: Талия
+                      - strong [ref=f8e1046]: 70.0 см
+                    - generic [ref=f8e1047] [cursor=pointer]:
+                      - generic [ref=f8e1048]: Живот
+                      - strong [ref=f8e1049]: 55.0 см
+                    - generic [ref=f8e1050] [cursor=pointer]:
+                      - generic [ref=f8e1051]: Ягодицы
+                      - strong [ref=f8e1052]: 70.0 см
+                    - generic [ref=f8e1053] [cursor=pointer]:
+                      - generic [ref=f8e1054]: П.бедро
+                      - strong [ref=f8e1055]: 50.0 см
+                    - generic [ref=f8e1056] [cursor=pointer]:
+                      - generic [ref=f8e1057]: Л.бедро
+                      - strong [ref=f8e1058]: 50.0 см
+                    - generic [ref=f8e1059] [cursor=pointer]:
+                      - generic [ref=f8e1060]: П.голень
+                      - strong [ref=f8e1061]: 25.0 см
+                    - generic [ref=f8e1062] [cursor=pointer]:
+                      - generic [ref=f8e1063]: Л.голень
+                      - strong [ref=f8e1064]: 25.0 см
+                - generic [ref=f8e1065]:
+                  - generic [ref=f8e1066]:
+                    - generic [ref=f8e1067]: Потеряно со старта
+                    - generic [ref=f8e1068]: С замера №1 по №1
+                    - generic [ref=f8e1069]:
+                      - generic [ref=f8e1070]:
+                        - strong [ref=f8e1071]: "0.0"
+                        - text: сантиметров
+                      - generic [ref=f8e1072]:
+                        - strong [ref=f8e1073]: "0.0"
+                        - text: килограммов
+                      - generic [ref=f8e1074]:
+                        - strong [ref=f8e1075]: "0.0"
+                        - text: жира, кг
+                    - button "Отправить в результаты студии" [disabled] [ref=f8e1076]
+                    - text: Кнопка активна при снижении обхватов, веса InBody или жира InBody
+                  - generic [ref=f8e1078]:
+                    - generic [ref=f8e1079]:
+                      - generic [ref=f8e1080]: InBody · 5 тестов
+                      - generic [ref=f8e1081]:
+                        - button "Полный лист" [ref=f8e1082] [cursor=pointer]
+                        - button "+ Сканировать" [ref=f8e1083] [cursor=pointer]
+                    - generic [ref=f8e1084]:
+                      - generic [ref=f8e1085]: "Последний: 17.10.26 (CSV)"
+                      - generic [ref=f8e1086]:
+                        - generic [ref=f8e1087]:
+                          - generic [ref=f8e1088]: 71 ↑
+                          - generic [ref=f8e1089]: 70.0–90.0
+                          - generic [ref=f8e1090]: Оценка
+                        - generic [ref=f8e1091]:
+                          - generic [ref=f8e1092]: 64.6кг ↑
+                          - generic [ref=f8e1093]: 63.0–85.2
+                          - generic [ref=f8e1094]: Вес
+                        - generic [ref=f8e1095]:
+                          - generic [ref=f8e1096]: 15.4% ↑
+                          - generic [ref=f8e1097]: 10.0–20.0
+                          - generic [ref=f8e1098]: Жир %
+                        - generic [ref=f8e1099]:
+                          - generic [ref=f8e1100]: 9.9кг ↑
+                          - generic [ref=f8e1101]: 8.9–17.8
+                          - generic [ref=f8e1102]: Жир кг
+                        - generic [ref=f8e1103]:
+                          - generic [ref=f8e1104]: 30.4кг ↓
+                          - generic [ref=f8e1105]: 31.9–38.9
+                          - generic [ref=f8e1106]: Мышцы
+                        - generic [ref=f8e1107]:
+                          - generic [ref=f8e1108]: 4 ↑
+                          - generic [ref=f8e1109]: 1.0–9.0
+                          - generic [ref=f8e1110]: Висц. жир
+                        - generic [ref=f8e1111]:
+                          - generic [ref=f8e1112]: 19.2 ↑
+                          - generic [ref=f8e1113]: 18.5–25.0
+                          - generic [ref=f8e1114]: ИМТ
+                    - generic [ref=f8e1115]:
+                      - generic [ref=f8e1116]:
+                        - generic [ref=f8e1117] [cursor=pointer]: Вес кг
+                        - generic [ref=f8e1119] [cursor=pointer]: Мышцы кг
+                        - generic [ref=f8e1121] [cursor=pointer]: Жир кг
+                        - generic [ref=f8e1123] [cursor=pointer]: "% жира"
+                        - generic [ref=f8e1125] [cursor=pointer]: Вода л
+                        - generic [ref=f8e1127] [cursor=pointer]: Оценка
+                      - img [ref=f8e1129]:
+                        - generic [ref=f8e1130]: "23.04"
+                        - generic [ref=f8e1131]: "27.05"
+                        - generic [ref=f8e1132]: "17.08"
+                        - generic [ref=f8e1133]: "18.08"
+                        - generic [ref=f8e1134]: "17.10"
+                        - generic [ref=f8e1146]: "64.6"
+                        - generic [ref=f8e1157]: "30.4"
+                        - generic [ref=f8e1168]: "9.9"
+                        - generic [ref=f8e1171]: "61.3"
+                        - generic [ref=f8e1172]: "63.1"
+                        - generic [ref=f8e1173]: "64.9"
+                    - button "▼ Все тесты (5)" [ref=f8e1174] [cursor=pointer]
+                  - generic [ref=f8e1175]:
+                    - generic [ref=f8e1176]: Замер №1 · 17.11.26
+                    - generic [ref=f8e1177]: Сергей
+                    - generic [ref=f8e1179]:
+                      - text: "∑ обхватов:"
+                      - generic [ref=f8e1180]: 505.0 см
+                    - button "Fitbase" [ref=f8e1182] [cursor=pointer]
+                  - generic [ref=f8e1183]:
+                    - generic [ref=f8e1184]: Все замеры
+                    - table [ref=f8e1186]:
+                      - rowgroup [ref=f8e1187]:
+                        - row [ref=f8e1188]:
+                          - columnheader "№" [ref=f8e1189]
+                          - columnheader "Дата" [ref=f8e1190]
+                          - columnheader "Консультант" [ref=f8e1191]
+                          - columnheader "Шея" [ref=f8e1192]
+                          - columnheader "Грудь" [ref=f8e1193]
+                          - columnheader "Л.рука" [ref=f8e1194]
+                          - columnheader "П.рука" [ref=f8e1195]
+                          - columnheader "Талия" [ref=f8e1196]
+                          - columnheader "Живот" [ref=f8e1197]
+                          - columnheader "Ягодицы" [ref=f8e1198]
+                          - columnheader "Л.бедро" [ref=f8e1199]
+                          - columnheader "П.бедро" [ref=f8e1200]
+                          - columnheader "Л.голень" [ref=f8e1201]
+                          - columnheader "П.голень" [ref=f8e1202]
+                          - columnheader "∑ см" [ref=f8e1203]
+                          - columnheader "Δ пред." [ref=f8e1204]
+                          - columnheader "Δ старт" [ref=f8e1205]
+                          - columnheader "Fitbase" [ref=f8e1206]
+                      - rowgroup [ref=f8e1207]:
+                        - row [ref=f8e1208]:
+                          - cell "1" [ref=f8e1209]
+                          - cell "17.11.26" [ref=f8e1210]
+                          - cell "Сергей" [ref=f8e1211]
+                          - cell "30.0" [ref=f8e1212]
+                          - cell "80.0" [ref=f8e1213]
+                          - cell "25.0" [ref=f8e1214]
+                          - cell "25.0" [ref=f8e1215]
+                          - cell "70.0" [ref=f8e1216]
+                          - cell "55.0" [ref=f8e1217]
+                          - cell "70.0" [ref=f8e1218]
+                          - cell "50.0" [ref=f8e1219]
+                          - cell "50.0" [ref=f8e1220]
+                          - cell "25.0" [ref=f8e1221]
+                          - cell "25.0" [ref=f8e1222]
+                          - cell "505.0" [ref=f8e1223]
+                          - cell "—" [ref=f8e1224]
+                          - cell "—" [ref=f8e1225]
+                          - cell [ref=f8e1226]:
+                            - button "Fitbase" [ref=f8e1228] [cursor=pointer]
+          - region "Notifications (F8)":
+            - list
+      - button "Воронка" [ref=f6e53] [cursor=pointer]
+  - generic [ref=f6e55]:
+    - generic [ref=f6e56]:
+      - generic [ref=f6e57]: SW
+      - generic [ref=f6e58]: Сергей
+    - generic [ref=f6e59]:
+      - button "Менеджер" [ref=f6e60] [cursor=pointer]
+      - button "Агент 16" [ref=f6e67] [cursor=pointer]:
+        - generic [ref=f6e72]: Агент
+        - generic [ref=f6e73]: "16"
+      - button "Расписание" [ref=f6e74] [cursor=pointer]
+      - button "Клиенты" [ref=f6e79] [cursor=pointer]
+      - button "Воронка" [ref=f6e87] [cursor=pointer]
+      - button "Касса" [ref=f6e92] [cursor=pointer]
+      - button "Замеры" [ref=f6e99] [cursor=pointer]
+      - button "Отчёты" [ref=f6e108] [cursor=pointer]
+      - button "Настройки" [ref=f6e113] [cursor=pointer]
+    - generic [ref=f6e119]:
+      - group "Тема" [ref=f6e120]:
+        - button "Светлая" [ref=f6e121] [cursor=pointer]
+        - button "Тёмная" [ref=f6e122] [cursor=pointer]
+      - button "Выйти" [ref=f6e123] [cursor=pointer]

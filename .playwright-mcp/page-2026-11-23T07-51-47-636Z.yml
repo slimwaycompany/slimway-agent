@@ -1,0 +1,174 @@
+- generic [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - generic [ref=f3e3]:
+      - generic [ref=f3e4]:
+        - button "Менеджер" [ref=f3e5] [cursor=pointer]
+        - button "Агент 22" [ref=f3e122] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f3e123]: "22"
+        - button "Расписание" [ref=f3e14] [cursor=pointer]
+        - button "Клиенты" [ref=f3e17] [cursor=pointer]
+        - button "Воронка" [ref=f3e23] [cursor=pointer]
+        - button "Касса" [ref=f3e26] [cursor=pointer]
+        - button "Замеры" [ref=f3e31] [cursor=pointer]
+        - button "Отчёты" [ref=f3e38] [cursor=pointer]
+        - button "Настройки" [ref=f3e41] [cursor=pointer]
+      - button "Меню пользователя" [ref=f3e46] [cursor=pointer]: С
+    - generic [ref=f3e124]:
+      - button "Отчёты" [ref=f3e125] [cursor=pointer]
+      - iframe [active] [ref=f3e127]:
+        - generic [ref=f6e2]:
+          - generic [ref=f6e3]:
+            - generic [ref=f6e4]:
+              - generic [ref=f6e5]: Настройки
+              - generic [ref=f6e6]:
+                - textbox "Поиск…" [ref=f6e9]
+                - generic [ref=f6e10]:
+                  - generic [ref=f6e11]:
+                    - button "Моё 2" [ref=f6e12] [cursor=pointer]:
+                      - generic [ref=f6e13]: Моё
+                      - generic [ref=f6e14]: "2"
+                    - button "Профиль" [ref=f6e17] [cursor=pointer]
+                    - button "Оформление" [ref=f6e22] [cursor=pointer]
+                  - generic [ref=f6e30]:
+                    - button "Студия 4" [ref=f6e31] [cursor=pointer]:
+                      - generic [ref=f6e32]: Студия
+                      - generic [ref=f6e33]: "4"
+                    - button "Филиал" [active] [ref=f6e90] [cursor=pointer]
+                    - button "Аппараты" [ref=f6e96] [cursor=pointer]
+                    - button "Занятия и расписание" [ref=f6e101] [cursor=pointer]
+                    - button "ТВ-экран" [ref=f6e105] [cursor=pointer]
+                  - button "Что продаём 5" [ref=f6e37] [cursor=pointer]:
+                    - generic [ref=f6e38]: Что продаём
+                    - generic [ref=f6e39]: "5"
+                  - button "Деньги 2" [ref=f6e43] [cursor=pointer]:
+                    - generic [ref=f6e44]: Деньги
+                    - generic [ref=f6e45]: "2"
+                  - button "Заявки 7" [ref=f6e49] [cursor=pointer]:
+                    - generic [ref=f6e50]: Заявки
+                    - generic [ref=f6e51]: "7"
+                  - button "Команда 5" [ref=f6e55] [cursor=pointer]:
+                    - generic [ref=f6e56]: Команда
+                    - generic [ref=f6e57]: "5"
+                  - button "Связи и данные 3" [ref=f6e61] [cursor=pointer]:
+                    - generic [ref=f6e62]: Связи и данные
+                    - generic [ref=f6e63]: "3"
+            - generic [ref=f6e66]:
+              - generic [ref=f6e67]: Филиал
+              - generic [ref=f6e110]:
+                - generic [ref=f6e111]:
+                  - generic [ref=f6e112]: Реквизиты
+                  - generic [ref=f6e113]:
+                    - generic [ref=f6e114]:
+                      - generic [ref=f6e115]: Юридическое название
+                      - textbox [ref=f6e116]
+                    - generic [ref=f6e117]:
+                      - generic [ref=f6e118]: БИН
+                      - textbox [ref=f6e119]
+                  - generic [ref=f6e120]:
+                    - generic [ref=f6e121]:
+                      - generic [ref=f6e122]: Страна
+                      - textbox [ref=f6e123]: Казахстан
+                    - generic [ref=f6e124]:
+                      - generic [ref=f6e125]: Город
+                      - textbox [ref=f6e126]: Астана
+                  - generic [ref=f6e127]:
+                    - generic [ref=f6e128]: Адрес
+                    - textbox [ref=f6e129]
+                  - generic [ref=f6e130]:
+                    - generic [ref=f6e131]:
+                      - generic [ref=f6e132]: Телефон
+                      - textbox [ref=f6e133]
+                    - generic [ref=f6e134]:
+                      - generic [ref=f6e135]: Часовой пояс
+                      - textbox [ref=f6e136]: Asia/Yekaterinburg
+                  - generic [ref=f6e137]:
+                    - generic [ref=f6e138]:
+                      - generic [ref=f6e139]: Валюта
+                      - textbox [ref=f6e140]: KZT
+                    - generic [ref=f6e141]:
+                      - generic [ref=f6e142]: Язык
+                      - textbox [ref=f6e143]: ru
+                - generic [ref=f6e144]:
+                  - generic [ref=f6e145]: Часы работы
+                  - generic [ref=f6e146]:
+                    - generic [ref=f6e147]:
+                      - generic [ref=f6e148]: Понедельник
+                      - generic [ref=f6e149]:
+                        - checkbox "Открыто" [checked] [ref=f6e150]
+                        - text: Открыто
+                      - textbox [ref=f6e151]: 08:00:00
+                      - generic [ref=f6e152]: —
+                      - textbox [ref=f6e153]: 22:00:00
+                    - generic [ref=f6e154]:
+                      - generic [ref=f6e155]: Вторник
+                      - generic [ref=f6e156]:
+                        - checkbox "Открыто" [checked] [ref=f6e157]
+                        - text: Открыто
+                      - textbox [ref=f6e158]: 08:00:00
+                      - generic [ref=f6e159]: —
+                      - textbox [ref=f6e160]: 22:00:00
+                    - generic [ref=f6e161]:
+                      - generic [ref=f6e162]: Среда
+                      - generic [ref=f6e163]:
+                        - checkbox "Открыто" [checked] [ref=f6e164]
+                        - text: Открыто
+                      - textbox [ref=f6e165]: 08:00:00
+                      - generic [ref=f6e166]: —
+                      - textbox [ref=f6e167]: 22:00:00
+                    - generic [ref=f6e168]:
+                      - generic [ref=f6e169]: Четверг
+                      - generic [ref=f6e170]:
+                        - checkbox "Открыто" [checked] [ref=f6e171]
+                        - text: Открыто
+                      - textbox [ref=f6e172]: 08:00:00
+                      - generic [ref=f6e173]: —
+                      - textbox [ref=f6e174]: 22:00:00
+                    - generic [ref=f6e175]:
+                      - generic [ref=f6e176]: Пятница
+                      - generic [ref=f6e177]:
+                        - checkbox "Открыто" [checked] [ref=f6e178]
+                        - text: Открыто
+                      - textbox [ref=f6e179]: 08:00:00
+                      - generic [ref=f6e180]: —
+                      - textbox [ref=f6e181]: 22:00:00
+                    - generic [ref=f6e182]:
+                      - generic [ref=f6e183]: Суббота
+                      - generic [ref=f6e184]:
+                        - checkbox "Открыто" [checked] [ref=f6e185]
+                        - text: Открыто
+                      - textbox [ref=f6e186]: 08:00:00
+                      - generic [ref=f6e187]: —
+                      - textbox [ref=f6e188]: 20:00:00
+                    - generic [ref=f6e189]:
+                      - generic [ref=f6e190]: Воскресенье
+                      - generic [ref=f6e191]:
+                        - checkbox "Открыто" [checked] [ref=f6e192]
+                        - text: Открыто
+                      - textbox [ref=f6e193]: 08:00:00
+                      - generic [ref=f6e194]: —
+                      - textbox [ref=f6e195]: 20:00:00
+                - button "Сохранить" [ref=f6e196] [cursor=pointer]
+          - region "Notifications (F8)":
+            - list
+  - generic [ref=f3e54]:
+    - generic [ref=f3e55]:
+      - generic [ref=f3e56]: SW
+      - generic [ref=f3e57]: Сергей
+    - generic [ref=f3e58]:
+      - button "Менеджер" [ref=f3e59] [cursor=pointer]
+      - button "Агент 22" [ref=f3e128] [cursor=pointer]:
+        - generic [ref=f3e71]: Агент
+        - generic [ref=f3e129]: "22"
+      - button "Расписание" [ref=f3e72] [cursor=pointer]
+      - button "Клиенты" [ref=f3e77] [cursor=pointer]
+      - button "Воронка" [ref=f3e85] [cursor=pointer]
+      - button "Касса" [ref=f3e90] [cursor=pointer]
+      - button "Замеры" [ref=f3e97] [cursor=pointer]
+      - button "Отчёты" [ref=f3e106] [cursor=pointer]
+      - button "Настройки" [ref=f3e111] [cursor=pointer]
+    - generic [ref=f3e117]:
+      - group "Тема" [ref=f3e118]:
+        - button "Светлая" [ref=f3e119] [cursor=pointer]
+        - button "Тёмная" [ref=f3e120] [cursor=pointer]
+      - button "Выйти" [ref=f3e121] [cursor=pointer]

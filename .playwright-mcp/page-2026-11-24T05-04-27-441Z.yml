@@ -1,0 +1,446 @@
+- generic [ref=f6e1]:
+  - generic [ref=f6e2]:
+    - generic [ref=f6e3]:
+      - generic [ref=f6e4]:
+        - button "Менеджер" [ref=f6e5] [cursor=pointer]
+        - button "Агент 16" [ref=f6e10] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f6e14]: "16"
+        - button "Расписание" [ref=f6e15] [cursor=pointer]
+        - button "Клиенты" [ref=f6e18] [cursor=pointer]
+        - button "Воронка" [ref=f6e24] [cursor=pointer]
+        - button "Касса" [ref=f6e27] [cursor=pointer]
+        - button "Замеры" [ref=f6e32] [cursor=pointer]
+        - button "Отчёты" [ref=f6e39] [cursor=pointer]
+        - button "Настройки" [ref=f6e42] [cursor=pointer]
+      - button "Меню пользователя" [ref=f6e47] [cursor=pointer]: С
+    - generic [ref=f6e49]:
+      - button "Расписание" [ref=f6e50] [cursor=pointer]
+      - iframe [active] [ref=f6e52]:
+        - generic [active] [ref=f8e1]:
+          - generic [ref=f8e2]:
+            - generic [ref=f8e3]:
+              - generic [ref=f8e4]:
+                - textbox "Поиск по имени или телефону" [ref=f8e5]: "77767681579"
+                - combobox [ref=f8e6]:
+                  - option "Все источники" [selected]
+                  - option "оффер"
+                  - option "Рекомендация клиента клуба"
+                  - option "Сайт"
+                  - option "Instagram"
+                  - option "Проходящий трафик"
+                  - option "Входящий звонок"
+                  - option "WhatsApp"
+                  - option "Блогер бартер"
+                  - option "Блогер Зарина"
+                  - option "Блогер Хадия"
+                  - option "Блогер Ната"
+                  - option "2гис"
+                  - option "Таргет"
+                  - option "Таргет тикток"
+                - combobox [ref=f8e7]:
+                  - option "Все анкеты" [selected]
+                  - option "Заполнена"
+                  - option "Не заполнена"
+                - combobox [ref=f8e8]:
+                  - option "Все визиты" [selected]
+                  - option "7+ дн. без визита"
+                  - option "14+ дн."
+                  - option "30+ дн."
+                - combobox [ref=f8e9]:
+                  - option "По имени" [selected]
+                  - option "По дням без визита"
+                - button "+ Клиент" [ref=f8e10] [cursor=pointer]
+                - button "↓ Fitbase" [ref=f8e11] [cursor=pointer]
+              - generic [ref=f8e622] [cursor=pointer]:
+                - generic [ref=f8e623]:
+                  - generic [ref=f8e624]: Ревнивцев Сергей Сергеевич
+                  - generic [ref=f8e625]: 7776768157920.02.1997
+                  - generic [ref=f8e626]: Рекомендация клиента клуба
+                - generic [ref=f8e628]:
+                  - generic [ref=f8e629]: Акция 6 VACU + 6 INFRASTEP + 12 ROLLSHAPE +2
+                  - generic [ref=f8e630]: 12/12
+              - generic [ref=f8e621]: 1 из 1 клиентов
+              - dialog [ref=f8e632]:
+                - button "Закрыть" [ref=f8e633] [cursor=pointer]: ✕
+                - generic [ref=f8e634]:
+                  - generic [ref=f8e635]:
+                    - generic [ref=f8e636]: Ревнивцев Сергей Сергеевич
+                    - generic [ref=f8e638]:
+                      - generic [ref=f8e639]: +7 776 768 15 79
+                      - generic [ref=f8e640]:
+                        - button "⎘ Копировать" [ref=f8e641] [cursor=pointer]
+                        - link "WhatsApp" [ref=f8e642] [cursor=pointer]:
+                          - /url: https://wa.me/77767681579
+                        - link "Позвонить" [ref=f8e643] [cursor=pointer]:
+                          - /url: tel:+77767681579
+                    - generic [ref=f8e644]: 20.02.1997 · 29 л.
+                    - generic [ref=f8e645]:
+                      - generic [ref=f8e646]: Instagram @zmsgrove
+                      - generic [ref=f8e647]: TikTok @zmsgrove
+                      - generic [ref=f8e648]: sergey.revnivcev@gmail.com
+                    - generic [ref=f8e649]:
+                      - generic [ref=f8e650]: "Fitbase #4"
+                      - button "✎ Редактировать" [ref=f8e651] [cursor=pointer]
+                    - generic [ref=f8e652]:
+                      - generic [ref=f8e653]: Новый клиент
+                      - generic [ref=f8e654]: Анкета неполная
+                      - generic [ref=f8e655]: Замер скоро
+                      - button "+ Метка" [ref=f8e657] [cursor=pointer]
+                    - generic [ref=f8e658]:
+                      - generic [ref=f8e659]:
+                        - generic [ref=f8e660]: Источник
+                        - generic [ref=f8e661]: Рекомендация клиента клуба
+                      - generic [ref=f8e662]:
+                        - generic [ref=f8e663]: Клиент с
+                        - generic [ref=f8e664]: 28.10.2026
+                      - generic [ref=f8e665]:
+                        - generic [ref=f8e666]: LTV
+                        - generic [ref=f8e667]: 1 683 750 ₸
+                      - generic [ref=f8e668]:
+                        - generic [ref=f8e669]: Визитов
+                        - generic [ref=f8e670]: "0"
+                      - generic [ref=f8e671]:
+                        - generic [ref=f8e672]: Депозит
+                        - generic [ref=f8e673]: 5 000 ₸
+                    - generic [ref=f8e674]:
+                      - generic [ref=f8e675]:
+                        - text: Активный абонемент
+                        - generic [ref=f8e676]: +ещё 2
+                      - generic [ref=f8e677]:
+                        - generic [ref=f8e678]: Акция 6 VACU + 6 INFRASTEP + 12 ROLLSHAPE
+                        - generic [ref=f8e679]: "До: 03.12.2026"
+                        - generic [ref=f8e680]: "Остаток: 12/12 сеансов"
+                        - generic [ref=f8e681]: Активен
+                        - button "❄ Заморозить" [ref=f8e682] [cursor=pointer]
+                    - button "▾ Подробнее" [ref=f8e683] [cursor=pointer]
+                  - generic [ref=f8e684]:
+                    - generic [ref=f8e685]:
+                      - generic [ref=f8e686]:
+                        - text: Важное
+                        - button "✎" [ref=f8e997] [cursor=pointer]
+                      - generic [ref=f8e689]:
+                        - generic [ref=f8e998]: VacuActiv — Vacu 10 · ИК 20
+                        - generic [ref=f8e999]: InfraShape — Vacu 15 · ИК 25
+                        - generic [ref=f8e690]: "Противопоказания: нету"
+                    - generic [ref=f8e691]:
+                      - generic [ref=f8e692]:
+                        - text: Пакеты
+                        - generic [ref=f8e693]:
+                          - button "Все" [ref=f8e694] [cursor=pointer]
+                          - button "Активные" [ref=f8e695] [cursor=pointer]
+                          - button "Закрытые" [ref=f8e696] [cursor=pointer]
+                      - generic [ref=f8e697]:
+                        - generic [ref=f8e698]:
+                          - generic [ref=f8e699]:
+                            - generic [ref=f8e700]: VACU 12+RS12
+                            - generic [ref=f8e701]: Не активирован
+                          - generic [ref=f8e702]:
+                            - generic [ref=f8e703]: "VacuActiv: 12/12"
+                            - generic [ref=f8e704]: "RollShape: 12/12"
+                        - generic [ref=f8e705]:
+                          - generic [ref=f8e706]:
+                            - generic [ref=f8e707]: VACU 12+RS12
+                            - generic [ref=f8e708]: Активен
+                          - generic [ref=f8e709]:
+                            - generic [ref=f8e710]: "Активирован: 19.11.2026"
+                            - generic [ref=f8e711]: "До: 18.12.2026"
+                          - generic [ref=f8e712]:
+                            - generic [ref=f8e713]: "RollShape: 12/12"
+                            - generic [ref=f8e714]: "VacuActiv: 12/12"
+                          - generic [ref=f8e715]:
+                            - button "❄ Заморозить" [ref=f8e716] [cursor=pointer]
+                            - generic [ref=f8e717]: ❄ 30 д. осталось
+                        - generic [ref=f8e718]:
+                          - generic [ref=f8e719]:
+                            - generic [ref=f8e720]: Акция 6 VACU + 6 INFRASTEP + 12 ROLLSHAPE
+                            - generic [ref=f8e721]: Активен
+                          - generic [ref=f8e722]:
+                            - generic [ref=f8e723]: "Активирован: 23.10.2026"
+                            - generic [ref=f8e724]: "До: 03.12.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e725]: "Остаток: 12/12 сеансов"
+                          - generic [ref=f8e726]:
+                            - button "❄ Заморозить" [ref=f8e727] [cursor=pointer]
+                            - button "⚡ Распределить" [ref=f8e728] [cursor=pointer]
+                        - generic [ref=f8e729]:
+                          - generic [ref=f8e730]:
+                            - generic [ref=f8e731]: VACU - 16 сеансов
+                            - generic [ref=f8e732]: Возвращён
+                          - generic [ref=f8e733]:
+                            - generic [ref=f8e734]: "Активирован: 19.10.2026"
+                            - generic [ref=f8e735]: "До: 19.10.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e736]: "Остаток: 15/16 сеансов"
+                        - generic [ref=f8e737]:
+                          - generic [ref=f8e738]:
+                            - generic [ref=f8e739]: VACU - 10 сеансов
+                            - generic [ref=f8e740]: Возвращён
+                          - generic [ref=f8e741]:
+                            - generic [ref=f8e742]: "До: 12.10.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e743]: "Остаток: 10/10 сеансов"
+                        - generic [ref=f8e744]:
+                          - generic [ref=f8e745]:
+                            - generic [ref=f8e746]: VACU - 16 сеансов
+                            - generic [ref=f8e747]: Возвращён
+                          - generic [ref=f8e748]:
+                            - generic [ref=f8e749]: "Активирован: 12.10.2026"
+                            - generic [ref=f8e750]: "До: 12.10.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e751]: "Остаток: 15/16 сеансов"
+                        - generic [ref=f8e752]:
+                          - generic [ref=f8e753]:
+                            - generic [ref=f8e754]: ROLLSHAPE - 10 сеансов
+                            - generic [ref=f8e755]: Возвращён
+                          - generic [ref=f8e756]:
+                            - generic [ref=f8e757]: "До: 27.08.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e758]: "Остаток: 10/10 сеансов"
+                        - generic [ref=f8e759]:
+                          - generic [ref=f8e760]:
+                            - generic [ref=f8e761]: VACU - 10 сеансов
+                            - generic [ref=f8e762]: Возвращён
+                          - generic [ref=f8e763]:
+                            - generic [ref=f8e764]: "Активирован: 27.08.2026"
+                            - generic [ref=f8e765]: "До: 27.08.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e766]: "Остаток: 10/10 сеансов"
+                        - generic [ref=f8e767]:
+                          - generic [ref=f8e768]:
+                            - generic [ref=f8e769]: Безлимит
+                            - generic [ref=f8e770]: Истёк
+                          - generic [ref=f8e771]:
+                            - generic [ref=f8e772]: "Активирован: 10.08.2026"
+                            - generic [ref=f8e773]: "До: 11.08.2026"
+                            - text: Fitbase
+                        - generic [ref=f8e774]:
+                          - generic [ref=f8e775]:
+                            - generic [ref=f8e776]: Акция Х2 VACU - 16 сеансов
+                            - generic [ref=f8e777]: Истёк
+                          - generic [ref=f8e778]:
+                            - generic [ref=f8e779]: "Активирован: 28.07.2026"
+                            - generic [ref=f8e780]: "До: 28.07.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e781]: "Остаток: 16/16 сеансов"
+                        - generic [ref=f8e782]:
+                          - generic [ref=f8e783]:
+                            - generic [ref=f8e784]: VACU - 16 сеансов
+                            - generic [ref=f8e785]: Возвращён
+                          - generic [ref=f8e786]:
+                            - generic [ref=f8e787]: "Активирован: 28.07.2026"
+                            - generic [ref=f8e788]: "До: 28.07.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e789]: "Остаток: 16/16 сеансов"
+                        - generic [ref=f8e790]:
+                          - generic [ref=f8e791]:
+                            - generic [ref=f8e792]: INFRASHAPE / INFRASTEP / VACU - 40
+                            - generic [ref=f8e793]: Возвращён
+                          - generic [ref=f8e794]:
+                            - generic [ref=f8e795]: "До: 23.07.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e796]: "Остаток: 40/40 сеансов"
+                        - generic [ref=f8e797]:
+                          - generic [ref=f8e798]:
+                            - generic [ref=f8e799]: INFRASHAPE / INFRASTEP / VACU - 40
+                            - generic [ref=f8e800]: Возвращён
+                          - generic [ref=f8e801]:
+                            - generic [ref=f8e802]: "До: 23.07.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e803]: "Остаток: 40/40 сеансов"
+                        - generic [ref=f8e804]:
+                          - generic [ref=f8e805]:
+                            - generic [ref=f8e806]: INFRASHAPE / INFRASTEP / VACU - 10
+                            - generic [ref=f8e807]: Возвращён
+                          - generic [ref=f8e808]:
+                            - generic [ref=f8e809]: "До: 23.07.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e810]: "Остаток: 10/10 сеансов"
+                        - generic [ref=f8e811]:
+                          - generic [ref=f8e812]:
+                            - generic [ref=f8e813]: ROLLSHAPE - 10 test
+                            - generic [ref=f8e814]: Возвращён
+                          - generic [ref=f8e815]:
+                            - generic [ref=f8e816]: "Активирован: 21.07.2026"
+                            - generic [ref=f8e817]: "До: 23.07.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e818]: "Остаток: 9/10 сеансов"
+                        - generic [ref=f8e819]:
+                          - generic [ref=f8e820]:
+                            - generic [ref=f8e821]: INFRASHAPE / INFRASTEP / VACU - 40
+                            - generic [ref=f8e822]: Возвращён
+                          - generic [ref=f8e823]:
+                            - generic [ref=f8e824]: "До: 23.07.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e825]: "Остаток: 40/40 сеансов"
+                        - generic [ref=f8e826]:
+                          - generic [ref=f8e827]:
+                            - generic [ref=f8e828]: ROLLSHAPE - 24 сеанса
+                            - generic [ref=f8e829]: Возвращён
+                          - generic [ref=f8e830]:
+                            - generic [ref=f8e831]: "До: 23.07.2026"
+                            - text: Fitbase
+                          - generic [ref=f8e832]: "Остаток: 24/24 сеансов"
+                    - generic [ref=f8e833]:
+                      - generic [ref=f8e834]: Лента
+                      - generic [ref=f8e835]:
+                        - button "Всё" [ref=f8e836] [cursor=pointer]
+                        - button "Комментарии" [ref=f8e837] [cursor=pointer]
+                        - button "Задачи" [ref=f8e838] [cursor=pointer]
+                        - button "Лог" [ref=f8e839] [cursor=pointer]
+                      - generic [ref=f8e840]:
+                        - textbox "Добавить комментарий…" [ref=f8e841]
+                        - button "+" [ref=f8e842] [cursor=pointer]
+                      - generic [ref=f8e843]:
+                        - generic [ref=f8e844]:
+                          - generic [ref=f8e845]:
+                            - generic [ref=f8e846]: · Сергей
+                            - generic [ref=f8e847]: 23.11.2026 22:11
+                          - generic [ref=f8e848]: update
+                        - generic [ref=f8e849]:
+                          - generic [ref=f8e850]:
+                            - generic [ref=f8e851]: · Сергей
+                            - generic [ref=f8e852]: 23.11.2026 22:09
+                          - generic [ref=f8e853]: update
+                        - generic [ref=f8e854]:
+                          - generic [ref=f8e855]:
+                            - generic [ref=f8e856]: · Сергей
+                            - generic [ref=f8e857]: 23.11.2026 21:06
+                          - generic [ref=f8e858]: update
+                        - generic [ref=f8e859]:
+                          - generic [ref=f8e860]:
+                            - generic [ref=f8e861]: ✓ Иман Назира
+                            - generic [ref=f8e862]: 05.11.2026 18:39
+                          - generic [ref=f8e863]: Проверить поступление денежных средств по безналичной оплате на контракт VACU - 16 от 28.07.2026
+                          - generic [ref=f8e864]: "Статус: Выполнена · до 30.07.2026"
+                        - generic [ref=f8e865]:
+                          - generic [ref=f8e866]:
+                            - generic [ref=f8e867]: ✓ Иман Назира
+                            - generic [ref=f8e868]: 05.11.2026 18:39
+                          - generic [ref=f8e869]: Проверить поступление денежных средств по безналичной оплате на контракт VACU - 16 (А) от 28.07.2026
+                          - generic [ref=f8e870]: "Статус: Выполнена · до 30.07.2026"
+                        - generic [ref=f8e871]:
+                          - generic [ref=f8e872]:
+                            - generic [ref=f8e873]: ✓ Ревнивцев Сергей Сергеевич
+                            - generic [ref=f8e874]: 05.11.2026 18:39
+                          - generic [ref=f8e875]: Проверить поступление денежных средств по безналичной оплате на контракт VACU - 24 от 29.07.2026
+                          - generic [ref=f8e876]: "Статус: Выполнена · до 31.07.2026"
+                        - generic [ref=f8e877]:
+                          - generic [ref=f8e878]:
+                            - generic [ref=f8e879]: ✓ Ревнивцев Сергей Сергеевич
+                            - generic [ref=f8e880]: 05.11.2026 18:39
+                          - generic [ref=f8e881]: Проверить поступление денежных средств по безналичной оплате на контракт VACU - 16 от 29.07.2026
+                          - generic [ref=f8e882]: "Статус: Выполнена · до 31.07.2026"
+                  - generic [ref=f8e883]:
+                    - generic [ref=f8e884]:
+                      - generic [ref=f8e885]:
+                        - text: InBody
+                        - generic [ref=f8e886]: "Тестов: 5, первый 23.04.2026"
+                      - generic [ref=f8e887]:
+                        - generic [ref=f8e889]:
+                          - generic [ref=f8e890]: 17.10.2026
+                          - generic [ref=f8e891]: Просрочено на 31 дн.
+                        - generic [ref=f8e894]:
+                          - generic [ref=f8e895]:
+                            - generic [ref=f8e896]: Вес
+                            - generic [ref=f8e897]:
+                              - text: 64.6 кг
+                              - generic [ref=f8e898]: "+1.8"
+                          - generic [ref=f8e899]:
+                            - generic [ref=f8e900]: "% жира"
+                            - generic [ref=f8e901]:
+                              - text: 15.4%
+                              - generic [ref=f8e902]: "+3.2"
+                          - generic [ref=f8e903]:
+                            - generic [ref=f8e904]: Жир кг
+                            - generic [ref=f8e905]:
+                              - text: 9.9 кг
+                              - generic [ref=f8e906]: "+2.2"
+                          - generic [ref=f8e907]:
+                            - generic [ref=f8e908]: Мышцы
+                            - generic [ref=f8e909]:
+                              - text: 30.4 кг
+                              - generic [ref=f8e910]: "-0.2"
+                          - generic [ref=f8e911]:
+                            - generic [ref=f8e912]: BFM
+                            - generic [ref=f8e913]: 9.9 кг
+                          - generic [ref=f8e914]:
+                            - generic [ref=f8e915]: ИМТ
+                            - generic [ref=f8e916]: "19.2"
+                          - generic [ref=f8e917]:
+                            - generic [ref=f8e918]: BMR
+                            - generic [ref=f8e919]: 1550 ккал
+                          - generic [ref=f8e920]:
+                            - generic [ref=f8e921]: Баллы
+                            - generic [ref=f8e922]: "71"
+                        - button "→ Открыть отчёт" [ref=f8e923] [cursor=pointer]
+                    - generic [ref=f8e924] [cursor=pointer]:
+                      - generic [ref=f8e925]:
+                        - text: Замеры тела
+                        - generic [ref=f8e926]: "Замеров: 1, первый 17.11.2026"
+                      - generic [ref=f8e927]:
+                        - generic [ref=f8e929]:
+                          - generic [ref=f8e930]: 17.11.2026
+                          - generic [ref=f8e931]: Сегодня
+                        - generic [ref=f8e934]: 505 см
+                        - generic [ref=f8e936]:
+                          - generic [ref=f8e937]:
+                            - generic [ref=f8e938]: Шея
+                            - generic [ref=f8e939]: 30 см
+                          - generic [ref=f8e940]:
+                            - generic [ref=f8e941]: Грудь
+                            - generic [ref=f8e942]: 80 см
+                          - generic [ref=f8e943]:
+                            - generic [ref=f8e944]: Л.рука
+                            - generic [ref=f8e945]: 25 см
+                          - generic [ref=f8e946]:
+                            - generic [ref=f8e947]: П.рука
+                            - generic [ref=f8e948]: 25 см
+                          - generic [ref=f8e949]:
+                            - generic [ref=f8e950]: Талия
+                            - generic [ref=f8e951]: 70 см
+                          - generic [ref=f8e952]:
+                            - generic [ref=f8e953]: Живот
+                            - generic [ref=f8e954]: 55 см
+                          - generic [ref=f8e955]:
+                            - generic [ref=f8e956]: Ягодицы
+                            - generic [ref=f8e957]: 70 см
+                          - generic [ref=f8e958]:
+                            - generic [ref=f8e959]: Л.бедро
+                            - generic [ref=f8e960]: 50 см
+                          - generic [ref=f8e961]:
+                            - generic [ref=f8e962]: П.бедро
+                            - generic [ref=f8e963]: 50 см
+                          - generic [ref=f8e964]:
+                            - generic [ref=f8e965]: Л.голень
+                            - generic [ref=f8e966]: 25 см
+                          - generic [ref=f8e967]:
+                            - generic [ref=f8e968]: П.голень
+                            - generic [ref=f8e969]: 25 см
+            - region "Notifications (F8)":
+              - list:
+                - listitem:
+                  - generic [ref=f8e1001]: Сохранено
+          - status [ref=f8e1003]: Notification Сохранено
+      - button "Воронка" [ref=f6e53] [cursor=pointer]
+  - generic [ref=f6e55]:
+    - generic [ref=f6e56]:
+      - generic [ref=f6e57]: SW
+      - generic [ref=f6e58]: Сергей
+    - generic [ref=f6e59]:
+      - button "Менеджер" [ref=f6e60] [cursor=pointer]
+      - button "Агент 16" [ref=f6e67] [cursor=pointer]:
+        - generic [ref=f6e72]: Агент
+        - generic [ref=f6e73]: "16"
+      - button "Расписание" [ref=f6e74] [cursor=pointer]
+      - button "Клиенты" [ref=f6e79] [cursor=pointer]
+      - button "Воронка" [ref=f6e87] [cursor=pointer]
+      - button "Касса" [ref=f6e92] [cursor=pointer]
+      - button "Замеры" [ref=f6e99] [cursor=pointer]
+      - button "Отчёты" [ref=f6e108] [cursor=pointer]
+      - button "Настройки" [ref=f6e113] [cursor=pointer]
+    - generic [ref=f6e119]:
+      - group "Тема" [ref=f6e120]:
+        - button "Светлая" [ref=f6e121] [cursor=pointer]
+        - button "Тёмная" [ref=f6e122] [cursor=pointer]
+      - button "Выйти" [ref=f6e123] [cursor=pointer]

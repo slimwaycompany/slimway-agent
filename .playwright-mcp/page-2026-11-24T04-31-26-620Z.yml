@@ -1,0 +1,85 @@
+- generic [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - generic [ref=f2e146]:
+      - generic [ref=f2e147]:
+        - button "Менеджер" [ref=f2e148] [cursor=pointer]
+        - button "Агент 16" [ref=f2e153] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f2e157]: "16"
+        - button "Расписание" [ref=f2e158] [cursor=pointer]
+        - button "Клиенты" [ref=f2e161] [cursor=pointer]
+        - button "Воронка" [ref=f2e167] [cursor=pointer]
+        - button "Касса" [ref=f2e170] [cursor=pointer]
+        - button "Замеры" [ref=f2e175] [cursor=pointer]
+        - button "Отчёты" [ref=f2e182] [cursor=pointer]
+        - button "Настройки" [ref=f2e185] [cursor=pointer]
+      - button "Меню пользователя" [ref=f2e190] [cursor=pointer]: С
+    - generic [ref=f2e191]:
+      - button "Расписание" [ref=f2e192] [cursor=pointer]
+      - iframe [active] [ref=f2e194]:
+        - generic [ref=f4e2]:
+          - generic [ref=f4e3]:
+            - generic [ref=f4e4]:
+              - textbox "Поиск по имени или телефону" [ref=f4e5]: Муслима
+              - combobox [ref=f4e6]:
+                - option "Все источники" [selected]
+                - option "оффер"
+                - option "Рекомендация клиента клуба"
+                - option "Сайт"
+                - option "Instagram"
+                - option "Проходящий трафик"
+                - option "Входящий звонок"
+                - option "WhatsApp"
+                - option "Блогер бартер"
+                - option "Блогер Зарина"
+                - option "Блогер Хадия"
+                - option "Блогер Ната"
+                - option "2гис"
+                - option "Таргет"
+                - option "Таргет тикток"
+              - combobox [ref=f4e7]:
+                - option "Все анкеты" [selected]
+                - option "Заполнена"
+                - option "Не заполнена"
+              - combobox [ref=f4e8]:
+                - option "Все визиты" [selected]
+                - option "7+ дн. без визита"
+                - option "14+ дн."
+                - option "30+ дн."
+              - combobox [ref=f4e9]:
+                - option "По имени" [selected]
+                - option "По дням без визита"
+              - button "+ Клиент" [ref=f4e10] [cursor=pointer]
+              - button "↓ Fitbase" [ref=f4e11] [cursor=pointer]
+            - generic [ref=f4e935] [cursor=pointer]:
+              - generic [ref=f4e936]:
+                - generic [ref=f4e937]: Муслима Каримсакова
+                - generic [ref=f4e938]: "77076935599"
+              - generic [ref=f4e939]:
+                - generic [ref=f4e940]: Безлимит
+                - generic [ref=f4e941]: 12 дн. назад
+            - generic [ref=f4e621]: 1 из 1 клиентов
+          - region "Notifications (F8)":
+            - list
+      - button "Воронка" [ref=f2e195] [cursor=pointer]
+  - generic [ref=f2e10]:
+    - generic [ref=f2e11]:
+      - generic [ref=f2e12]: SW
+      - generic [ref=f2e13]: Сергей
+    - generic [ref=f2e14]:
+      - button "Менеджер" [ref=f2e15] [cursor=pointer]
+      - button "Агент 16" [ref=f2e142] [cursor=pointer]:
+        - generic [ref=f2e27]: Агент
+        - generic [ref=f2e143]: "16"
+      - button "Расписание" [ref=f2e28] [cursor=pointer]
+      - button "Клиенты" [ref=f2e33] [cursor=pointer]
+      - button "Воронка" [ref=f2e41] [cursor=pointer]
+      - button "Касса" [ref=f2e46] [cursor=pointer]
+      - button "Замеры" [ref=f2e53] [cursor=pointer]
+      - button "Отчёты" [ref=f2e62] [cursor=pointer]
+      - button "Настройки" [ref=f2e67] [cursor=pointer]
+    - generic [ref=f2e73]:
+      - group "Тема" [ref=f2e74]:
+        - button "Светлая" [ref=f2e75] [cursor=pointer]
+        - button "Тёмная" [ref=f2e76] [cursor=pointer]
+      - button "Выйти" [ref=f2e77] [cursor=pointer]

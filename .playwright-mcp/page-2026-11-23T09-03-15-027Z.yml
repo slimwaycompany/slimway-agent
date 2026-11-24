@@ -1,0 +1,92 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - generic [ref=f1e142]:
+      - generic [ref=f1e143]:
+        - button "Менеджер" [ref=f1e144] [cursor=pointer]
+        - button "Агент 20" [ref=f1e149] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f1e153]: "20"
+        - button "Расписание" [ref=f1e154] [cursor=pointer]
+        - button "Клиенты" [ref=f1e157] [cursor=pointer]
+        - button "Воронка" [ref=f1e163] [cursor=pointer]
+        - button "Касса" [ref=f1e166] [cursor=pointer]
+        - button "Замеры" [ref=f1e171] [cursor=pointer]
+        - button "Отчёты" [ref=f1e178] [cursor=pointer]
+        - button "Настройки" [ref=f1e181] [cursor=pointer]
+      - button "Меню пользователя" [ref=f1e186] [cursor=pointer]: С
+    - generic [ref=f1e187]:
+      - button "Отчёты" [ref=f1e188] [cursor=pointer]
+      - iframe [active] [ref=f1e190]:
+        - generic [ref=f3e2]:
+          - generic [ref=f3e3]:
+            - generic [ref=f3e4]:
+              - generic [ref=f3e5]: Настройки
+              - generic [ref=f3e6]:
+                - textbox "Поиск…" [ref=f3e9]
+                - generic [ref=f3e10]:
+                  - generic [ref=f3e11]:
+                    - button "Моё 2" [ref=f3e12] [cursor=pointer]:
+                      - generic [ref=f3e13]: Моё
+                      - generic [ref=f3e14]: "2"
+                    - button "Профиль" [ref=f3e17] [cursor=pointer]
+                    - button "Оформление" [ref=f3e22] [cursor=pointer]
+                  - generic [ref=f3e30]:
+                    - button "Студия 4" [ref=f3e31] [cursor=pointer]:
+                      - generic [ref=f3e32]: Студия
+                      - generic [ref=f3e33]: "4"
+                    - button "Филиал" [ref=f3e36] [cursor=pointer]
+                    - button "Аппараты" [ref=f3e42] [cursor=pointer]
+                    - button "Занятия и расписание" [ref=f3e47] [cursor=pointer]
+                    - button "ТВ-экран" [ref=f3e51] [cursor=pointer]
+                  - button "Что продаём 5" [ref=f3e56] [cursor=pointer]:
+                    - generic [ref=f3e57]: Что продаём
+                    - generic [ref=f3e58]: "5"
+                  - button "Деньги 2" [ref=f3e62] [cursor=pointer]:
+                    - generic [ref=f3e63]: Деньги
+                    - generic [ref=f3e64]: "2"
+                  - button "Заявки 7" [ref=f3e68] [cursor=pointer]:
+                    - generic [ref=f3e69]: Заявки
+                    - generic [ref=f3e70]: "7"
+                  - button "Команда 5" [ref=f3e74] [cursor=pointer]:
+                    - generic [ref=f3e75]: Команда
+                    - generic [ref=f3e76]: "5"
+                  - generic [ref=f3e79]:
+                    - button "Связи и данные 3" [active] [ref=f3e80] [cursor=pointer]:
+                      - generic [ref=f3e81]: Связи и данные
+                      - generic [ref=f3e82]: "3"
+                    - button "Сопоставление FB" [ref=f3e109] [cursor=pointer]
+                    - button "АТС" [ref=f3e114] [cursor=pointer]
+                    - button "Данные InBody" [ref=f3e118] [cursor=pointer]
+            - generic [ref=f3e85]:
+              - generic [ref=f3e86]: Оформление
+              - generic [ref=f3e87]:
+                - generic [ref=f3e88]: Оформление
+                - paragraph [ref=f3e90]: Тема сохраняется в профиле и работает на всех устройствах.
+                - generic [ref=f3e91]:
+                  - button "Светлая Выбрана ✓" [ref=f3e92] [cursor=pointer]:
+                    - generic [ref=f3e98]: Светлая
+                    - generic [ref=f3e99]: Выбрана ✓
+                  - button "Тёмная" [ref=f3e100] [cursor=pointer]
+          - region "Notifications (F8)":
+            - list
+  - generic [ref=f1e10]:
+    - generic [ref=f1e11]:
+      - generic [ref=f1e12]: SW
+      - generic [ref=f1e13]: Сергей
+    - generic [ref=f1e14]:
+      - button "Менеджер" [ref=f1e15] [cursor=pointer]
+      - button "Агент 20" [ref=f1e191] [cursor=pointer]:
+        - generic [ref=f1e27]: Агент
+        - generic [ref=f1e192]: "20"
+      - button "Расписание" [ref=f1e28] [cursor=pointer]
+      - button "Клиенты" [ref=f1e33] [cursor=pointer]
+      - button "Воронка" [ref=f1e41] [cursor=pointer]
+      - button "Касса" [ref=f1e46] [cursor=pointer]
+      - button "Замеры" [ref=f1e53] [cursor=pointer]
+      - button "Отчёты" [ref=f1e62] [cursor=pointer]
+      - button "Настройки" [ref=f1e67] [cursor=pointer]
+    - generic [ref=f1e73]:
+      - group "Тема" [ref=f1e74]:
+        - button "Светлая" [ref=f1e75] [cursor=pointer]
+        - button "Тёмная" [ref=f1e76] [cursor=pointer]
+      - button "Выйти" [ref=f1e77] [cursor=pointer]

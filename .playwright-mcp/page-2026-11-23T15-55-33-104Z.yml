@@ -1,0 +1,41 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - generic [ref=f2e142]:
+      - generic [ref=f2e143]:
+        - button "Менеджер" [ref=f2e144] [cursor=pointer]
+        - button "Агент 18" [ref=f2e149] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f2e153]: "18"
+        - button "Расписание" [ref=f2e154] [cursor=pointer]
+        - button "Клиенты" [ref=f2e157] [cursor=pointer]
+        - button "Воронка" [ref=f2e163] [cursor=pointer]
+        - button "Касса" [ref=f2e166] [cursor=pointer]
+        - button "Замеры" [ref=f2e171] [cursor=pointer]
+        - button "Отчёты" [ref=f2e178] [cursor=pointer]
+        - button "Настройки" [ref=f2e181] [cursor=pointer]
+      - button "Меню пользователя" [ref=f2e186] [cursor=pointer]: С
+    - generic [ref=f2e187]:
+      - button "Расписание" [ref=f2e188] [cursor=pointer]
+      - iframe [ref=f2e190]
+      - button "Воронка" [ref=f2e191] [cursor=pointer]
+  - generic [ref=f2e10]:
+    - generic [ref=f2e11]:
+      - generic [ref=f2e12]: SW
+      - generic [ref=f2e13]: Сергей
+    - generic [ref=f2e14]:
+      - button "Менеджер" [ref=f2e15] [cursor=pointer]
+      - button "Агент 18" [ref=f2e193] [cursor=pointer]:
+        - generic [ref=f2e27]: Агент
+        - generic [ref=f2e194]: "18"
+      - button "Расписание" [ref=f2e28] [cursor=pointer]
+      - button "Клиенты" [ref=f2e33] [cursor=pointer]
+      - button "Воронка" [ref=f2e41] [cursor=pointer]
+      - button "Касса" [ref=f2e46] [cursor=pointer]
+      - button "Замеры" [ref=f2e53] [cursor=pointer]
+      - button "Отчёты" [ref=f2e62] [cursor=pointer]
+      - button "Настройки" [ref=f2e67] [cursor=pointer]
+    - generic [ref=f2e73]:
+      - group "Тема" [ref=f2e74]:
+        - button "Светлая" [ref=f2e75] [cursor=pointer]
+        - button "Тёмная" [ref=f2e76] [cursor=pointer]
+      - button "Выйти" [ref=f2e77] [cursor=pointer]

@@ -1,0 +1,255 @@
+- generic [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - generic [ref=f2e146]:
+      - generic [ref=f2e147]:
+        - button "Менеджер" [ref=f2e148] [cursor=pointer]
+        - button "Агент 16" [ref=f2e153] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f2e157]: "16"
+        - button "Расписание" [ref=f2e158] [cursor=pointer]
+        - button "Клиенты" [ref=f2e161] [cursor=pointer]
+        - button "Воронка" [ref=f2e167] [cursor=pointer]
+        - button "Касса" [ref=f2e170] [cursor=pointer]
+        - button "Замеры" [ref=f2e175] [cursor=pointer]
+        - button "Отчёты" [ref=f2e182] [cursor=pointer]
+        - button "Настройки" [ref=f2e185] [cursor=pointer]
+      - button "Меню пользователя" [ref=f2e190] [cursor=pointer]: С
+    - generic [ref=f2e191]:
+      - button "Расписание" [ref=f2e192] [cursor=pointer]
+      - iframe [active] [ref=f2e194]:
+        - generic [ref=f4e2]:
+          - generic [ref=f4e3]:
+            - generic [ref=f4e4]:
+              - textbox "Поиск по имени или телефону" [ref=f4e5]: Муслима
+              - combobox [ref=f4e6]:
+                - option "Все источники" [selected]
+                - option "оффер"
+                - option "Рекомендация клиента клуба"
+                - option "Сайт"
+                - option "Instagram"
+                - option "Проходящий трафик"
+                - option "Входящий звонок"
+                - option "WhatsApp"
+                - option "Блогер бартер"
+                - option "Блогер Зарина"
+                - option "Блогер Хадия"
+                - option "Блогер Ната"
+                - option "2гис"
+                - option "Таргет"
+                - option "Таргет тикток"
+              - combobox [ref=f4e7]:
+                - option "Все анкеты" [selected]
+                - option "Заполнена"
+                - option "Не заполнена"
+              - combobox [ref=f4e8]:
+                - option "Все визиты" [selected]
+                - option "7+ дн. без визита"
+                - option "14+ дн."
+                - option "30+ дн."
+              - combobox [ref=f4e9]:
+                - option "По имени" [selected]
+                - option "По дням без визита"
+              - button "+ Клиент" [ref=f4e10] [cursor=pointer]
+              - button "↓ Fitbase" [ref=f4e11] [cursor=pointer]
+            - generic [ref=f4e935] [cursor=pointer]:
+              - generic [ref=f4e936]:
+                - generic [ref=f4e937]: Муслима Каримсакова
+                - generic [ref=f4e938]: "77076935599"
+              - generic [ref=f4e939]:
+                - generic [ref=f4e940]: Безлимит
+                - generic [ref=f4e941]: 12 дн. назад
+            - generic [ref=f4e621]: 1 из 1 клиентов
+            - dialog [ref=f4e943]:
+              - button "Закрыть" [ref=f4e944] [cursor=pointer]: ✕
+              - generic [ref=f4e945]:
+                - generic [ref=f4e946]:
+                  - generic [ref=f4e947]: Муслима Каримсакова
+                  - generic [ref=f4e949]:
+                    - generic [ref=f4e950]: +7 707 693 55 99
+                    - generic [ref=f4e951]:
+                      - button "⎘ Копировать" [ref=f4e952] [cursor=pointer]
+                      - link "WhatsApp" [ref=f4e953] [cursor=pointer]:
+                        - /url: https://wa.me/77076935599
+                      - link "Позвонить" [ref=f4e954] [cursor=pointer]:
+                        - /url: tel:+77076935599
+                  - generic [ref=f4e955]: Дата рождения не указана
+                  - generic [ref=f4e956]:
+                    - generic [ref=f4e957]: "Fitbase #122"
+                    - button "✎ Редактировать" [ref=f4e958] [cursor=pointer]
+                  - generic [ref=f4e959]:
+                    - generic [ref=f4e960]: Анкета неполная
+                    - generic [ref=f4e961]: Замер просрочен
+                    - button "+ Метка" [ref=f4e963] [cursor=pointer]
+                  - generic [ref=f4e964]:
+                    - generic [ref=f4e965]:
+                      - generic [ref=f4e966]: Клиент с
+                      - generic [ref=f4e967]: 28.10.2026
+                    - generic [ref=f4e968]:
+                      - generic [ref=f4e969]: LTV
+                      - generic [ref=f4e970]: 0 ₸
+                    - generic [ref=f4e971]:
+                      - generic [ref=f4e972]: Визитов
+                      - generic [ref=f4e973]: "23"
+                    - generic [ref=f4e974]:
+                      - generic [ref=f4e975]: Последний визит
+                      - generic [ref=f4e976]: 12.11.2026
+                  - generic [ref=f4e977]:
+                    - generic [ref=f4e978]: Активный абонемент
+                    - generic [ref=f4e979]:
+                      - generic [ref=f4e980]: Безлимит
+                      - generic [ref=f4e981]: "До: 09.11.2028"
+                      - generic [ref=f4e982]:
+                        - generic [ref=f4e983]: "rollshape: без лимита · 1 в день"
+                        - generic [ref=f4e984]: "vacuactiv / infrashape / infrastep: 1 в день"
+                      - generic [ref=f4e985]: Активен
+                      - button "❄ Заморозить" [ref=f4e986] [cursor=pointer]
+                  - button "▾ Подробнее" [ref=f4e987] [cursor=pointer]
+                - generic [ref=f4e988]:
+                  - generic [ref=f4e989]:
+                    - generic [ref=f4e990]:
+                      - text: Важное
+                      - button "✎" [ref=f4e991] [cursor=pointer]
+                    - generic [ref=f4e992]: Нет данных
+                  - generic [ref=f4e995]:
+                    - generic [ref=f4e996]:
+                      - text: Пакеты
+                      - generic [ref=f4e997]:
+                        - button "Все" [ref=f4e998] [cursor=pointer]
+                        - button "Активные" [ref=f4e999] [cursor=pointer]
+                        - button "Закрытые" [ref=f4e1000] [cursor=pointer]
+                    - generic [ref=f4e1001]:
+                      - generic [ref=f4e1002]:
+                        - generic [ref=f4e1003]:
+                          - generic [ref=f4e1004]: Безлимит
+                          - generic [ref=f4e1005]: Активен
+                        - generic [ref=f4e1006]:
+                          - generic [ref=f4e1007]: "Активирован: 10.11.2026"
+                          - generic [ref=f4e1008]: "До: 09.11.2028"
+                          - text: Fitbase
+                        - generic [ref=f4e1009]:
+                          - generic [ref=f4e1010]: "rollshape: без лимита"
+                          - generic [ref=f4e1011]: "vacuactiv/infrashape/infrastep: 1/д"
+                        - button "❄ Заморозить" [ref=f4e1013] [cursor=pointer]
+                      - generic [ref=f4e1014]:
+                        - generic [ref=f4e1015]:
+                          - generic [ref=f4e1016]: Пробное занятие
+                          - generic [ref=f4e1017]: Истёк
+                        - generic [ref=f4e1018]:
+                          - generic [ref=f4e1019]: "Активирован: 03.09.2026"
+                          - generic [ref=f4e1020]: "До: 03.09.2026"
+                          - text: Fitbase
+                        - generic [ref=f4e1021]: "Остаток: 0/1 сеансов"
+                      - generic [ref=f4e1022]:
+                        - generic [ref=f4e1023]:
+                          - generic [ref=f4e1024]: VACU - 10 сеансов
+                          - generic [ref=f4e1025]: Истёк
+                        - generic [ref=f4e1026]:
+                          - generic [ref=f4e1027]: "Активирован: 05.09.2026"
+                          - generic [ref=f4e1028]: "До: 05.11.2026"
+                          - text: Fitbase
+                        - generic [ref=f4e1029]: "Остаток: 0/10 сеансов"
+                  - generic [ref=f4e1030]:
+                    - generic [ref=f4e1031]: Лента
+                    - generic [ref=f4e1032]:
+                      - button "Всё" [ref=f4e1033] [cursor=pointer]
+                      - button "Комментарии" [ref=f4e1034] [cursor=pointer]
+                      - button "Задачи" [ref=f4e1035] [cursor=pointer]
+                      - button "Лог" [ref=f4e1036] [cursor=pointer]
+                    - generic [ref=f4e1037]:
+                      - textbox "Добавить комментарий…" [ref=f4e1038]
+                      - button "+" [ref=f4e1039] [cursor=pointer]
+                    - generic [ref=f4e1041]:
+                      - generic [ref=f4e1042]:
+                        - generic [ref=f4e1043]: ✓ Савина Вера Андреевна
+                        - generic [ref=f4e1044]: 05.11.2026 18:40
+                      - generic [ref=f4e1045]: Появился новый неразобранный клиент. Клиента нужно отработать и передвинуть на необходимый этап
+                      - generic [ref=f4e1046]: "Статус: Выполнена · до 03.09.2026"
+                - generic [ref=f4e1047]:
+                  - generic [ref=f4e1048]:
+                    - generic [ref=f4e1049]: InBody
+                    - generic [ref=f4e1050]: Нет InBody
+                  - generic [ref=f4e1052] [cursor=pointer]:
+                    - generic [ref=f4e1053]:
+                      - text: Замеры тела
+                      - generic [ref=f4e1054]: "Замеров: 2, первый 15.09.2026"
+                    - generic [ref=f4e1055]:
+                      - generic [ref=f4e1057]:
+                        - generic [ref=f4e1058]: 11.11.2026
+                        - generic [ref=f4e1059]: Просрочено на 6 дн.
+                      - generic [ref=f4e1062]:
+                        - generic [ref=f4e1063]: 726 см
+                        - generic [ref=f4e1064]: "-12 со старта"
+                      - generic [ref=f4e1067]:
+                        - generic [ref=f4e1068]:
+                          - generic [ref=f4e1069]: Шея
+                          - generic [ref=f4e1070]:
+                            - text: 41 см
+                            - generic [ref=f4e1071]: "-2"
+                        - generic [ref=f4e1072]:
+                          - generic [ref=f4e1073]: Грудь
+                          - generic [ref=f4e1074]:
+                            - text: 102 см
+                            - generic [ref=f4e1075]: "-2"
+                        - generic [ref=f4e1076]:
+                          - generic [ref=f4e1077]: Л.рука
+                          - generic [ref=f4e1078]:
+                            - text: 37 см
+                            - generic [ref=f4e1079]: "-2"
+                        - generic [ref=f4e1080]:
+                          - generic [ref=f4e1081]: П.рука
+                          - generic [ref=f4e1082]:
+                            - text: 37 см
+                            - generic [ref=f4e1083]: "-2"
+                        - generic [ref=f4e1084]:
+                          - generic [ref=f4e1085]: Талия
+                          - generic [ref=f4e1086]: 93 см
+                        - generic [ref=f4e1087]:
+                          - generic [ref=f4e1088]: Живот
+                          - generic [ref=f4e1089]: 93 см
+                        - generic [ref=f4e1090]:
+                          - generic [ref=f4e1091]: Ягодицы
+                          - generic [ref=f4e1092]: 112 см
+                        - generic [ref=f4e1093]:
+                          - generic [ref=f4e1094]: Л.бедро
+                          - generic [ref=f4e1095]:
+                            - text: 64 см
+                            - generic [ref=f4e1096]: "-1"
+                        - generic [ref=f4e1097]:
+                          - generic [ref=f4e1098]: П.бедро
+                          - generic [ref=f4e1099]:
+                            - text: 64 см
+                            - generic [ref=f4e1100]: "-1"
+                        - generic [ref=f4e1101]:
+                          - generic [ref=f4e1102]: Л.голень
+                          - generic [ref=f4e1103]:
+                            - text: 41 см
+                            - generic [ref=f4e1104]: "-1"
+                        - generic [ref=f4e1105]:
+                          - generic [ref=f4e1106]: П.голень
+                          - generic [ref=f4e1107]:
+                            - text: 42 см
+                            - generic [ref=f4e1108]: "-1"
+          - region "Notifications (F8)":
+            - list
+      - button "Воронка" [ref=f2e195] [cursor=pointer]
+  - generic [ref=f2e10]:
+    - generic [ref=f2e11]:
+      - generic [ref=f2e12]: SW
+      - generic [ref=f2e13]: Сергей
+    - generic [ref=f2e14]:
+      - button "Менеджер" [ref=f2e15] [cursor=pointer]
+      - button "Агент 16" [ref=f2e142] [cursor=pointer]:
+        - generic [ref=f2e27]: Агент
+        - generic [ref=f2e143]: "16"
+      - button "Расписание" [ref=f2e28] [cursor=pointer]
+      - button "Клиенты" [ref=f2e33] [cursor=pointer]
+      - button "Воронка" [ref=f2e41] [cursor=pointer]
+      - button "Касса" [ref=f2e46] [cursor=pointer]
+      - button "Замеры" [ref=f2e53] [cursor=pointer]
+      - button "Отчёты" [ref=f2e62] [cursor=pointer]
+      - button "Настройки" [ref=f2e67] [cursor=pointer]
+    - generic [ref=f2e73]:
+      - group "Тема" [ref=f2e74]:
+        - button "Светлая" [ref=f2e75] [cursor=pointer]
+        - button "Тёмная" [ref=f2e76] [cursor=pointer]
+      - button "Выйти" [ref=f2e77] [cursor=pointer]

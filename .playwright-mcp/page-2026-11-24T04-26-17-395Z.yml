@@ -1,0 +1,60 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e4]:
+    - button "Менеджер" [ref=f2e5] [cursor=pointer]
+    - iframe [ref=f2e7]:
+      - generic [ref=f3e4]:
+        - generic [ref=f3e5]:
+          - generic [ref=f3e6]:
+            - generic [ref=f3e7]: SW
+            - generic [ref=f3e8]: SlimWay — помощник
+            - generic [ref=f3e9]:
+              - button "Уведомления" [ref=f3e10] [cursor=pointer]
+              - 'button "Звук: вкл" [ref=f3e11] [cursor=pointer]'
+              - button "🌙" [ref=f3e12] [cursor=pointer]
+              - button "?" [ref=f3e13] [cursor=pointer]
+          - generic [ref=f3e14]: "Последняя проверка: — · Связь: —"
+        - generic [ref=f3e15]:
+          - generic [ref=f3e16]:
+            - heading "Лента событий" [level=2] [ref=f3e18]
+            - generic [ref=f3e20]:
+              - 'img "Кабинет агента: девушка за компьютером и овчарка" [ref=f3e22]':
+                - generic [ref=f3e53]: SW
+                - generic [ref=f3e155] [cursor=pointer]
+              - button "—" [ref=f3e186] [cursor=pointer]
+              - button "🔇" [ref=f3e187]
+          - heading "Сейчас важно" [level=2] [ref=f3e190]
+          - heading "Завершённые за 24 ч" [level=2] [ref=f3e194]
+    - button "Расписание" [ref=f2e8] [cursor=pointer]
+  - generic [ref=f2e10]:
+    - generic [ref=f2e11]:
+      - generic [ref=f2e12]: SW
+      - generic [ref=f2e13]: Сергей
+    - generic [ref=f2e14]:
+      - button "Менеджер" [ref=f2e15] [cursor=pointer]
+      - button "Агент" [ref=f2e22] [cursor=pointer]
+      - button "Расписание" [ref=f2e28] [cursor=pointer]
+      - button "Клиенты" [ref=f2e33] [cursor=pointer]
+      - button "Воронка" [ref=f2e41] [cursor=pointer]
+      - button "Касса" [ref=f2e46] [cursor=pointer]
+      - button "Замеры" [ref=f2e53] [cursor=pointer]
+      - button "Отчёты" [ref=f2e62] [cursor=pointer]
+      - button "Настройки" [ref=f2e67] [cursor=pointer]
+    - generic [ref=f2e73]:
+      - group "Тема" [ref=f2e74]:
+        - button "Светлая" [ref=f2e75] [cursor=pointer]
+        - button "Тёмная" [ref=f2e76] [cursor=pointer]
+      - button "Выйти" [ref=f2e77] [cursor=pointer]
+  - generic [ref=f2e79]:
+    - generic [ref=f2e80]: SW
+    - heading "SlimWay" [level=1] [ref=f2e81]
+    - paragraph [ref=f2e82]: Выберите раздел
+    - generic [ref=f2e83]:
+      - button "Менеджер" [ref=f2e84] [cursor=pointer]
+      - button "Агент" [ref=f2e91] [cursor=pointer]
+      - button "Расписание" [ref=f2e97] [cursor=pointer]
+      - button "Клиенты" [ref=f2e102] [cursor=pointer]
+      - button "Воронка" [ref=f2e110] [cursor=pointer]
+      - button "Касса" [ref=f2e115] [cursor=pointer]
+      - button "Замеры" [ref=f2e122] [cursor=pointer]
+      - button "Отчёты" [ref=f2e131] [cursor=pointer]
+      - button "Настройки" [ref=f2e136] [cursor=pointer]

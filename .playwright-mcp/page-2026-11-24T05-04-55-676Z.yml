@@ -1,0 +1,948 @@
+- generic [ref=f6e1]:
+  - generic [ref=f6e2]:
+    - generic [ref=f6e3]:
+      - generic [ref=f6e4]:
+        - button "Менеджер" [ref=f6e5] [cursor=pointer]
+        - button "Агент 16" [ref=f6e10] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f6e14]: "16"
+        - button "Расписание" [ref=f6e15] [cursor=pointer]
+        - button "Клиенты" [ref=f6e18] [cursor=pointer]
+        - button "Воронка" [ref=f6e24] [cursor=pointer]
+        - button "Касса" [ref=f6e27] [cursor=pointer]
+        - button "Замеры" [ref=f6e32] [cursor=pointer]
+        - button "Отчёты" [ref=f6e39] [cursor=pointer]
+        - button "Настройки" [ref=f6e42] [cursor=pointer]
+      - button "Меню пользователя" [ref=f6e47] [cursor=pointer]: С
+    - generic [ref=f6e49]:
+      - button "Расписание" [ref=f6e50] [cursor=pointer]
+      - iframe [active] [ref=f6e52]:
+        - generic [ref=f8e2]:
+          - generic [ref=f8e1229]:
+            - generic [ref=f8e1230]:
+              - textbox "Поиск по имени или телефону" [ref=f8e1231]
+              - combobox [ref=f8e1232]:
+                - option "Все источники" [selected]
+                - option "оффер"
+                - option "Рекомендация клиента клуба"
+                - option "Сайт"
+                - option "Instagram"
+                - option "Проходящий трафик"
+                - option "Входящий звонок"
+                - option "WhatsApp"
+                - option "Блогер бартер"
+                - option "Блогер Зарина"
+                - option "Блогер Хадия"
+                - option "Блогер Ната"
+                - option "2гис"
+                - option "Таргет"
+                - option "Таргет тикток"
+              - combobox [ref=f8e1233]:
+                - option "Все анкеты" [selected]
+                - option "Заполнена"
+                - option "Не заполнена"
+              - combobox [ref=f8e1234]:
+                - option "Все визиты" [selected]
+                - option "7+ дн. без визита"
+                - option "14+ дн."
+                - option "30+ дн."
+              - combobox [ref=f8e1235]:
+                - option "По имени" [selected]
+                - option "По дням без визита"
+              - button "+ Клиент" [ref=f8e1236] [cursor=pointer]
+              - button "↓ Fitbase" [ref=f8e1237] [cursor=pointer]
+            - generic [ref=f8e1238]:
+              - generic [ref=f8e1239] [cursor=pointer]:
+                - generic [ref=f8e1240]:
+                  - generic [ref=f8e1241]: _unique_801 17.11
+                  - generic [ref=f8e1242]: "77714415632"
+                - generic [ref=f8e1243]: нет визитов
+              - generic [ref=f8e1245] [cursor=pointer]:
+                - generic [ref=f8e1246]:
+                  - generic [ref=f8e1247]: "@jyldyz4670 18.11"
+                  - generic [ref=f8e1248]: —
+                - generic [ref=f8e1249]: нет визитов
+              - generic [ref=f8e1251] [cursor=pointer]:
+                - generic [ref=f8e1252]:
+                  - generic [ref=f8e1253]: +7 707 211 7622 Ватсап
+                  - generic [ref=f8e1254]: "+77072117622"
+                - generic [ref=f8e1255]: нет визитов
+              - generic [ref=f8e1257] [cursor=pointer]:
+                - generic [ref=f8e1258]:
+                  - generic [ref=f8e1259]: +77028163518 Тт заявка 19.10
+                  - generic [ref=f8e1260]: "77028163518"
+                - generic [ref=f8e1261]: нет визитов
+              - generic [ref=f8e1263] [cursor=pointer]:
+                - generic [ref=f8e1264]:
+                  - generic [ref=f8e1265]: +77712052025 Тт заявка 22.10
+                  - generic [ref=f8e1266]: "77712052025"
+                - generic [ref=f8e1267]: нет визитов
+              - generic [ref=f8e1269] [cursor=pointer]:
+                - generic [ref=f8e1270]:
+                  - generic [ref=f8e1271]: +77759779817 Заявка 02.10
+                  - generic [ref=f8e1272]: "77759779817"
+                - generic [ref=f8e1273]: нет визитов
+              - generic [ref=f8e1275] [cursor=pointer]:
+                - generic [ref=f8e1276]:
+                  - generic [ref=f8e1277]: +77771107047 Пробное 07.10
+                  - generic [ref=f8e1278]: "77771107047"
+                - generic [ref=f8e1279]: нет визитов
+              - generic [ref=f8e1281] [cursor=pointer]:
+                - generic [ref=f8e1282]:
+                  - generic [ref=f8e1283]: +77780815100 Инст 07.10
+                  - generic [ref=f8e1284]: "77780815100"
+                - generic [ref=f8e1285]: нет визитов
+              - generic [ref=f8e1287] [cursor=pointer]:
+                - generic [ref=f8e1288]:
+                  - generic [ref=f8e1289]: ~Shynarai~ Клиент
+                  - generic [ref=f8e1290]: "77003300993"
+                - generic [ref=f8e1291]: нет визитов
+              - generic [ref=f8e1293] [cursor=pointer]:
+                - generic [ref=f8e1294]:
+                  - generic [ref=f8e1295]: ⚜Молдаванка ⚜ Тт заявка 15.10
+                  - generic [ref=f8e1296]: "77751119313"
+                - generic [ref=f8e1297]: нет визитов
+              - generic [ref=f8e1299] [cursor=pointer]:
+                - generic [ref=f8e1300]:
+                  - generic [ref=f8e1301]: 1037090119249607 Инстаграм
+                  - generic [ref=f8e1302]: "79999999967"
+                - generic [ref=f8e1303]: нет визитов
+              - generic [ref=f8e1305] [cursor=pointer]:
+                - generic [ref=f8e1306]:
+                  - generic [ref=f8e1307]: 1124708273528706 21.11
+                  - generic [ref=f8e1308]: —
+                - generic [ref=f8e1309]: нет визитов
+              - generic [ref=f8e1311] [cursor=pointer]:
+                - generic [ref=f8e1312]:
+                  - generic [ref=f8e1313]: 1134946198904593 Сайт
+                  - generic [ref=f8e1314]: —
+                - generic [ref=f8e1315]: нет визитов
+              - generic [ref=f8e1317] [cursor=pointer]:
+                - generic [ref=f8e1318]:
+                  - generic [ref=f8e1319]: 1698608618347641 02.11
+                  - generic [ref=f8e1320]: "78458959649"
+                - generic [ref=f8e1321]: нет визитов
+              - generic [ref=f8e1323] [cursor=pointer]:
+                - generic [ref=f8e1324]:
+                  - generic [ref=f8e1325]: 2 гис Ильмира
+                  - generic [ref=f8e1326]: "77056104693"
+                - generic [ref=f8e1327]: нет визитов
+              - generic [ref=f8e1329] [cursor=pointer]:
+                - generic [ref=f8e1330]:
+                  - generic [ref=f8e1331]: 28.10 Акмарал
+                  - generic [ref=f8e1332]: "77754302007"
+                - generic [ref=f8e1333]: нет визитов
+              - generic [ref=f8e1335] [cursor=pointer]:
+                - generic [ref=f8e1336]:
+                  - generic [ref=f8e1337]: 77001190586 14.11
+                  - generic [ref=f8e1338]: "77001190586"
+                - generic [ref=f8e1339]: нет визитов
+              - generic [ref=f8e1341] [cursor=pointer]:
+                - generic [ref=f8e1342]:
+                  - generic [ref=f8e1343]: 77012125406 13.11
+                  - generic [ref=f8e1344]: "77012125406"
+                - generic [ref=f8e1345]: нет визитов
+              - generic [ref=f8e1347] [cursor=pointer]:
+                - generic [ref=f8e1348]:
+                  - generic [ref=f8e1349]: 77013179993 Новый клиент
+                  - generic [ref=f8e1350]: "77013179993"
+                - generic [ref=f8e1351]: нет визитов
+              - generic [ref=f8e1353] [cursor=pointer]:
+                - generic [ref=f8e1354]:
+                  - generic [ref=f8e1355]: 77015241236 22.11
+                  - generic [ref=f8e1356]: "77015241236"
+                - generic [ref=f8e1357]: нет визитов
+              - generic [ref=f8e1359] [cursor=pointer]:
+                - generic [ref=f8e1360]:
+                  - generic [ref=f8e1361]: 77015280065 Клиент
+                  - generic [ref=f8e1362]: "77015280065"
+                - generic [ref=f8e1363]: нет визитов
+              - generic [ref=f8e1365] [cursor=pointer]:
+                - generic [ref=f8e1366]:
+                  - generic [ref=f8e1367]: 77017177656 21.11
+                  - generic [ref=f8e1368]: "77017177656"
+                - generic [ref=f8e1369]: нет визитов
+              - generic [ref=f8e1371] [cursor=pointer]:
+                - generic [ref=f8e1372]:
+                  - generic [ref=f8e1373]: 77017218948 01.11
+                  - generic [ref=f8e1374]: "77017218948"
+                - generic [ref=f8e1375]: нет визитов
+              - generic [ref=f8e1377] [cursor=pointer]:
+                - generic [ref=f8e1378]:
+                  - generic [ref=f8e1379]: 77017528723 Альбина
+                  - generic [ref=f8e1380]: "77017528723"
+                - generic [ref=f8e1381]: нет визитов
+              - generic [ref=f8e1383] [cursor=pointer]:
+                - generic [ref=f8e1384]:
+                  - generic [ref=f8e1385]: 77017558786 14.11
+                  - generic [ref=f8e1386]: "77017558786"
+                - generic [ref=f8e1387]: нет визитов
+              - generic [ref=f8e1389] [cursor=pointer]:
+                - generic [ref=f8e1390]:
+                  - generic [ref=f8e1391]: 77018827117 Ватсап
+                  - generic [ref=f8e1392]: "77018827117"
+                - generic [ref=f8e1393]: нет визитов
+              - generic [ref=f8e1395] [cursor=pointer]:
+                - generic [ref=f8e1396]:
+                  - generic [ref=f8e1397]: 77024245884 Асылым
+                  - generic [ref=f8e1398]: "77024245884"
+                - generic [ref=f8e1399]: нет визитов
+              - generic [ref=f8e1401] [cursor=pointer]:
+                - generic [ref=f8e1402]:
+                  - generic [ref=f8e1403]: 77024729696 18.11
+                  - generic [ref=f8e1404]: "77024729696"
+                - generic [ref=f8e1405]: нет визитов
+              - generic [ref=f8e1407] [cursor=pointer]:
+                - generic [ref=f8e1408]:
+                  - generic [ref=f8e1409]: 77025078257 Сюзанна
+                  - generic [ref=f8e1410]: "77025078257"
+                - generic [ref=f8e1411]: нет визитов
+              - generic [ref=f8e1413] [cursor=pointer]:
+                - generic [ref=f8e1414]:
+                  - generic [ref=f8e1415]: 77026393127 Жанна
+                  - generic [ref=f8e1416]: "77026393127"
+                - generic [ref=f8e1417]: нет визитов
+              - generic [ref=f8e1419] [cursor=pointer]:
+                - generic [ref=f8e1420]:
+                  - generic [ref=f8e1421]: 77027581755 28.10
+                  - generic [ref=f8e1422]: "77027581755"
+                - generic [ref=f8e1423]: нет визитов
+              - generic [ref=f8e1425] [cursor=pointer]:
+                - generic [ref=f8e1426]:
+                  - generic [ref=f8e1427]: 77028473990 Заявка 03.11
+                  - generic [ref=f8e1428]: "77028473990"
+                - generic [ref=f8e1429]: нет визитов
+              - generic [ref=f8e1431] [cursor=pointer]:
+                - generic [ref=f8e1432]:
+                  - generic [ref=f8e1433]: 77051784373 Старая заявка
+                  - generic [ref=f8e1434]: "77051784373"
+                - generic [ref=f8e1435]: нет визитов
+              - generic [ref=f8e1437] [cursor=pointer]:
+                - generic [ref=f8e1438]:
+                  - generic [ref=f8e1439]: 77052140969 Тик ток
+                  - generic [ref=f8e1440]: "77052140969"
+                - generic [ref=f8e1441]: нет визитов
+              - generic [ref=f8e1443] [cursor=pointer]:
+                - generic [ref=f8e1444]:
+                  - generic [ref=f8e1445]: 77052305211 Клиент
+                  - generic [ref=f8e1446]: "77052305211"
+                - generic [ref=f8e1447]: нет визитов
+              - generic [ref=f8e1449] [cursor=pointer]:
+                - generic [ref=f8e1450]:
+                  - generic [ref=f8e1451]: 77056136403 18.11
+                  - generic [ref=f8e1452]: "77056136403"
+                - generic [ref=f8e1453]: нет визитов
+              - generic [ref=f8e1455] [cursor=pointer]:
+                - generic [ref=f8e1456]:
+                  - generic [ref=f8e1457]: 77072603389 Сайт
+                  - generic [ref=f8e1458]: "77072603389"
+                - generic [ref=f8e1459]: нет визитов
+              - generic [ref=f8e1461] [cursor=pointer]:
+                - generic [ref=f8e1462]:
+                  - generic [ref=f8e1463]: 77073548894 Клиент
+                  - generic [ref=f8e1464]: "+77073548894"
+                - generic [ref=f8e1465]: нет визитов
+              - generic [ref=f8e1467] [cursor=pointer]:
+                - generic [ref=f8e1468]:
+                  - generic [ref=f8e1469]: 77074270363 Жадыра
+                  - generic [ref=f8e1470]: "77074270363"
+                - generic [ref=f8e1471]: нет визитов
+              - generic [ref=f8e1473] [cursor=pointer]:
+                - generic [ref=f8e1474]:
+                  - generic [ref=f8e1475]: 77075197506 Заявка 15.11
+                  - generic [ref=f8e1476]: "77075197506"
+                - generic [ref=f8e1477]: нет визитов
+              - generic [ref=f8e1479] [cursor=pointer]:
+                - generic [ref=f8e1480]:
+                  - generic [ref=f8e1481]: 77077000623 Диана
+                  - generic [ref=f8e1482]: "77077000623"
+                - generic [ref=f8e1483]: нет визитов
+              - generic [ref=f8e1485] [cursor=pointer]:
+                - generic [ref=f8e1486]:
+                  - generic [ref=f8e1487]: 77078331098 Ватсап
+                  - generic [ref=f8e1488]: "+77078331098"
+                - generic [ref=f8e1489]: нет визитов
+              - generic [ref=f8e1491] [cursor=pointer]:
+                - generic [ref=f8e1492]:
+                  - generic [ref=f8e1493]: 77470543059 Ватсап
+                  - generic [ref=f8e1494]: "+77470543059"
+                - generic [ref=f8e1495]: нет визитов
+              - generic [ref=f8e1497] [cursor=pointer]:
+                - generic [ref=f8e1498]:
+                  - generic [ref=f8e1499]: 77471272694 Клиент с 2гис
+                  - generic [ref=f8e1500]: "77471272694"
+                - generic [ref=f8e1501]: нет визитов
+              - generic [ref=f8e1503] [cursor=pointer]:
+                - generic [ref=f8e1504]:
+                  - generic [ref=f8e1505]: 77471477263 Диана
+                  - generic [ref=f8e1506]: "77471477263"
+                - generic [ref=f8e1507]: нет визитов
+              - generic [ref=f8e1509] [cursor=pointer]:
+                - generic [ref=f8e1510]:
+                  - generic [ref=f8e1511]: 77477778374 Заявка 15.11
+                  - generic [ref=f8e1512]: "77477778374"
+                - generic [ref=f8e1513]: нет визитов
+              - generic [ref=f8e1515] [cursor=pointer]:
+                - generic [ref=f8e1516]:
+                  - generic [ref=f8e1517]: 77713175258 Ватсап
+                  - generic [ref=f8e1518]: "77713175258"
+                - generic [ref=f8e1519]: нет визитов
+              - generic [ref=f8e1521] [cursor=pointer]:
+                - generic [ref=f8e1522]:
+                  - generic [ref=f8e1523]: 77751091495 21.10
+                  - generic [ref=f8e1524]: "77751091495"
+                - generic [ref=f8e1525]: нет визитов
+              - generic [ref=f8e1527] [cursor=pointer]:
+                - generic [ref=f8e1528]:
+                  - generic [ref=f8e1529]: 77755033869 Дария
+                  - generic [ref=f8e1530]: "77755033869"
+                - generic [ref=f8e1531]: нет визитов
+              - generic [ref=f8e1533] [cursor=pointer]:
+                - generic [ref=f8e1534]:
+                  - generic [ref=f8e1535]: 77758422444 17.11
+                  - generic [ref=f8e1536]: "77758422444"
+                - generic [ref=f8e1537]: нет визитов
+              - generic [ref=f8e1539] [cursor=pointer]:
+                - generic [ref=f8e1540]:
+                  - generic [ref=f8e1541]: 77759412269 Абдуллаева Касиет
+                  - generic [ref=f8e1542]: "77759412269"
+                - generic [ref=f8e1543]: нет визитов
+              - generic [ref=f8e1545] [cursor=pointer]:
+                - generic [ref=f8e1546]:
+                  - generic [ref=f8e1547]: 77759500250 Пшенова Самал
+                  - generic [ref=f8e1548]: "77759500250"
+                - generic [ref=f8e1549]:
+                  - generic [ref=f8e1550]: Акция 6 VACU + 6 INFRASTEP + 12 ROLLSHAPE
+                  - generic [ref=f8e1551]: 8/12
+                  - generic [ref=f8e1552]: 3 дн. назад
+              - generic [ref=f8e1553] [cursor=pointer]:
+                - generic [ref=f8e1554]:
+                  - generic [ref=f8e1555]: 77759585375 21.11
+                  - generic [ref=f8e1556]: "77759585375"
+                - generic [ref=f8e1557]: нет визитов
+              - generic [ref=f8e1559] [cursor=pointer]:
+                - generic [ref=f8e1560]:
+                  - generic [ref=f8e1561]: 77769492121 17.11
+                  - generic [ref=f8e1562]: "77769492121"
+                - generic [ref=f8e1563]: нет визитов
+              - generic [ref=f8e1565] [cursor=pointer]:
+                - generic [ref=f8e1566]:
+                  - generic [ref=f8e1567]: 77772776271 Заявка 04.11
+                  - generic [ref=f8e1568]: "77772776271"
+                - generic [ref=f8e1569]: нет визитов
+              - generic [ref=f8e1571] [cursor=pointer]:
+                - generic [ref=f8e1572]:
+                  - generic [ref=f8e1573]: 77777770806 Диана
+                  - generic [ref=f8e1574]: "77777770806"
+                - generic [ref=f8e1575]: нет визитов
+              - generic [ref=f8e1577] [cursor=pointer]:
+                - generic [ref=f8e1578]:
+                  - generic [ref=f8e1579]: 77778789210 18.11
+                  - generic [ref=f8e1580]: "77778789210"
+                - generic [ref=f8e1581]: нет визитов
+              - generic [ref=f8e1583] [cursor=pointer]:
+                - generic [ref=f8e1584]:
+                  - generic [ref=f8e1585]: 77782849704 28.10 заявка
+                  - generic [ref=f8e1586]: "77782849704"
+                - generic [ref=f8e1587]: нет визитов
+              - generic [ref=f8e1589] [cursor=pointer]:
+                - generic [ref=f8e1590]:
+                  - generic [ref=f8e1591]: 77783644929 01.11
+                  - generic [ref=f8e1592]: "77783644929"
+                - generic [ref=f8e1593]: нет визитов
+              - generic [ref=f8e1595] [cursor=pointer]:
+                - generic [ref=f8e1596]:
+                  - generic [ref=f8e1597]: 77784711910 22.11 Фариза
+                  - generic [ref=f8e1598]: "77784711910"
+                - generic [ref=f8e1599]: нет визитов
+              - generic [ref=f8e1601] [cursor=pointer]:
+                - generic [ref=f8e1602]:
+                  - generic [ref=f8e1603]: 77788752146 Амина
+                  - generic [ref=f8e1604]: "77788752146"
+                - generic [ref=f8e1605]: нет визитов
+              - generic [ref=f8e1607] [cursor=pointer]:
+                - generic [ref=f8e1608]:
+                  - generic [ref=f8e1609]: 87052979134 Светлана
+                  - generic [ref=f8e1610]: "77052979134"
+                - generic [ref=f8e1611]: нет визитов
+              - generic [ref=f8e1613] [cursor=pointer]:
+                - generic [ref=f8e1614]:
+                  - generic [ref=f8e1615]: 87057431684 Асем ватсапп
+                  - generic [ref=f8e1616]: "77057431684"
+                - generic [ref=f8e1617]: нет визитов
+              - generic [ref=f8e1619] [cursor=pointer]:
+                - generic [ref=f8e1620]:
+                  - generic [ref=f8e1621]: 87756802316 Заявка 28.09
+                  - generic [ref=f8e1622]: "77756802316"
+                - generic [ref=f8e1623]: нет визитов
+              - generic [ref=f8e1625] [cursor=pointer]:
+                - generic [ref=f8e1626]:
+                  - generic [ref=f8e1627]: 87788960441 Тт 16.11
+                  - generic [ref=f8e1628]: "77788960441"
+                - generic [ref=f8e1629]: нет визитов
+              - generic [ref=f8e1631] [cursor=pointer]:
+                - generic [ref=f8e1632]:
+                  - generic [ref=f8e1633]: AER Тик ток
+                  - generic [ref=f8e1634]: "77072537377"
+                - generic [ref=f8e1635]: нет визитов
+              - generic [ref=f8e1637] [cursor=pointer]:
+                - generic [ref=f8e1638]:
+                  - generic [ref=f8e1639]: Aidana Тт заявка 11.10
+                  - generic [ref=f8e1640]: "77086257610"
+                - generic [ref=f8e1641]: нет визитов
+              - generic [ref=f8e1643] [cursor=pointer]:
+                - generic [ref=f8e1644]:
+                  - generic [ref=f8e1645]: Aigul_zhakuova 17.11
+                  - generic [ref=f8e1646]: —
+                - generic [ref=f8e1647]: нет визитов
+              - generic [ref=f8e1649] [cursor=pointer]:
+                - generic [ref=f8e1650]:
+                  - generic [ref=f8e1651]: Aigul_zhakuova 17.11
+                  - generic [ref=f8e1652]: "77747279051"
+                - generic [ref=f8e1653]: нет визитов
+              - generic [ref=f8e1655] [cursor=pointer]:
+                - generic [ref=f8e1656]:
+                  - generic [ref=f8e1657]: Aileen_shop_astana 05.11
+                  - generic [ref=f8e1658]: "77756263304"
+                - generic [ref=f8e1659]: нет визитов
+              - generic [ref=f8e1661] [cursor=pointer]:
+                - generic [ref=f8e1662]:
+                  - generic [ref=f8e1663]: Aiman.77 20.10
+                  - generic [ref=f8e1664]: "77789236227"
+                - generic [ref=f8e1665]: нет визитов
+              - generic [ref=f8e1667] [cursor=pointer]:
+                - generic [ref=f8e1668]:
+                  - generic [ref=f8e1669]: Aiym Тт заявка 07.10
+                  - generic [ref=f8e1670]: "77786430699"
+                - generic [ref=f8e1671]: нет визитов
+              - generic [ref=f8e1673] [cursor=pointer]:
+                - generic [ref=f8e1674]:
+                  - generic [ref=f8e1675]: Alua Kasenova Инста
+                  - generic [ref=f8e1676]: "77771234512"
+                - generic [ref=f8e1677]: нет визитов
+              - generic [ref=f8e1679] [cursor=pointer]:
+                - generic [ref=f8e1680]:
+                  - generic [ref=f8e1681]: Amor Fati 24.10
+                  - generic [ref=f8e1682]: "77752300135"
+                - generic [ref=f8e1683]: нет визитов
+              - generic [ref=f8e1685] [cursor=pointer]:
+                - generic [ref=f8e1686]:
+                  - generic [ref=f8e1687]: Arayotarbai25 Тт заявка 11.10
+                  - generic [ref=f8e1688]: "77758252010"
+                - generic [ref=f8e1689]: нет визитов
+              - generic [ref=f8e1691] [cursor=pointer]:
+                - generic [ref=f8e1692]:
+                  - generic [ref=f8e1693]: Assel Konys
+                  - generic [ref=f8e1694]: "77075041550"
+                  - generic [ref=f8e1695]: Рекомендация клиента клуба
+                - generic [ref=f8e1697]:
+                  - generic [ref=f8e1698]: Акция 6 VACU + 6 INFRASTEP + 12 ROLLSHAPE
+                  - generic [ref=f8e1699]: 4/12
+                  - generic [ref=f8e1700]: 5 дн. назад
+              - generic [ref=f8e1701] [cursor=pointer]:
+                - generic [ref=f8e1702]:
+                  - generic [ref=f8e1703]: Asya Тт заявка 11.10
+                  - generic [ref=f8e1704]: "77082220419"
+                - generic [ref=f8e1705]: нет визитов
+              - generic [ref=f8e1707] [cursor=pointer]:
+                - generic [ref=f8e1708]:
+                  - generic [ref=f8e1709]: Azikosh Тт заявка 15.10
+                  - generic [ref=f8e1710]: "77014553995"
+                - generic [ref=f8e1711]: нет визитов
+              - generic [ref=f8e1713] [cursor=pointer]:
+                - generic [ref=f8e1714]:
+                  - generic [ref=f8e1715]: ᴀɴʏᴜᴛɪᴋ Инстаграм, пробное
+                  - generic [ref=f8e1716]: "77757757575"
+                - generic [ref=f8e1717]: нет визитов
+              - generic [ref=f8e1719] [cursor=pointer]:
+                - generic [ref=f8e1720]:
+                  - generic [ref=f8e1721]: Balnur_oshanova Заявка 27.10
+                  - generic [ref=f8e1722]: "77076895697"
+                - generic [ref=f8e1723]: нет визитов
+              - generic [ref=f8e1725] [cursor=pointer]:
+                - generic [ref=f8e1726]:
+                  - generic [ref=f8e1727]: BELIEVE in LOVE Клиент, ТикТок
+                  - generic [ref=f8e1728]: "77028640153"
+                - generic [ref=f8e1729]: нет визитов
+              - generic [ref=f8e1731] [cursor=pointer]:
+                - generic [ref=f8e1732]:
+                  - generic [ref=f8e1733]: Bibabota 20.10
+                  - generic [ref=f8e1734]: —
+                - generic [ref=f8e1735]: нет визитов
+              - generic [ref=f8e1737] [cursor=pointer]:
+                - generic [ref=f8e1738]:
+                  - generic [ref=f8e1739]: Dautbaevna Тт заявка 03.10
+                  - generic [ref=f8e1740]: "77010707624"
+                - generic [ref=f8e1741]: нет визитов
+              - generic [ref=f8e1743] [cursor=pointer]:
+                - generic [ref=f8e1744]:
+                  - generic [ref=f8e1745]: Di.anatolikyzy Тт заявка 03.10
+                  - generic [ref=f8e1746]: "77085950924"
+                - generic [ref=f8e1747]: нет визитов
+              - generic [ref=f8e1749] [cursor=pointer]:
+                - generic [ref=f8e1750]:
+                  - generic [ref=f8e1751]: Diaan Tleubayeva Сайт
+                  - generic [ref=f8e1752]: "77011017799"
+                - generic [ref=f8e1753]: 56 дн. назад
+              - generic [ref=f8e1755] [cursor=pointer]:
+                - generic [ref=f8e1756]:
+                  - generic [ref=f8e1757]: Dina Заявка 16.10
+                  - generic [ref=f8e1758]: —
+                - generic [ref=f8e1759]: нет визитов
+              - generic [ref=f8e1761] [cursor=pointer]:
+                - generic [ref=f8e1762]:
+                  - generic [ref=f8e1763]: Elmira7297 21.11
+                  - generic [ref=f8e1764]: "78415156521"
+                - generic [ref=f8e1765]: нет визитов
+              - generic [ref=f8e1767] [cursor=pointer]:
+                - generic [ref=f8e1768]:
+                  - generic [ref=f8e1769]: Ferrr Тик ток
+                  - generic [ref=f8e1770]: "77078569790"
+                - generic [ref=f8e1771]: нет визитов
+              - generic [ref=f8e1773] [cursor=pointer]:
+                - generic [ref=f8e1774]:
+                  - generic [ref=f8e1775]: FitBase Тех. Поддержка
+                  - generic [ref=f8e1776]: "75555555555"
+                - generic [ref=f8e1777]: нет визитов
+              - generic [ref=f8e1779] [cursor=pointer]:
+                - generic [ref=f8e1780]:
+                  - generic [ref=f8e1781]: Gauradj Тт заявка 07.10
+                  - generic [ref=f8e1782]: "77057573423"
+                - generic [ref=f8e1783]: нет визитов
+              - generic [ref=f8e1785] [cursor=pointer]:
+                - generic [ref=f8e1786]:
+                  - generic [ref=f8e1787]: Gilmi79 20.10
+                  - generic [ref=f8e1788]: "77751166405"
+                - generic [ref=f8e1789]: нет визитов
+              - generic [ref=f8e1791] [cursor=pointer]:
+                - generic [ref=f8e1792]:
+                  - generic [ref=f8e1793]: Gulmira Kim Фитбейс чат
+                  - generic [ref=f8e1794]: —
+                - generic [ref=f8e1795]: нет визитов
+              - generic [ref=f8e1797] [cursor=pointer]:
+                - generic [ref=f8e1798]:
+                  - generic [ref=f8e1799]: Gulnur 17.11 заявка
+                  - generic [ref=f8e1800]: "77475978589"
+                - generic [ref=f8e1801]: нет визитов
+              - generic [ref=f8e1803] [cursor=pointer]:
+                - generic [ref=f8e1804]:
+                  - generic [ref=f8e1805]: Gulnur Abilkanova Гульнур
+                  - generic [ref=f8e1806]: "77057520107"
+                - generic [ref=f8e1807]: 41 дн. назад
+              - generic [ref=f8e1809] [cursor=pointer]:
+                - generic [ref=f8e1810]:
+                  - generic [ref=f8e1811]: Gulshodaxon Тт 31.10
+                  - generic [ref=f8e1812]: "77005671020"
+                - generic [ref=f8e1813]: нет визитов
+              - generic [ref=f8e1815] [cursor=pointer]:
+                - generic [ref=f8e1816]:
+                  - generic [ref=f8e1817]: Happy05092015 Тт заявка 11.10
+                  - generic [ref=f8e1818]: "77776660260"
+                - generic [ref=f8e1819]: нет визитов
+              - generic [ref=f8e1821] [cursor=pointer]:
+                - generic [ref=f8e1822]:
+                  - generic [ref=f8e1823]: I_am_happy_2026 Тик ток
+                  - generic [ref=f8e1824]: "77011310394"
+                - generic [ref=f8e1825]: нет визитов
+              - generic [ref=f8e1827] [cursor=pointer]:
+                - generic [ref=f8e1828]:
+                  - generic [ref=f8e1829]: Ibragimova 20.10
+                  - generic [ref=f8e1830]: —
+                - generic [ref=f8e1831]: нет визитов
+              - generic [ref=f8e1833] [cursor=pointer]:
+                - generic [ref=f8e1834]:
+                  - generic [ref=f8e1835]: Indira 21.11
+                  - generic [ref=f8e1836]: "77009657195"
+                - generic [ref=f8e1837]: нет визитов
+              - generic [ref=f8e1839] [cursor=pointer]:
+                - generic [ref=f8e1840]:
+                  - generic [ref=f8e1841]: Inna Ии заявка 03.11
+                  - generic [ref=f8e1842]: "77015143488"
+                - generic [ref=f8e1843]: нет визитов
+            - button "Показать ещё (686)" [ref=f8e1846] [cursor=pointer]
+            - generic [ref=f8e1847]: 100 из 786 клиентов
+            - dialog [ref=f8e1849]:
+              - button "Закрыть" [ref=f8e1850] [cursor=pointer]: ✕
+              - generic [ref=f8e1851]:
+                - generic [ref=f8e1852]:
+                  - generic [ref=f8e1853]: Ревнивцев Сергей Сергеевич
+                  - generic [ref=f8e1855]:
+                    - generic [ref=f8e1856]: +7 776 768 15 79
+                    - generic [ref=f8e1857]:
+                      - button "⎘ Копировать" [ref=f8e1858] [cursor=pointer]
+                      - link "WhatsApp" [ref=f8e1859] [cursor=pointer]:
+                        - /url: https://wa.me/77767681579
+                      - link "Позвонить" [ref=f8e1860] [cursor=pointer]:
+                        - /url: tel:+77767681579
+                  - generic [ref=f8e1861]: 20.02.1997 · 29 л.
+                  - generic [ref=f8e1862]:
+                    - generic [ref=f8e1863]: Instagram @zmsgrove
+                    - generic [ref=f8e1864]: TikTok @zmsgrove
+                    - generic [ref=f8e1865]: sergey.revnivcev@gmail.com
+                  - generic [ref=f8e1866]:
+                    - generic [ref=f8e1867]: "Fitbase #4"
+                    - button "✎ Редактировать" [ref=f8e1868] [cursor=pointer]
+                  - generic [ref=f8e1869]:
+                    - generic [ref=f8e1870]: Новый клиент
+                    - generic [ref=f8e1871]: Анкета неполная
+                    - generic [ref=f8e1872]: Замер скоро
+                    - button "+ Метка" [ref=f8e1874] [cursor=pointer]
+                  - generic [ref=f8e1875]:
+                    - generic [ref=f8e1876]:
+                      - generic [ref=f8e1877]: Источник
+                      - generic [ref=f8e1878]: Рекомендация клиента клуба
+                    - generic [ref=f8e1879]:
+                      - generic [ref=f8e1880]: Клиент с
+                      - generic [ref=f8e1881]: 28.10.2026
+                    - generic [ref=f8e1882]:
+                      - generic [ref=f8e1883]: LTV
+                      - generic [ref=f8e1884]: 1 683 750 ₸
+                    - generic [ref=f8e1885]:
+                      - generic [ref=f8e1886]: Визитов
+                      - generic [ref=f8e1887]: "0"
+                    - generic [ref=f8e1888]:
+                      - generic [ref=f8e1889]: Депозит
+                      - generic [ref=f8e1890]: 5 000 ₸
+                  - generic [ref=f8e1891]:
+                    - generic [ref=f8e1892]:
+                      - text: Активный абонемент
+                      - generic [ref=f8e1893]: +ещё 2
+                    - generic [ref=f8e1894]:
+                      - generic [ref=f8e1895]: Акция 6 VACU + 6 INFRASTEP + 12 ROLLSHAPE
+                      - generic [ref=f8e1896]: "До: 03.12.2026"
+                      - generic [ref=f8e1897]: "Остаток: 12/12 сеансов"
+                      - generic [ref=f8e1898]: Активен
+                      - button "❄ Заморозить" [ref=f8e1899] [cursor=pointer]
+                  - button "▾ Подробнее" [ref=f8e1900] [cursor=pointer]
+                - generic [ref=f8e1901]:
+                  - generic [ref=f8e1902]:
+                    - generic [ref=f8e1903]:
+                      - text: Важное
+                      - button "✎" [ref=f8e1904] [cursor=pointer]
+                    - generic [ref=f8e1906]:
+                      - generic [ref=f8e1907]: VacuActiv — Vacu 10 · ИК 20
+                      - generic [ref=f8e1908]: InfraShape — Vacu 15 · ИК 25
+                      - generic [ref=f8e1909]: "Противопоказания: нету"
+                  - generic [ref=f8e1910]:
+                    - generic [ref=f8e1911]:
+                      - text: Пакеты
+                      - generic [ref=f8e1912]:
+                        - button "Все" [ref=f8e1913] [cursor=pointer]
+                        - button "Активные" [ref=f8e1914] [cursor=pointer]
+                        - button "Закрытые" [ref=f8e1915] [cursor=pointer]
+                    - generic [ref=f8e1916]:
+                      - generic [ref=f8e1917]:
+                        - generic [ref=f8e1918]:
+                          - generic [ref=f8e1919]: VACU 12+RS12
+                          - generic [ref=f8e1920]: Не активирован
+                        - generic [ref=f8e1921]:
+                          - generic [ref=f8e1922]: "VacuActiv: 12/12"
+                          - generic [ref=f8e1923]: "RollShape: 12/12"
+                      - generic [ref=f8e1924]:
+                        - generic [ref=f8e1925]:
+                          - generic [ref=f8e1926]: VACU 12+RS12
+                          - generic [ref=f8e1927]: Активен
+                        - generic [ref=f8e1928]:
+                          - generic [ref=f8e1929]: "Активирован: 19.11.2026"
+                          - generic [ref=f8e1930]: "До: 18.12.2026"
+                        - generic [ref=f8e1931]:
+                          - generic [ref=f8e1932]: "RollShape: 12/12"
+                          - generic [ref=f8e1933]: "VacuActiv: 12/12"
+                        - generic [ref=f8e1934]:
+                          - button "❄ Заморозить" [ref=f8e1935] [cursor=pointer]
+                          - generic [ref=f8e1936]: ❄ 30 д. осталось
+                      - generic [ref=f8e1937]:
+                        - generic [ref=f8e1938]:
+                          - generic [ref=f8e1939]: Акция 6 VACU + 6 INFRASTEP + 12 ROLLSHAPE
+                          - generic [ref=f8e1940]: Активен
+                        - generic [ref=f8e1941]:
+                          - generic [ref=f8e1942]: "Активирован: 23.10.2026"
+                          - generic [ref=f8e1943]: "До: 03.12.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e1944]: "Остаток: 12/12 сеансов"
+                        - generic [ref=f8e1945]:
+                          - button "❄ Заморозить" [ref=f8e1946] [cursor=pointer]
+                          - button "⚡ Распределить" [ref=f8e1947] [cursor=pointer]
+                      - generic [ref=f8e1948]:
+                        - generic [ref=f8e1949]:
+                          - generic [ref=f8e1950]: VACU - 16 сеансов
+                          - generic [ref=f8e1951]: Возвращён
+                        - generic [ref=f8e1952]:
+                          - generic [ref=f8e1953]: "Активирован: 19.10.2026"
+                          - generic [ref=f8e1954]: "До: 19.10.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e1955]: "Остаток: 15/16 сеансов"
+                      - generic [ref=f8e1956]:
+                        - generic [ref=f8e1957]:
+                          - generic [ref=f8e1958]: VACU - 10 сеансов
+                          - generic [ref=f8e1959]: Возвращён
+                        - generic [ref=f8e1960]:
+                          - generic [ref=f8e1961]: "До: 12.10.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e1962]: "Остаток: 10/10 сеансов"
+                      - generic [ref=f8e1963]:
+                        - generic [ref=f8e1964]:
+                          - generic [ref=f8e1965]: VACU - 16 сеансов
+                          - generic [ref=f8e1966]: Возвращён
+                        - generic [ref=f8e1967]:
+                          - generic [ref=f8e1968]: "Активирован: 12.10.2026"
+                          - generic [ref=f8e1969]: "До: 12.10.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e1970]: "Остаток: 15/16 сеансов"
+                      - generic [ref=f8e1971]:
+                        - generic [ref=f8e1972]:
+                          - generic [ref=f8e1973]: ROLLSHAPE - 10 сеансов
+                          - generic [ref=f8e1974]: Возвращён
+                        - generic [ref=f8e1975]:
+                          - generic [ref=f8e1976]: "До: 27.08.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e1977]: "Остаток: 10/10 сеансов"
+                      - generic [ref=f8e1978]:
+                        - generic [ref=f8e1979]:
+                          - generic [ref=f8e1980]: VACU - 10 сеансов
+                          - generic [ref=f8e1981]: Возвращён
+                        - generic [ref=f8e1982]:
+                          - generic [ref=f8e1983]: "Активирован: 27.08.2026"
+                          - generic [ref=f8e1984]: "До: 27.08.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e1985]: "Остаток: 10/10 сеансов"
+                      - generic [ref=f8e1986]:
+                        - generic [ref=f8e1987]:
+                          - generic [ref=f8e1988]: Безлимит
+                          - generic [ref=f8e1989]: Истёк
+                        - generic [ref=f8e1990]:
+                          - generic [ref=f8e1991]: "Активирован: 10.08.2026"
+                          - generic [ref=f8e1992]: "До: 11.08.2026"
+                          - text: Fitbase
+                      - generic [ref=f8e1993]:
+                        - generic [ref=f8e1994]:
+                          - generic [ref=f8e1995]: Акция Х2 VACU - 16 сеансов
+                          - generic [ref=f8e1996]: Истёк
+                        - generic [ref=f8e1997]:
+                          - generic [ref=f8e1998]: "Активирован: 28.07.2026"
+                          - generic [ref=f8e1999]: "До: 28.07.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e2000]: "Остаток: 16/16 сеансов"
+                      - generic [ref=f8e2001]:
+                        - generic [ref=f8e2002]:
+                          - generic [ref=f8e2003]: VACU - 16 сеансов
+                          - generic [ref=f8e2004]: Возвращён
+                        - generic [ref=f8e2005]:
+                          - generic [ref=f8e2006]: "Активирован: 28.07.2026"
+                          - generic [ref=f8e2007]: "До: 28.07.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e2008]: "Остаток: 16/16 сеансов"
+                      - generic [ref=f8e2009]:
+                        - generic [ref=f8e2010]:
+                          - generic [ref=f8e2011]: INFRASHAPE / INFRASTEP / VACU - 40
+                          - generic [ref=f8e2012]: Возвращён
+                        - generic [ref=f8e2013]:
+                          - generic [ref=f8e2014]: "До: 23.07.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e2015]: "Остаток: 40/40 сеансов"
+                      - generic [ref=f8e2016]:
+                        - generic [ref=f8e2017]:
+                          - generic [ref=f8e2018]: INFRASHAPE / INFRASTEP / VACU - 40
+                          - generic [ref=f8e2019]: Возвращён
+                        - generic [ref=f8e2020]:
+                          - generic [ref=f8e2021]: "До: 23.07.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e2022]: "Остаток: 40/40 сеансов"
+                      - generic [ref=f8e2023]:
+                        - generic [ref=f8e2024]:
+                          - generic [ref=f8e2025]: INFRASHAPE / INFRASTEP / VACU - 10
+                          - generic [ref=f8e2026]: Возвращён
+                        - generic [ref=f8e2027]:
+                          - generic [ref=f8e2028]: "До: 23.07.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e2029]: "Остаток: 10/10 сеансов"
+                      - generic [ref=f8e2030]:
+                        - generic [ref=f8e2031]:
+                          - generic [ref=f8e2032]: ROLLSHAPE - 10 test
+                          - generic [ref=f8e2033]: Возвращён
+                        - generic [ref=f8e2034]:
+                          - generic [ref=f8e2035]: "Активирован: 21.07.2026"
+                          - generic [ref=f8e2036]: "До: 23.07.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e2037]: "Остаток: 9/10 сеансов"
+                      - generic [ref=f8e2038]:
+                        - generic [ref=f8e2039]:
+                          - generic [ref=f8e2040]: INFRASHAPE / INFRASTEP / VACU - 40
+                          - generic [ref=f8e2041]: Возвращён
+                        - generic [ref=f8e2042]:
+                          - generic [ref=f8e2043]: "До: 23.07.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e2044]: "Остаток: 40/40 сеансов"
+                      - generic [ref=f8e2045]:
+                        - generic [ref=f8e2046]:
+                          - generic [ref=f8e2047]: ROLLSHAPE - 24 сеанса
+                          - generic [ref=f8e2048]: Возвращён
+                        - generic [ref=f8e2049]:
+                          - generic [ref=f8e2050]: "До: 23.07.2026"
+                          - text: Fitbase
+                        - generic [ref=f8e2051]: "Остаток: 24/24 сеансов"
+                  - generic [ref=f8e2052]:
+                    - generic [ref=f8e2053]: Лента
+                    - generic [ref=f8e2054]:
+                      - button "Всё" [ref=f8e2055] [cursor=pointer]
+                      - button "Комментарии" [ref=f8e2056] [cursor=pointer]
+                      - button "Задачи" [ref=f8e2057] [cursor=pointer]
+                      - button "Лог" [ref=f8e2058] [cursor=pointer]
+                    - generic [ref=f8e2059]:
+                      - textbox "Добавить комментарий…" [ref=f8e2060]
+                      - button "+" [ref=f8e2061] [cursor=pointer]
+                    - generic [ref=f8e2062]:
+                      - generic [ref=f8e2063]:
+                        - generic [ref=f8e2064]:
+                          - generic [ref=f8e2065]: · Сергей
+                          - generic [ref=f8e2066]: 24.11.2026 10:04
+                        - generic [ref=f8e2067]: update
+                      - generic [ref=f8e2068]:
+                        - generic [ref=f8e2069]:
+                          - generic [ref=f8e2070]: · Сергей
+                          - generic [ref=f8e2071]: 23.11.2026 22:11
+                        - generic [ref=f8e2072]: update
+                      - generic [ref=f8e2073]:
+                        - generic [ref=f8e2074]:
+                          - generic [ref=f8e2075]: · Сергей
+                          - generic [ref=f8e2076]: 23.11.2026 22:09
+                        - generic [ref=f8e2077]: update
+                      - generic [ref=f8e2078]:
+                        - generic [ref=f8e2079]:
+                          - generic [ref=f8e2080]: · Сергей
+                          - generic [ref=f8e2081]: 23.11.2026 21:06
+                        - generic [ref=f8e2082]: update
+                      - generic [ref=f8e2083]:
+                        - generic [ref=f8e2084]:
+                          - generic [ref=f8e2085]: ✓ Иман Назира
+                          - generic [ref=f8e2086]: 05.11.2026 18:39
+                        - generic [ref=f8e2087]: Проверить поступление денежных средств по безналичной оплате на контракт VACU - 16 от 28.07.2026
+                        - generic [ref=f8e2088]: "Статус: Выполнена · до 30.07.2026"
+                      - generic [ref=f8e2089]:
+                        - generic [ref=f8e2090]:
+                          - generic [ref=f8e2091]: ✓ Иман Назира
+                          - generic [ref=f8e2092]: 05.11.2026 18:39
+                        - generic [ref=f8e2093]: Проверить поступление денежных средств по безналичной оплате на контракт VACU - 16 (А) от 28.07.2026
+                        - generic [ref=f8e2094]: "Статус: Выполнена · до 30.07.2026"
+                      - generic [ref=f8e2095]:
+                        - generic [ref=f8e2096]:
+                          - generic [ref=f8e2097]: ✓ Ревнивцев Сергей Сергеевич
+                          - generic [ref=f8e2098]: 05.11.2026 18:39
+                        - generic [ref=f8e2099]: Проверить поступление денежных средств по безналичной оплате на контракт VACU - 24 от 29.07.2026
+                        - generic [ref=f8e2100]: "Статус: Выполнена · до 31.07.2026"
+                      - generic [ref=f8e2101]:
+                        - generic [ref=f8e2102]:
+                          - generic [ref=f8e2103]: ✓ Ревнивцев Сергей Сергеевич
+                          - generic [ref=f8e2104]: 05.11.2026 18:39
+                        - generic [ref=f8e2105]: Проверить поступление денежных средств по безналичной оплате на контракт VACU - 16 от 29.07.2026
+                        - generic [ref=f8e2106]: "Статус: Выполнена · до 31.07.2026"
+                - generic [ref=f8e2107]:
+                  - generic [ref=f8e2108]:
+                    - generic [ref=f8e2109]:
+                      - text: InBody
+                      - generic [ref=f8e2110]: "Тестов: 5, первый 23.04.2026"
+                    - generic [ref=f8e2111]:
+                      - generic [ref=f8e2113]:
+                        - generic [ref=f8e2114]: 17.10.2026
+                        - generic [ref=f8e2115]: Просрочено на 31 дн.
+                      - generic [ref=f8e2118]:
+                        - generic [ref=f8e2119]:
+                          - generic [ref=f8e2120]: Вес
+                          - generic [ref=f8e2121]:
+                            - text: 64.6 кг
+                            - generic [ref=f8e2122]: "+1.8"
+                        - generic [ref=f8e2123]:
+                          - generic [ref=f8e2124]: "% жира"
+                          - generic [ref=f8e2125]:
+                            - text: 15.4%
+                            - generic [ref=f8e2126]: "+3.2"
+                        - generic [ref=f8e2127]:
+                          - generic [ref=f8e2128]: Жир кг
+                          - generic [ref=f8e2129]:
+                            - text: 9.9 кг
+                            - generic [ref=f8e2130]: "+2.2"
+                        - generic [ref=f8e2131]:
+                          - generic [ref=f8e2132]: Мышцы
+                          - generic [ref=f8e2133]:
+                            - text: 30.4 кг
+                            - generic [ref=f8e2134]: "-0.2"
+                        - generic [ref=f8e2135]:
+                          - generic [ref=f8e2136]: BFM
+                          - generic [ref=f8e2137]: 9.9 кг
+                        - generic [ref=f8e2138]:
+                          - generic [ref=f8e2139]: ИМТ
+                          - generic [ref=f8e2140]: "19.2"
+                        - generic [ref=f8e2141]:
+                          - generic [ref=f8e2142]: BMR
+                          - generic [ref=f8e2143]: 1550 ккал
+                        - generic [ref=f8e2144]:
+                          - generic [ref=f8e2145]: Баллы
+                          - generic [ref=f8e2146]: "71"
+                      - button "→ Открыть отчёт" [ref=f8e2147] [cursor=pointer]
+                  - generic [ref=f8e2148] [cursor=pointer]:
+                    - generic [ref=f8e2149]:
+                      - text: Замеры тела
+                      - generic [ref=f8e2150]: "Замеров: 1, первый 17.11.2026"
+                    - generic [ref=f8e2151]:
+                      - generic [ref=f8e2153]:
+                        - generic [ref=f8e2154]: 17.11.2026
+                        - generic [ref=f8e2155]: Сегодня
+                      - generic [ref=f8e2158]: 505 см
+                      - generic [ref=f8e2160]:
+                        - generic [ref=f8e2161]:
+                          - generic [ref=f8e2162]: Шея
+                          - generic [ref=f8e2163]: 30 см
+                        - generic [ref=f8e2164]:
+                          - generic [ref=f8e2165]: Грудь
+                          - generic [ref=f8e2166]: 80 см
+                        - generic [ref=f8e2167]:
+                          - generic [ref=f8e2168]: Л.рука
+                          - generic [ref=f8e2169]: 25 см
+                        - generic [ref=f8e2170]:
+                          - generic [ref=f8e2171]: П.рука
+                          - generic [ref=f8e2172]: 25 см
+                        - generic [ref=f8e2173]:
+                          - generic [ref=f8e2174]: Талия
+                          - generic [ref=f8e2175]: 70 см
+                        - generic [ref=f8e2176]:
+                          - generic [ref=f8e2177]: Живот
+                          - generic [ref=f8e2178]: 55 см
+                        - generic [ref=f8e2179]:
+                          - generic [ref=f8e2180]: Ягодицы
+                          - generic [ref=f8e2181]: 70 см
+                        - generic [ref=f8e2182]:
+                          - generic [ref=f8e2183]: Л.бедро
+                          - generic [ref=f8e2184]: 50 см
+                        - generic [ref=f8e2185]:
+                          - generic [ref=f8e2186]: П.бедро
+                          - generic [ref=f8e2187]: 50 см
+                        - generic [ref=f8e2188]:
+                          - generic [ref=f8e2189]: Л.голень
+                          - generic [ref=f8e2190]: 25 см
+                        - generic [ref=f8e2191]:
+                          - generic [ref=f8e2192]: П.голень
+                          - generic [ref=f8e2193]: 25 см
+          - region "Notifications (F8)":
+            - list
+      - button "Воронка" [ref=f6e53] [cursor=pointer]
+  - generic [ref=f6e55]:
+    - generic [ref=f6e56]:
+      - generic [ref=f6e57]: SW
+      - generic [ref=f6e58]: Сергей
+    - generic [ref=f6e59]:
+      - button "Менеджер" [ref=f6e60] [cursor=pointer]
+      - button "Агент 16" [ref=f6e67] [cursor=pointer]:
+        - generic [ref=f6e72]: Агент
+        - generic [ref=f6e73]: "16"
+      - button "Расписание" [ref=f6e74] [cursor=pointer]
+      - button "Клиенты" [ref=f6e79] [cursor=pointer]
+      - button "Воронка" [ref=f6e87] [cursor=pointer]
+      - button "Касса" [ref=f6e92] [cursor=pointer]
+      - button "Замеры" [ref=f6e99] [cursor=pointer]
+      - button "Отчёты" [ref=f6e108] [cursor=pointer]
+      - button "Настройки" [ref=f6e113] [cursor=pointer]
+    - generic [ref=f6e119]:
+      - group "Тема" [ref=f6e120]:
+        - button "Светлая" [ref=f6e121] [cursor=pointer]
+        - button "Тёмная" [ref=f6e122] [cursor=pointer]
+      - button "Выйти" [ref=f6e123] [cursor=pointer]

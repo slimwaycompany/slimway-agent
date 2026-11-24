@@ -1,0 +1,123 @@
+- generic [ref=f7e1]:
+  - generic [ref=f7e2]:
+    - generic [ref=f7e3]:
+      - generic [ref=f7e4]:
+        - button "Менеджер" [ref=f7e5] [cursor=pointer]
+        - button "Агент 20" [ref=f7e120] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f7e121]: "20"
+        - button "Расписание" [ref=f7e14] [cursor=pointer]
+        - button "Клиенты" [ref=f7e17] [cursor=pointer]
+        - button "Воронка" [ref=f7e23] [cursor=pointer]
+        - button "Касса" [ref=f7e26] [cursor=pointer]
+        - button "Замеры" [ref=f7e31] [cursor=pointer]
+        - button "Отчёты" [ref=f7e38] [cursor=pointer]
+        - button "Настройки" [ref=f7e41] [cursor=pointer]
+      - button "Меню пользователя" [ref=f7e46] [cursor=pointer]: С
+    - generic [ref=f7e48]:
+      - button "Отчёты" [ref=f7e49] [cursor=pointer]
+      - iframe [active] [ref=f7e51]:
+        - generic [ref=f9e2]:
+          - generic [ref=f9e3]:
+            - generic [ref=f9e4]:
+              - generic [ref=f9e5]: Настройки
+              - generic [ref=f9e6]:
+                - textbox "Поиск…" [ref=f9e9]
+                - generic [ref=f9e10]:
+                  - generic [ref=f9e11]:
+                    - button "Моё 2" [ref=f9e12] [cursor=pointer]:
+                      - generic [ref=f9e13]: Моё
+                      - generic [ref=f9e14]: "2"
+                    - button "Профиль" [ref=f9e17] [cursor=pointer]
+                    - button "Оформление" [ref=f9e22] [cursor=pointer]
+                  - generic [ref=f9e30]:
+                    - button "Студия 4" [ref=f9e31] [cursor=pointer]:
+                      - generic [ref=f9e32]: Студия
+                      - generic [ref=f9e33]: "4"
+                    - button "Филиал" [ref=f9e36] [cursor=pointer]
+                    - button "Аппараты" [ref=f9e42] [cursor=pointer]
+                    - button "Занятия и расписание" [ref=f9e47] [cursor=pointer]
+                    - button "ТВ-экран" [ref=f9e51] [cursor=pointer]
+                  - button "Что продаём 5" [ref=f9e56] [cursor=pointer]:
+                    - generic [ref=f9e57]: Что продаём
+                    - generic [ref=f9e58]: "5"
+                  - button "Деньги 2" [ref=f9e62] [cursor=pointer]:
+                    - generic [ref=f9e63]: Деньги
+                    - generic [ref=f9e64]: "2"
+                  - button "Заявки 7" [ref=f9e68] [cursor=pointer]:
+                    - generic [ref=f9e69]: Заявки
+                    - generic [ref=f9e70]: "7"
+                  - button "Команда 5" [ref=f9e74] [cursor=pointer]:
+                    - generic [ref=f9e75]: Команда
+                    - generic [ref=f9e76]: "5"
+                  - generic [ref=f9e79]:
+                    - button "Связи и данные 3" [ref=f9e80] [cursor=pointer]:
+                      - generic [ref=f9e81]: Связи и данные
+                      - generic [ref=f9e82]: "3"
+                    - button "Сопоставление FB" [ref=f9e85] [cursor=pointer]
+                    - button "АТС" [ref=f9e90] [cursor=pointer]
+                    - button "Данные InBody" [ref=f9e94] [cursor=pointer]
+            - generic [ref=f9e98]:
+              - generic [ref=f9e99]: Данные InBody
+              - generic [ref=f9e120]:
+                - generic [ref=f9e121]:
+                  - 'button "InBody: импорт, пересчёт" [ref=f9e122] [cursor=pointer]'
+                  - button "Перенести клиентов InBody" [ref=f9e123] [cursor=pointer]
+                - generic [ref=f9e124]:
+                  - generic [ref=f9e125]:
+                    - generic [ref=f9e126]: Импорт InBody CSV
+                    - generic [ref=f9e127]: Загрузите inbody270_data.csv из LookinBody Web.
+                    - button "Выбрать файл CSV…" [ref=f9e128] [cursor=pointer]
+                  - generic [ref=f9e129]:
+                    - generic [ref=f9e130]: Пересчёт InBody
+                    - generic [ref=f9e131]: Пересчитывает числовые поля из raw CSV для всех тестов.
+                    - button "Пересчитать InBody" [ref=f9e132] [cursor=pointer]
+                  - generic [ref=f9e133]:
+                    - generic [ref=f9e134]:
+                      - generic [ref=f9e135]: InBody без клиента
+                      - button "↺ Обновить" [ref=f9e136] [cursor=pointer]
+                    - generic [ref=f9e137]: Все тесты привязаны
+                  - generic [ref=f9e138]:
+                    - generic [ref=f9e139]:
+                      - generic [ref=f9e140]: Связь замеров с клиентами CRM
+                      - button "↺ Обновить" [ref=f9e149] [cursor=pointer]
+                    - generic [ref=f9e151]:
+                      - generic [ref=f9e152]:
+                        - generic [ref=f9e153]: "0"
+                        - generic [ref=f9e154]: Привязано
+                      - generic [ref=f9e155]:
+                        - generic [ref=f9e156]: "0"
+                        - generic [ref=f9e157]: Спорных
+                      - generic [ref=f9e158]:
+                        - generic [ref=f9e159]: "29"
+                        - generic [ref=f9e160]: Без пары CRM
+                    - button "Автопривязка (по Fitbase ID + телефону)" [ref=f9e142] [cursor=pointer]
+                  - generic [ref=f9e143]:
+                    - generic [ref=f9e144]: Импорт истории из Fitbase
+                    - generic [ref=f9e145]: Загружает абонементы, продажи, возвраты и визиты всех клиентов CRM из Fitbase.
+                    - generic [ref=f9e146]:
+                      - button "Полный импорт" [ref=f9e147] [cursor=pointer]
+                      - button "Только активные" [ref=f9e148] [cursor=pointer]
+          - region "Notifications (F8)":
+            - list
+  - generic [ref=f7e52]:
+    - generic [ref=f7e53]:
+      - generic [ref=f7e54]: SW
+      - generic [ref=f7e55]: Сергей
+    - generic [ref=f7e56]:
+      - button "Менеджер" [ref=f7e57] [cursor=pointer]
+      - button "Агент 20" [ref=f7e122] [cursor=pointer]:
+        - generic [ref=f7e69]: Агент
+        - generic [ref=f7e123]: "20"
+      - button "Расписание" [ref=f7e70] [cursor=pointer]
+      - button "Клиенты" [ref=f7e75] [cursor=pointer]
+      - button "Воронка" [ref=f7e83] [cursor=pointer]
+      - button "Касса" [ref=f7e88] [cursor=pointer]
+      - button "Замеры" [ref=f7e95] [cursor=pointer]
+      - button "Отчёты" [ref=f7e104] [cursor=pointer]
+      - button "Настройки" [ref=f7e109] [cursor=pointer]
+    - generic [ref=f7e115]:
+      - group "Тема" [ref=f7e116]:
+        - button "Светлая" [ref=f7e117] [cursor=pointer]
+        - button "Тёмная" [ref=f7e118] [cursor=pointer]
+      - button "Выйти" [ref=f7e119] [cursor=pointer]

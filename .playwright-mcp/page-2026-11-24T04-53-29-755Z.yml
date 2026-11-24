@@ -1,0 +1,118 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e146]:
+      - generic [ref=e147]:
+        - button "Менеджер" [ref=e148] [cursor=pointer]
+        - button "Агент 16" [ref=e153] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=e157]: "16"
+        - button "Расписание" [ref=e158] [cursor=pointer]
+        - button "Клиенты" [ref=e161] [cursor=pointer]
+        - button "Воронка" [ref=e167] [cursor=pointer]
+        - button "Касса" [ref=e170] [cursor=pointer]
+        - button "Замеры" [ref=e175] [cursor=pointer]
+        - button "Отчёты" [ref=e182] [cursor=pointer]
+        - button "Настройки" [ref=e185] [cursor=pointer]
+      - button "Меню пользователя" [ref=e190] [cursor=pointer]: С
+    - generic [ref=e191]:
+      - button "Расписание" [ref=e192] [cursor=pointer]
+      - iframe [ref=e194]:
+        - generic [ref=f2e2]:
+          - generic [ref=f2e622]:
+            - generic [ref=f2e623]:
+              - heading "Новый клиент" [level=2] [ref=f2e624]
+              - button "✕" [ref=f2e625] [cursor=pointer]
+            - generic [ref=f2e626]:
+              - generic [ref=f2e627]:
+                - generic [ref=f2e628]: ФИО *
+                - textbox "Иванова Анна Ивановна" [ref=f2e629]
+              - generic [ref=f2e630]:
+                - generic [ref=f2e631]: Телефон (+7...)
+                - textbox "+7 777 000 00 00" [ref=f2e632]
+              - generic [ref=f2e633]:
+                - generic [ref=f2e634]: ИИН (12 цифр)
+                - textbox "000000000000" [ref=f2e635]
+              - generic [ref=f2e636]:
+                - generic [ref=f2e637]: Дата рождения
+                - textbox [ref=f2e638]
+              - generic [ref=f2e639]:
+                - generic [ref=f2e640]: Пол
+                - combobox [ref=f2e641]:
+                  - option "— не указан —" [selected]
+                  - option "Женский"
+                  - option "Мужской"
+              - generic [ref=f2e642]:
+                - generic [ref=f2e643]: Рекламный источник
+                - combobox [ref=f2e644]:
+                  - option "— не указан —" [selected]
+                  - option "оффер"
+                  - option "Рекомендация клиента клуба"
+                  - option "Сайт"
+                  - option "Instagram"
+                  - option "Проходящий трафик"
+                  - option "Входящий звонок"
+                  - option "WhatsApp"
+                  - option "Блогер бартер"
+                  - option "Блогер Зарина"
+                  - option "Блогер Хадия"
+                  - option "Блогер Ната"
+                  - option "2гис"
+                  - option "Таргет"
+                  - option "Таргет тикток"
+              - generic [ref=f2e645]:
+                - generic [ref=f2e646]: Кем выдан документ
+                - textbox "МЮ РК" [ref=f2e647]
+              - generic [ref=f2e648]:
+                - generic [ref=f2e649]: Действителен до
+                - textbox [ref=f2e650]
+              - generic [ref=f2e651]:
+                - generic [ref=f2e652]: Адрес
+                - textbox "г. Астана, ул. ..." [ref=f2e653]
+              - generic [ref=f2e654]:
+                - generic [ref=f2e655]: Instagram
+                - textbox "@username или ссылка" [ref=f2e656]
+              - generic [ref=f2e657]:
+                - generic [ref=f2e658]: TikTok
+                - textbox "@username или ссылка" [ref=f2e659]
+              - generic [ref=f2e660]:
+                - generic [ref=f2e661]: Email
+                - textbox "user@example.com" [ref=f2e662]
+              - generic [ref=f2e663]:
+                - generic [ref=f2e664]: Фото
+                - button "Загрузить фото" [ref=f2e665] [cursor=pointer]
+              - generic [ref=f2e666]:
+                - generic [ref=f2e667]: Противопоказания
+                - textbox [ref=f2e668]
+              - generic [ref=f2e669]:
+                - generic [ref=f2e670]: Заметки
+                - textbox [ref=f2e671]
+              - generic [ref=f2e673] [cursor=pointer]:
+                - checkbox "Анкета заполнена" [ref=f2e674]
+                - text: Анкета заполнена
+            - generic [ref=f2e675]:
+              - button "Отмена" [ref=f2e676] [cursor=pointer]
+              - button "Сохранить" [ref=f2e677] [cursor=pointer]
+          - region "Notifications (F8)":
+            - list
+      - button "Воронка" [ref=e195] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]: SW
+      - generic [ref=e13]: Сергей
+    - generic [ref=e14]:
+      - button "Менеджер" [ref=e15] [cursor=pointer]
+      - button "Агент 16" [ref=e142] [cursor=pointer]:
+        - generic [ref=e27]: Агент
+        - generic [ref=e143]: "16"
+      - button "Расписание" [ref=e28] [cursor=pointer]
+      - button "Клиенты" [ref=e33] [cursor=pointer]
+      - button "Воронка" [ref=e41] [cursor=pointer]
+      - button "Касса" [ref=e46] [cursor=pointer]
+      - button "Замеры" [ref=e53] [cursor=pointer]
+      - button "Отчёты" [ref=e62] [cursor=pointer]
+      - button "Настройки" [ref=e67] [cursor=pointer]
+    - generic [ref=e73]:
+      - group "Тема" [ref=e74]:
+        - button "Светлая" [ref=e75] [cursor=pointer]
+        - button "Тёмная" [ref=e76] [cursor=pointer]
+      - button "Выйти" [ref=e77] [cursor=pointer]

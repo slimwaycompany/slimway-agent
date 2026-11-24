@@ -1,0 +1,372 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - generic [ref=f2e142]:
+      - generic [ref=f2e143]:
+        - button "Менеджер" [ref=f2e144] [cursor=pointer]
+        - button "Агент 18" [ref=f2e149] [cursor=pointer]:
+          - text: Агент
+          - generic [ref=f2e153]: "18"
+        - button "Расписание" [ref=f2e154] [cursor=pointer]
+        - button "Клиенты" [ref=f2e157] [cursor=pointer]
+        - button "Воронка" [ref=f2e163] [cursor=pointer]
+        - button "Касса" [ref=f2e166] [cursor=pointer]
+        - button "Замеры" [ref=f2e171] [cursor=pointer]
+        - button "Отчёты" [ref=f2e178] [cursor=pointer]
+        - button "Настройки" [ref=f2e181] [cursor=pointer]
+      - button "Меню пользователя" [ref=f2e186] [cursor=pointer]: С
+    - generic [ref=f2e187]:
+      - button "Расписание" [ref=f2e188] [cursor=pointer]
+      - iframe [ref=f2e190]:
+        - generic [ref=f4e2]:
+          - generic [ref=f4e3]:
+            - generic [ref=f4e4]:
+              - textbox "Поиск по имени или телефону" [ref=f4e5]
+              - combobox [ref=f4e6]:
+                - option "Все источники" [selected]
+                - option "оффер"
+                - option "Рекомендация клиента клуба"
+                - option "Сайт"
+                - option "Instagram"
+                - option "Проходящий трафик"
+                - option "Входящий звонок"
+                - option "WhatsApp"
+                - option "Блогер бартер"
+                - option "Блогер Зарина"
+                - option "Блогер Хадия"
+                - option "Блогер Ната"
+                - option "2гис"
+                - option "Таргет"
+                - option "Таргет тикток"
+              - combobox [ref=f4e7]:
+                - option "Все анкеты" [selected]
+                - option "Заполнена"
+                - option "Не заполнена"
+              - button "+ Клиент" [ref=f4e8] [cursor=pointer]
+              - button "↓ Fitbase" [ref=f4e9] [cursor=pointer]
+            - generic [ref=f4e10]:
+              - generic [ref=f4e12] [cursor=pointer]:
+                - generic [ref=f4e13]: _unique_801 17.11
+                - generic [ref=f4e14]: "77714415632"
+              - generic [ref=f4e16] [cursor=pointer]:
+                - generic [ref=f4e17]: "@jyldyz4670 18.11"
+                - generic [ref=f4e18]: —
+              - generic [ref=f4e20] [cursor=pointer]:
+                - generic [ref=f4e21]: +7 707 211 7622 Ватсап
+                - generic [ref=f4e22]: "+77072117622"
+              - generic [ref=f4e24] [cursor=pointer]:
+                - generic [ref=f4e25]: +77028163518 Тт заявка 19.10
+                - generic [ref=f4e26]: "77028163518"
+              - generic [ref=f4e28] [cursor=pointer]:
+                - generic [ref=f4e29]: +77712052025 Тт заявка 22.10
+                - generic [ref=f4e30]: "77712052025"
+              - generic [ref=f4e32] [cursor=pointer]:
+                - generic [ref=f4e33]: +77759779817 Заявка 02.10
+                - generic [ref=f4e34]: "77759779817"
+              - generic [ref=f4e36] [cursor=pointer]:
+                - generic [ref=f4e37]: +77771107047 Пробное 07.10
+                - generic [ref=f4e38]: "77771107047"
+              - generic [ref=f4e40] [cursor=pointer]:
+                - generic [ref=f4e41]: +77780815100 Инст 07.10
+                - generic [ref=f4e42]: "77780815100"
+              - generic [ref=f4e44] [cursor=pointer]:
+                - generic [ref=f4e45]: ~Shynarai~ Клиент
+                - generic [ref=f4e46]: "77003300993"
+              - generic [ref=f4e48] [cursor=pointer]:
+                - generic [ref=f4e49]: ⚜Молдаванка ⚜ Тт заявка 15.10
+                - generic [ref=f4e50]: "77751119313"
+              - generic [ref=f4e52] [cursor=pointer]:
+                - generic [ref=f4e53]: 1037090119249607 Инстаграм
+                - generic [ref=f4e54]: "79999999967"
+              - generic [ref=f4e56] [cursor=pointer]:
+                - generic [ref=f4e57]: 1124708273528706 21.11
+                - generic [ref=f4e58]: —
+              - generic [ref=f4e60] [cursor=pointer]:
+                - generic [ref=f4e61]: 1134946198904593 Сайт
+                - generic [ref=f4e62]: —
+              - generic [ref=f4e64] [cursor=pointer]:
+                - generic [ref=f4e65]: 1698608618347641 02.11
+                - generic [ref=f4e66]: "78458959649"
+              - generic [ref=f4e68] [cursor=pointer]:
+                - generic [ref=f4e69]: 2 гис Ильмира
+                - generic [ref=f4e70]: "77056104693"
+              - generic [ref=f4e72] [cursor=pointer]:
+                - generic [ref=f4e73]: 28.10 Акмарал
+                - generic [ref=f4e74]: "77754302007"
+              - generic [ref=f4e76] [cursor=pointer]:
+                - generic [ref=f4e77]: 77001190586 14.11
+                - generic [ref=f4e78]: "77001190586"
+              - generic [ref=f4e80] [cursor=pointer]:
+                - generic [ref=f4e81]: 77012125406 13.11
+                - generic [ref=f4e82]: "77012125406"
+              - generic [ref=f4e84] [cursor=pointer]:
+                - generic [ref=f4e85]: 77013179993 Новый клиент
+                - generic [ref=f4e86]: "77013179993"
+              - generic [ref=f4e88] [cursor=pointer]:
+                - generic [ref=f4e89]: 77015241236 22.11
+                - generic [ref=f4e90]: "77015241236"
+              - generic [ref=f4e92] [cursor=pointer]:
+                - generic [ref=f4e93]: 77015280065 Клиент
+                - generic [ref=f4e94]: "77015280065"
+              - generic [ref=f4e96] [cursor=pointer]:
+                - generic [ref=f4e97]: 77017177656 21.11
+                - generic [ref=f4e98]: "77017177656"
+              - generic [ref=f4e100] [cursor=pointer]:
+                - generic [ref=f4e101]: 77017218948 01.11
+                - generic [ref=f4e102]: "77017218948"
+              - generic [ref=f4e104] [cursor=pointer]:
+                - generic [ref=f4e105]: 77017528723 Альбина
+                - generic [ref=f4e106]: "77017528723"
+              - generic [ref=f4e108] [cursor=pointer]:
+                - generic [ref=f4e109]: 77017558786 14.11
+                - generic [ref=f4e110]: "77017558786"
+              - generic [ref=f4e112] [cursor=pointer]:
+                - generic [ref=f4e113]: 77018827117 Ватсап
+                - generic [ref=f4e114]: "77018827117"
+              - generic [ref=f4e116] [cursor=pointer]:
+                - generic [ref=f4e117]: 77024245884 Асылым
+                - generic [ref=f4e118]: "77024245884"
+              - generic [ref=f4e120] [cursor=pointer]:
+                - generic [ref=f4e121]: 77024729696 18.11
+                - generic [ref=f4e122]: "77024729696"
+              - generic [ref=f4e124] [cursor=pointer]:
+                - generic [ref=f4e125]: 77025078257 Сюзанна
+                - generic [ref=f4e126]: "77025078257"
+              - generic [ref=f4e128] [cursor=pointer]:
+                - generic [ref=f4e129]: 77026393127 Жанна
+                - generic [ref=f4e130]: "77026393127"
+              - generic [ref=f4e132] [cursor=pointer]:
+                - generic [ref=f4e133]: 77027581755 28.10
+                - generic [ref=f4e134]: "77027581755"
+              - generic [ref=f4e136] [cursor=pointer]:
+                - generic [ref=f4e137]: 77028473990 Заявка 03.11
+                - generic [ref=f4e138]: "77028473990"
+              - generic [ref=f4e140] [cursor=pointer]:
+                - generic [ref=f4e141]: 77051784373 Старая заявка
+                - generic [ref=f4e142]: "77051784373"
+              - generic [ref=f4e144] [cursor=pointer]:
+                - generic [ref=f4e145]: 77052140969 Тик ток
+                - generic [ref=f4e146]: "77052140969"
+              - generic [ref=f4e148] [cursor=pointer]:
+                - generic [ref=f4e149]: 77052305211 Клиент
+                - generic [ref=f4e150]: "77052305211"
+              - generic [ref=f4e152] [cursor=pointer]:
+                - generic [ref=f4e153]: 77056136403 18.11
+                - generic [ref=f4e154]: "77056136403"
+              - generic [ref=f4e156] [cursor=pointer]:
+                - generic [ref=f4e157]: 77072603389 Сайт
+                - generic [ref=f4e158]: "77072603389"
+              - generic [ref=f4e160] [cursor=pointer]:
+                - generic [ref=f4e161]: 77073548894 Клиент
+                - generic [ref=f4e162]: "+77073548894"
+              - generic [ref=f4e164] [cursor=pointer]:
+                - generic [ref=f4e165]: 77074270363 Жадыра
+                - generic [ref=f4e166]: "77074270363"
+              - generic [ref=f4e168] [cursor=pointer]:
+                - generic [ref=f4e169]: 77075197506 Заявка 15.11
+                - generic [ref=f4e170]: "77075197506"
+              - generic [ref=f4e172] [cursor=pointer]:
+                - generic [ref=f4e173]: 77077000623 Диана
+                - generic [ref=f4e174]: "77077000623"
+              - generic [ref=f4e176] [cursor=pointer]:
+                - generic [ref=f4e177]: 77078331098 Ватсап
+                - generic [ref=f4e178]: "+77078331098"
+              - generic [ref=f4e180] [cursor=pointer]:
+                - generic [ref=f4e181]: 77470543059 Ватсап
+                - generic [ref=f4e182]: "+77470543059"
+              - generic [ref=f4e184] [cursor=pointer]:
+                - generic [ref=f4e185]: 77471272694 Клиент с 2гис
+                - generic [ref=f4e186]: "77471272694"
+              - generic [ref=f4e188] [cursor=pointer]:
+                - generic [ref=f4e189]: 77471477263 Диана
+                - generic [ref=f4e190]: "77471477263"
+              - generic [ref=f4e192] [cursor=pointer]:
+                - generic [ref=f4e193]: 77477778374 Заявка 15.11
+                - generic [ref=f4e194]: "77477778374"
+              - generic [ref=f4e196] [cursor=pointer]:
+                - generic [ref=f4e197]: 77713175258 Ватсап
+                - generic [ref=f4e198]: "77713175258"
+              - generic [ref=f4e200] [cursor=pointer]:
+                - generic [ref=f4e201]: 77751091495 21.10
+                - generic [ref=f4e202]: "77751091495"
+              - generic [ref=f4e204] [cursor=pointer]:
+                - generic [ref=f4e205]: 77755033869 Дария
+                - generic [ref=f4e206]: "77755033869"
+              - generic [ref=f4e208] [cursor=pointer]:
+                - generic [ref=f4e209]: 77758422444 17.11
+                - generic [ref=f4e210]: "77758422444"
+              - generic [ref=f4e212] [cursor=pointer]:
+                - generic [ref=f4e213]: 77759412269 Абдуллаева Касиет
+                - generic [ref=f4e214]: "77759412269"
+              - generic [ref=f4e216] [cursor=pointer]:
+                - generic [ref=f4e217]: 77759500250 Пшенова Самал
+                - generic [ref=f4e218]: "77759500250"
+              - generic [ref=f4e220] [cursor=pointer]:
+                - generic [ref=f4e221]: 77759585375 21.11
+                - generic [ref=f4e222]: "77759585375"
+              - generic [ref=f4e224] [cursor=pointer]:
+                - generic [ref=f4e225]: 77769492121 17.11
+                - generic [ref=f4e226]: "77769492121"
+              - generic [ref=f4e228] [cursor=pointer]:
+                - generic [ref=f4e229]: 77772776271 Заявка 04.11
+                - generic [ref=f4e230]: "77772776271"
+              - generic [ref=f4e232] [cursor=pointer]:
+                - generic [ref=f4e233]: 77777770806 Диана
+                - generic [ref=f4e234]: "77777770806"
+              - generic [ref=f4e236] [cursor=pointer]:
+                - generic [ref=f4e237]: 77778789210 18.11
+                - generic [ref=f4e238]: "77778789210"
+              - generic [ref=f4e240] [cursor=pointer]:
+                - generic [ref=f4e241]: 77782849704 28.10 заявка
+                - generic [ref=f4e242]: "77782849704"
+              - generic [ref=f4e244] [cursor=pointer]:
+                - generic [ref=f4e245]: 77783644929 01.11
+                - generic [ref=f4e246]: "77783644929"
+              - generic [ref=f4e248] [cursor=pointer]:
+                - generic [ref=f4e249]: 77784711910 22.11 Фариза
+                - generic [ref=f4e250]: "77784711910"
+              - generic [ref=f4e252] [cursor=pointer]:
+                - generic [ref=f4e253]: 77788752146 Амина
+                - generic [ref=f4e254]: "77788752146"
+              - generic [ref=f4e256] [cursor=pointer]:
+                - generic [ref=f4e257]: 87052979134 Светлана
+                - generic [ref=f4e258]: "77052979134"
+              - generic [ref=f4e260] [cursor=pointer]:
+                - generic [ref=f4e261]: 87057431684 Асем ватсапп
+                - generic [ref=f4e262]: "77057431684"
+              - generic [ref=f4e264] [cursor=pointer]:
+                - generic [ref=f4e265]: 87756802316 Заявка 28.09
+                - generic [ref=f4e266]: "77756802316"
+              - generic [ref=f4e268] [cursor=pointer]:
+                - generic [ref=f4e269]: 87788960441 Тт 16.11
+                - generic [ref=f4e270]: "77788960441"
+              - generic [ref=f4e272] [cursor=pointer]:
+                - generic [ref=f4e273]: AER Тик ток
+                - generic [ref=f4e274]: "77072537377"
+              - generic [ref=f4e276] [cursor=pointer]:
+                - generic [ref=f4e277]: Aidana Тт заявка 11.10
+                - generic [ref=f4e278]: "77086257610"
+              - generic [ref=f4e280] [cursor=pointer]:
+                - generic [ref=f4e281]: Aigul_zhakuova 17.11
+                - generic [ref=f4e282]: —
+              - generic [ref=f4e284] [cursor=pointer]:
+                - generic [ref=f4e285]: Aigul_zhakuova 17.11
+                - generic [ref=f4e286]: "77747279051"
+              - generic [ref=f4e288] [cursor=pointer]:
+                - generic [ref=f4e289]: Aileen_shop_astana 05.11
+                - generic [ref=f4e290]: "77756263304"
+              - generic [ref=f4e292] [cursor=pointer]:
+                - generic [ref=f4e293]: Aiman.77 20.10
+                - generic [ref=f4e294]: "77789236227"
+              - generic [ref=f4e296] [cursor=pointer]:
+                - generic [ref=f4e297]: Aiym Тт заявка 07.10
+                - generic [ref=f4e298]: "77786430699"
+              - generic [ref=f4e300] [cursor=pointer]:
+                - generic [ref=f4e301]: Alua Kasenova Инста
+                - generic [ref=f4e302]: "77771234512"
+              - generic [ref=f4e304] [cursor=pointer]:
+                - generic [ref=f4e305]: Amor Fati 24.10
+                - generic [ref=f4e306]: "77752300135"
+              - generic [ref=f4e308] [cursor=pointer]:
+                - generic [ref=f4e309]: Arayotarbai25 Тт заявка 11.10
+                - generic [ref=f4e310]: "77758252010"
+              - generic [ref=f4e312] [cursor=pointer]:
+                - generic [ref=f4e313]: Assel Konys
+                - generic [ref=f4e314]: "77075041550"
+              - generic [ref=f4e316] [cursor=pointer]:
+                - generic [ref=f4e317]: Asya Тт заявка 11.10
+                - generic [ref=f4e318]: "77082220419"
+              - generic [ref=f4e320] [cursor=pointer]:
+                - generic [ref=f4e321]: Azikosh Тт заявка 15.10
+                - generic [ref=f4e322]: "77014553995"
+              - generic [ref=f4e324] [cursor=pointer]:
+                - generic [ref=f4e325]: ᴀɴʏᴜᴛɪᴋ Инстаграм, пробное
+                - generic [ref=f4e326]: "77757757575"
+              - generic [ref=f4e328] [cursor=pointer]:
+                - generic [ref=f4e329]: Balnur_oshanova Заявка 27.10
+                - generic [ref=f4e330]: "77076895697"
+              - generic [ref=f4e332] [cursor=pointer]:
+                - generic [ref=f4e333]: BELIEVE in LOVE Клиент, ТикТок
+                - generic [ref=f4e334]: "77028640153"
+              - generic [ref=f4e336] [cursor=pointer]:
+                - generic [ref=f4e337]: Bibabota 20.10
+                - generic [ref=f4e338]: —
+              - generic [ref=f4e340] [cursor=pointer]:
+                - generic [ref=f4e341]: Dautbaevna Тт заявка 03.10
+                - generic [ref=f4e342]: "77010707624"
+              - generic [ref=f4e344] [cursor=pointer]:
+                - generic [ref=f4e345]: Di.anatolikyzy Тт заявка 03.10
+                - generic [ref=f4e346]: "77085950924"
+              - generic [ref=f4e348] [cursor=pointer]:
+                - generic [ref=f4e349]: Diaan Tleubayeva Сайт
+                - generic [ref=f4e350]: "77011017799"
+              - generic [ref=f4e352] [cursor=pointer]:
+                - generic [ref=f4e353]: Dina Заявка 16.10
+                - generic [ref=f4e354]: —
+              - generic [ref=f4e356] [cursor=pointer]:
+                - generic [ref=f4e357]: Elmira7297 21.11
+                - generic [ref=f4e358]: "78415156521"
+              - generic [ref=f4e360] [cursor=pointer]:
+                - generic [ref=f4e361]: Ferrr Тик ток
+                - generic [ref=f4e362]: "77078569790"
+              - generic [ref=f4e364] [cursor=pointer]:
+                - generic [ref=f4e365]: FitBase Тех. Поддержка
+                - generic [ref=f4e366]: "75555555555"
+              - generic [ref=f4e368] [cursor=pointer]:
+                - generic [ref=f4e369]: Gauradj Тт заявка 07.10
+                - generic [ref=f4e370]: "77057573423"
+              - generic [ref=f4e372] [cursor=pointer]:
+                - generic [ref=f4e373]: Gilmi79 20.10
+                - generic [ref=f4e374]: "77751166405"
+              - generic [ref=f4e376] [cursor=pointer]:
+                - generic [ref=f4e377]: Gulmira Kim Фитбейс чат
+                - generic [ref=f4e378]: —
+              - generic [ref=f4e380] [cursor=pointer]:
+                - generic [ref=f4e381]: Gulnur 17.11 заявка
+                - generic [ref=f4e382]: "77475978589"
+              - generic [ref=f4e384] [cursor=pointer]:
+                - generic [ref=f4e385]: Gulnur Abilkanova Гульнур
+                - generic [ref=f4e386]: "77057520107"
+              - generic [ref=f4e388] [cursor=pointer]:
+                - generic [ref=f4e389]: Gulshodaxon Тт 31.10
+                - generic [ref=f4e390]: "77005671020"
+              - generic [ref=f4e392] [cursor=pointer]:
+                - generic [ref=f4e393]: Happy05092015 Тт заявка 11.10
+                - generic [ref=f4e394]: "77776660260"
+              - generic [ref=f4e396] [cursor=pointer]:
+                - generic [ref=f4e397]: I_am_happy_2026 Тик ток
+                - generic [ref=f4e398]: "77011310394"
+              - generic [ref=f4e400] [cursor=pointer]:
+                - generic [ref=f4e401]: Ibragimova 20.10
+                - generic [ref=f4e402]: —
+              - generic [ref=f4e404] [cursor=pointer]:
+                - generic [ref=f4e405]: Indira 21.11
+                - generic [ref=f4e406]: "77009657195"
+              - generic [ref=f4e408] [cursor=pointer]:
+                - generic [ref=f4e409]: Inna Ии заявка 03.11
+                - generic [ref=f4e410]: "77015143488"
+            - button "Показать ещё (686)" [ref=f4e412] [cursor=pointer]
+            - generic [ref=f4e413]: 100 из 786 клиентов
+          - region "Notifications (F8)":
+            - list
+      - button "Воронка" [ref=f2e191] [cursor=pointer]
+  - generic [ref=f2e10]:
+    - generic [ref=f2e11]:
+      - generic [ref=f2e12]: SW
+      - generic [ref=f2e13]: Сергей
+    - generic [ref=f2e14]:
+      - button "Менеджер" [ref=f2e15] [cursor=pointer]
+      - button "Агент 18" [ref=f2e193] [cursor=pointer]:
+        - generic [ref=f2e27]: Агент
+        - generic [ref=f2e194]: "18"
+      - button "Расписание" [ref=f2e28] [cursor=pointer]
+      - button "Клиенты" [ref=f2e33] [cursor=pointer]
+      - button "Воронка" [ref=f2e41] [cursor=pointer]
+      - button "Касса" [ref=f2e46] [cursor=pointer]
+      - button "Замеры" [ref=f2e53] [cursor=pointer]
+      - button "Отчёты" [ref=f2e62] [cursor=pointer]
+      - button "Настройки" [ref=f2e67] [cursor=pointer]
+    - generic [ref=f2e73]:
+      - group "Тема" [ref=f2e74]:
+        - button "Светлая" [ref=f2e75] [cursor=pointer]
+        - button "Тёмная" [ref=f2e76] [cursor=pointer]
+      - button "Выйти" [ref=f2e77] [cursor=pointer]

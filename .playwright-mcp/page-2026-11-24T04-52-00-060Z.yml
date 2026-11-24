@@ -1,0 +1,478 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - button "Менеджер" [ref=e5] [cursor=pointer]
+    - iframe [ref=e7]:
+      - generic [ref=f1e4]:
+        - generic [ref=f1e5]:
+          - generic [ref=f1e6]:
+            - generic [ref=f1e7]: SW
+            - generic [ref=f1e8]: SlimWay — помощник
+            - generic [ref=f1e9]:
+              - button "Уведомления" [ref=f1e10] [cursor=pointer]
+              - 'button "Звук: вкл" [ref=f1e11] [cursor=pointer]'
+              - button "🌙" [ref=f1e12] [cursor=pointer]
+              - button "?" [ref=f1e13] [cursor=pointer]
+          - generic [ref=f1e14]: "Последняя проверка: 09:50 · Связь: есть"
+          - generic [ref=f1e196]:
+            - generic [ref=f1e197]: ⚡ 2 заявок
+            - generic [ref=f1e198]: ⚠ 1 задач просроч.
+            - generic [ref=f1e199]: ✓ 9 закрыто сег.
+        - generic [ref=f1e15]:
+          - generic [ref=f1e16]:
+            - heading "Лента событий" [level=2] [ref=f1e18]
+            - generic [ref=f1e200]:
+              - generic [ref=f1e201]: "08:01— Проставил бюджет 69000 в 3 карточках (Новые заявки: 3)"
+              - generic [ref=f1e202]: "22:03— Обновил LTV в 1 карточках (Новички: 1)"
+              - generic [ref=f1e203]: "22:03— Проставил бюджет 69000 в 3 карточках (Новые заявки: 3)"
+              - generic [ref=f1e204]: "21:50Нилюфар Р. — Поставил задачу (Звонок): Нилюфар Р. отменил(а) запись на пробное"
+              - generic [ref=f1e205]: 19:20Баян — Перевёл Баян в «Дожим» — визит отмечен
+              - generic [ref=f1e206]: 19:15Сауле Р. — Перевёл Сауле Р. в «Дожим» — визит отмечен
+              - generic [ref=f1e207]: "18:01— Обновил LTV в 1 карточках (Новички: 1)"
+              - generic [ref=f1e208]: "18:01— Проставил бюджет 69000 в 5 карточках (Новые заявки: 5)"
+              - generic [ref=f1e209]: 18:00Лунара — Перевёл Лунара в «Не пришел» — визит не отмечен через 2 ч
+              - generic [ref=f1e210]: 16:02janat — Перевёл janat в «Не пришел» — визит не отмечен через 2 ч
+              - generic [ref=f1e211]: "14:01— Проставил бюджет 69000 в 3 карточках (Новые заявки: 3)"
+              - generic [ref=f1e212]: "12:01— Проставил бюджет 69000 в 3 карточках (Новые заявки: 3)"
+              - generic [ref=f1e213]: 11:01Айжан М. — Перевёл Айжан М. в «Дожим» — визит отмечен
+              - generic [ref=f1e214]: "10:01— Проставил бюджет 69000 в 2 карточках (Новые заявки: 2)"
+            - generic [ref=f1e20]:
+              - 'img "Кабинет агента: девушка за компьютером и овчарка" [ref=f1e22]':
+                - generic [ref=f1e53]: SW
+                - generic [ref=f1e155] [cursor=pointer]
+              - button "—" [ref=f1e186] [cursor=pointer]
+              - button "🔇" [ref=f1e187]
+          - generic [ref=f1e188]:
+            - generic [ref=f1e189]:
+              - heading "Сейчас важно" [level=2] [ref=f1e190]
+              - generic [ref=f1e244]: (16)
+            - generic [ref=f1e191]:
+              - generic [ref=f1e245]:
+                - generic [ref=f1e250]:
+                  - generic [ref=f1e251]: Лейла Д.
+                  - generic [ref=f1e252]: Новая заявка
+                  - generic [ref=f1e253]: Без ответа 81 мин
+                  - generic [ref=f1e256]: ⏱ 81м 28с
+                  - generic [ref=f1e258]: Заявка от Лейла Д. через неизвестен. Назначьте ответственного и свяжитесь.
+                - generic [ref=f1e259]:
+                  - generic [ref=f1e260]: 1ч 21м
+                  - button "Квалифицировать" [ref=f1e261] [cursor=pointer]
+                  - button "Взял в работу" [ref=f1e262] [cursor=pointer]
+              - generic [ref=f1e263]:
+                - generic [ref=f1e268]:
+                  - generic [ref=f1e269]: Zzhumy
+                  - generic [ref=f1e270]: Новая заявка
+                  - generic [ref=f1e271]: Без ответа 99 мин
+                  - generic [ref=f1e274]: ⏱ 99м 47с
+                  - generic [ref=f1e276]: Поступила заявка от Zzhumy (неизвестен). Свяжитесь в ближайшее время.
+                - generic [ref=f1e277]:
+                  - generic [ref=f1e278]: 1ч 39м
+                  - button "Квалифицировать" [ref=f1e279] [cursor=pointer]
+                  - button "Взял в работу" [ref=f1e280] [cursor=pointer]
+              - generic [ref=f1e281]:
+                - generic [ref=f1e286]:
+                  - generic [ref=f1e287]: Нилюфар Р.
+                  - generic [ref=f1e288]:
+                    - generic [ref=f1e289]: Задача
+                    - text: Звонок
+                  - generic [ref=f1e292]: Просрочена 111 мин
+                  - generic [ref=f1e293]: "Отмена Нилюфар Р. — звонок до 08:00. Ответственный: Ангелина, Вера, Назерке."
+                - generic [ref=f1e294]:
+                  - generic [ref=f1e295]: 11ч 49м
+                  - button "Принято" [ref=f1e296] [cursor=pointer]
+              - generic [ref=f1e297]:
+                - generic [ref=f1e302]:
+                  - generic [ref=f1e303]: Умирбай М.
+                  - generic [ref=f1e304]: Абонемент закончился
+                  - generic [ref=f1e305]: Занятия по абонементу Умирбай М. закончились. Пригласите продолжить курс.
+                - generic [ref=f1e306]:
+                  - generic [ref=f1e307]: 1д
+                  - button "Принято" [ref=f1e308] [cursor=pointer]
+              - generic [ref=f1e309]:
+                - generic [ref=f1e314]:
+                  - generic [ref=f1e315]: Нагорнова Э.
+                  - generic [ref=f1e316]: Абонемент закончился
+                  - generic [ref=f1e317]: Курс Нагорнова Э. завершён, активных абонементов нет. Предложите продолжить занятия.
+                - generic [ref=f1e318]:
+                  - generic [ref=f1e319]: 1д
+                  - button "Принято" [ref=f1e320] [cursor=pointer]
+              - generic [ref=f1e321]:
+                - generic [ref=f1e326]:
+                  - generic [ref=f1e327]: алтын
+                  - generic [ref=f1e328]: Абонемент закончился
+                  - generic [ref=f1e329]: Абонемент алтын исчерпан. Обсудите с клиентом следующий курс.
+                - generic [ref=f1e330]:
+                  - generic [ref=f1e331]: 3д
+                  - button "Принято" [ref=f1e332] [cursor=pointer]
+              - generic [ref=f1e333]:
+                - generic [ref=f1e338]:
+                  - generic [ref=f1e339]: Мазы Т.
+                  - generic [ref=f1e340]: Абонемент закончился
+                  - generic [ref=f1e341]: "Окончание абонемента: Мазы Т.. Предложите продление, пока сохраняется мотивация."
+                - generic [ref=f1e342]:
+                  - generic [ref=f1e343]: 4д
+                  - button "Принято" [ref=f1e344] [cursor=pointer]
+              - generic [ref=f1e345]:
+                - generic [ref=f1e350]:
+                  - generic [ref=f1e351]: Зарина
+                  - generic [ref=f1e352]: Абонемент закончился
+                  - generic [ref=f1e353]: Курс Зарина завершён, активных абонементов нет. Предложите продолжить занятия.
+                - generic [ref=f1e354]:
+                  - generic [ref=f1e355]: 4д
+                  - button "Принято" [ref=f1e356] [cursor=pointer]
+              - generic [ref=f1e357]:
+                - generic [ref=f1e362]:
+                  - generic [ref=f1e363]: Ватсап
+                  - generic [ref=f1e364]: Абонемент закончился
+                  - generic [ref=f1e365]: У Ватсап нет активного абонемента. Свяжитесь и уточните планы.
+                - generic [ref=f1e366]:
+                  - generic [ref=f1e367]: 5д
+                  - button "Принято" [ref=f1e368] [cursor=pointer]
+              - generic [ref=f1e369]:
+                - generic [ref=f1e374]:
+                  - generic [ref=f1e375]: Зауреш
+                  - generic [ref=f1e376]: Абонемент закончился
+                  - generic [ref=f1e377]: Абонемент Зауреш исчерпан. Обсудите с клиентом следующий курс.
+                - generic [ref=f1e378]:
+                  - generic [ref=f1e379]: 6д
+                  - button "Принято" [ref=f1e380] [cursor=pointer]
+              - generic [ref=f1e381]:
+                - generic [ref=f1e386]:
+                  - generic [ref=f1e387]: Блогер Н.
+                  - generic [ref=f1e388]: Абонемент закончился
+                  - generic [ref=f1e389]: "Блогер Н.: бесплатные занятия закончились. Позвоните, пока интерес к клубу ещё высок."
+                - generic [ref=f1e390]:
+                  - generic [ref=f1e391]: 10д
+                  - button "Принято" [ref=f1e392] [cursor=pointer]
+              - generic [ref=f1e393]:
+                - generic [ref=f1e398]:
+                  - generic [ref=f1e399]: Открыть смену
+                  - generic [ref=f1e400]: Пропущена задача смены
+                  - generic [ref=f1e401]: Пропущена задача «Открыть смену» (08:00). Сделайте сейчас или отметьте причину.
+                - generic [ref=f1e402]:
+                  - generic [ref=f1e403]: 1ч 21м
+                  - button "Принято" [ref=f1e404] [cursor=pointer]
+              - generic [ref=f1e405]:
+                - generic [ref=f1e410]:
+                  - generic [ref=f1e411]: Айтыбекова А.
+                  - generic [ref=f1e412]: Заканчивается абонемент
+                  - generic [ref=f1e413]: "Айтыбекова А.: в абонементе осталось 2 посещения. Рекомендуем предложить следующий курс."
+                - generic [ref=f1e414]:
+                  - generic [ref=f1e415]: 17ч 5м
+                  - button "Принято" [ref=f1e416] [cursor=pointer]
+              - generic [ref=f1e417]:
+                - generic [ref=f1e422]:
+                  - generic [ref=f1e423]: Марьям К.
+                  - generic [ref=f1e424]: Заканчивается абонемент
+                  - generic [ref=f1e425]: У Марьям К. осталось 2 посещения. Предложите продление абонемента.
+                - generic [ref=f1e426]:
+                  - generic [ref=f1e427]: 3д
+                  - button "Принято" [ref=f1e428] [cursor=pointer]
+              - generic [ref=f1e429]:
+                - generic [ref=f1e434]:
+                  - generic [ref=f1e435]: Макпал А.
+                  - generic [ref=f1e436]: Заканчивается абонемент
+                  - generic [ref=f1e437]: Скоро закончится абонемент Макпал А. (2 посещения). Обсудите продолжение занятий.
+                - generic [ref=f1e438]:
+                  - generic [ref=f1e439]: 5д
+                  - button "Принято" [ref=f1e440] [cursor=pointer]
+              - generic [ref=f1e441]:
+                - generic [ref=f1e446]:
+                  - generic [ref=f1e447]: Барлубаева А.
+                  - generic [ref=f1e448]: Заканчивается абонемент
+                  - generic [ref=f1e449]: У Барлубаева А. осталось 2 посещения. Предложите продление абонемента.
+                - generic [ref=f1e450]:
+                  - generic [ref=f1e451]: 15д
+                  - button "Принято" [ref=f1e452] [cursor=pointer]
+          - generic [ref=f1e192]:
+            - generic [ref=f1e193]:
+              - heading "Завершённые за 24 ч" [level=2] [ref=f1e194]
+              - generic [ref=f1e453]: (50)
+            - generic [ref=f1e195]:
+              - generic [ref=f1e454]:
+                - generic [ref=f1e455]:
+                  - generic [ref=f1e456]: Утренний брифинг
+                  - generic [ref=f1e457]: 08:05
+                - generic [ref=f1e458]: Неактуально
+              - generic [ref=f1e460]:
+                - generic [ref=f1e461]:
+                  - generic [ref=f1e462]: Пропущена задача смены — Сторис «Живая студия»
+                  - generic [ref=f1e463]: 08:00
+                - generic [ref=f1e464]: Задача выполнена
+              - generic [ref=f1e466]:
+                - generic [ref=f1e467]:
+                  - generic [ref=f1e468]: Пропущена задача смены — Сторис «Результат»
+                  - generic [ref=f1e469]: 08:00
+                - generic [ref=f1e470]: Задача выполнена
+              - generic [ref=f1e472]:
+                - generic [ref=f1e473]:
+                  - generic [ref=f1e474]: Пропущена задача смены — Сторис «Студия открыта»
+                  - generic [ref=f1e475]: 08:00
+                - generic [ref=f1e476]: Задача выполнена
+              - generic [ref=f1e478]:
+                - generic [ref=f1e479]:
+                  - generic [ref=f1e480]: Пропущена задача смены — Позвонить уборщице
+                  - generic [ref=f1e481]: 08:00
+                - generic [ref=f1e482]: Задача выполнена
+              - generic [ref=f1e484]:
+                - generic [ref=f1e485]:
+                  - generic [ref=f1e486]: Заявка без ответа — Ruslan V
+                  - generic [ref=f1e487]: 08:00
+                - generic [ref=f1e488]: Закрыто автоматически
+              - generic [ref=f1e490]:
+                - generic [ref=f1e491]:
+                  - generic [ref=f1e492]: Новая заявка — Ruslan V
+                  - generic [ref=f1e493]: 08:00
+                - generic [ref=f1e494]: Закрыто автоматически
+              - generic [ref=f1e496]:
+                - generic [ref=f1e497]:
+                  - generic [ref=f1e498]: Заявка без ответа — fitbase_chat
+                  - generic [ref=f1e499]: 08:00
+                - generic [ref=f1e500]: Закрыто автоматически
+              - generic [ref=f1e502]:
+                - generic [ref=f1e503]:
+                  - generic [ref=f1e504]: Новая заявка — fitbase_chat
+                  - generic [ref=f1e505]: 08:00
+                - generic [ref=f1e506]: Закрыто автоматически
+              - generic [ref=f1e508]:
+                - generic [ref=f1e509]:
+                  - generic [ref=f1e510]: Заявка без ответа — fitbase_chat
+                  - generic [ref=f1e511]: 20:59
+                - generic [ref=f1e512]: Закрыто автоматически
+              - generic [ref=f1e514]:
+                - generic [ref=f1e515]:
+                  - generic [ref=f1e516]: Новая заявка — fitbase_chat
+                  - generic [ref=f1e517]: 20:59
+                - generic [ref=f1e518]: Закрыто автоматически
+              - generic [ref=f1e520]:
+                - generic [ref=f1e521]:
+                  - generic [ref=f1e522]: "Задача от агента — Клиент #1018"
+                  - generic [ref=f1e523]: 20:40
+                - generic [ref=f1e524]: Задача выполнена
+              - generic [ref=f1e526]:
+                - generic [ref=f1e527]:
+                  - generic [ref=f1e528]: Задача от агента — janat
+                  - generic [ref=f1e529]: 20:40
+                - generic [ref=f1e530]: Задача выполнена
+              - generic [ref=f1e532]:
+                - generic [ref=f1e533]:
+                  - generic [ref=f1e534]: Заявка без ответа — fitbase_chat
+                  - generic [ref=f1e535]: 20:14
+                - generic [ref=f1e536]: Закрыто автоматически
+              - generic [ref=f1e538]:
+                - generic [ref=f1e539]:
+                  - generic [ref=f1e540]: Новая заявка — fitbase_chat
+                  - generic [ref=f1e541]: 20:14
+                - generic [ref=f1e542]: Закрыто автоматически
+              - generic [ref=f1e544]:
+                - generic [ref=f1e545]:
+                  - generic [ref=f1e546]: Заявка без ответа — fitbase_chat
+                  - generic [ref=f1e547]: 19:46
+                - generic [ref=f1e548]: Закрыто автоматически
+              - generic [ref=f1e550]:
+                - generic [ref=f1e551]:
+                  - generic [ref=f1e552]: Новая заявка — fitbase_chat
+                  - generic [ref=f1e553]: 19:46
+                - generic [ref=f1e554]: Закрыто автоматически
+              - generic [ref=f1e556]:
+                - generic [ref=f1e557]:
+                  - generic [ref=f1e558]: Запись не подтверждена — Сауле
+                  - generic [ref=f1e559]: 19:00
+                - generic [ref=f1e560]: Занятие началось
+              - generic [ref=f1e562]:
+                - generic [ref=f1e563]:
+                  - generic [ref=f1e564]: Запись не подтверждена — Баян С.
+                  - generic [ref=f1e565]: 19:00
+                - generic [ref=f1e566]: Занятие началось
+              - generic [ref=f1e568]:
+                - generic [ref=f1e569]:
+                  - generic [ref=f1e570]: Новая заявка — тт
+                  - generic [ref=f1e571]: 17:47
+                - generic [ref=f1e572]: Закрыто автоматически
+              - generic [ref=f1e574]:
+                - generic [ref=f1e575]:
+                  - generic [ref=f1e576]: Заявка без ответа — тт
+                  - generic [ref=f1e577]: 17:47
+                - generic [ref=f1e578]: Закрыто автоматически
+              - generic [ref=f1e580]:
+                - generic [ref=f1e581]:
+                  - generic [ref=f1e582]: "Заявка без ответа — Клиент #1211"
+                  - generic [ref=f1e583]: 17:45
+                - generic [ref=f1e584]: Закрыто автоматически
+              - generic [ref=f1e586]:
+                - generic [ref=f1e587]:
+                  - generic [ref=f1e588]: "Новая заявка — Клиент #1211"
+                  - generic [ref=f1e589]: 17:45
+                - generic [ref=f1e590]: Закрыто автоматически
+              - generic [ref=f1e592]:
+                - generic [ref=f1e593]:
+                  - generic [ref=f1e594]: Нет чата для напоминания — Салтанат Бекбай
+                  - generic [ref=f1e595]: 17:05
+                - generic [ref=f1e596]: Неактуально
+              - generic [ref=f1e598]:
+                - generic [ref=f1e599]:
+                  - generic [ref=f1e600]: Заявка без ответа — fitbase_chat
+                  - generic [ref=f1e601]: 16:24
+                - generic [ref=f1e602]: Закрыто автоматически
+              - generic [ref=f1e604]:
+                - generic [ref=f1e605]:
+                  - generic [ref=f1e606]: Заявка без ответа — Салтанат Н.
+                  - generic [ref=f1e607]: 16:14
+                - generic [ref=f1e608]: Закрыто автоматически
+              - generic [ref=f1e610]:
+                - generic [ref=f1e611]:
+                  - generic [ref=f1e612]: Новая заявка — Салтанат Н.
+                  - generic [ref=f1e613]: 16:14
+                - generic [ref=f1e614]: Закрыто автоматически
+              - generic [ref=f1e616]:
+                - generic [ref=f1e617]:
+                  - generic [ref=f1e618]: "Нет чата для напоминания — клиент #791"
+                  - generic [ref=f1e619]: 16:00
+                - generic [ref=f1e620]: Неактуально
+              - generic [ref=f1e622]:
+                - generic [ref=f1e623]:
+                  - generic [ref=f1e624]: "Нет чата для напоминания — клиент #790"
+                  - generic [ref=f1e625]: 15:50
+                - generic [ref=f1e626]: Неактуально
+              - generic [ref=f1e628]:
+                - generic [ref=f1e629]:
+                  - generic [ref=f1e630]: Заявка без ответа — реклама
+                  - generic [ref=f1e631]: 15:39
+                - generic [ref=f1e632]: Закрыто автоматически
+              - generic [ref=f1e634]:
+                - generic [ref=f1e635]:
+                  - generic [ref=f1e636]: Новая заявка — реклама
+                  - generic [ref=f1e637]: 15:39
+                - generic [ref=f1e638]: Закрыто автоматически
+              - generic [ref=f1e640]:
+                - generic [ref=f1e641]:
+                  - generic [ref=f1e642]: Нет отметки визита — Асема Т.
+                  - generic [ref=f1e643]: 15:35
+                - generic [ref=f1e644]: Визит отмечен
+              - generic [ref=f1e646]:
+                - generic [ref=f1e647]:
+                  - generic [ref=f1e648]: Заявка без ответа — fitbase_chat
+                  - generic [ref=f1e649]: 14:46
+                - generic [ref=f1e650]: Закрыто автоматически
+              - generic [ref=f1e652]:
+                - generic [ref=f1e653]:
+                  - generic [ref=f1e654]: "Нет чата для напоминания — клиент #789"
+                  - generic [ref=f1e655]: 14:45
+                - generic [ref=f1e656]: Неактуально
+              - generic [ref=f1e658]:
+                - generic [ref=f1e659]:
+                  - generic [ref=f1e660]: Заявка без ответа — гуля
+                  - generic [ref=f1e661]: 14:38
+                - generic [ref=f1e662]: Закрыто автоматически
+              - generic [ref=f1e664]:
+                - generic [ref=f1e665]:
+                  - generic [ref=f1e666]: Новая заявка — гуля
+                  - generic [ref=f1e667]: 14:38
+                - generic [ref=f1e668]: Закрыто автоматически
+              - generic [ref=f1e670]:
+                - generic [ref=f1e671]:
+                  - generic [ref=f1e672]: Новая заявка — fitbase_chat
+                  - generic [ref=f1e673]: 14:25
+                - generic [ref=f1e674]: Карточка закрыта
+              - generic [ref=f1e676]:
+                - generic [ref=f1e677]:
+                  - generic [ref=f1e678]: Заканчивается абонемент — Дария
+                  - generic [ref=f1e679]: 14:20
+                - generic [ref=f1e680]: Куплен абонемент
+              - generic [ref=f1e682]:
+                - generic [ref=f1e683]:
+                  - generic [ref=f1e684]: Заявка без ответа — Айгерим А.
+                  - generic [ref=f1e685]: 13:41
+                - generic [ref=f1e686]: Закрыто автоматически
+              - generic [ref=f1e688]:
+                - generic [ref=f1e689]:
+                  - generic [ref=f1e690]: Новая заявка — Айгерим А.
+                  - generic [ref=f1e691]: 13:41
+                - generic [ref=f1e692]: Закрыто автоматически
+              - generic [ref=f1e694]:
+                - generic [ref=f1e695]:
+                  - generic [ref=f1e696]: Задача от агента — Баян
+                  - generic [ref=f1e697]: 13:30
+                - generic [ref=f1e698]: Задача выполнена
+              - generic [ref=f1e700]:
+                - generic [ref=f1e701]:
+                  - generic [ref=f1e702]: "Нет чата для напоминания — клиент #787"
+                  - generic [ref=f1e703]: 13:05
+                - generic [ref=f1e704]: Неактуально
+              - generic [ref=f1e706]:
+                - generic [ref=f1e707]:
+                  - generic [ref=f1e708]: Заявка без ответа — Di N.
+                  - generic [ref=f1e709]: 12:54
+                - generic [ref=f1e710]: Закрыто автоматически
+              - generic [ref=f1e712]:
+                - generic [ref=f1e713]:
+                  - generic [ref=f1e714]: Новая заявка — Di N.
+                  - generic [ref=f1e715]: 12:54
+                - generic [ref=f1e716]: Закрыто автоматически
+              - generic [ref=f1e718]:
+                - generic [ref=f1e719]:
+                  - generic [ref=f1e720]: Новая заявка — fitbase_chat
+                  - generic [ref=f1e721]: 12:50
+                - generic [ref=f1e722]: Карточка закрыта
+              - generic [ref=f1e724]:
+                - generic [ref=f1e725]:
+                  - generic [ref=f1e726]: Заявка без ответа — Альмира
+                  - generic [ref=f1e727]: 12:34
+                - generic [ref=f1e728]: Закрыто автоматически
+              - generic [ref=f1e730]:
+                - generic [ref=f1e731]:
+                  - generic [ref=f1e732]: Новая заявка — Альмира
+                  - generic [ref=f1e733]: 12:34
+                - generic [ref=f1e734]: Закрыто автоматически
+              - generic [ref=f1e736]:
+                - generic [ref=f1e737]:
+                  - generic [ref=f1e738]: Заявка без ответа — Баян
+                  - generic [ref=f1e739]: 11:12
+                - generic [ref=f1e740]: Закрыто автоматически
+              - generic [ref=f1e742]:
+                - generic [ref=f1e743]:
+                  - generic [ref=f1e744]: Новая заявка — Баян
+                  - generic [ref=f1e745]: 11:12
+                - generic [ref=f1e746]: Закрыто автоматически
+              - generic [ref=f1e748]:
+                - generic [ref=f1e749]:
+                  - generic [ref=f1e750]: Заявка без ответа — fitbase_chat
+                  - generic [ref=f1e751]: 10:45
+                - generic [ref=f1e752]: Закрыто автоматически
+    - button "Расписание" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]: SW
+      - generic [ref=e13]: Сергей
+    - generic [ref=e14]:
+      - button "Менеджер" [ref=e15] [cursor=pointer]
+      - button "Агент 16" [ref=e142] [cursor=pointer]:
+        - generic [ref=e27]: Агент
+        - generic [ref=e143]: "16"
+      - button "Расписание" [ref=e28] [cursor=pointer]
+      - button "Клиенты" [ref=e33] [cursor=pointer]
+      - button "Воронка" [ref=e41] [cursor=pointer]
+      - button "Касса" [ref=e46] [cursor=pointer]
+      - button "Замеры" [ref=e53] [cursor=pointer]
+      - button "Отчёты" [ref=e62] [cursor=pointer]
+      - button "Настройки" [ref=e67] [cursor=pointer]
+    - generic [ref=e73]:
+      - group "Тема" [ref=e74]:
+        - button "Светлая" [ref=e75] [cursor=pointer]
+        - button "Тёмная" [ref=e76] [cursor=pointer]
+      - button "Выйти" [ref=e77] [cursor=pointer]
+  - generic [ref=e79]:
+    - generic [ref=e80]: SW
+    - heading "SlimWay" [level=1] [ref=e81]
+    - paragraph [ref=e82]: Выберите раздел
+    - generic [ref=e83]:
+      - button "Менеджер" [ref=e84] [cursor=pointer]
+      - button "16 Агент" [ref=e144] [cursor=pointer]:
+        - generic [ref=e145]: "16"
+        - generic [ref=e96]: Агент
+      - button "Расписание" [ref=e97] [cursor=pointer]
+      - button "Клиенты" [ref=e102] [cursor=pointer]
+      - button "Воронка" [ref=e110] [cursor=pointer]
+      - button "Касса" [ref=e115] [cursor=pointer]
+      - button "Замеры" [ref=e122] [cursor=pointer]
+      - button "Отчёты" [ref=e131] [cursor=pointer]
+      - button "Настройки" [ref=e136] [cursor=pointer]

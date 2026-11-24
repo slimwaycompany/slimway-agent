@@ -1,0 +1,52 @@
+- generic [active] [ref=f8e1]:
+  - generic [ref=f8e2]:
+    - generic [ref=f8e3]:
+      - generic [ref=f8e4]:
+        - button "Менеджер" [ref=f8e5] [cursor=pointer]
+        - button "Агент" [ref=f8e10] [cursor=pointer]
+        - button "Расписание" [ref=f8e14] [cursor=pointer]
+        - button "Клиенты" [ref=f8e17] [cursor=pointer]
+        - button "Воронка" [ref=f8e23] [cursor=pointer]
+        - button "Касса" [ref=f8e26] [cursor=pointer]
+        - button "Замеры" [ref=f8e31] [cursor=pointer]
+        - button "Отчёты" [ref=f8e38] [cursor=pointer]
+        - button "Настройки" [ref=f8e41] [cursor=pointer]
+      - button "Меню пользователя" [ref=f8e46] [cursor=pointer]: С
+    - generic [ref=f8e48]:
+      - button "Расписание" [ref=f8e49] [cursor=pointer]
+      - iframe [ref=f8e51]:
+        - generic [ref=f10e2]:
+          - generic [ref=f10e3]:
+            - generic [ref=f10e4]:
+              - textbox "Поиск по имени или телефону" [ref=f10e5]
+              - combobox [ref=f10e6]:
+                - option "Все источники" [selected]
+              - combobox [ref=f10e7]:
+                - option "Все анкеты" [selected]
+                - option "Заполнена"
+                - option "Не заполнена"
+              - button "+ Клиент" [ref=f10e8] [cursor=pointer]
+            - generic [ref=f10e9]: Клиенты не найдены
+            - generic [ref=f10e11]: 0 из 0 клиентов
+          - region "Notifications (F8)":
+            - list
+      - button "Воронка" [ref=f8e52] [cursor=pointer]
+  - generic [ref=f8e54]:
+    - generic [ref=f8e55]:
+      - generic [ref=f8e56]: SW
+      - generic [ref=f8e57]: Сергей
+    - generic [ref=f8e58]:
+      - button "Менеджер" [ref=f8e59] [cursor=pointer]
+      - button "Агент" [ref=f8e66] [cursor=pointer]
+      - button "Расписание" [ref=f8e72] [cursor=pointer]
+      - button "Клиенты" [ref=f8e77] [cursor=pointer]
+      - button "Воронка" [ref=f8e85] [cursor=pointer]
+      - button "Касса" [ref=f8e90] [cursor=pointer]
+      - button "Замеры" [ref=f8e97] [cursor=pointer]
+      - button "Отчёты" [ref=f8e106] [cursor=pointer]
+      - button "Настройки" [ref=f8e111] [cursor=pointer]
+    - generic [ref=f8e117]:
+      - group "Тема" [ref=f8e118]:
+        - button "Светлая" [ref=f8e119] [cursor=pointer]
+        - button "Тёмная" [ref=f8e120] [cursor=pointer]
+      - button "Выйти" [ref=f8e121] [cursor=pointer]

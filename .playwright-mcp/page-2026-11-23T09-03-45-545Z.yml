@@ -1,0 +1,40 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - generic [ref=f4e3]:
+      - generic [ref=f4e4]:
+        - button "Менеджер" [ref=f4e5] [cursor=pointer]
+        - button "Агент" [ref=f4e10] [cursor=pointer]
+        - button "Расписание" [ref=f4e14] [cursor=pointer]
+        - button "Клиенты" [ref=f4e17] [cursor=pointer]
+        - button "Воронка" [ref=f4e23] [cursor=pointer]
+        - button "Касса" [ref=f4e26] [cursor=pointer]
+        - button "Замеры" [ref=f4e31] [cursor=pointer]
+        - button "Отчёты" [ref=f4e38] [cursor=pointer]
+        - button "Настройки" [ref=f4e41] [cursor=pointer]
+      - button "Меню пользователя" [ref=f4e46] [cursor=pointer]: С
+    - generic [ref=f4e48]:
+      - button "Отчёты" [ref=f4e49] [cursor=pointer]
+      - iframe [ref=f4e51]:
+        - generic [ref=f6e1]:
+          - generic:
+            - region "Notifications (F8)":
+              - list
+  - generic [ref=f4e52]:
+    - generic [ref=f4e53]:
+      - generic [ref=f4e54]: SW
+      - generic [ref=f4e55]: Сергей
+    - generic [ref=f4e56]:
+      - button "Менеджер" [ref=f4e57] [cursor=pointer]
+      - button "Агент" [ref=f4e64] [cursor=pointer]
+      - button "Расписание" [ref=f4e70] [cursor=pointer]
+      - button "Клиенты" [ref=f4e75] [cursor=pointer]
+      - button "Воронка" [ref=f4e83] [cursor=pointer]
+      - button "Касса" [ref=f4e88] [cursor=pointer]
+      - button "Замеры" [ref=f4e95] [cursor=pointer]
+      - button "Отчёты" [ref=f4e104] [cursor=pointer]
+      - button "Настройки" [ref=f4e109] [cursor=pointer]
+    - generic [ref=f4e115]:
+      - group "Тема" [ref=f4e116]:
+        - button "Светлая" [ref=f4e117] [cursor=pointer]
+        - button "Тёмная" [ref=f4e118] [cursor=pointer]
+      - button "Выйти" [ref=f4e119] [cursor=pointer]

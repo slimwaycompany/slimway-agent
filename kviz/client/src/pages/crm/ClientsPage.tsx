@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { showConfirm } from '../../lib/confirm';
 import { toast } from '../../lib/toast';
+import { useBreakpoint } from '../../lib/useBreakpoint';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,66 @@ interface ClientRow {
   fitbase_client_id: string | null; created_at: string;
   last_visit_at?: string | null; days_since_visit?: number | null;
   plan_name?: string | null; extra_plans_count?: number; sessions_summary?: string | null;
+  system_tags?: string[]; personal_tags?: { id: string; name: string; color: string }[];
+  ltv?: number; deposit?: number; source_name?: string | null;
+}
+
+interface ColDef {
+  key: string; label: string; width: number; sortable: boolean; hideable: boolean;
+}
+
+const COLS: ColDef[] = [
+  { key: 'name',       label: 'Имя',          width: 180, sortable: true,  hideable: false },
+  { key: 'phone',      label: 'Телефон',       width: 130, sortable: false, hideable: true },
+  { key: 'plan',       label: 'Абонемент',     width: 150, sortable: true,  hideable: true },
+  { key: 'sessions',   label: 'Занятий',       width: 80,  sortable: true,  hideable: true },
+  { key: 'last_visit', label: 'Визит',         width: 90,  sortable: true,  hideable: true },
+  { key: 'days',       label: 'Дн. назад',     width: 80,  sortable: true,  hideable: true },
+  { key: 'tags',       label: 'Метки',         width: 190, sortable: false, hideable: true },
+  { key: 'source',     label: 'Источник',      width: 110, sortable: true,  hideable: true },
+  { key: 'ltv',        label: 'LTV ₸',         width: 100, sortable: true,  hideable: true },
+  { key: 'created',    label: 'Создан',        width: 90,  sortable: true,  hideable: true },
+  { key: 'birth',      label: 'Дата рожд.',    width: 90,  sortable: true,  hideable: true },
+  { key: 'profile',    label: 'Анкета',        width: 65,  sortable: true,  hideable: true },
+  { key: 'deposit',    label: 'Депозит ₸',     width: 100, sortable: true,  hideable: true },
+  { key: 'fitbase',    label: 'Fitbase ID',    width: 90,  sortable: true,  hideable: true },
+];
+const COL_BY_KEY = new Map(COLS.map(c => [c.key, c]));
+const DEFAULT_VISIBLE = new Set(['name', 'phone', 'plan', 'sessions', 'last_visit', 'days', 'tags']);
+const DEFAULT_ORDER = COLS.map(c => c.key);
+
+interface TableSettings {
+  order: string[];
+  widths: Record<string,number>;
+  visible: Record<string,boolean>;
+  sortCol: string;
+  sortDir: 'asc' | 'desc';
+}
+
+function defaultTableSettings(): TableSettings {
+  return {
+    order: DEFAULT_ORDER,
+    widths: Object.fromEntries(COLS.map(c => [c.key, c.width])),
+    visible: Object.fromEntries(COLS.map(c => [c.key, DEFAULT_VISIBLE.has(c.key)])),
+    sortCol: 'last_visit',
+    sortDir: 'desc',
+  };
+}
+
+function loadTableSettings(login: string): TableSettings {
+  try {
+    const raw = localStorage.getItem(`crm.clients.table.${login}`);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<TableSettings>;
+      const def = defaultTableSettings();
+      return { ...def, ...parsed };
+    }
+  } catch {}
+  return defaultTableSettings();
+}
+
+function saveTableSettings(login: string, s: TableSettings) {
+  try { localStorage.setItem(`crm.clients.table.${login}`, JSON.stringify(s)); } catch {}
 }
 
 interface ClientFull extends ClientRow {
@@ -1377,9 +1438,184 @@ function FitbaseImport({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ── ClientsTable ───────────────────────────────────────────────────────────────
+
+function ClientsTable({ cols, rows, sortCol, sortDir, activeId, onSort, onRowClick, onColResize, onColReorder }: {
+  cols: (ColDef & { width: number })[];
+  rows: ClientRow[];
+  sortCol: string; sortDir: 'asc' | 'desc';
+  activeId: string | null;
+  onSort: (col: string, dir: 'asc' | 'desc') => void;
+  onRowClick: (id: string) => void;
+  onColResize: (key: string, w: number) => void;
+  onColReorder: (newOrder: string[]) => void;
+}) {
+  const [draggedKey, setDraggedKey] = useState<string | null>(null);
+  const [dropKey, setDropKey] = useState<string | null>(null);
+  const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
+
+  function startResize(e: React.PointerEvent, key: string, currentW: number) {
+    e.preventDefault(); e.stopPropagation();
+    resizeRef.current = { key, startX: e.clientX, startW: currentW };
+    const onMove = (ev: PointerEvent) => {
+      if (!resizeRef.current) return;
+      onColResize(resizeRef.current.key, Math.max(60, resizeRef.current.startW + ev.clientX - resizeRef.current.startX));
+    };
+    const onUp = () => { resizeRef.current = null; window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  function handleDragStart(e: React.DragEvent, key: string) {
+    if (key === 'name') { e.preventDefault(); return; }
+    setDraggedKey(key); e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDrop(e: React.DragEvent, targetKey: string) {
+    if (!draggedKey || targetKey === draggedKey) return;
+    e.preventDefault();
+    const keys = cols.map(c => c.key);
+    const from = keys.indexOf(draggedKey), to = keys.indexOf(targetKey);
+    if (from < 0 || to < 0) return;
+    const nk = [...keys]; nk.splice(from, 1); nk.splice(to, 0, draggedKey);
+    const ni = nk.indexOf('name'); if (ni > 0) { nk.splice(ni, 1); nk.unshift('name'); }
+    onColReorder(nk); setDraggedKey(null); setDropKey(null);
+  }
+
+  function renderCell(row: ClientRow, key: string): React.ReactNode {
+    switch (key) {
+      case 'name':       return <strong style={{ fontWeight: 600 }}>{row.full_name}</strong>;
+      case 'phone':      return row.phone ?? '—';
+      case 'plan':       return row.plan_name ? `${row.plan_name}${(row.extra_plans_count ?? 0) > 0 ? ` +${row.extra_plans_count}` : ''}` : '—';
+      case 'sessions':   return row.sessions_summary ?? '—';
+      case 'last_visit': return fmtDate(row.last_visit_at ?? null);
+      case 'days': {
+        const d = row.days_since_visit;
+        if (d == null) return '—';
+        const color = d >= 30 ? 'var(--danger)' : d >= 14 ? 'var(--warning,#f59e0b)' : 'inherit';
+        return <span style={{ color }}>{d === 0 ? 'Сегодня' : d}</span>;
+      }
+      case 'tags': {
+        const st = row.system_tags ?? [], pt = row.personal_tags ?? [];
+        if (!st.length && !pt.length) return '—';
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            {st.map(t => { const info = SYSTEM_TAG_LABELS[t]; return info ? <span key={t} style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: info.bg, color: info.color }}>{info.label}</span> : null; })}
+            {pt.map(t => <span key={t.id} style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: t.color + '33', color: t.color }}>{t.name}</span>)}
+          </div>
+        );
+      }
+      case 'source':     return row.source_name ?? '—';
+      case 'ltv':        return row.ltv ? row.ltv.toLocaleString('ru') + ' ₸' : '—';
+      case 'created':    return fmtDate(row.created_at);
+      case 'birth':      return fmtDate(row.birth_date);
+      case 'profile':    return row.profile_complete ? '✓' : '—';
+      case 'deposit':    return row.deposit ? row.deposit.toLocaleString('ru') + ' ₸' : '—';
+      case 'fitbase':    return row.fitbase_client_id ?? '—';
+      default:           return '—';
+    }
+  }
+
+  return (
+    <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 13, minWidth: cols.reduce((s, c) => s + c.width, 0) }}>
+        <colgroup>{cols.map(c => <col key={c.key} style={{ width: c.width }} />)}</colgroup>
+        <thead>
+          <tr style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+            {cols.map(c => (
+              <th key={c.key}
+                draggable={c.key !== 'name'}
+                onDragStart={e => handleDragStart(e, c.key)}
+                onDragOver={e => { if (draggedKey && draggedKey !== c.key) { e.preventDefault(); setDropKey(c.key); } }}
+                onDrop={e => handleDrop(e, c.key)}
+                onDragEnd={() => { setDraggedKey(null); setDropKey(null); }}
+                onClick={() => { if (!c.sortable) return; onSort(c.key, sortCol === c.key ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc'); }}
+                style={{
+                  padding: '6px 8px 6px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600,
+                  color: 'var(--text-2)', borderBottom: '2px solid var(--border)',
+                  cursor: c.sortable ? 'pointer' : 'default', userSelect: 'none',
+                  whiteSpace: 'nowrap', overflow: 'hidden', position: 'relative',
+                  background: dropKey === c.key ? 'var(--surface-2)' : draggedKey === c.key ? 'rgba(2,189,182,0.08)' : 'var(--surface)',
+                  boxShadow: sortCol === c.key ? 'inset 0 -2px 0 var(--primary)' : 'none',
+                }}>
+                {c.label}{c.sortable && sortCol === c.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                <div style={{ position: 'absolute', right: 0, top: 0, width: 5, height: '100%', cursor: 'col-resize', zIndex: 2 }}
+                  onPointerDown={e => startResize(e, c.key, c.width)}
+                  onDoubleClick={e => { e.stopPropagation(); onColResize(c.key, COL_BY_KEY.get(c.key)?.width ?? 100); }}
+                  onClick={e => e.stopPropagation()} />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => (
+            <tr key={row.id} onClick={() => onRowClick(row.id)}
+              style={{ cursor: 'pointer', background: activeId === row.id ? 'rgba(2,189,182,0.06)' : 'var(--surface)' }}>
+              {cols.map((c, ci) => (
+                <td key={c.key} style={{
+                  padding: '7px 8px', borderBottom: '1px solid var(--border)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  borderLeft: ci === 0 && activeId === row.id ? '3px solid var(--primary)' : ci === 0 ? '3px solid transparent' : undefined,
+                }}>{renderCell(row, c.key)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── ColumnsPanel ───────────────────────────────────────────────────────────────
+
+function ColumnsPanel({ order, visibleKeys, onToggle, onReorder, onReset, onClose }: {
+  order: string[]; visibleKeys: Set<string>;
+  onToggle: (key: string) => void; onReorder: (newOrder: string[]) => void;
+  onReset: () => void; onClose: () => void;
+}) {
+  const [dragging, setDragging] = useState<string | null>(null);
+  const ordered = order.map(k => COL_BY_KEY.get(k)).filter(Boolean) as ColDef[];
+  return (
+    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 20, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 8, minWidth: 210, maxHeight: 400, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Колонки</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, color: 'var(--text-3)', lineHeight: 1 }}>✕</button>
+      </div>
+      {ordered.map(c => (
+        <div key={c.key} draggable
+          onDragStart={() => setDragging(c.key)}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => {
+            if (!dragging || dragging === c.key) return;
+            e.preventDefault();
+            const nk = [...order]; const fi = nk.indexOf(dragging), ti = nk.indexOf(c.key);
+            if (fi >= 0 && ti >= 0) { nk.splice(fi, 1); nk.splice(ti, 0, dragging); }
+            const ni = nk.indexOf('name'); if (ni > 0) { nk.splice(ni, 1); nk.unshift('name'); }
+            onReorder(nk); setDragging(null);
+          }}
+          onDragEnd={() => setDragging(null)}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', borderRadius: 4, cursor: 'grab', background: dragging === c.key ? 'var(--surface-2)' : 'transparent' }}>
+          <span style={{ color: 'var(--text-3)', fontSize: 13 }}>⠿</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleKeys.has(c.key)} disabled={!c.hideable}
+              onChange={() => c.hideable && onToggle(c.key)} />
+            <span style={{ fontSize: 13 }}>{c.label}</span>
+          </label>
+        </div>
+      ))}
+      <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+        <button onClick={onReset} style={{ fontSize: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }}>Сбросить вид</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ClientsPage ───────────────────────────────────────────────────────────
 
 export default function ClientsPage() {
+  const bp = useBreakpoint();
+  const isMobile = bp === 'phone';
+
   const [clients, setClients]   = useState<ClientRow[]>([]);
   const [total, setTotal]       = useState(0);
   const [offset, setOffset]     = useState(0);
@@ -1387,7 +1623,6 @@ export default function ClientsPage() {
   const [search, setSearch]     = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterComplete, setFilterComplete] = useState('');
-  const [sortBy, setSortBy]       = useState('');
   const [filterMinDays, setFilterMinDays] = useState('');
   const [loading, setLoading]   = useState(false);
   const [popupId, setPopupId]   = useState<string | null>(() => {
@@ -1397,12 +1632,37 @@ export default function ClientsPage() {
   const [editClient, setEditClient] = useState<ClientFull | null | 'new'>(null);
   const [role, setRole]         = useState('manager');
   const [showImport, setShowImport] = useState(false);
+  const [showColPanel, setShowColPanel] = useState(false);
+  const [junkReport, setJunkReport] = useState<{ total: number; no_activity: number; examples: { id: string; full_name: string; phone: string | null; created_at: string }[] } | null>(null);
+
+  // Table settings (column order, widths, visibility, sort)
+  const [login, setLogin]       = useState('');
+  const [ts, setTs]             = useState<TableSettings>(defaultTableSettings);
+  const [sortCol, setSortCol]   = useState('last_visit');
+  const [sortDir, setSortDir]   = useState<'asc'|'desc'>('desc');
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch('/kviz/api/crm/ad-sources', { credentials: 'include' }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAdSources(d); }).catch(() => {});
-    fetch('/kviz/api/me', { credentials: 'include' }).then(r => r.json()).then(d => { if (d.role) setRole(d.role); }).catch(() => {});
+    fetch('/kviz/api/me', { credentials: 'include' }).then(r => r.json()).then(d => {
+      if (d.role) setRole(d.role);
+      if (d.login) {
+        setLogin(d.login);
+        const saved = loadTableSettings(d.login);
+        setTs(saved);
+        setSortCol(saved.sortCol);
+        setSortDir(saved.sortDir);
+      }
+    }).catch(() => {});
   }, []);
+
+  function updateTs(patch: Partial<TableSettings>) {
+    setTs(prev => {
+      const next = { ...prev, ...patch };
+      if (login) saveTableSettings(login, next);
+      return next;
+    });
+  }
 
   // Sync popup ID to URL hash
   useEffect(() => {
@@ -1416,14 +1676,15 @@ export default function ClientsPage() {
     if (search) params.set('search', search);
     if (filterSource) params.set('ad_source_id', filterSource);
     if (filterComplete) params.set('profile_complete', filterComplete);
-    if (sortBy) params.set('sort', sortBy);
+    params.set('sort', sortCol);
+    params.set('dir', sortDir);
     if (filterMinDays) params.set('min_days', filterMinDays);
     const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
     const d = await r.json();
     const items: ClientRow[] = d?.items ?? (Array.isArray(d) ? d : []);
     setClients(items); setTotal(d?.total ?? items.length); setOffset(items.length);
     setLoading(false);
-  }, [search, filterSource, filterComplete, sortBy, filterMinDays]);
+  }, [search, filterSource, filterComplete, sortCol, sortDir, filterMinDays]);
 
   async function loadMore() {
     setLoading(true);
@@ -1431,7 +1692,8 @@ export default function ClientsPage() {
     if (search) params.set('search', search);
     if (filterSource) params.set('ad_source_id', filterSource);
     if (filterComplete) params.set('profile_complete', filterComplete);
-    if (sortBy) params.set('sort', sortBy);
+    params.set('sort', sortCol);
+    params.set('dir', sortDir);
     if (filterMinDays) params.set('min_days', filterMinDays);
     const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
     const d = await r.json();
@@ -1446,6 +1708,36 @@ export default function ClientsPage() {
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [load]);
 
+  function handleSort(col: string, dir: 'asc'|'desc') {
+    setSortCol(col); setSortDir(dir);
+    updateTs({ sortCol: col, sortDir: dir });
+  }
+
+  function handleColResize(key: string, w: number) {
+    updateTs({ widths: { ...ts.widths, [key]: w } });
+  }
+
+  function handleColReorder(newOrder: string[]) {
+    updateTs({ order: newOrder });
+  }
+
+  function handleColToggle(key: string) {
+    updateTs({ visible: { ...ts.visible, [key]: !ts.visible[key] } });
+  }
+
+  function handleReset() {
+    const def = defaultTableSettings();
+    setTs(def); setSortCol(def.sortCol); setSortDir(def.sortDir);
+    if (login) saveTableSettings(login, def);
+    setShowColPanel(false);
+  }
+
+  async function loadJunkReport() {
+    const r = await fetch('/kviz/api/crm/clients/junk-report', { credentials: 'include' });
+    const d = await r.json();
+    setJunkReport(d);
+  }
+
   async function openEdit(id: string) {
     const r = await fetch(`/kviz/api/crm/clients/${id}`, { credentials: 'include' });
     const d = await r.json();
@@ -1459,6 +1751,13 @@ export default function ClientsPage() {
     load();
   }
 
+  // Visible ordered cols with current widths
+  const visibleCols = ts.order
+    .map(k => COL_BY_KEY.get(k))
+    .filter((c): c is ColDef => !!c && ts.visible[c.key] !== false)
+    .map(c => ({ ...c, width: ts.widths[c.key] ?? c.width }));
+
+  const visibleKeys = new Set(Object.keys(ts.visible).filter(k => ts.visible[k] !== false));
   const sourceMap = new Map(adSources.map(s => [s.id, s.name]));
 
   if (editClient !== null) {
@@ -1475,7 +1774,7 @@ export default function ClientsPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' as React.CSSProperties['height'], fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
       {/* Toolbar */}
       <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', background: 'var(--surface)', flexShrink: 0 }}>
         <input style={SL.search} value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по имени или телефону" />
@@ -1494,54 +1793,102 @@ export default function ClientsPage() {
           <option value="14">14+ дн.</option>
           <option value="30">30+ дн.</option>
         </select>
-        <select style={SL.filter} value={sortBy} onChange={e => setSortBy(e.target.value)}>
-          <option value="">По имени</option>
-          <option value="days_without_visit">По дням без визита</option>
-        </select>
+        {/* Mobile sort select */}
+        {isMobile && (
+          <select style={SL.filter} value={`${sortCol}_${sortDir}`} onChange={e => {
+            const [col, dir] = e.target.value.split('_') as [string, 'asc'|'desc'];
+            handleSort(col, dir);
+          }}>
+            <option value="last_visit_desc">Визит (новые)</option>
+            <option value="last_visit_asc">Визит (старые)</option>
+            <option value="days_desc">Дн. без визита ↓</option>
+            <option value="name_asc">По имени А→Я</option>
+            <option value="created_desc">Новые клиенты</option>
+            <option value="ltv_desc">По LTV</option>
+          </select>
+        )}
         <button style={SL.addBtn} onClick={() => setEditClient('new')}>+ Клиент</button>
+        {!isMobile && (
+          <div style={{ position: 'relative' }}>
+            <button style={SL.outlineBtn} onClick={() => setShowColPanel(v => !v)}>Колонки</button>
+            {showColPanel && (
+              <ColumnsPanel
+                order={ts.order}
+                visibleKeys={visibleKeys}
+                onToggle={handleColToggle}
+                onReorder={handleColReorder}
+                onReset={handleReset}
+                onClose={() => setShowColPanel(false)}
+              />
+            )}
+          </div>
+        )}
         {role === 'admin' && <button style={SL.outlineBtn} onClick={() => setShowImport(v => !v)}>↓ Fitbase</button>}
+        {role === 'admin' && <button style={SL.outlineBtn} onClick={loadJunkReport}>Мусор</button>}
       </div>
       {showImport && role === 'admin' && <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}><FitbaseImport onDone={load} /></div>}
+      {junkReport && role === 'admin' && (
+        <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 13 }}>
+          <strong>Мусорные записи:</strong> всего {junkReport.total}, без активности {junkReport.no_activity}.
+          {' '}Примеры: {junkReport.examples.map(e => e.full_name).join(', ')}.
+          <button onClick={() => setJunkReport(null)} style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-3)' }}>✕</button>
+        </div>
+      )}
 
-      {/* List */}
-      <div style={{ flex: 1, overflowY: 'auto', background: 'var(--surface)' }}>
-        {loading && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
-        {!loading && !clients.length && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Клиенты не найдены</div>}
-        {clients.map(c => (
-          <div key={c.id}
-            style={{ ...SL.row, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, background: popupId === c.id ? 'rgba(2,189,182,0.06)' : 'var(--surface)', borderLeft: popupId === c.id ? '3px solid var(--primary)' : '3px solid transparent' }}
-            onClick={() => setPopupId(c.id)}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
-                {c.phone ?? '—'}
-                {c.birth_date && <span style={{ marginLeft: 8 }}>{fmtDate(c.birth_date)}</span>}
+      {/* Table (desktop/tablet) or Cards (mobile) */}
+      {loading && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Загрузка…</div>}
+      {!loading && !clients.length && <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Клиенты не найдены</div>}
+
+      {!isMobile ? (
+        <ClientsTable
+          cols={visibleCols}
+          rows={clients}
+          sortCol={sortCol}
+          sortDir={sortDir}
+          activeId={popupId}
+          onSort={handleSort}
+          onRowClick={id => setPopupId(id)}
+          onColResize={handleColResize}
+          onColReorder={handleColReorder}
+        />
+      ) : (
+        <div style={{ flex: 1, overflowY: 'auto', background: 'var(--surface)' }}>
+          {clients.map(c => (
+            <div key={c.id}
+              style={{ ...SL.row, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, background: popupId === c.id ? 'rgba(2,189,182,0.06)' : 'var(--surface)', borderLeft: popupId === c.id ? '3px solid var(--primary)' : '3px solid transparent' }}
+              onClick={() => setPopupId(c.id)}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
+                  {c.phone ?? '—'}
+                  {c.birth_date && <span style={{ marginLeft: 8 }}>{fmtDate(c.birth_date)}</span>}
+                </div>
+                {(c.ad_source_id || c.profile_complete) && (
+                  <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                    {c.ad_source_id && <span style={SL.chip}>{sourceMap.get(c.ad_source_id) ?? '?'}</span>}
+                    {c.profile_complete && <span style={{ ...SL.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>✓</span>}
+                  </div>
+                )}
               </div>
-              {(c.ad_source_id || c.profile_complete) && (
-                <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
-                  {c.ad_source_id && <span style={SL.chip}>{sourceMap.get(c.ad_source_id) ?? '?'}</span>}
-                  {c.profile_complete && <span style={{ ...SL.chip, background: 'var(--success-soft)', color: 'var(--success)' }}>✓</span>}
-                </div>
-              )}
+              <div style={{ flexShrink: 0, textAlign: 'right', fontSize: 12, minWidth: 100 }}>
+                {c.plan_name && (
+                  <div style={{ fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
+                    {c.plan_name}{(c.extra_plans_count ?? 0) > 0 ? ` +${c.extra_plans_count}` : ''}
+                  </div>
+                )}
+                {c.sessions_summary && <div style={{ color: 'var(--text-2)', marginTop: 1 }}>{c.sessions_summary}</div>}
+                {c.days_since_visit != null ? (
+                  <div style={{ marginTop: 1, color: (c.days_since_visit ?? 0) >= 30 ? 'var(--danger)' : (c.days_since_visit ?? 0) >= 14 ? 'var(--warning,#f59e0b)' : 'var(--text-3)' }}>
+                    {c.days_since_visit === 0 ? 'Сегодня' : `${c.days_since_visit} дн. назад`}
+                  </div>
+                ) : (
+                  !c.plan_name && <div style={{ color: 'var(--text-3)', marginTop: 1 }}>нет визитов</div>
+                )}
+              </div>
             </div>
-            <div style={{ flexShrink: 0, textAlign: 'right', fontSize: 12, minWidth: 100 }}>
-              {c.plan_name && (
-                <div style={{ fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
-                  {c.plan_name}{(c.extra_plans_count ?? 0) > 0 ? ` +${c.extra_plans_count}` : ''}
-                </div>
-              )}
-              {c.sessions_summary && <div style={{ color: 'var(--text-2)', marginTop: 1 }}>{c.sessions_summary}</div>}
-              {c.days_since_visit != null ? (
-                <div style={{ marginTop: 1, color: (c.days_since_visit ?? 0) >= 30 ? 'var(--danger)' : (c.days_since_visit ?? 0) >= 14 ? 'var(--warning,#f59e0b)' : 'var(--text-3)' }}>
-                  {c.days_since_visit === 0 ? 'Сегодня' : `${c.days_since_visit} дн. назад`}
-                </div>
-              ) : (
-                !c.plan_name && <div style={{ color: 'var(--text-3)', marginTop: 1 }}>нет визитов</div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {clients.length < total && !loading && (
         <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
