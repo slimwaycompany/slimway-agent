@@ -37,6 +37,7 @@ interface DayData {
   date: string; day_start: string; day_end: string; now: string;
   blocks: DayBlock[]; bookings: BookingData[]; is_open?: boolean;
 }
+interface DayNote { id: string; text: string; author: string; author_user_id: string; created_at: string; edited: boolean; can_edit: boolean }
 interface ClientOption {
   id: string; plan_id: string; status: string;
   valid_until: string | null; extra_until: string | null;
@@ -693,6 +694,110 @@ function SmsDialog({ type_code, bookings, onClose }: { type_code: string; bookin
   );
 }
 
+// ── NotesPanel ────────────────────────────────────────────────────────────────
+
+function NotesPanel({ date, panelRef, onCountChange }: {
+  date: string;
+  panelRef: React.RefObject<HTMLDivElement>; onCountChange: (n: number) => void;
+}) {
+  const [notes, setNotes]       = useState<DayNote[]>([]);
+  const [text, setText]         = useState('');
+  const [editId, setEditId]     = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [saving, setSaving]     = useState(false);
+  const listRef                 = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async () => {
+    const { ok, data } = await apiJ('GET', `/kviz/api/crm/schedule/notes?date=${date}`);
+    if (ok) { const ns = data as DayNote[]; setNotes(ns); onCountChange(ns.length); }
+  }, [date, onCountChange]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { const t = setInterval(load, 30_000); return () => clearInterval(t); }, [load]);
+
+  async function send() {
+    if (!text.trim() || saving) return;
+    setSaving(true);
+    const { ok, data } = await apiJ('POST', '/kviz/api/crm/schedule/notes', { date, text: text.trim() });
+    setSaving(false);
+    if (!ok) { toast.error((data as { error: string }).error || 'Ошибка'); return; }
+    setText('');
+    await load();
+    setTimeout(() => listRef.current?.scrollTo(0, listRef.current.scrollHeight), 50);
+  }
+
+  async function saveEdit(id: string) {
+    if (!editText.trim() || saving) return;
+    setSaving(true);
+    const { ok, data } = await apiJ('PATCH', `/kviz/api/crm/schedule/notes/${id}`, { text: editText });
+    setSaving(false);
+    if (!ok) { toast.error((data as { error: string }).error || 'Ошибка'); return; }
+    setEditId(null);
+    await load();
+  }
+
+  async function del(id: string) {
+    if (!await showConfirm('Удалить заметку?')) return;
+    const { ok, data } = await apiJ('DELETE', `/kviz/api/crm/schedule/notes/${id}`);
+    if (!ok) { toast.error((data as { error: string }).error || 'Ошибка'); return; }
+    await load();
+  }
+
+  const dateLabel = (() => { const s = fmtWeekday(date); return s.charAt(0).toUpperCase() + s.slice(1); })();
+
+  return (
+    <div ref={panelRef} className="sched-notes" style={SS.notesBlock}>
+      <div style={SS.notesHdr}>💬 Заметки на {dateLabel}</div>
+      <div ref={listRef} style={SS.notesList}>
+        {notes.length === 0 && (
+          <div style={{ color: 'var(--text-3,#94a3b8)', fontSize: 13, padding: '12px 0', textAlign: 'center' }}>Заметок на этот день пока нет</div>
+        )}
+        {notes.map(n => {
+          const mine = n.can_edit;
+          const time = new Date(n.created_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' });
+          return (
+            <div key={n.id} style={{ ...SS.noteMsg, background: mine ? 'var(--primary-soft,#e0faf9)' : 'var(--surface-2,#f8fafc)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <span style={{ fontWeight: 700, fontSize: 11 }}>{n.author}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-3,#94a3b8)' }}>{time}</span>
+                {n.edited && <span style={{ fontSize: 9, color: 'var(--text-3,#94a3b8)', fontStyle: 'italic' }}>изменено</span>}
+                {mine && (
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
+                    <button style={SS.iconBtn} title="Редактировать" onClick={() => { setEditId(n.id); setEditText(n.text); }}>✏️</button>
+                    <button style={SS.iconBtn} title="Удалить" onClick={() => del(n.id)}>🗑️</button>
+                  </div>
+                )}
+              </div>
+              {editId === n.id ? (
+                <div>
+                  <textarea style={{ ...SS.noteTextarea, marginBottom: 4 }} value={editText}
+                    rows={3} onChange={e => setEditText(e.target.value)} />
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button style={{ ...SS.smallBtn, background: 'var(--primary,#02BDB6)', color: '#fff' }}
+                      onClick={() => saveEdit(n.id)} disabled={saving}>Сохранить</button>
+                    <button style={SS.smallBtn} onClick={() => setEditId(null)}>Отмена</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{n.text}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border,#e2e8f0)' }}>
+        <textarea style={{ ...SS.noteTextarea, marginBottom: 4 }} value={text} placeholder="Написать заметку…" rows={2}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: text.length > 950 ? 'var(--error,#ef4444)' : 'var(--text-3,#94a3b8)' }}>{text.length}/1000</span>
+          <button style={{ ...SS.smallBtn, background: 'var(--primary,#02BDB6)', color: '#fff', minHeight: 40, padding: '0 16px' }}
+            onClick={() => void send()} disabled={saving || !text.trim()}>Отправить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function SchedulePage() {
@@ -708,6 +813,8 @@ export default function SchedulePage() {
   const [nowTick, setNowTick]     = useState(0);
   const [adSources, setAdSources] = useState<AdSource[]>([]);
   const [clientPopupId, setClientPopupId] = useState<string | null>(null);
+  const [notesCount, setNotesCount] = useState(0);
+  const notesRef = useRef<HTMLDivElement>(null);
   const [blockCfg, setBlockCfg]   = useState<Record<string, { showCancelled: boolean; showRepair: boolean; extraVirtual: 0 | 1 | 2 | 3 }>>(() => {
     try { return JSON.parse(localStorage.getItem('sched-block-cfg') || '{}'); } catch { return {}; }
   });
@@ -724,7 +831,7 @@ export default function SchedulePage() {
     else toast.error((data as { error: string }).error || 'Не удалось загрузить расписание');
   }, []);
 
-  useEffect(() => { loadDay(date); }, [date, loadDay]);
+  useEffect(() => { loadDay(date); setNotesCount(0); }, [date, loadDay]);
   useEffect(() => { const t = setInterval(() => setNowTick(n => n + 1), 60_000); return () => clearInterval(t); }, []);
   useEffect(() => {
     fetch('/kviz/api/crm/ad-sources', { credentials: 'include' }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAdSources(d); }).catch(() => {});
@@ -752,6 +859,10 @@ export default function SchedulePage() {
         <input type="date" value={date} onChange={e => setDate(e.target.value)} style={SS.dateInput} />
         <span style={SS.dateLabel}>{(() => { const s = fmtWeekday(date); return s.charAt(0).toUpperCase() + s.slice(1); })()}</span>
         {loading && <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 8 }}>загрузка…</span>}
+        <button style={{ ...SS.navBtn, marginLeft: 'auto' }}
+          onClick={() => notesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          💬 Заметки{notesCount > 0 ? ` (${notesCount})` : ''}
+        </button>
       </div>
 
       {/* Closed day */}
@@ -761,9 +872,10 @@ export default function SchedulePage() {
         </div>
       )}
 
-      {/* Blocks */}
+      {/* Blocks + Notes */}
       {dayData && dayData.is_open !== false && (
-        <div className="sched-scroll sched-blocks" style={SS.blocksWrap}>
+        <div className="sched-scroll" style={SS.blocksWrap}>
+          <div className="sched-blocks" style={SS.blocksRow}>
           {dayData.blocks.map(block => {
             const cfg = blockCfg[block.type_code] || { showCancelled: false, showRepair: false, extraVirtual: 0 };
             const slots = getSlots(dayData.day_start, dayData.day_end, block.grid_step_minutes);
@@ -952,6 +1064,8 @@ export default function SchedulePage() {
               </div>
             );
           })}
+          </div>
+          <NotesPanel date={date} panelRef={notesRef} onCountChange={setNotesCount} />
         </div>
       )}
 
@@ -1001,7 +1115,8 @@ const SS: Record<string, React.CSSProperties> = {
   navBtnActive: { background: 'var(--primary,#02BDB6)', color: '#fff', borderColor: 'var(--primary,#02BDB6)' },
   dateInput: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, padding: '4px 8px', fontSize: 13, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)' },
   dateLabel: { fontSize: 14, fontWeight: 600, color: 'var(--text,#1a202c)' },
-  blocksWrap: { flex: 1, display: 'flex', gap: 8, padding: '0 12px 12px', overflowX: 'auto', overflowY: 'auto', alignItems: 'flex-start' },
+  blocksWrap: { flex: 1, display: 'flex', flexDirection: 'column' as const, gap: 8, padding: '0 12px 12px', overflowX: 'auto', overflowY: 'auto' },
+  blocksRow: { display: 'flex', gap: 8, alignItems: 'flex-start', flexShrink: 0, minWidth: 'max-content' },
   block:   { border: '1px solid var(--border,#e2e8f0)', borderRadius: 10, background: 'var(--surface,#fff)', display: 'flex', flexDirection: 'column' },
   blockHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px', height: BLK_H, borderBottom: '1px solid var(--border,#e2e8f0)', background: 'var(--surface-2,#f8fafc)', position: 'sticky', top: 0, zIndex: 4, borderRadius: '10px 10px 0 0', boxSizing: 'border-box', flexShrink: 0 },
   blockTitle: { fontWeight: 800, fontSize: 12, color: 'var(--text,#1a202c)', letterSpacing: 0.5 },
@@ -1026,4 +1141,10 @@ const SS: Record<string, React.CSSProperties> = {
   // Modal
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
   modal:   { background: 'var(--surface,#fff)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.2)', boxSizing: 'border-box' },
+  // Notes
+  notesBlock: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 10, background: 'var(--surface,#fff)', flexShrink: 0, minWidth: 'calc(100vw - 24px)' },
+  notesHdr:   { padding: '8px 12px', borderBottom: '1px solid var(--border,#e2e8f0)', fontWeight: 700, fontSize: 13, background: 'var(--surface-2,#f8fafc)', borderRadius: '10px 10px 0 0' },
+  notesList:  { padding: '8px 12px', maxHeight: 320, overflowY: 'auto' as const },
+  noteMsg:    { borderRadius: 8, padding: '8px 10px', marginBottom: 8 },
+  noteTextarea: { width: '100%', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, padding: '7px 10px', fontSize: 14, fontFamily: 'inherit', resize: 'vertical' as const, boxSizing: 'border-box' as const, minHeight: 54, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)' },
 };

@@ -57,11 +57,15 @@ img, video, svg, iframe { max-width: 100%; }
 .sched-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 .sched-scroll::-webkit-scrollbar { display: none; }
 @media (max-width: 640px) {
-  .sched-blocks { scroll-snap-type: x mandatory; gap: 0 !important; padding: 0 !important; }
+  /* snap on the outer scroll container; blocksRow (sched-blocks) resets gap/padding */
+  .sched-scroll { scroll-snap-type: x mandatory; }
+  .sched-blocks { gap: 0 !important; }
   .sched-block { flex: 0 0 100vw !important; min-width: 100vw !important; scroll-snap-align: start; border-radius: 0 !important; }
+  /* notes panel: always at least full viewport width */
+  .sched-notes { min-width: calc(100vw - 24px) !important; }
 }
 @media (min-width: 641px) and (max-width: 1024px) {
-  .sched-blocks { scroll-snap-type: x mandatory; }
+  .sched-scroll { scroll-snap-type: x mandatory; }
   .sched-block { flex: 0 0 calc(50% - 4px) !important; min-width: calc(50% - 4px) !important; scroll-snap-align: start; }
 }
 

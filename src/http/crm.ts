@@ -2883,6 +2883,78 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // ── Schedule: day notes ──────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/schedule/notes', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.main', 'view', session)) return;
+    try {
+      const { date } = req.query as Record<string, string>;
+      if (!date) { res.status(400).json({ error: 'date обязателен' }); return; }
+      const { data, error } = await supabase.from('crm_schedule_notes')
+        .select('id,text,author,author_user_id,created_at,edited')
+        .eq('branch_id', BRANCH_ID).eq('note_date', date).eq('is_deleted', false)
+        .order('created_at', { ascending: true });
+      if (error) { console.error('notes get:', error); res.status(500).json({ error: 'Не удалось загрузить заметки' }); return; }
+      const userId = session.id;
+      res.json((data || []).map(n => ({ ...n, can_edit: n.author_user_id === userId || session.role === 'admin' })));
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/schedule/notes', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.main', 'view', session)) return;
+    try {
+      const { date, text } = req.body as Record<string, string>;
+      if (!date) { res.status(400).json({ error: 'date обязателен' }); return; }
+      const trimmed = (text ?? '').trim();
+      if (!trimmed) { res.status(400).json({ error: 'Напишите текст заметки' }); return; }
+      if (trimmed.length > 1000) { res.status(400).json({ error: 'Заметка длиннее 1000 символов' }); return; }
+      const { data, error } = await supabase.from('crm_schedule_notes').insert({
+        branch_id: BRANCH_ID, note_date: date, text: trimmed,
+        author: session.display_name, author_user_id: session.id,
+      }).select().single();
+      if (error) { console.error('notes post:', error); res.status(500).json({ error: 'Не удалось сохранить заметку' }); return; }
+      await writeAudit('schedule_note', (data as Record<string,unknown>).id as string, 'create', session.display_name);
+      res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/kviz/api/crm/schedule/notes/:id', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.main', 'view', session)) return;
+    try {
+      const trimmed = ((req.body as Record<string, string>).text ?? '').trim();
+      if (!trimmed) { res.status(400).json({ error: 'Напишите текст заметки' }); return; }
+      if (trimmed.length > 1000) { res.status(400).json({ error: 'Заметка длиннее 1000 символов' }); return; }
+      const { data: existing } = await supabase.from('crm_schedule_notes').select('author_user_id').eq('id', req.params.id).eq('is_deleted', false).single();
+      if (!existing) { res.status(404).json({ error: 'Заметка не найдена' }); return; }
+      if ((existing as Record<string,unknown>).author_user_id !== session.id && session.role !== 'admin') {
+        res.status(403).json({ error: 'Можно изменить только свою заметку' }); return;
+      }
+      const { error } = await supabase.from('crm_schedule_notes').update({ text: trimmed, edited: true }).eq('id', req.params.id);
+      if (error) { console.error('notes patch:', error); res.status(500).json({ error: 'Не удалось обновить заметку' }); return; }
+      await writeAudit('schedule_note', req.params.id, 'update', session.display_name);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.delete('/kviz/api/crm/schedule/notes/:id', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.main', 'view', session)) return;
+    try {
+      const { data: existing } = await supabase.from('crm_schedule_notes').select('author_user_id').eq('id', req.params.id).eq('is_deleted', false).single();
+      if (!existing) { res.status(404).json({ error: 'Заметка не найдена' }); return; }
+      if ((existing as Record<string,unknown>).author_user_id !== session.id && session.role !== 'admin') {
+        res.status(403).json({ error: 'Можно удалить только свою заметку' }); return;
+      }
+      const { error } = await supabase.from('crm_schedule_notes').update({ is_deleted: true }).eq('id', req.params.id);
+      if (error) { console.error('notes delete:', error); res.status(500).json({ error: 'Не удалось удалить заметку' }); return; }
+      await writeAudit('schedule_note', req.params.id, 'delete', session.display_name);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // ── Schedule: bookings ────────────────────────────────────────────────────────
 
   const SCHEDULE_RPC_ERRORS: Record<string, string> = {

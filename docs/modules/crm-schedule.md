@@ -11,6 +11,7 @@
 - `src/http/crm.ts` — API расписания (schedule/day с `crm_day_hours` RPC, client-options, free-devices, suggest, bookings CRUD), API этикеток (short_name), GET/PUT settings/classes, PATCH device-types, GET/PUT /kviz/api/crm/branch
 
 ## Таблицы
+- `crm_schedule_notes` — заметки менеджеров на день: id, branch_id, note_date (date), text, author (display_name), author_user_id (text), is_deleted (soft delete), edited (bool), created_at, updated_at
 - `crm_bookings` — брони: device_id, group_id (связка фаз), client_id, client_plan_id/item_id, plan_id (для бесплатных), kind (plan/free), status (booked/confirmed/attended/no_show/late_cancel/cancelled), starts_at/ends_at UTC, session_burned, note, trainer, cancel_reason; exclusion constraint по device_id + tsrange на пересечение, exclusion по client_id + tsrange
 - `crm_booking_labels` — этикетки: name, short_name (1–4 символа), color (hex), sort, is_active, is_system
 - `crm_booking_label_links` — связь брони и этикеток
@@ -22,6 +23,13 @@
 - RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`, `crm_day_hours(p_date)` → (is_open, open_time, close_time)
 
 ## Сделано
+### 24.11.2026 · task 92 · Заметки менеджеров на день (мини-чат под расписанием)
+- **`src/http/crm.ts`**: 4 эндпоинта `schedule/notes` (GET/POST/PATCH/DELETE); право `schedule.main view`; can_edit = автор или admin; мягкое удаление (`is_deleted=true`); `writeAudit` на все действия; валидация: пустой текст → 400, >1000 символов → 400, чужая заметка → 403.
+- **`kviz/client/src/pages/crm/SchedulePage.tsx`**: интерфейс `DayNote`; компонент `NotesPanel` — мини-чат со списком заметок (фон primary-soft = своя / surface-2 = чужая), форма ввода (textarea с Enter/Shift+Enter, счётчик 0/1000, кнопка Отправить минимум 40px); инлайн-редактирование через editId; удаление через `showConfirm('Удалить заметку?')`; полинг раз в 30 сек.
+- Структура `blocksWrap` изменена: outer `sched-scroll` (flex-column, overflow-auto) → inner `blocksRow` (`sched-blocks`, flex-row, min-width max-content) → `NotesPanel`; CSS snap перенесён на `.sched-scroll` в `index.css`.
+- Кнопка «💬 Заметки (N)» в dateNav — плавный scroll к панели; счётчик обновляется в `onCountChange`; при смене даты счётчик сбрасывается.
+- `NotesPanel` показывается только когда расписание открыто (день рабочий); на мобильном — min-width: calc(100vw - 24px), кнопки ≥40px.
+
 ### 24.11.2026 · task 90-1 + 91 · Граница прокрутки, время на строках, конец дня, брони по времени, ЛКМ/ПКМ, запись вне слота, доп. аппараты
 - **`src/http/crm.ts`**: `GET /devices` фильтрует `is_virtual=false`; `schedule/day` добавляет `is_virtual` в select, режет `open_time`/`close_time` до `'HH:MM'` (`.slice(0,5)`), делит аппараты на `realByType` + `virtByType`, блок имеет `devices` (реальные) и `virtual_devices` (виртуальные, только `id+number`); `free-devices` принимает `include_virtual=1` и возвращает виртуальные по запросу.
 - **`kviz/client/src/pages/crm/ClientsPage.tsx`**: `function ClientPopup` → `export function ClientPopup` (только этот экспорт, остальное без изменений).
@@ -188,9 +196,8 @@
 ## Открытые баги
 
 ## Следующее
-- **(план ТЗ от 24.11.2026):** 92 (заметки дня — блок под сеткой, мини-чат) → 93 (автометки клиента: SQL + расписание, показ в списке клиентов).
+- **(план ТЗ от 24.11.2026):** 93 (автометки клиента: SQL + расписание, показ в списке клиентов).
 - **Зависимые (автоматические) метки-теги клиента:** Новый клиент · Нужен замер тела · Нужен InBody · Кончился абонемент · Кончается абонемент (≤2 занятий или ≤7 дней) · Давно не посещал (>7 дней) · Стоит вес (плато — Δ InBody <0.3 кг за 2 теста) · Нерегулярно ходит (<2 р/нед за 2 недели) · Неполный платёж · Проблемный клиент (ручная). Метка у клиента — видна в списке и плашкой на бронях. Пороги в Настройках.
-- **Заметки менеджеров (задача 92):** блок под сеткой на конкретный день, автор + время.
 - **Проверить на проде** (task 90 сетка): прокрутка без полос; 12:00 у VACU и InfraStep на одной высоте; «VacuActiv 1…3» в заголовках; кнопка «календарь+» есть во всех блоках; мобиле (375px) — snap-прокрутка блоков.
 - **Проверить на проде** (task 83): запись/статус/этикетки; суббота с часами (is_open=true); проверить закрытый день (is_open=false); badge-этикетки в карточках; BranchSection → сохранить реквизиты и часы.
 - **Проверить на проде** (task 82): создать запись, отметить «Пришёл», отменить, проверить этикетки.
