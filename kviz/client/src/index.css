@@ -53,6 +53,18 @@ img, video, svg, iframe { max-width: 100%; }
 /* Text truncation utility */
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── Schedule grid ── */
+.sched-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+.sched-scroll::-webkit-scrollbar { display: none; }
+@media (max-width: 640px) {
+  .sched-blocks { scroll-snap-type: x mandatory; gap: 0 !important; padding: 0 !important; }
+  .sched-block { flex: 0 0 100vw !important; min-width: 100vw !important; scroll-snap-align: start; border-radius: 0 !important; }
+}
+@media (min-width: 641px) and (max-width: 1024px) {
+  .sched-blocks { scroll-snap-type: x mandatory; }
+  .sched-block { flex: 0 0 calc(50% - 4px) !important; min-width: calc(50% - 4px) !important; scroll-snap-align: start; }
+}
+
 .page { max-width: 560px; margin: 0 auto; padding: 24px 16px 80px; }
 
 /* Options grid */

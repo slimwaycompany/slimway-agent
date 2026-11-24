@@ -18,7 +18,7 @@
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟡 | 24.11.2026 | task 90: Cross — фаза вручную для каждой строки, запрет дублей, /split — фаза пула; ждёт проверки на проде |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 24.11.2026 | task 89(2): ограничение абонемента показывается в карточке; ждёт проверки на проде |
-| CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 24.11.2026 | task 90: фильтр планов по виду аппарата, deviceTypeCode, finDeviceTypeCode, имена аппаратов в заголовке; ждёт проверки на проде |
+| CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 24.11.2026 | task 90 (сетка): одна прокрутка, PX_PER_MIN единый масштаб, реальные имена аппаратов, Lucide-кнопки, mobile snap; ждёт проверки |
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 21.11.2026 | task 81: единый формат вариантов id/label, none_option, not_none, checklist без потерь, sw.js |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | Агрегатор мессенджеров | `modules/aggregator.md` | Агрегатор мессенджеров | ⚪ | 24.11.2026 | модуль заведён: сравнение Wazzup24, Green-API, ChatPlace, SendPulse, Umnico; вопросы Сергею |

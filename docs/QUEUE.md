@@ -16,7 +16,8 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
-| 90 | crm-core, crm-schedule | Cross доработки: фаза вручную у каждой строки и у пула, дубли запрещены, список планов по аппарату, выбор вида аппарата для Cross, подписи №, DAILY_LIMIT | ТЗ в чате | ✅ готово (см. Журнал) |
+| 90 (сетка) | crm-schedule | Сетка расписания: одна невидимая прокрутка, PX_PER_MIN единый масштаб, реальные имена аппаратов, Lucide-кнопки, mobile snap | ТЗ в чате | ✅ готово (см. Журнал) |
+| 90 | crm-core, crm-schedule | Cross доработки: фаза вручную у каждой строки и у пула, дубли запрещены, список планов по аппарату, выбор вида аппарата для Cross, подписи №, DAILY_LIMIT | ТЗ в чате | ✅ готово (cda6471) |
 | 89b | crm-core, crm-kassa, crm-schedule | Пара броней (статус+этикетки на обе) + ограничение абонемента по дням и времени | ТЗ в чате | ✅ готово (см. Журнал) |
 | 89 | crm-core, crm-kassa, crm-schedule | Cross (пул) абонементы: itemLabel утилита, форма состава с Cross, сервер, касса (поиск), расписание, SplitDialog | ТЗ в чате | ✅ готово (см. Журнал) |
 | 88 | crm-core | Таблица клиентов: колонки с заголовками, ширина и порядок перетаскиванием, видимость, серверная сортировка, вид в localStorage | `docs/tasks/88-crm-core-clients-table.md` | ✅ готово (aff16fa) |
@@ -153,7 +154,8 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
-| 24.11.2026 | Claude Code | 90 Cross доработки | pending | фаза вручную, дубли, список планов по аппарату, вид/номер аппарата, DAILY_LIMIT |
+| 24.11.2026 | Claude Code | 90 (сетка) Одна прокрутка, PX_PER_MIN, имена аппаратов, Lucide-кнопки, mobile snap: `PX_PER_MIN=1.9`, `gridWrap: overflow:visible`, `blocksWrap` = единый scroll-контейнер, `.sched-scroll` в index.css, `blockHdr` h=32, `cellHdr` h=26 sticky top=32, «Время», колонки «VacuActiv 1», CalendarPlus/SlidersHorizontal, кнопка «+» всегда, snap на mobile/tablet. | pending | build ✅. Нужна проверка на проде. |
+| 24.11.2026 | Claude Code | 90 Cross доработки | cda6471 | фаза вручную, дубли, список планов по аппарату, вид/номер аппарата, DAILY_LIMIT |
 | 24.11.2026 | Claude | 89b Пара броней + ограничение по дням/времени: новый `lib/planRestriction.ts`; POST /status — only_this + booking_ids[]; PUT /labels — group-wide; POST /move — умные ошибки PLAN_WRONG_DAY/TIME; suggest фильтрует по allowed_weekdays/time_from/time_to; SettingsPage форма «Когда действует» (7 кнопок дней, время, пресеты); показ ограничения в Касса/Клиенты/Расписание (форма записи — серые планы с причиной); ClientOption + ClientPlan + Plan + крючок only_this в деталях брони. | см. хэш | build ✅. Нужна проверка на проде. |
 | 24.11.2026 | Claude | 89 Cross-абонементы: `planItemLabel.ts` (itemLabel), SettingsPage (Cross UI + pool grouping), crm.ts (validateItems async, pool rows, split endpoint), KassaPage (itemLabel + planSearch), SchedulePage (matchItem pool), ClientsPage SplitDialog (Cross toggle), .gitignore (screenshot-*.png, .playwright-mcp/) | см. хэш | build ✅. Проверить на проде: создать Cross-абонемент, купить клиенту, записать на аппарат пула, сделать SplitDialog с Cross. |
 | 24.11.2026 | Claude | 87.3+ crm-core: фикс `DeviceType.is_active` — поле не существует в `crm_device_types`, фильтр убран → VacuActiv/InfraShape поля теперь отображаются в редакторе «Важное». | 5252c3f | build ✅. Проверено на проде: поля появились, сохранение работает. |

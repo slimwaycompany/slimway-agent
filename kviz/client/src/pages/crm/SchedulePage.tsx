@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { CalendarPlus, SlidersHorizontal } from 'lucide-react';
 import { PermContext, usePerm } from '../../lib/permContext';
 import { toast } from '../../lib/toast';
 import { showConfirm } from '../../lib/confirm';
@@ -52,12 +53,12 @@ function bookingSlotTime(startsAt: string): string {
   const d = new Date(new Date(startsAt).getTime() + 5 * 3600_000);
   return pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes());
 }
-function nowLineOffset(dayStart: string, step: number, rowH: number): number | null {
+function nowLineOffset(dayStart: string): number | null {
   const d = new Date(Date.now() + 5 * 3600_000);
   const nowMins = d.getUTCHours() * 60 + d.getUTCMinutes();
   const startMins = strToMins(dayStart);
   if (nowMins < startMins) return null;
-  return ((nowMins - startMins) / step) * rowH;
+  return (nowMins - startMins) * PX_PER_MIN;
 }
 function labelBg(labels: BookingLabel[]): string | null {
   return [...labels].sort((a, b) => a.sort - b.sort)[0]?.color ?? null;
@@ -92,11 +93,11 @@ const STATUS_RU: Record<string, string> = { active: 'активен', not_activa
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const ROW_H = 64;    // px per slot row
-const TIME_W = 44;   // px for time column
-const DEV_W = 96;    // min px per device column
-const HDR_H = 36;    // px for column header row
-const BLK_H = 37;    // px for block header (sticky offset for column headers)
+const PX_PER_MIN = 1.9;  // unified px/min scale — 40 min ≈ 76 px, 30 min ≈ 57 px
+const TIME_W = 44;        // px for time column
+const DEV_W = 96;         // min px per device column
+const HDR_H = 26;         // px for column header row
+const BLK_H = 32;         // px for block title row (sticky offset for column headers)
 
 // ── LabelBadge ───────────────────────────────────────────────────────────────
 
@@ -358,7 +359,7 @@ function BookingFormPanel({
           {(dayData.blocks.find(b => b.type_code === deviceTypeCode)?.devices ?? [])
             .filter(d => d.status === 'working')
             .map(d => (
-              <option key={d.id} value={d.id}>{dtNameMap[deviceTypeCode] ?? deviceTypeCode} №{d.number}</option>
+              <option key={d.id} value={d.id}>{dtNameMap[deviceTypeCode] ?? deviceTypeCode} {d.number}</option>
             ))}
         </select>
         {/* Аппарат завершающей фазы */}
@@ -702,7 +703,7 @@ export default function SchedulePage() {
 
       {/* Blocks */}
       {dayData && dayData.is_open !== false && (
-        <div className="sched-blocks" style={SS.blocksWrap}>
+        <div className="sched-scroll sched-blocks" style={SS.blocksWrap}>
           {dayData.blocks.map(block => {
             const cfg = blockCfg[block.type_code] || { showCancelled: false, showRepair: false };
             const slots = getSlots(dayData.day_start, dayData.day_end, block.grid_step_minutes);
@@ -711,20 +712,28 @@ export default function SchedulePage() {
               b.device_type_code === block.type_code &&
               (cfg.showCancelled || !['cancelled', 'late_cancel'].includes(b.status))
             );
-            const nowTop = date === today ? nowLineOffset(dayData.day_start, block.grid_step_minutes, ROW_H) : null;
+            const rowH = block.grid_step_minutes * PX_PER_MIN;
+            const nowTop = date === today ? nowLineOffset(dayData.day_start) : null;
             void nowTick; // trigger re-render for time line
 
             return (
               <div key={block.type_code} className="sched-block" style={{ ...SS.block, flex: `${visDevices.length} 1 0`, minWidth: TIME_W + visDevices.length * DEV_W }}>
                 {/* Header */}
                 <div style={SS.blockHdr}>
-                  <span style={SS.blockTitle}>{block.name.toUpperCase()}</span>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {canBook && !isPast && (
-                      <button style={SS.hdrBtn} title="Новая запись" onClick={e => { e.stopPropagation(); setFormCtx({ type_code: block.type_code }); }}>📅+</button>
-                    )}
+                  <span style={{ ...SS.blockTitle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{block.name.toUpperCase()}</span>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                    <button
+                      style={{ ...SS.hdrBtn, opacity: (!canBook || isPast) ? 0.4 : 1, cursor: (!canBook || isPast) ? 'default' : 'pointer' }}
+                      title={!canBook ? 'Нет права записи' : isPast ? 'Запись на прошедший день недоступна' : 'Новая запись'}
+                      disabled={!canBook || isPast}
+                      onClick={e => { e.stopPropagation(); if (canBook && !isPast) setFormCtx({ type_code: block.type_code }); }}
+                    >
+                      <CalendarPlus size={14} />
+                    </button>
                     <div style={{ position: 'relative' }}>
-                      <button style={SS.hdrBtn} title="Настройки блока" onClick={e => { e.stopPropagation(); setCfgOpen(cfgOpen === block.type_code ? null : block.type_code); }}>⚙</button>
+                      <button style={SS.hdrBtn} title="Настройки блока" onClick={e => { e.stopPropagation(); setCfgOpen(cfgOpen === block.type_code ? null : block.type_code); }}>
+                        <SlidersHorizontal size={14} />
+                      </button>
                       {cfgOpen === block.type_code && (
                         <div style={SS.popover} onClick={e => e.stopPropagation()}>
                           <label style={SS.checkLabel}>
@@ -738,7 +747,7 @@ export default function SchedulePage() {
                         </div>
                       )}
                     </div>
-                    <button style={{ ...SS.hdrBtn, background: '#ef4444', color: '#fff' }} title="Список клиентов" onClick={e => { e.stopPropagation(); setSmsBlock(block.type_code); }}>SMS</button>
+                    <button style={{ ...SS.hdrBtn, background: '#ef4444', color: '#fff', fontWeight: 700 }} title="Список клиентов" onClick={e => { e.stopPropagation(); setSmsBlock(block.type_code); }}>SMS</button>
                   </div>
                 </div>
 
@@ -751,21 +760,26 @@ export default function SchedulePage() {
                     position: 'relative',
                   }}>
                     {/* Column headers */}
-                    <div style={{ ...SS.cell, ...SS.cellHdr, position: 'sticky', left: 0, zIndex: 3 }}>Час</div>
+                    <div style={{ ...SS.cell, ...SS.cellHdr, position: 'sticky', left: 0, zIndex: 3 }}>Время</div>
                     {visDevices.map(dev => (
                       <div key={dev.id} style={{
                         ...SS.cell, ...SS.cellHdr,
                         background: dev.status !== 'working' ? 'var(--surface-muted,#f1f5f9)' : 'var(--surface-2)',
                         color: dev.status !== 'working' ? 'var(--text-3)' : 'var(--text)',
+                        flexDirection: 'column', gap: 1,
                       }}>
-                        {dev.status !== 'working' ? 'Ремонт' : <div>{block.name}<br /><span style={{ fontSize: 9, fontWeight: 400 }}>№{dev.number}</span></div>}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
+                          title={`${block.name} ${dev.number}`}>
+                          {block.name} {dev.number}
+                        </span>
+                        {dev.status !== 'working' && <span style={{ fontSize: 9, fontWeight: 400 }}>Ремонт</span>}
                       </div>
                     ))}
 
                     {/* Data rows */}
-                    {slots.map((slotTime, rowIdx) => (
+                    {slots.map((slotTime) => (
                       <>
-                        <div key={slotTime + '_t'} style={{ ...SS.cell, ...SS.cellTime }}>{slotTime}</div>
+                        <div key={slotTime + '_t'} style={{ ...SS.cell, height: rowH, ...SS.cellTime }}>{slotTime}</div>
                         {visDevices.map(dev => {
                           const bk = bkgs.find(b => b.device_id === dev.id && bookingSlotTime(b.starts_at) === slotTime);
                           const isRepair = dev.status !== 'working';
@@ -773,6 +787,7 @@ export default function SchedulePage() {
                             <div key={dev.id + '_' + slotTime}
                               style={{
                                 ...SS.cell,
+                                height: rowH,
                                 background: isRepair ? 'var(--surface-muted,#f1f5f9)' : undefined,
                                 cursor: !isRepair && canBook && !isPast ? 'pointer' : 'default',
                                 padding: bk ? 2 : 0,
@@ -831,16 +846,16 @@ const SS: Record<string, React.CSSProperties> = {
   navBtnActive: { background: 'var(--primary,#02BDB6)', color: '#fff', borderColor: 'var(--primary,#02BDB6)' },
   dateInput: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, padding: '4px 8px', fontSize: 13, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)' },
   dateLabel: { fontSize: 14, fontWeight: 600, color: 'var(--text,#1a202c)' },
-  blocksWrap: { flex: 1, display: 'flex', gap: 8, padding: 12, overflowX: 'auto', overflowY: 'auto' },
+  blocksWrap: { flex: 1, display: 'flex', gap: 8, padding: 12, overflowX: 'auto', overflowY: 'auto', alignItems: 'flex-start' },
   block: { border: '1px solid var(--border,#e2e8f0)', borderRadius: 10, background: 'var(--surface,#fff)', display: 'flex', flexDirection: 'column' },
-  blockHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderBottom: '1px solid var(--border,#e2e8f0)', background: 'var(--surface-2,#f8fafc)', position: 'sticky', top: 0, zIndex: 4, borderRadius: '10px 10px 0 0' },
+  blockHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px', height: BLK_H, borderBottom: '1px solid var(--border,#e2e8f0)', background: 'var(--surface-2,#f8fafc)', position: 'sticky', top: 0, zIndex: 4, borderRadius: '10px 10px 0 0', boxSizing: 'border-box', flexShrink: 0 },
   blockTitle: { fontWeight: 800, fontSize: 12, color: 'var(--text,#1a202c)', letterSpacing: 0.5 },
-  hdrBtn: { padding: '0 6px', height: 22, border: '1px solid var(--border,#e2e8f0)', borderRadius: 5, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 10, lineHeight: '22px' },
+  hdrBtn: { padding: '0 6px', height: 24, border: '1px solid var(--border,#e2e8f0)', borderRadius: 5, background: 'var(--surface,#fff)', cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 },
   popover: { position: 'absolute', right: 0, top: '100%', zIndex: 20, background: 'var(--surface,#fff)', border: '1px solid var(--border,#e2e8f0)', borderRadius: 8, padding: 10, minWidth: 200, boxShadow: '0 4px 16px rgba(0,0,0,.1)' },
   checkLabel: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, cursor: 'pointer', marginBottom: 6 },
-  gridWrap: { overflowX: 'auto', flex: 1 },
-  cell: { height: ROW_H, borderBottom: '1px solid var(--border,#e2e8f0)', borderRight: '1px solid var(--border,#e2e8f0)', background: 'var(--surface,#fff)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', padding: 0, overflow: 'hidden' },
-  cellHdr: { height: HDR_H, background: 'var(--surface-2,#f8fafc)', fontWeight: 700, fontSize: 11, position: 'sticky', top: BLK_H, zIndex: 2 },
+  gridWrap: { overflow: 'visible', flex: 1 },
+  cell: { borderBottom: '1px solid var(--border,#e2e8f0)', borderRight: '1px solid var(--border,#e2e8f0)', background: 'var(--surface,#fff)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', padding: 0, overflow: 'hidden' },
+  cellHdr: { height: HDR_H, background: 'var(--surface-2,#f8fafc)', fontWeight: 700, fontSize: 10, position: 'sticky', top: BLK_H, zIndex: 2 },
   cellTime: { fontSize: 10, color: 'var(--text-2,#64748b)', background: 'var(--surface,#fff)', position: 'sticky', left: 0, zIndex: 1, fontWeight: 600 },
   loading: { padding: 40, textAlign: 'center', color: 'var(--text-3,#94a3b8)', fontSize: 14 },
   // Form panel
