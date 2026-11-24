@@ -48,7 +48,10 @@
 - `SettingsPage`: sidebar скрывается при выборе раздела (`settings-sidebar--hidden`), кнопка `← Назад` в заголовке контента.
 
 ## Сделано
-### 24.11.2026 · (task 87.3) · Карточка клиента: Важное без important_note, InBody без tbw, переход через router
+### 24.11.2026 · 5252c3f · Карточка клиента: DeviceType.is_active фильтр убран (поля VacuActiv/InfraShape не показывались)
+- `ClientsPage.tsx`: интерфейс `DeviceType` — убрано поле `is_active` (в БД нет); фильтр `.filter(x => x.is_active)` удалён → теперь все типы аппаратов отображаются в редакторе «Важное».
+
+### 24.11.2026 · 3c4fcc9 · Карточка клиента: Важное без important_note, InBody без tbw, переход через router
 - **Важное (важное/device_settings):** `important_note` убран из редактора и просмотра (данные в БД не тронуты). Вместо вертикального списка аппаратов — одна строка из двух пар: VacuActiv и InfraShape бок о бок (`flex-wrap: wrap`, на телефоне переносятся). Только `contraindications` и `skirt_size` остались.
 - **InBody — `tbw` → `whr,data`:** в `src/http/crm.ts` summary-запрос `inbody_tests` убрана несуществующая колонка `tbw`; добавлены `whr,data`. Добавлен `console.error` при ошибке запроса.
 - **Переход на отчёт через router:** `ClientsPage.tsx` — `<a href>` и `window.location.href` заменены на `navigate('/reports/client/:id', { state: { fromCrmClientId } })`. Добавлен `useNavigate` в импорт и в `ClientPopup`.
