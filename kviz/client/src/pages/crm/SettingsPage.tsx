@@ -306,6 +306,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
   const [showArchived, setShowArchived] = useState(false);
   const [err, setErr]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [crossPhase, setCrossPhase] = useState('');
   const [weekdays, setWeekdays] = useState<Set<number>>(new Set([1,2,3,4,5,6,7]));
   const [timeFrom, setTimeFrom] = useState('');
   const [timeTo, setTimeTo]     = useState('');
@@ -327,23 +328,27 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
     if (plan === 'new') {
       setLocalItems([]);
       setCrossSessions(16);
+      setCrossPhase('');
       setWeekdays(new Set([1,2,3,4,5,6,7]));
       setTimeFrom('');
       setTimeTo('');
     } else {
       const expanded: LocalItem[] = [];
       let cs = 16;
+      let csPhase = '';
       for (const it of (plan.items || [])) {
         if (it.device_type_codes && it.device_type_codes.length > 0) {
           cs = it.sessions;
+          csPhase = it.phase ?? '';
           for (const code of it.device_type_codes) {
-            expanded.push({ device_type_code: code, phase: 'active', sessions: it.sessions, is_cross: true, is_unlimited: it.is_unlimited ?? false, daily_limit: it.daily_limit ?? null });
+            expanded.push({ device_type_code: code, phase: '', sessions: it.sessions, is_cross: true, is_unlimited: it.is_unlimited ?? false, daily_limit: it.daily_limit ?? null });
           }
         } else {
-          expanded.push({ device_type_code: it.device_type_code ?? '', phase: it.phase ?? 'active', sessions: it.sessions, is_cross: false, is_unlimited: it.is_unlimited ?? false, daily_limit: it.daily_limit ?? null });
+          expanded.push({ device_type_code: it.device_type_code ?? '', phase: it.phase ?? '', sessions: it.sessions, is_cross: false, is_unlimited: it.is_unlimited ?? false, daily_limit: it.daily_limit ?? null });
         }
       }
       setCrossSessions(cs);
+      setCrossPhase(csPhase);
       setLocalItems(expanded);
       setWeekdays(plan.allowed_weekdays?.length ? new Set(plan.allowed_weekdays) : new Set([1,2,3,4,5,6,7]));
       setTimeFrom(plan.time_from?.slice(0,5) ?? '');
@@ -360,15 +365,13 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
   function addItem() {
     const firstType = types[0];
     if (!firstType) return;
-    setLocalItems(prev => [...prev, { device_type_code: firstType.code, phase: defaultPhaseForType(firstType.code), sessions: 12, is_cross: false, is_unlimited: false, daily_limit: null }]);
+    setLocalItems(prev => [...prev, { device_type_code: firstType.code, phase: '', sessions: 12, is_cross: false, is_unlimited: false, daily_limit: null }]);
   }
 
   function toggleCross(i: number) {
     setLocalItems(prev => {
       const next = [...prev];
-      const it = { ...next[i], is_cross: !next[i].is_cross };
-      if (it.is_cross) it.phase = 'active';
-      next[i] = it;
+      next[i] = { ...next[i], is_cross: !next[i].is_cross };
       return next;
     });
   }
@@ -376,11 +379,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
   function updateItem(i: number, field: string, value: string | number) {
     setLocalItems(prev => {
       const next = [...prev];
-      if (field === 'device_type_code') {
-        next[i] = { ...next[i], device_type_code: String(value), phase: next[i].is_cross ? 'active' : defaultPhaseForType(String(value)) };
-      } else {
-        next[i] = { ...next[i], [field]: value };
-      }
+      next[i] = { ...next[i], [field]: value };
       return next;
     });
   }
@@ -398,6 +397,10 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
 
     const crossIdxs = localItems.map((_, i) => i).filter(i => localItems[i].is_cross);
     if (crossIdxs.length === 1) { setErr('В пуле Cross минимум 2 аппарата'); setLoading(false); return; }
+    if (crossIdxs.length >= 2 && !crossPhase) { setErr('Укажите фазу пула Cross'); setLoading(false); return; }
+
+    const hasEmptyPhase = localItems.some(it => !it.is_cross && !it.phase);
+    if (hasEmptyPhase) { setErr('Укажите фазу для каждой позиции'); setLoading(false); return; }
 
     const crossCodes = crossIdxs.map(i => localItems[i].device_type_code);
     const regularCodes = localItems.filter(it => !it.is_cross).map(it => it.device_type_code);
@@ -408,7 +411,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
 
     const poolItem = crossIdxs.length >= 2 ? [{
       device_type_code: null, device_type_codes: crossCodes,
-      phase: 'active', sessions: crossSessions, is_unlimited: false, daily_limit: null,
+      phase: crossPhase, sessions: crossSessions, is_unlimited: false, daily_limit: null,
     }] : [];
     const regularItems = localItems.filter(it => !it.is_cross).map(it => ({
       device_type_code: it.device_type_code, device_type_codes: null,
@@ -555,19 +558,23 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
                       <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer' }}>
                         <input type="checkbox" checked onChange={() => toggleCross(i)} /> Cross
                       </label>
-                      <select style={{ ...S.inp, flex: 1, padding: '7px 8px' }} value={localItems[i].device_type_code}
+                      <select style={{ ...S.inp, flex: 1, minWidth: 0, padding: '7px 8px' }} value={localItems[i].device_type_code}
                         onChange={e => updateItem(i, 'device_type_code', e.target.value)}>
                         {types.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
                       </select>
-                      <span style={{ fontSize: 11, color: 'var(--primary)', padding: '0 4px', whiteSpace: 'nowrap' }}>Активная</span>
                       <button type="button" style={S.delBtn} onClick={() => removeItem(i)}>✕</button>
                     </div>
                   ))}
                   {crossIdxs.length >= 2 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>Сеансов в пуле:</span>
                       <input style={{ ...S.inp, width: 80, padding: '5px 8px' }} type="number" min={1} value={crossSessions}
                         onChange={e => setCrossSessions(Number(e.target.value))} />
+                      <select style={{ ...S.inp, width: 'auto', padding: '5px 8px' }} value={crossPhase} onChange={e => setCrossPhase(e.target.value)}>
+                        <option value="">— фаза —</option>
+                        <option value="active">Активная</option>
+                        <option value="finishing">Завершающая</option>
+                      </select>
                     </div>
                   )}
                   {crossIdxs.length === 1 && (
@@ -582,13 +589,14 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
                   <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer' }}>
                     <input type="checkbox" checked={false} onChange={() => toggleCross(i)} /> Cross
                   </label>
-                  <select style={{ ...S.inp, flex: 1, padding: '7px 8px' }} value={localItems[i].device_type_code}
+                  <select style={{ ...S.inp, flex: 1, minWidth: 0, padding: '7px 8px' }} value={localItems[i].device_type_code}
                     onChange={e => updateItem(i, 'device_type_code', e.target.value)}>
                     {types.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
                   </select>
                   {!localItems[i].is_unlimited && (
-                    <select style={{ ...S.inp, padding: '7px 8px', minWidth: 120 }} value={localItems[i].phase}
+                    <select style={{ ...S.inp, width: 'auto', padding: '7px 8px' }} value={localItems[i].phase}
                       onChange={e => updateItem(i, 'phase', e.target.value)}>
+                      <option value="">— фаза —</option>
                       <option value="active">Активная</option>
                       <option value="finishing">Завершающая</option>
                     </select>

@@ -88,6 +88,7 @@ const STATUS_LABEL: Record<string, string> = {
   booked: 'Записан', confirmed: 'Подтверждено', attended: 'Пришёл',
   no_show: 'Не пришёл', late_cancel: 'Поздняя отмена', cancelled: 'Отменена',
 };
+const STATUS_RU: Record<string, string> = { active: 'активен', not_activated: 'не активирован' };
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -156,7 +157,9 @@ function BookingFormPanel({
   const [planId, setPlanId]       = useState('');
   const [serviceId, setServiceId] = useState('');
   const [slot, setSlot]           = useState(ctx.slot ?? '');
+  const [deviceTypeCode, setDeviceTypeCode] = useState(ctx.type_code);
   const [device, setDevice]       = useState(ctx.device_id ?? '');
+  const [finDeviceTypeCode, setFinDeviceTypeCode] = useState('');
   const [note, setNote]           = useState('');
   const [trainer, setTrainer]     = useState(displayName);
   const [users, setUsers]         = useState<{ display_name: string }[]>([]);
@@ -171,10 +174,21 @@ function BookingFormPanel({
   useEffect(() => { fetch('/kviz/api/crm/users', { credentials: 'include' }).then(r => r.json()).then(setUsers).catch(() => {}); }, []);
 
   useEffect(() => {
-    if (!selClient) { setOptions(null); return; }
+    if (!selClient) { setOptions(null); setPlanId(''); return; }
     apiJ('GET', `/kviz/api/crm/schedule/client-options?client_id=${selClient.id}`)
       .then(({ ok, data }) => { if (ok) setOptions(data as typeof options); });
   }, [selClient]);
+
+  useEffect(() => {
+    if (!options) return;
+    const mp = options.plans.filter(p =>
+      p.items.some(it =>
+        it.device_type_code === ctx.type_code ||
+        (Array.isArray(it.device_type_codes) && it.device_type_codes.includes(ctx.type_code))
+      )
+    );
+    if (mp.length === 1) setPlanId(mp[0].id);
+  }, [options]);
 
   function searchClients(q: string) {
     if (qRef.current) clearTimeout(qRef.current);
@@ -188,9 +202,20 @@ function BookingFormPanel({
   const dtNameMap = Object.fromEntries(dayData.blocks.map(b => [b.type_code, b.name]));
   const selPlan = options?.plans.find(p => p.id === planId);
   const matchItem = selPlan?.items.find(it =>
-    it.device_type_code === ctx.type_code ||
-    (Array.isArray(it.device_type_codes) && it.device_type_codes.includes(ctx.type_code)));
-  const hasFinishing = selPlan?.items.some(it => !it.device_type_codes && it.phase === 'finishing' && (it.sessions_left ?? 0) > 0);
+    it.device_type_code === deviceTypeCode ||
+    (Array.isArray(it.device_type_codes) && it.device_type_codes.includes(deviceTypeCode)));
+  const isCrossPool = !!matchItem && Array.isArray(matchItem.device_type_codes) && matchItem.device_type_codes.length > 0;
+  const poolTypes = isCrossPool ? (matchItem?.device_type_codes ?? []) as string[] : [];
+  const finishingItem = selPlan?.items.find(it => it.phase === 'finishing' && ((it.sessions_left ?? 0) > 0 || it.is_unlimited));
+  const hasFinishing = !!finishingItem;
+  const hasFinishingPool = hasFinishing && Array.isArray(finishingItem?.device_type_codes) && (finishingItem?.device_type_codes?.length ?? 0) > 0;
+  const finPoolTypes = hasFinishingPool ? (finishingItem!.device_type_codes as string[]) : [];
+  const matchingPlans = (options?.plans ?? []).filter(p =>
+    p.items.some(it =>
+      it.device_type_code === ctx.type_code ||
+      (Array.isArray(it.device_type_codes) && it.device_type_codes.includes(ctx.type_code))
+    )
+  );
 
   async function submit() {
     if (!selClient) { toast.error('Выберите клиента'); return; }
@@ -201,7 +226,7 @@ function BookingFormPanel({
     const payload: Record<string, unknown> = {
       client_id: selClient.id,
       kind: mode,
-      device_type_code: ctx.type_code,
+      device_type_code: deviceTypeCode,
       date,
       time: slot,
       with_finishing: withFin,
@@ -209,6 +234,8 @@ function BookingFormPanel({
       trainer: trainer || null,
     };
     if (device) payload.device_id = device;
+    if (matchItem) payload.client_plan_item_id = matchItem.id;
+    if (finDeviceTypeCode) payload.finishing_device_type_code = finDeviceTypeCode;
     if (mode === 'plan') { payload.client_plan_id = planId; }
     else { payload.plan_id = serviceId; }
     const { ok, data } = await apiJ('POST', '/kviz/api/crm/schedule/bookings', payload);
@@ -262,10 +289,16 @@ function BookingFormPanel({
         {/* Plan selection */}
         {mode === 'plan' && options && (
           <>
-            {options.plans.length === 0
-              ? <div style={SS.warn}>Нет активных абонементов</div>
+            {matchingPlans.length === 0
+              ? <div style={SS.warn}>Нет абонемента с этим аппаратом. <a href="#" onClick={(e) => { e.preventDefault(); window.location.href = '/kviz/crm/cashier'; }}>Открыть Кассу</a></div>
               : <div style={{ marginBottom: 8, maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
-                  {options.plans.map(p => {
+                  {matchingPlans.map(p => {
+                    const pItem = p.items.find(it =>
+                      it.device_type_code === ctx.type_code ||
+                      (Array.isArray(it.device_type_codes) && it.device_type_codes.includes(ctx.type_code)));
+                    const sessInfo = pItem
+                      ? (pItem.is_unlimited ? '∞' : `${pItem.sessions_left ?? '?'} из ${pItem.sessions_total ?? '?'}`)
+                      : '';
                     const reason = planMatchesSlot(p, date, slot);
                     const isSel  = planId === p.id;
                     return (
@@ -273,24 +306,17 @@ function BookingFormPanel({
                         style={{ padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid var(--border)',
                           background: isSel ? 'var(--primary-soft)' : 'transparent',
                           opacity: reason ? 0.5 : 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: isSel ? 600 : 400 }}>{p.crm_plans?.name} · {p.status}</div>
+                        <div style={{ fontSize: 13, fontWeight: isSel ? 600 : 400 }}>
+                          {p.crm_plans?.name} · {STATUS_RU[p.status] ?? p.status} · {sessInfo}
+                        </div>
                         {reason && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{reason}</div>}
                       </div>
                     );
                   })}
                 </div>
             }
-            {slot && options.plans.length > 0 && options.plans.every(p => !!planMatchesSlot(p, date, slot)) && (
+            {slot && matchingPlans.length > 0 && matchingPlans.every(p => !!planMatchesSlot(p, date, slot)) && (
               <div style={SS.warn}>На это время у клиента нет подходящего абонемента</div>
-            )}
-            {selPlan && !matchItem && (
-              <div style={SS.warn}>Нет абонемента с этим аппаратом. <a href="#" onClick={(e) => { e.preventDefault(); window.location.href = '/kviz/crm/cashier'; }}>Открыть Кассу</a></div>
-            )}
-            {selPlan && matchItem && (
-              <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
-                {itemLabel(matchItem, dtNameMap)}
-                {!matchItem.is_unlimited && matchItem.booked_ahead > 0 && ` (${matchItem.booked_ahead} забр.)`}
-              </div>
             )}
             {hasFinishing && (
               <label style={SS.checkLabel}>
@@ -314,14 +340,39 @@ function BookingFormPanel({
           {slots.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
-        {/* Device */}
+        {/* Вид аппарата (Cross pool) */}
+        {mode === 'plan' && isCrossPool && (
+          <>
+            <label style={SS.lbl}>Вид аппарата</label>
+            <select style={SS.inp} value={deviceTypeCode} onChange={e => { setDeviceTypeCode(e.target.value); setDevice(''); }}>
+              {poolTypes.map(tc => (
+                <option key={tc} value={tc}>{dtNameMap[tc] ?? tc}</option>
+              ))}
+            </select>
+          </>
+        )}
+        {/* Аппарат */}
         <label style={SS.lbl}>Аппарат (необязательно)</label>
         <select style={SS.inp} value={device} onChange={e => setDevice(e.target.value)}>
           <option value="">Автоматически</option>
-          {(block?.devices ?? []).filter(d => d.status === 'working').map(d => (
-            <option key={d.id} value={d.id}>{d.number}. Аппарат</option>
-          ))}
+          {(dayData.blocks.find(b => b.type_code === deviceTypeCode)?.devices ?? [])
+            .filter(d => d.status === 'working')
+            .map(d => (
+              <option key={d.id} value={d.id}>{dtNameMap[deviceTypeCode] ?? deviceTypeCode} №{d.number}</option>
+            ))}
         </select>
+        {/* Аппарат завершающей фазы */}
+        {mode === 'plan' && hasFinishingPool && (
+          <>
+            <label style={SS.lbl}>Аппарат завершающей фазы</label>
+            <select style={SS.inp} value={finDeviceTypeCode} onChange={e => setFinDeviceTypeCode(e.target.value)}>
+              <option value="">Автоматически</option>
+              {finPoolTypes.map(tc => (
+                <option key={tc} value={tc}>{dtNameMap[tc] ?? tc}</option>
+              ))}
+            </select>
+          </>
+        )}
 
         {/* Trainer + Note */}
         <label style={SS.lbl}>Тренер</label>
@@ -707,7 +758,7 @@ export default function SchedulePage() {
                         background: dev.status !== 'working' ? 'var(--surface-muted,#f1f5f9)' : 'var(--surface-2)',
                         color: dev.status !== 'working' ? 'var(--text-3)' : 'var(--text)',
                       }}>
-                        {dev.status !== 'working' ? 'Ремонт' : <div>{dev.number}.<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Аппарат</span></div>}
+                        {dev.status !== 'working' ? 'Ремонт' : <div>{block.name}<br /><span style={{ fontSize: 9, fontWeight: 400 }}>№{dev.number}</span></div>}
                       </div>
                     ))}
 

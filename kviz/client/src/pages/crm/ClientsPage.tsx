@@ -497,12 +497,12 @@ function FreezeDialog({ planId, maxDays, onDone, onClose }: {
 
 // ── SplitDialog ────────────────────────────────────────────────────────────────
 
-type SplitRow = { is_cross: boolean; device_type_code: string; device_type_codes: string[]; sessions: number };
+type SplitRow = { is_cross: boolean; device_type_code: string; device_type_codes: string[]; sessions: number; phase: string };
 
 function SplitDialog({ plan, onDone, onClose }: { plan: ClientPlan; onDone: () => void; onClose: () => void }) {
   const [deviceTypes, setDeviceTypes] = useState<{ code: string; name: string }[]>([]);
   const [items, setItems] = useState<SplitRow[]>([
-    { is_cross: false, device_type_code: '', device_type_codes: [], sessions: plan.sessions_left ?? 0 }
+    { is_cross: false, device_type_code: '', device_type_codes: [], sessions: plan.sessions_left ?? 0, phase: '' }
   ]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -531,12 +531,20 @@ function SplitDialog({ plan, onDone, onClose }: { plan: ClientPlan; onDone: () =
     for (const it of items) {
       if (it.is_cross && it.device_type_codes.length < 2) { setErr('Пул Cross должен содержать ≥ 2 аппарата'); return; }
       if (!it.is_cross && !it.device_type_code) { setErr('Выберите тип аппарата для каждой строки'); return; }
+      if (!it.phase) { setErr('Укажите фазу для каждой строки'); return; }
     }
     if (total !== left) { setErr(`Сумма сеансов (${total}) должна равняться остатку (${left})`); return; }
+    const allCodes = items.flatMap(it => it.is_cross ? it.device_type_codes : [it.device_type_code]);
+    const seen = new Set<string>();
+    for (const c of allCodes) {
+      if (!c) continue;
+      if (seen.has(c)) { setErr(`Аппарат встречается несколько раз: ${c}`); return; }
+      seen.add(c);
+    }
     setLoading(true); setErr('');
     const payload = items.map(it => it.is_cross
-      ? { is_pool: true, device_type_codes: it.device_type_codes, sessions: it.sessions }
-      : { device_type_code: it.device_type_code, sessions: it.sessions }
+      ? { is_pool: true, device_type_codes: it.device_type_codes, sessions: it.sessions, phase: it.phase }
+      : { device_type_code: it.device_type_code, sessions: it.sessions, phase: it.phase }
     );
     const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${plan.id}/split`, { items: payload });
     if (!ok) { setErr(data.error || 'Ошибка'); setLoading(false); return; }
@@ -562,11 +570,19 @@ function SplitDialog({ plan, onDone, onClose }: { plan: ClientPlan; onDone: () =
                 Cross
               </label>
               {!it.is_cross && (
-                <select value={it.device_type_code} onChange={e => upd(idx, { device_type_code: e.target.value })}
-                  style={{ ...inp, flex: 1 }}>
-                  <option value="">— аппарат —</option>
-                  {deviceTypes.map(dt => <option key={dt.code} value={dt.code}>{dt.name ?? dt.code}</option>)}
-                </select>
+                <>
+                  <select value={it.device_type_code} onChange={e => upd(idx, { device_type_code: e.target.value })}
+                    style={{ ...inp, flex: 1 }}>
+                    <option value="">— аппарат —</option>
+                    {deviceTypes.map(dt => <option key={dt.code} value={dt.code}>{dt.name ?? dt.code}</option>)}
+                  </select>
+                  <select value={it.phase} onChange={e => upd(idx, { phase: e.target.value })}
+                    style={{ ...inp, width: 140 }}>
+                    <option value="">— фаза —</option>
+                    <option value="active">Активная</option>
+                    <option value="finishing">Завершающая</option>
+                  </select>
+                </>
               )}
               <input type="number" min={1} value={it.sessions} onChange={e => upd(idx, { sessions: Number(e.target.value) })}
                 style={{ ...inp, width: 72 }} />
@@ -574,15 +590,25 @@ function SplitDialog({ plan, onDone, onClose }: { plan: ClientPlan; onDone: () =
                 onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}>✕</button>}
             </div>
             {it.is_cross && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {deviceTypes.map(dt => (
-                  <label key={dt.code} style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, cursor: 'pointer', background: 'var(--surface-2)', padding: '3px 8px', borderRadius: 6 }}>
-                    <input type="checkbox" checked={it.device_type_codes.includes(dt.code)}
-                      onChange={e => toggleCrossCode(idx, dt.code, e.target.checked)} />
-                    {dt.name ?? dt.code}
-                  </label>
-                ))}
-              </div>
+              <>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {deviceTypes.map(dt => (
+                    <label key={dt.code} style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, cursor: 'pointer', background: 'var(--surface-2)', padding: '3px 8px', borderRadius: 6 }}>
+                      <input type="checkbox" checked={it.device_type_codes.includes(dt.code)}
+                        onChange={e => toggleCrossCode(idx, dt.code, e.target.checked)} />
+                      {dt.name ?? dt.code}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>Фаза пула:</span>
+                  <select value={it.phase} onChange={e => upd(idx, { phase: e.target.value })} style={{ ...inp, flex: 1 }}>
+                    <option value="">— фаза —</option>
+                    <option value="active">Активная</option>
+                    <option value="finishing">Завершающая</option>
+                  </select>
+                </div>
+              </>
             )}
           </div>
         ))}
@@ -590,7 +616,7 @@ function SplitDialog({ plan, onDone, onClose }: { plan: ClientPlan; onDone: () =
           Итого: {total} / {left}
         </div>
         <button style={{ ...SL.outlineBtn, fontSize: 12, marginBottom: 16 }}
-          onClick={() => setItems(prev => [...prev, { is_cross: false, device_type_code: '', device_type_codes: [], sessions: 0 }])}>+ Добавить строку</button>
+          onClick={() => setItems(prev => [...prev, { is_cross: false, device_type_code: '', device_type_codes: [], sessions: 0, phase: '' }])}>+ Добавить строку</button>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button style={SL.outlineBtn} onClick={onClose}>Отмена</button>
           <button className="cp-btn cp-btn--primary" onClick={submit} disabled={loading}>{loading ? '…' : 'Распределить'}</button>

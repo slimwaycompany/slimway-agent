@@ -585,7 +585,7 @@ export function buildCrmRouter(): Router {
       if (hasCodes) {
         poolCount++;
         if (poolCount > 1) return 'В абонементе допустим только один пул';
-        if (String(it.phase) !== 'active') return 'Фаза пула должна быть active';
+        if (!VALID_PHASES.has(String(it.phase))) return 'Укажите фазу пула Cross';
         for (const c of it.device_type_codes as string[]) allCodes.push(c);
       } else {
         if (!VALID_PHASES.has(String(it.phase))) return 'Укажите фазу для каждой позиции';
@@ -2043,6 +2043,12 @@ export function buildCrmRouter(): Router {
         res.status(400).json({ error: `Сумма (${totalSessions}) должна равняться остатку (${cp.sessions_left})` }); return;
       }
       const allCodes = items.flatMap(i => i.is_pool && i.device_type_codes ? i.device_type_codes : [i.device_type_code as string]);
+      const seen = new Set<string>();
+      for (const c of allCodes) {
+        if (!c) continue;
+        if (seen.has(c)) { res.status(400).json({ error: `Аппарат ${c} встречается несколько раз` }); return; }
+        seen.add(c);
+      }
       const { data: dtypes } = await supabase.from('crm_device_types').select('code').in('code', allCodes);
       const validCodes = new Set((dtypes ?? []).map((d: Record<string,unknown>) => d.code as string));
       for (const code of allCodes) {
@@ -2054,7 +2060,7 @@ export function buildCrmRouter(): Router {
         device_type_codes: i.device_type_codes,
         sessions_total: Number(i.sessions),
         sessions_left: Number(i.sessions),
-        phase: 'active',
+        phase: VALID_PHASES.has(String(i.phase)) ? String(i.phase) : 'active',
       } : {
         client_plan_id: req.params.id,
         device_type_code: i.device_type_code,
@@ -2881,6 +2887,7 @@ export function buildCrmRouter(): Router {
     PLAN_INACTIVE:       'Абонемент закончился или возвращён',
     PLAN_EXPIRES:        'Абонемент закончится раньше этой даты',
     TYPE_NOT_IN_PLAN:    'Этого аппарата нет в абонементе',
+    DAILY_LIMIT:         'Лимит посещений на сегодня исчерпан',
     NO_SESSIONS:         'Сеансы на этот аппарат закончились (с учётом будущих записей)',
     NO_FINISHING_SLOT:   'Нет места на завершающую фазу сразу после активной',
     NOT_FREE_SERVICE:    'Эта услуга не бесплатная',
