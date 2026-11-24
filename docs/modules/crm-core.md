@@ -56,6 +56,12 @@
 - **Дубли аппаратов в составе (task 90, 24.11):** один аппарат не может повторяться ни внутри пула, ни между пулом и обычной строкой. Проверяется и на клиенте (`savePlan`, `SplitDialog`), и на сервере (`validateItems`, `/split`).
 
 ## Сделано
+### 24.11.2026 · task 93 · Автометки клиента — сервер + настройки
+- **`src/core/clientAutoLabels.ts`** (новый): `batchAutoLabelsForDay` / `batchAutoLabelsToday` — 2-раундовый пакетный расчёт; используют `crm_client_auto_labels` как источник определений; InBody через `body_clients → inbody_tests`, замеры через `body_measurements`.
+- **`src/http/crm.ts`**: `GET /kviz/api/crm/clients/auto-labels?ids=...` (до `clients/:id`); `GET /kviz/api/crm/client-auto-labels`; `PATCH /kviz/api/crm/client-auto-labels/:code` (debt заблокирован, параметры валидируются); `writeAudit` на PATCH.
+- **`SettingsPage.tsx`**: раздел «Автометки клиента» в `ClassesSection` — превью-чип, вкл/выкл, цветопикер, inline-поля параметров (days/visits/sessions/kg/per_week/weeks/min_plan_days).
+- **Новые таблицы (SQL выполнен Сергеем)**: `crm_client_auto_labels` (code PK, name, short_name, color, sort, is_active, params jsonb); `crm_client_tag_links` (task 86, уже была); системные этикетки `crm_booking_labels` помечены `is_active=false` (archived).
+
 ### 24.11.2026 · task 90 · Cross доработки: фаза вручную, дубли, форма состава
 - **`SettingsPage.tsx`**: добавлен `crossPhase` state; фаза у каждой обычной строки и у Cross-пула выбирается вручную (empty default «— фаза —», обязательное поле); убрана автоподстановка `defaultPhaseForType`; `addItem` и `updateItem` не меняют фазу автоматически. Выпадающий select аппарата в обычной строке получил `minWidth: 0` (больше не сжимается в стрелку). Дублирование аппаратов проверяется на клиенте перед save.
 - **`src/http/crm.ts`**: `validateItems` принимает любую `VALID_PHASES` для пула (не только `'active'`); добавлен `DAILY_LIMIT` в `SCHEDULE_RPC_ERRORS`; `/split` добавил дубль-проверку и использует `i.phase` для пула (ранее хардкод `'active'`).

@@ -19,6 +19,8 @@ interface DayBlock {
   virtual_devices?: VirtualDevice[];
 }
 interface BookingLabel { id: number; name: string; color: string; sort: number; short_name?: string | null }
+interface AutoLabelData { code: string; name: string; short_name: string; color: string; sort: number }
+interface ClientTagData { id: string; name: string; color: string }
 interface BookingData {
   id: string; group_id: string; booking_date: string;
   starts_at: string; ends_at: string;
@@ -32,6 +34,8 @@ interface BookingData {
   plan_name: string | null;
   sessions_left: number | null; sessions_total: number | null;
   labels: BookingLabel[];
+  auto_labels: AutoLabelData[];
+  client_tags: ClientTagData[];
 }
 interface DayData {
   date: string; day_start: string; day_end: string; now: string;
@@ -76,8 +80,8 @@ function nowLineOffset(dayStart: string): number | null {
   if (nowMins < startMins) return null;
   return (nowMins - startMins) * PX_PER_MIN;
 }
-function labelBg(labels: BookingLabel[]): string | null {
-  return [...labels].sort((a, b) => a.sort - b.sort)[0]?.color ?? null;
+function cardBgColor(b: BookingData): string | null {
+  return b.labels[0]?.color ?? b.auto_labels[0]?.color ?? null;
 }
 function textOnHex(hex: string | null): string {
   if (!hex) return 'var(--text)';
@@ -135,11 +139,22 @@ function LabelBadge({ label, onCard }: { label: BookingLabel; onCard: boolean })
 // ── BookingCard ───────────────────────────────────────────────────────────────
 
 function BookingCard({ b, showTime }: { b: BookingData; showTime?: boolean }) {
-  const bg = labelBg(b.labels);
+  const bg = cardBgColor(b);
   const isRed = ['no_show', 'late_cancel', 'cancelled'].includes(b.status);
   const cardBg = isRed ? '#7f1d1d' : (bg ?? 'var(--surface)');
   const cardFg = isRed ? '#ffffff' : textOnHex(bg);
   const hasColorBg = isRed || !!bg;
+
+  // All chips: booking labels → client tags → auto labels; show max 3, "+N" for overflow
+  const allChips = [
+    ...b.labels.map(l => ({ key: `l${l.id}`, name: l.name, short: l.short_name ?? l.name.slice(0, 4), color: l.color })),
+    ...(b.client_tags || []).map(t => ({ key: `t${t.id}`, name: t.name, short: t.name.slice(0, 2), color: t.color })),
+    ...(b.auto_labels || []).map(a => ({ key: `a${a.code}`, name: a.name, short: a.short_name, color: a.color })),
+  ];
+  const shown = allChips.slice(0, 3);
+  const overflow = allChips.length > 3 ? allChips.length - 3 : 0;
+  const overflowTitle = overflow > 0 ? allChips.slice(3).map(c => c.name).join(', ') : '';
+
   return (
     <div style={{ background: cardBg, borderRadius: 4, padding: '2px 4px', height: '100%', boxSizing: 'border-box', overflow: 'hidden', cursor: 'pointer' }}>
       <div style={{ fontWeight: 700, fontSize: 11, color: cardFg, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.3 }}>
@@ -152,7 +167,22 @@ function BookingCard({ b, showTime }: { b: BookingData; showTime?: boolean }) {
       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginTop: 1, alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 9, fontWeight: 700, color: cardFg, opacity: 0.9 }} title={STATUS_LABEL[b.status]}>{STATUS_ICON[b.status]}</span>
-          {b.labels.map(l => <LabelBadge key={l.id} label={l} onCard={hasColorBg} />)}
+          {shown.map(c => (
+            <span key={c.key} title={c.name} style={{
+              display: 'inline-block', background: c.color, color: textOnHex(c.color),
+              height: 14, padding: '0 4px', borderRadius: 3,
+              fontWeight: 700, fontSize: 9, lineHeight: '14px',
+              border: hasColorBg ? '1px solid rgba(255,255,255,0.5)' : '1px solid rgba(0,0,0,0.15)',
+              whiteSpace: 'nowrap', flexShrink: 0,
+            }}>{c.short}</span>
+          ))}
+          {overflow > 0 && (
+            <span title={overflowTitle} style={{
+              display: 'inline-block', background: 'rgba(0,0,0,0.25)', color: cardFg,
+              height: 14, padding: '0 4px', borderRadius: 3,
+              fontWeight: 700, fontSize: 9, lineHeight: '14px', flexShrink: 0,
+            }}>+{overflow}</span>
+          )}
         </div>
         {showTime && (
           <span style={{ fontSize: 9, color: cardFg, opacity: 0.7, flexShrink: 0 }}>{bookingSlotTime(b.starts_at)}</span>
@@ -623,6 +653,25 @@ function BookingDetailModal({
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Client auto-labels + tags */}
+        {((booking.auto_labels?.length ?? 0) > 0 || (booking.client_tags?.length ?? 0) > 0) && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 6 }}>Метки клиента</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {(booking.auto_labels || []).map(al => (
+                <span key={al.code} style={{ display: 'inline-flex', alignItems: 'center', background: al.color + '22', color: al.color, padding: '2px 8px', borderRadius: 6, border: `1px solid ${al.color}44`, fontSize: 12, fontWeight: 600 }}>
+                  {al.name}
+                </span>
+              ))}
+              {(booking.client_tags || []).map(t => (
+                <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', background: t.color + '22', color: t.color, padding: '2px 8px', borderRadius: 6, border: `1px solid ${t.color}44`, fontSize: 12, fontWeight: 600 }}>
+                  {t.name}
+                </span>
+              ))}
+            </div>
           </div>
         )}
 

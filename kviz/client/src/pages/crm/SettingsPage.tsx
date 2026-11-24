@@ -4420,21 +4420,41 @@ const ALL_SECTIONS = NAV_GROUPS_DEF.flatMap(g => g.sections);
 // ── Classes Section ────────────────────────────────────────────────────────────
 
 interface BookingLabelRow { id: number; name: string; short_name: string; color: string; sort: number; is_active: boolean; is_system: boolean }
+interface AutoLabelRow { code: string; name: string; short_name: string; color: string; sort: number; is_active: boolean; params: Record<string, number> }
+
+const AUTO_LABEL_PARAM_LABELS: Record<string, Record<string, string>> = {
+  new_client:    { visits: 'Визитов до «нового»' },
+  measure_inbody: { days: 'Дней без InBody' },
+  measure_body:  { days: 'Дней без обмеров', min_plan_days: 'Мин. дней абонемента' },
+  plan_ending:   { sessions: 'Осталось сеансов', days: 'Осталось дней' },
+  no_visits:     { days: 'Дней без визитов' },
+  weight_plateau: { kg: 'Порог разницы кг' },
+  irregular:     { per_week: 'Визитов/нед', weeks: 'Недель' },
+};
+
+function textOnHexSimple(hex: string): string {
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return '#1a202c';
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return 0.2126 * (r / 255) + 0.7152 * (g / 255) + 0.0722 * (b / 255) > 0.4 ? '#1a202c' : '#ffffff';
+}
 
 function ClassesSection() {
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [types, setTypes]       = useState<DeviceType[]>([]);
   const [labels, setLabels]     = useState<BookingLabelRow[]>([]);
+  const [autoLabels, setAutoLabels] = useState<AutoLabelRow[]>([]);
+  const [autoEdits, setAutoEdits]   = useState<Record<string, Record<string, string>>>({});
   const [saving, setSaving]     = useState(false);
   const [stepEdits, setStepEdits] = useState<Record<string, string>>({});
   const [editLabel, setEditLabel] = useState<BookingLabelRow | null | 'new'>(null);
   const [err, setErr] = useState('');
 
   const load = useCallback(async () => {
-    const [s, t, l] = await Promise.all([
+    const [s, t, l, al] = await Promise.all([
       fetch('/kviz/api/crm/settings/classes', { credentials: 'include' }).then(r => r.json()),
       fetch('/kviz/api/crm/device-types', { credentials: 'include' }).then(r => r.json()),
       fetch('/kviz/api/crm/booking-labels', { credentials: 'include' }).then(r => r.json()),
+      fetch('/kviz/api/crm/client-auto-labels', { credentials: 'include' }).then(r => r.json()),
     ]);
     setSettings(s && typeof s === 'object' && !s.error ? s : {});
     if (Array.isArray(t)) {
@@ -4444,6 +4464,14 @@ function ClassesSection() {
       setStepEdits(init);
     }
     setLabels(Array.isArray(l) ? l : []);
+    if (Array.isArray(al)) {
+      setAutoLabels(al as AutoLabelRow[]);
+      const edits: Record<string, Record<string, string>> = {};
+      for (const row of al as AutoLabelRow[]) {
+        edits[row.code] = Object.fromEntries(Object.entries(row.params || {}).map(([k, v]) => [k, String(v)]));
+      }
+      setAutoEdits(edits);
+    }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -4490,6 +4518,27 @@ function ClassesSection() {
     const { ok, data } = await api('DELETE', `/kviz/api/crm/booking-labels/${id}`);
     if (ok) load();
     else toast.error((data as { error?: string }).error || 'Ошибка');
+  }
+
+  function setAutoEditParam(code: string, key: string, val: string) {
+    setAutoEdits(prev => ({ ...prev, [code]: { ...(prev[code] || {}), [key]: val } }));
+  }
+
+  async function saveAutoLabel(row: AutoLabelRow, patch: Partial<{ is_active: boolean; color: string; params: Record<string,number> }>) {
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/client-auto-labels/${row.code}`, patch);
+    if (ok) load();
+    else toast.error((data as { error?: string }).error || 'Ошибка');
+  }
+
+  async function saveAutoParams(row: AutoLabelRow) {
+    const rawEdits = autoEdits[row.code] || {};
+    const params: Record<string, number> = {};
+    for (const [k, v2] of Object.entries(rawEdits)) {
+      const n = Number(v2);
+      if (!Number.isFinite(n)) { toast.error(`Неверное значение для «${k}»`); return; }
+      params[k] = n;
+    }
+    await saveAutoLabel(row, { params });
   }
 
   const v = (key: string, def: unknown = '') => settings[key] !== undefined ? String(settings[key]) : String(def);
@@ -4582,6 +4631,62 @@ function ClassesSection() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Auto-labels */}
+      <div style={{ marginTop: 28 }}>
+        <div style={S.subTitle}>Автометки клиента</div>
+        <div style={{ marginTop: 6, marginBottom: 10, fontSize: 12, color: 'var(--text-2)' }}>
+          Метки считаются автоматически при открытии расписания и списка клиентов. «Проблемный клиент» ставится вручную в карточке клиента.
+        </div>
+        <div style={S.list}>
+          {autoLabels.map(row => {
+            const paramDefs = AUTO_LABEL_PARAM_LABELS[row.code] || {};
+            const edits = autoEdits[row.code] || {};
+            const isDebt = row.code === 'debt';
+            return (
+              <div key={row.code} style={{ ...S.row, flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+                  {/* Preview chip */}
+                  <span style={{
+                    display: 'inline-block', background: row.color, color: textOnHexSimple(row.color),
+                    padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, flexShrink: 0,
+                  }}>{row.short_name}</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{row.name}</span>
+                  {isDebt
+                    ? <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Включится автоматически</span>
+                    : (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>
+                        <input type="checkbox" checked={row.is_active} onChange={e => saveAutoLabel(row, { is_active: e.target.checked })} />
+                        {row.is_active ? 'Вкл' : 'Выкл'}
+                      </label>
+                    )}
+                  {/* Color */}
+                  <input type="color" value={row.color} style={{ width: 32, height: 24, padding: 1, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}
+                    onChange={e => setAutoLabels(prev => prev.map(r => r.code === row.code ? { ...r, color: e.target.value } : r))}
+                    onBlur={e => saveAutoLabel(row, { color: e.target.value })} />
+                </div>
+                {Object.keys(paramDefs).length > 0 && !isDebt && (
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', paddingLeft: 4 }}>
+                    {Object.entries(paramDefs).map(([key, label]) => (
+                      <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <label style={{ fontSize: 11, color: 'var(--text-3)' }}>{label}</label>
+                        <input
+                          type="number"
+                          step={key === 'kg' ? 0.1 : 1}
+                          style={{ ...S.inp, width: 70, padding: '4px 6px' }}
+                          value={edits[key] ?? ''}
+                          onChange={e => setAutoEditParam(row.code, key, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                    <button style={S.editBtn} onClick={() => saveAutoParams(row)}>Сохранить</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

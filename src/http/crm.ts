@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession, requireAuth, requireAdmin, getSessionWithPerms, can, requirePerm } from './auth';
 import { startHistoryImport, runFitbaseHistoryImport, getHistoryImportJob, linkBodyClients, getLinkStats } from '../jobs/fitbaseHistoryImport';
+import { batchAutoLabelsForDay, batchAutoLabelsToday } from '../core/clientAutoLabels';
 
 const BRANCH_ID         = '00000000-0000-0000-0000-000000000001';
 const GENERIC_CRM_ERROR = 'Ошибка кассы, сообщите администратору';
@@ -1506,6 +1507,20 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  r.get('/kviz/api/crm/clients/auto-labels', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    try {
+      const raw = String(req.query.ids ?? '');
+      const ids = raw.split(',').map(s => s.trim()).filter(Boolean).slice(0, 200);
+      if (ids.length === 0) { res.json({}); return; }
+      const labelsMap = await batchAutoLabelsToday(ids);
+      const out: Record<string, unknown> = {};
+      labelsMap.forEach((v, k) => { out[k] = v; });
+      res.json(out);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   r.get('/kviz/api/crm/clients/:id', async (req, res) => {
     const session = await getSessionWithPerms(req);
     if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
@@ -2638,12 +2653,15 @@ export function buildCrmRouter(): Router {
         .select('*').eq('branch_id', BRANCH_ID).eq('booking_date', dateStr);
       const bookingIds = (bookingsRaw || []).map((b: Record<string, unknown>) => b.id as string);
 
-      // Parallel: clients, plans, items, labels
-      const [clientsRes, plansRes, itemsRes, labelsRes] = await Promise.all([
-        bookingIds.length ? supabase.from('crm_clients').select('id,full_name,phone').in('id', (bookingsRaw||[]).map((b: Record<string,unknown>) => b.client_id as string).filter(Boolean)) : Promise.resolve({ data: [] }),
+      const clientIdsForDay = [...new Set((bookingsRaw || []).map((b: Record<string,unknown>) => b.client_id as string).filter(Boolean))];
+
+      // Parallel: clients, plans, items, booking-labels, client-tag-links
+      const [clientsRes, plansRes, itemsRes, labelsRes, tagLinksRes] = await Promise.all([
+        clientIdsForDay.length ? supabase.from('crm_clients').select('id,full_name,phone').in('id', clientIdsForDay) : Promise.resolve({ data: [] }),
         bookingIds.length ? supabase.from('crm_plans').select('id,name').in('id', [...new Set((bookingsRaw||[]).map((b:Record<string,unknown>) => b.plan_id as string).filter(Boolean))]) : Promise.resolve({ data: [] }),
         bookingIds.length ? supabase.from('crm_client_plan_items').select('id,sessions_left,sessions_total').in('id', (bookingsRaw||[]).map((b:Record<string,unknown>) => b.client_plan_item_id as string).filter(Boolean)) : Promise.resolve({ data: [] }),
         bookingIds.length ? supabase.from('crm_booking_label_links').select('booking_id,label_id,crm_booking_labels(id,name,color,sort,short_name)').in('booking_id', bookingIds) : Promise.resolve({ data: [] }),
+        clientIdsForDay.length ? supabase.from('crm_client_tag_links').select('client_id,tag_id').in('client_id', clientIdsForDay) : Promise.resolve({ data: [] }),
       ]);
 
       const clientMap = new Map((clientsRes.data||[]).map((c:Record<string,unknown>) => [c.id, c]));
@@ -2657,6 +2675,43 @@ export function buildCrmRouter(): Router {
         if (lbl) labelsMap[lid].push(lbl);
       }
 
+      // Build input list for auto-label computation
+      const bookingsForLabel = (bookingsRaw || []).map((b: Record<string,unknown>) => {
+        const item = b.client_plan_item_id ? (itemMap.get(b.client_plan_item_id as string) as Record<string,unknown> | undefined) : null;
+        return {
+          id: b.id as string,
+          client_id: b.client_id as string,
+          booking_date: b.booking_date as string,
+          kind: b.kind as string,
+          client_plan_id: b.client_plan_id as string | null,
+          client_plan_item_id: b.client_plan_item_id as string | null,
+          sessions_left: (item?.sessions_left as number | null) ?? null,
+          starts_at: b.starts_at as string,
+          status: b.status as string,
+        };
+      });
+
+      // Collect unique tag ids to fetch tag details
+      const tagIds = [...new Set((tagLinksRes.data || []).map((l: Record<string,unknown>) => l.tag_id as string))];
+
+      // Second parallel: auto-labels + tag rows
+      const [autoLabelsMap, tagRowsRes] = await Promise.all([
+        batchAutoLabelsForDay(bookingsForLabel),
+        tagIds.length ? supabase.from('crm_client_tags').select('id,name,color').in('id', tagIds).eq('is_active', true) : Promise.resolve({ data: [] as Record<string,unknown>[] }),
+      ]);
+
+      // Build client → tags map
+      const tagRowMap = new Map<string, Record<string,unknown>>();
+      for (const t of (tagRowsRes.data || []) as Record<string,unknown>[]) tagRowMap.set(t.id as string, t);
+      const clientTagsMap = new Map<string, { id: string; name: string; color: string }[]>();
+      for (const link of (tagLinksRes.data || []) as Record<string,unknown>[]) {
+        const cid = link.client_id as string;
+        const tag = tagRowMap.get(link.tag_id as string);
+        if (!tag) continue;
+        if (!clientTagsMap.has(cid)) clientTagsMap.set(cid, []);
+        clientTagsMap.get(cid)!.push({ id: link.tag_id as string, name: tag.name as string, color: tag.color as string });
+      }
+
       const bookings = (bookingsRaw || []).map((b: Record<string, unknown>) => {
         const item = b.client_plan_item_id ? itemMap.get(b.client_plan_item_id as string) : null;
         return {
@@ -2666,6 +2721,8 @@ export function buildCrmRouter(): Router {
           sessions_left: (item as Record<string,unknown> | null)?.sessions_left ?? null,
           sessions_total: (item as Record<string,unknown> | null)?.sessions_total ?? null,
           labels: (labelsMap[b.id as string] || []).sort((a: unknown, b: unknown) => ((a as Record<string,unknown>).sort as number) - ((b as Record<string,unknown>).sort as number)),
+          auto_labels: autoLabelsMap.get(b.id as string) ?? [],
+          client_tags: clientTagsMap.get(b.client_id as string) ?? [],
         };
       });
 
@@ -2951,6 +3008,68 @@ export function buildCrmRouter(): Router {
       const { error } = await supabase.from('crm_schedule_notes').update({ is_deleted: true }).eq('id', req.params.id);
       if (error) { console.error('notes delete:', error); res.status(500).json({ error: 'Не удалось удалить заметку' }); return; }
       await writeAudit('schedule_note', req.params.id, 'delete', session.display_name);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Client auto-labels settings ───────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/client-auto-labels', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.classes', 'view', session)) return;
+    try {
+      const { data, error } = await supabase.from('crm_client_auto_labels')
+        .select('code,name,short_name,color,sort,is_active,params').order('sort');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data || []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/kviz/api/crm/client-auto-labels/:code', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.classes', 'edit', session)) return;
+    try {
+      const code = req.params.code;
+      const b = req.body as Record<string, unknown>;
+
+      // debt label cannot be enabled
+      if (code === 'debt' && b.is_active === true) {
+        res.status(400).json({ error: 'Метка «Долг» включится автоматически, когда в кассе появится оплата частями' });
+        return;
+      }
+
+      const upd: Record<string, unknown> = {};
+      if (b.is_active !== undefined) upd.is_active = Boolean(b.is_active);
+      if (b.color !== undefined) {
+        if (!/^#[0-9a-fA-F]{6}$/.test(String(b.color))) { res.status(400).json({ error: 'Неверный формат цвета' }); return; }
+        upd.color = String(b.color);
+      }
+      if (b.sort !== undefined) upd.sort = Number(b.sort);
+
+      // Validate and merge params
+      if (b.params !== undefined && typeof b.params === 'object') {
+        const p = b.params as Record<string, unknown>;
+        const limits: Record<string, [number, number]> = {
+          days: [1, 365], visits: [1, 20], sessions: [0, 20],
+          kg: [0.1, 5], per_week: [1, 7], weeks: [1, 8], min_plan_days: [1, 365],
+        };
+        for (const [key, val] of Object.entries(p)) {
+          const lim = limits[key];
+          if (!lim) continue;
+          const n = Number(val);
+          if (!Number.isFinite(n) || n < lim[0] || n > lim[1]) {
+            res.status(400).json({ error: `Параметр «${key}» должен быть от ${lim[0]} до ${lim[1]}` });
+            return;
+          }
+        }
+        upd.params = p;
+      }
+
+      if (Object.keys(upd).length === 0) { res.status(400).json({ error: 'Нечего обновлять' }); return; }
+
+      const { error } = await supabase.from('crm_client_auto_labels').update(upd).eq('code', code);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      await writeAudit('client_auto_label', code, 'update', session!.display_name);
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
