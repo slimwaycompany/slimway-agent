@@ -22,6 +22,10 @@
 - `crm_promo_usages`, `crm_refunds`, `crm_refund_items`, `crm_refund_payments`
 - Функции: `crm_checkout(jsonb)`, `crm_refund(jsonb)` — одна транзакция; `crm_shift_expected_cash(uuid)`. Execute только у сервера.
 
+## Сделано
+### 24.11.2026 · task 89 · Cross-абонементы в каталоге, поиск по названию/цене
+- **`KassaPage.tsx`**: `Plan.items` обновлён — `device_type_code: string | null`, `device_type_codes?`, `is_unlimited?`, `daily_limit?`. Загружаются `deviceTypes` (GET /crm/device-types). Строка состава в карточке плана использует `itemLabel(i, dtNameMap)`. Добавлено поле `planSearch` — фильтр по названию и цене на вкладках Абонемент/Услуга.
+
 ## Ключевые решения
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
 - Продажа и возврат — только через rpc (в старой CRM продажа могла создаться наполовину).

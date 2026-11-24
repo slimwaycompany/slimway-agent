@@ -18,4 +18,6 @@ img/
 png/
 result.md
 probe_result.json
+screenshot-*.png
+.playwright-mcp/
 /*.txt

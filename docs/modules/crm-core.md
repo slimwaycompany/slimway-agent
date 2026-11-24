@@ -48,6 +48,12 @@
 - `SettingsPage`: sidebar скрывается при выборе раздела (`settings-sidebar--hidden`), кнопка `← Назад` в заголовке контента.
 
 ## Сделано
+### 24.11.2026 · task 89 · Cross (пул) абонементы: itemLabel, SettingsPage, сервер, SplitDialog
+- **`kviz/client/src/utils/planItemLabel.ts`** (новый): `itemLabel(item, dtNameMap)` — унифицированное отображение состава (одиночный, пул Cross, безлимит, ×N, из/остаток).
+- **`kviz/client/src/pages/crm/SettingsPage.tsx`** — `PlansSection` полностью переписана: `LocalItem` с `is_cross`, `is_unlimited`, `daily_limit`; Cross-строки группируются в синем блоке с одним полем «Сеансов»; в списке состав показывает `itemLabel`.
+- **`kviz/client/src/pages/crm/ClientsPage.tsx`** — `SplitDialog`: тип `SplitRow`, переключатель Cross, чекбоксы для выбора аппаратов пула, сервер получает `{ is_pool: true, device_type_codes, sessions }`.
+- **`src/http/crm.ts`** — `validateItems` стала async: проверяет device_type_code XOR device_type_codes≥2, дубли, 1 пул макс, фаза пула='active', is_unlimited, daily_limit, коды в БД. POST/PATCH /plans сохраняют `device_type_codes`, `is_unlimited`, `daily_limit`. `/client-plans/:id/split` принимает pool-строки. GET client-options добавляет `device_type_codes,is_unlimited,daily_limit`.
+
 ### 24.11.2026 · task 88 · Таблица клиентов: 14 колонок, сортировка, resize/reorder, localStorage, мобиль
 - **Сервер `src/http/crm.ts`:** `batchEnrich()` расширен — теперь возвращает `system_tags`, `personal_tags`, `ltv`, `deposit`, `source_name` одним батчем на 100 строк (3 раунда параллельных запросов). Добавлен `getCashPmIds()` кэш. GET `/kviz/api/crm/clients` переработан: новый дефолтный sort=`last_visit` DESC, параметр `dir`; all-scan для сортировок `last_visit/days/ltv/deposit/plan/sessions/source`, ORDER BY для `name/created/birth/profile/fitbase`. Добавлен GET `/kviz/api/crm/clients/junk-report` (только admin): мусорные записи по паттернам, счёт без активности, 10 примеров.
 - **Клиент `kviz/client/src/pages/crm/ClientsPage.tsx`:** добавлены `ColDef`/`COLS`/`TableSettings` + localStorage per-login. Компонент `ClientsTable` — `<table>` с sticky thead, resize колонок (pointer events), reorder (HTML5 drag&drop), sortable заголовки со стрелками. Компонент `ColumnsPanel` — показ/скрытие + reorder метками. Desktop/tablet (>640px): таблица; телефон (≤640px): карточки как раньше + мобильный select сортировки. Кнопка «Мусор» (admin) показывает результат junk-report inline.

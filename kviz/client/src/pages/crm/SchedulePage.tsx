@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useContext, useRef } from 'react';
 import { PermContext, usePerm } from '../../lib/permContext';
 import { toast } from '../../lib/toast';
 import { showConfirm } from '../../lib/confirm';
+import { itemLabel } from '../../utils/planItemLabel';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ interface ClientOption {
   id: string; plan_id: string; status: string;
   valid_until: string | null; extra_until: string | null;
   crm_plans: { id: string; name: string } | null;
-  items: { id: string; device_type_code: string; phase: string; sessions_left: number; sessions_total: number; booked_ahead: number }[];
+  items: { id: string; device_type_code: string | null; device_type_codes?: string[] | null; phase: string; sessions_left: number | null; sessions_total: number | null; is_unlimited?: boolean; daily_limit?: number | null; booked_ahead: number }[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -182,9 +183,12 @@ function BookingFormPanel({
     }, 300);
   }
 
+  const dtNameMap = Object.fromEntries(dayData.blocks.map(b => [b.type_code, b.name]));
   const selPlan = options?.plans.find(p => p.id === planId);
-  const matchItem = selPlan?.items.find(it => it.device_type_code === ctx.type_code);
-  const hasFinishing = selPlan?.items.some(it => it.phase === 'finishing' && it.sessions_left > 0);
+  const matchItem = selPlan?.items.find(it =>
+    it.device_type_code === ctx.type_code ||
+    (Array.isArray(it.device_type_codes) && it.device_type_codes.includes(ctx.type_code)));
+  const hasFinishing = selPlan?.items.some(it => !it.device_type_codes && it.phase === 'finishing' && (it.sessions_left ?? 0) > 0);
 
   async function submit() {
     if (!selClient) { toast.error('Выберите клиента'); return; }
@@ -268,7 +272,8 @@ function BookingFormPanel({
             )}
             {selPlan && matchItem && (
               <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
-                {ctx.type_code}: {matchItem.sessions_left - matchItem.booked_ahead}/{matchItem.sessions_total} сеансов
+                {itemLabel(matchItem, dtNameMap)}
+                {!matchItem.is_unlimited && matchItem.booked_ahead > 0 && ` (${matchItem.booked_ahead} забр.)`}
               </div>
             )}
             {hasFinishing && (

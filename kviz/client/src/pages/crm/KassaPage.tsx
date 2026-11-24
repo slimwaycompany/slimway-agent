@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef, useCallback } from 'react';
+import { itemLabel } from '../../utils/planItemLabel';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ interface Plan {
   id: string; name: string; kind: string; price: number; is_active: boolean;
   validity_days: number | null; max_deferred_start_days: number;
   auto_activate_days: number | null;
-  items: { device_type_code: string; phase: string; sessions: number }[];
+  items: { device_type_code: string | null; device_type_codes?: string[] | null; phase: string; sessions: number; is_unlimited?: boolean; daily_limit?: number | null }[];
 }
 interface Product { id: string; name: string; stock: number; retail_price: number | null; is_active: boolean }
 interface AppUser { display_name: string }
@@ -230,6 +231,8 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
   const [tab, setTab] = useState<'abonement' | 'service' | 'product' | 'deposit' | 'bonus'>('abonement');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [deviceTypes, setDeviceTypes] = useState<{ code: string; name: string }[]>([]);
+  const [planSearch, setPlanSearch] = useState('');
   const [client, setClient] = useState<ClientSearch | null | 'guest'>(null);
   const [clientSearch, setClientSearch] = useState('');
   const [clientResults, setClientResults] = useState<ClientSearch[]>([]);
@@ -254,10 +257,11 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
 
   const clientId = client !== null && client !== 'guest' ? client.id : null;
 
-  // Load plans and products
+  // Load plans, products and device types
   useEffect(() => {
     api('GET', '/kviz/api/crm/plans').then(({ data }) => { if (Array.isArray(data)) setPlans(data); });
     api('GET', '/kviz/api/crm/products').then(({ data }) => { if (Array.isArray(data)) setProducts(data); });
+    api('GET', '/kviz/api/crm/device-types').then(({ data }) => { if (Array.isArray(data)) setDeviceTypes(data); });
   }, []);
 
   // Load balance when client selected
@@ -379,7 +383,10 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
     onDone(data.number as number);
   }
 
-  const activePlans = plans.filter(p => p.is_active && p.kind === (tab === 'abonement' ? 'abonement' : 'service'));
+  const dtNameMap = Object.fromEntries(deviceTypes.map(t => [t.code, t.name]));
+  const planSearchLc = planSearch.toLowerCase();
+  const activePlans = plans.filter(p => p.is_active && p.kind === (tab === 'abonement' ? 'abonement' : 'service') &&
+    (!planSearchLc || p.name.toLowerCase().includes(planSearchLc) || String(p.price).includes(planSearch)));
   const activeProducts = products.filter(p => p.is_active);
   const isGuest = client === 'guest';
   const noClient = client === null;
@@ -442,7 +449,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
       <div className="kassa-sale-body" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left: catalog */}
         <div className="kassa-sale-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', gap: 4, padding: '8px 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 4, padding: '8px 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', alignItems: 'center' }}>
             {TABS.map(t => (
               <button key={t.key} type="button" disabled={t.disabled}
                 style={{ ...S.tabBtn, ...(tab === t.key ? S.tabBtnActive : {}), opacity: t.disabled ? 0.4 : 1 }}
@@ -450,6 +457,10 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
                 {t.label}
               </button>
             ))}
+            {(tab === 'abonement' || tab === 'service') && (
+              <input style={{ ...S.inp, marginLeft: 'auto', width: 160 }} placeholder="Поиск…"
+                value={planSearch} onChange={e => setPlanSearch(e.target.value)} />
+            )}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
             {(tab === 'abonement' || tab === 'service') && activePlans.map(p => (
@@ -457,7 +468,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
                 onClick={() => { if (!isGuest && client !== null) addPlan(p); }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
-                  {p.validity_days ? `${p.validity_days} дн.` : '∞'} · {p.items.map(i => `${i.device_type_code} ×${i.sessions}`).join(', ')}
+                  {p.validity_days ? `${p.validity_days} дн.` : '∞'} · {p.items.map(i => itemLabel(i, dtNameMap)).join(' · ')}
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--primary)', marginTop: 4 }}>{fmtMoney(p.price)}</div>
                 {(isGuest || client === null) && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Нужен клиент</div>}

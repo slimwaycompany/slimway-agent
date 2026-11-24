@@ -574,11 +574,41 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  function validateItems(items: unknown[]): string | null {
+  async function validateItems(items: unknown[]): Promise<string | null> {
+    let poolCount = 0;
+    const allCodes: string[] = [];
     for (const it of items as Record<string, unknown>[]) {
-      if (!it.device_type_code) return 'Выберите тип аппарата для каждой позиции';
-      if (!VALID_PHASES.has(String(it.phase))) return 'Укажите фазу для каждой позиции';
-      if (!it.sessions || Number(it.sessions) < 1) return 'Укажите количество сеансов (не менее 1)';
+      const hasCode = typeof it.device_type_code === 'string' && it.device_type_code.trim().length > 0;
+      const hasCodes = Array.isArray(it.device_type_codes) && (it.device_type_codes as unknown[]).length >= 2;
+      if (hasCode && hasCodes) return 'Строка не может содержать и аппарат, и пул одновременно';
+      if (!hasCode && !hasCodes) return 'Выберите тип аппарата или настройте пул (≥ 2 аппаратов)';
+      if (hasCodes) {
+        poolCount++;
+        if (poolCount > 1) return 'В абонементе допустим только один пул';
+        if (String(it.phase) !== 'active') return 'Фаза пула должна быть active';
+        for (const c of it.device_type_codes as string[]) allCodes.push(c);
+      } else {
+        if (!VALID_PHASES.has(String(it.phase))) return 'Укажите фазу для каждой позиции';
+        allCodes.push(String(it.device_type_code));
+      }
+      if (!it.is_unlimited) {
+        if (!it.sessions || Number(it.sessions) < 1) return 'Укажите количество сеансов (не менее 1)';
+      }
+      if (it.daily_limit !== undefined && it.daily_limit !== null && Number(it.daily_limit) <= 0) {
+        return 'Лимит в день должен быть > 0';
+      }
+    }
+    const seen = new Set<string>();
+    for (const c of allCodes) {
+      if (seen.has(c)) return `Аппарат ${c} встречается несколько раз в составе`;
+      seen.add(c);
+    }
+    if (allCodes.length > 0) {
+      const { data } = await supabase.from('crm_device_types').select('code').in('code', allCodes);
+      const validSet = new Set((data || []).map((d: Record<string,unknown>) => d.code as string));
+      for (const c of allCodes) {
+        if (!validSet.has(c)) return `Неизвестный тип аппарата: ${c}`;
+      }
     }
     return null;
   }
@@ -593,7 +623,7 @@ export function buildCrmRouter(): Router {
       if (b.kind === 'abonement' && items.length === 0) {
         res.status(400).json({ error: 'Абонемент должен содержать хотя бы 1 аппарат в составе' }); return;
       }
-      const itemErr = validateItems(items);
+      const itemErr = await validateItems(items);
       if (itemErr) { res.status(400).json({ error: itemErr }); return; }
 
       const { data: plan, error: planErr } = await supabase.from('crm_plans').insert({
@@ -610,10 +640,19 @@ export function buildCrmRouter(): Router {
       if (planErr) { res.status(500).json({ error: planErr.message }); return; }
 
       if (items.length > 0) {
-        const rows = items.map((it, i) => ({
-          plan_id: plan.id, device_type_code: it.device_type_code,
-          phase: String(it.phase), sessions: n0(it.sessions), sort: i,
-        }));
+        const rows = items.map((it, i) => {
+          const isPool = Array.isArray(it.device_type_codes) && (it.device_type_codes as unknown[]).length >= 2;
+          return {
+            plan_id: plan.id,
+            device_type_code: isPool ? null : it.device_type_code,
+            device_type_codes: isPool ? it.device_type_codes : null,
+            phase: String(it.phase),
+            sessions: n0(it.sessions),
+            is_unlimited: Boolean(it.is_unlimited),
+            daily_limit: it.daily_limit != null ? Number(it.daily_limit) : null,
+            sort: i,
+          };
+        });
         const { error: itemsErr } = await supabase.from('crm_plan_items').insert(rows);
         if (itemsErr) {
           await supabase.from('crm_plans').delete().eq('id', plan.id);
@@ -651,14 +690,23 @@ export function buildCrmRouter(): Router {
 
       if (Array.isArray(b.items)) {
         const items = b.items as Record<string, unknown>[];
-        const itemErr = validateItems(items);
+        const itemErr = await validateItems(items);
         if (itemErr) { res.status(400).json({ error: itemErr }); return; }
         await supabase.from('crm_plan_items').delete().eq('plan_id', req.params.id);
         if (items.length > 0) {
-          const rows = items.map((it, i) => ({
-            plan_id: req.params.id, device_type_code: it.device_type_code,
-            phase: String(it.phase), sessions: n0(it.sessions), sort: i,
-          }));
+          const rows = items.map((it, i) => {
+            const isPool = Array.isArray(it.device_type_codes) && (it.device_type_codes as unknown[]).length >= 2;
+            return {
+              plan_id: req.params.id,
+              device_type_code: isPool ? null : it.device_type_code,
+              device_type_codes: isPool ? it.device_type_codes : null,
+              phase: String(it.phase),
+              sessions: n0(it.sessions),
+              is_unlimited: Boolean(it.is_unlimited),
+              daily_limit: it.daily_limit != null ? Number(it.daily_limit) : null,
+              sort: i,
+            };
+          });
           const { error: ie } = await supabase.from('crm_plan_items').insert(rows);
           if (ie) { res.status(500).json({ error: `Состав: ${ie.message}` }); return; }
         }
@@ -1959,7 +2007,7 @@ export function buildCrmRouter(): Router {
     const session = getSession(req)!;
     try {
       const b = req.body as Record<string, unknown>;
-      const items = Array.isArray(b.items) ? b.items as { device_type_code: string; sessions: number; phase?: string }[] : [];
+      const items = Array.isArray(b.items) ? b.items as { device_type_code?: string; device_type_codes?: string[]; is_pool?: boolean; sessions: number; phase?: string }[] : [];
       if (!items.length) { res.status(400).json({ error: 'Укажите распределение по аппаратам' }); return; }
       const { data: cp } = await supabase.from('crm_client_plans')
         .select('id,sessions_left').eq('id', req.params.id).single();
@@ -1968,19 +2016,26 @@ export function buildCrmRouter(): Router {
       if (totalSessions !== Number(cp.sessions_left ?? 0)) {
         res.status(400).json({ error: `Сумма (${totalSessions}) должна равняться остатку (${cp.sessions_left})` }); return;
       }
-      const codes = items.map(i => i.device_type_code);
-      const { data: dtypes } = await supabase.from('crm_device_types').select('code').in('code', codes);
+      const allCodes = items.flatMap(i => i.is_pool && i.device_type_codes ? i.device_type_codes : [i.device_type_code as string]);
+      const { data: dtypes } = await supabase.from('crm_device_types').select('code').in('code', allCodes);
       const validCodes = new Set((dtypes ?? []).map((d: Record<string,unknown>) => d.code as string));
-      for (const code of codes) {
+      for (const code of allCodes) {
         if (!validCodes.has(code)) { res.status(400).json({ error: `Неизвестный тип аппарата: ${code}` }); return; }
       }
-      const inserts = items.map(i => ({
+      const inserts = items.map(i => i.is_pool && i.device_type_codes ? {
+        client_plan_id: req.params.id,
+        device_type_code: null,
+        device_type_codes: i.device_type_codes,
+        sessions_total: Number(i.sessions),
+        sessions_left: Number(i.sessions),
+        phase: 'active',
+      } : {
         client_plan_id: req.params.id,
         device_type_code: i.device_type_code,
         sessions_total: Number(i.sessions),
         sessions_left: Number(i.sessions),
         phase: i.phase ?? 'active',
-      }));
+      });
       const { error: insertErr } = await supabase.from('crm_client_plan_items').insert(inserts);
       if (insertErr) { res.status(500).json({ error: insertErr.message }); return; }
       await supabase.from('crm_client_plans').update({ needs_split: false }).eq('id', req.params.id);
@@ -2589,7 +2644,7 @@ export function buildCrmRouter(): Router {
 
       const [plansRes, freeRes, bookedRes] = await Promise.all([
         supabase.from('crm_client_plans')
-          .select('id,plan_id,status,valid_until,extra_until,activated_at,crm_plans!plan_id(id,name),crm_client_plan_items(id,device_type_code,phase,sessions_left,sessions_total)')
+          .select('id,plan_id,status,valid_until,extra_until,activated_at,crm_plans!plan_id(id,name),crm_client_plan_items(id,device_type_code,device_type_codes,phase,sessions_left,sessions_total,is_unlimited,daily_limit)')
           .eq('client_id', clientId).in('status', ['active','not_activated']),
         supabase.from('crm_plans').select('id,name').eq('kind','service').eq('is_free_booking',true).eq('is_active',true),
         supabase.from('crm_bookings').select('client_plan_item_id').eq('client_id', clientId).in('status',['booked','confirmed']).not('client_plan_item_id','is',null),

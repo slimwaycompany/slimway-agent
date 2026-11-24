@@ -495,10 +495,12 @@ function FreezeDialog({ planId, maxDays, onDone, onClose }: {
 
 // ── SplitDialog ────────────────────────────────────────────────────────────────
 
+type SplitRow = { is_cross: boolean; device_type_code: string; device_type_codes: string[]; sessions: number };
+
 function SplitDialog({ plan, onDone, onClose }: { plan: ClientPlan; onDone: () => void; onClose: () => void }) {
   const [deviceTypes, setDeviceTypes] = useState<{ code: string; name: string }[]>([]);
-  const [items, setItems] = useState<{ device_type_code: string; sessions: number }[]>([
-    { device_type_code: '', sessions: plan.sessions_left ?? 0 }
+  const [items, setItems] = useState<SplitRow[]>([
+    { is_cross: false, device_type_code: '', device_type_codes: [], sessions: plan.sessions_left ?? 0 }
   ]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -511,39 +513,82 @@ function SplitDialog({ plan, onDone, onClose }: { plan: ClientPlan; onDone: () =
   const total = items.reduce((s, i) => s + Number(i.sessions ?? 0), 0);
   const left = plan.sessions_left ?? 0;
 
+  function upd(idx: number, patch: Partial<SplitRow>) {
+    setItems(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p));
+  }
+
+  function toggleCrossCode(idx: number, code: string, checked: boolean) {
+    setItems(prev => prev.map((p, i) => {
+      if (i !== idx) return p;
+      const codes = checked ? [...p.device_type_codes, code] : p.device_type_codes.filter(c => c !== code);
+      return { ...p, device_type_codes: codes };
+    }));
+  }
+
   async function submit() {
-    if (items.some(i => !i.device_type_code)) { setErr('Выберите тип аппарата для каждой строки'); return; }
+    for (const it of items) {
+      if (it.is_cross && it.device_type_codes.length < 2) { setErr('Пул Cross должен содержать ≥ 2 аппарата'); return; }
+      if (!it.is_cross && !it.device_type_code) { setErr('Выберите тип аппарата для каждой строки'); return; }
+    }
     if (total !== left) { setErr(`Сумма сеансов (${total}) должна равняться остатку (${left})`); return; }
     setLoading(true); setErr('');
-    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${plan.id}/split`, { items });
+    const payload = items.map(it => it.is_cross
+      ? { is_pool: true, device_type_codes: it.device_type_codes, sessions: it.sessions }
+      : { device_type_code: it.device_type_code, sessions: it.sessions }
+    );
+    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${plan.id}/split`, { items: payload });
     if (!ok) { setErr(data.error || 'Ошибка'); setLoading(false); return; }
     toast.success('Сеансы распределены');
     onDone();
   }
 
+  const inp: React.CSSProperties = { padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' };
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={onClose}>
-      <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 24, width: 400, boxShadow: '0 8px 32px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 24, width: 440, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700 }}>Распределить сеансы</h3>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-2)' }}>Остаток: {left} сеансов</p>
         {err && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
         {items.map((it, idx) => (
-          <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-            <select value={it.device_type_code} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, device_type_code: e.target.value } : p))}
-              style={{ flex: 1, padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}>
-              <option value="">— аппарат —</option>
-              {deviceTypes.map(dt => <option key={dt.code} value={dt.code}>{dt.name ?? dt.code}</option>)}
-            </select>
-            <input type="number" min={1} value={it.sessions} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, sessions: Number(e.target.value) } : p))}
-              style={{ width: 72, padding: '7px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} />
-            {items.length > 1 && <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--danger)' }} onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}>✕</button>}
+          <div key={idx} style={{ marginBottom: 10, padding: 10, border: `1.5px solid ${it.is_cross ? 'var(--primary)' : 'var(--input-border)'}`, borderRadius: 10 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: it.is_cross ? 8 : 0 }}>
+              <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={it.is_cross}
+                  onChange={e => upd(idx, { is_cross: e.target.checked, device_type_code: '', device_type_codes: [] })} />
+                Cross
+              </label>
+              {!it.is_cross && (
+                <select value={it.device_type_code} onChange={e => upd(idx, { device_type_code: e.target.value })}
+                  style={{ ...inp, flex: 1 }}>
+                  <option value="">— аппарат —</option>
+                  {deviceTypes.map(dt => <option key={dt.code} value={dt.code}>{dt.name ?? dt.code}</option>)}
+                </select>
+              )}
+              <input type="number" min={1} value={it.sessions} onChange={e => upd(idx, { sessions: Number(e.target.value) })}
+                style={{ ...inp, width: 72 }} />
+              {items.length > 1 && <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--danger)' }}
+                onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}>✕</button>}
+            </div>
+            {it.is_cross && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {deviceTypes.map(dt => (
+                  <label key={dt.code} style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, cursor: 'pointer', background: 'var(--surface-2)', padding: '3px 8px', borderRadius: 6 }}>
+                    <input type="checkbox" checked={it.device_type_codes.includes(dt.code)}
+                      onChange={e => toggleCrossCode(idx, dt.code, e.target.checked)} />
+                    {dt.name ?? dt.code}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         <div style={{ fontSize: 12, color: total === left ? 'var(--success)' : 'var(--danger)', marginBottom: 12 }}>
           Итого: {total} / {left}
         </div>
-        <button style={{ ...SL.outlineBtn, fontSize: 12, marginBottom: 16 }} onClick={() => setItems(prev => [...prev, { device_type_code: '', sessions: 0 }])}>+ Добавить аппарат</button>
+        <button style={{ ...SL.outlineBtn, fontSize: 12, marginBottom: 16 }}
+          onClick={() => setItems(prev => [...prev, { is_cross: false, device_type_code: '', device_type_codes: [], sessions: 0 }])}>+ Добавить строку</button>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button style={SL.outlineBtn} onClick={onClose}>Отмена</button>
           <button className="cp-btn cp-btn--primary" onClick={submit} disabled={loading}>{loading ? '…' : 'Распределить'}</button>

@@ -20,6 +20,10 @@
 - `crm_branch_hours` — часы работы: branch_id, weekday (1–7, пн=1), is_open, open_time, close_time
 - RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`, `crm_day_hours(p_date)` → (is_open, open_time, close_time)
 
+## Сделано
+### 24.11.2026 · task 89 · Cross-абонементы: matchItem находит пул, itemLabel в форме записи
+- **`SchedulePage.tsx`**: `ClientOption.items` — `device_type_code: string | null`, `device_type_codes?`, `is_unlimited?`, `daily_limit?`, `sessions_left/sessions_total: number | null`. `matchItem` теперь находит строку пула (`device_type_codes.includes(ctx.type_code)`). `hasFinishing` исключает пул-строки. Информация о выбранном абонементе использует `itemLabel(matchItem, dtNameMap)` (dtNameMap строится из `dayData.blocks`).
+
 ## Ключевые решения (собраны 27.10)
 - **Мобильная версия — сразу в каждой задаче (04.11.2026).** Любой новый или изменённый экран сразу верстается под телефон (≤640), планшет и компьютер; задача без мобильной вёрстки не считается выполненной. Проверка `npm run check:mobile`, скриншоты 375 и 1440 в отчёте.
 - Неделя пн–вс, слева время 07:00–23:00, часовые ячейки; запись на точное время с шагом 30 мин внутри ячейки.
