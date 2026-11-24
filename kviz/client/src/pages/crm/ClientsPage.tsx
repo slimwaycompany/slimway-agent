@@ -16,7 +16,8 @@ interface ClientRow {
   fitbase_client_id: string | null; created_at: string;
   last_visit_at?: string | null; days_since_visit?: number | null;
   plan_name?: string | null; extra_plans_count?: number; sessions_summary?: string | null;
-  system_tags?: string[]; personal_tags?: { id: string; name: string; color: string }[];
+  auto_labels?: { code: string; name: string; color: string }[];
+  personal_tags?: { id: string; name: string; color: string }[];
   ltv?: number; deposit?: number; source_name?: string | null;
 }
 
@@ -120,7 +121,7 @@ interface ClientSummary {
   measure_count: number;
   measure_points: { measured_at: string; total_cm: number }[];
   body_client_id: string | null;
-  system_tags: string[];
+  auto_labels: { code: string; name: string; color: string }[];
   personal_tags: { id: string; name: string; color: string }[];
 }
 
@@ -225,14 +226,6 @@ function Sparkline({ pts }: { pts: { x: number; y: number }[] }) {
   return <svg width={W} height={H} style={{ display: 'block', marginBottom: 6 }}><path d={d} fill="none" stroke="var(--primary)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" /></svg>;
 }
 
-const SYSTEM_TAG_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  new_client:           { label: 'Новый клиент',            color: '#fff', bg: '#6366f1' },
-  incomplete_profile:   { label: 'Анкета неполная',         color: '#92400e', bg: '#fef3c7' },
-  subscription_ending:  { label: 'Абонемент заканчивается', color: '#fff', bg: '#ef4444' },
-  measure_soon:         { label: 'Замер скоро',             color: '#064e3b', bg: '#d1fae5' },
-  measure_overdue:      { label: 'Замер просрочен',         color: '#fff', bg: '#dc2626' },
-  birthday:             { label: 'День рождения',           color: '#831843', bg: '#fce7f3' },
-};
 
 const PLAN_STATUS: Record<string, { text: string; color: string; bg: string }> = {
   not_activated: { text: 'Не активирован', color: '#92400e', bg: '#fef3c7' },
@@ -464,16 +457,20 @@ function FreezeDialog({ planId, maxDays, onDone, onClose }: {
   planId: string; maxDays: number; onDone: () => void; onClose: () => void;
 }) {
   const [days, setDays] = useState(7);
+  const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
 
   async function submit() {
+    if (!reason.trim()) { setErr('Укажите причину заморозки'); return; }
     setLoading(true); setErr('');
-    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${planId}/freeze`, { days });
+    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${planId}/freeze`, { days, reason: reason.trim() });
     if (!ok) { setErr(data.error || 'Ошибка'); setLoading(false); return; }
     toast.success('Абонемент заморожен');
     onDone();
   }
+
+  const inp: React.CSSProperties = { width: '100%', padding: '8px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' as const };
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -484,11 +481,49 @@ function FreezeDialog({ planId, maxDays, onDone, onClose }: {
         <label style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>
           Дней заморозки {maxDays > 0 && <span style={{ color: 'var(--text-2)' }}>(лимит: {maxDays})</span>}
         </label>
-        <input type="number" min={1} max={maxDays || 365} value={days} onChange={e => setDays(Number(e.target.value))}
-          style={{ width: '100%', padding: '8px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+        <input type="number" min={1} max={maxDays || 365} value={days} onChange={e => setDays(Number(e.target.value))} style={inp} />
+        <label style={{ fontSize: 13, display: 'block', marginTop: 12, marginBottom: 6 }}>Причина <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Укажите причину…"
+          style={{ ...inp, resize: 'vertical', minHeight: 56 }} />
         <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
           <button style={SL.outlineBtn} onClick={onClose}>Отмена</button>
-          <button className="cp-btn cp-btn--primary" onClick={submit} disabled={loading}>{loading ? '…' : 'Заморозить'}</button>
+          <button className="cp-btn cp-btn--primary" onClick={submit} disabled={loading || !reason.trim()}>{loading ? '…' : 'Заморозить'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── UnfreezeDialog ─────────────────────────────────────────────────────────────
+
+function UnfreezeDialog({ planId, onDone, onClose }: {
+  planId: string; onDone: () => void; onClose: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function submit() {
+    if (!reason.trim()) { setErr('Укажите причину разморозки'); return; }
+    setLoading(true); setErr('');
+    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${planId}/unfreeze`, { reason: reason.trim() });
+    if (!ok) { setErr(data.error || 'Ошибка'); setLoading(false); return; }
+    toast.success('Абонемент разморожен');
+    onDone();
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onClose}>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 24, width: 320, boxShadow: '0 8px 32px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>Разморозить абонемент</h3>
+        {err && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+        <label style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>Причина <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Укажите причину…"
+          style={{ width: '100%', padding: '8px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' as const, resize: 'vertical', minHeight: 56 }} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+          <button style={SL.outlineBtn} onClick={onClose}>Отмена</button>
+          <button className="cp-btn cp-btn--primary" onClick={submit} disabled={loading || !reason.trim()}>{loading ? '…' : 'Разморозить'}</button>
         </div>
       </div>
     </div>
@@ -667,7 +702,14 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   const [newComment, setNewComment] = useState('');
   const [savingComment, setSavingComment] = useState(false);
   const [freezeId, setFreezeId] = useState<string | null>(null);
+  const [unfreezeId, setUnfreezeId] = useState<string | null>(null);
   const [splitPlan, setSplitPlan] = useState<ClientPlan | null>(null);
+  const [centerTab, setCenterTab] = useState<'important' | 'visits'>('important');
+  const [visits, setVisits] = useState<{ id: string; source: 'crm'|'fitbase'; date: string; time: string|null; status: string; label: string|null }[] | null>(null);
+  const [visitsTotal, setVisitsTotal] = useState(0);
+  const [visitsFilter, setVisitsFilter] = useState<'all'|'attended'|'no_show'|'cancelled'>('all');
+  const [visitsOffset, setVisitsOffset] = useState(0);
+  const [visitsLoading, setVisitsLoading] = useState(false);
   const [allTags, setAllTags] = useState<ClientTag[]>([]);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [importantEdit, setImportantEdit] = useState(false);
@@ -723,13 +765,12 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
       setLoading(false);
     }).catch(() => setLoading(false));
     loadSummary();
-    fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
-      .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => setPlans([]));
+    reloadPlans();
     fetch('/kviz/api/crm/client-tags', { credentials: 'include' })
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setAllTags(d); }).catch(() => {});
     fetch('/kviz/api/crm/device-types', { credentials: 'include' })
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setDeviceTypes(d); }).catch(() => {});
-  }, [clientId, loadSummary]);
+  }, [clientId, loadSummary, reloadPlans]);
 
   useEffect(() => { loadFeed(); }, [loadFeed]);
 
@@ -774,15 +815,29 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     loadSummary();
   }
 
-  async function unfreeze(planId: string) {
-    if (!await showConfirm('Разморозить абонемент?')) return;
-    const { ok, data } = await apiJSON('POST', `/kviz/api/crm/client-plans/${planId}/unfreeze`, {});
-    if (!ok) { toast.error(data.error || 'Ошибка'); return; }
-    toast.success('Абонемент разморожен');
+  const reloadPlans = useCallback(() => {
     setPlans(null);
     fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
       .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => setPlans([]));
-  }
+  }, [clientId]);
+
+  const loadVisits = useCallback(async (filter: typeof visitsFilter, reset: boolean) => {
+    setVisitsLoading(true);
+    const off = reset ? 0 : visitsOffset;
+    const params = new URLSearchParams({ limit: '30', offset: String(off), status: filter });
+    const r = await fetch(`/kviz/api/crm/clients/${clientId}/visits?${params}`, { credentials: 'include' });
+    const d = await r.json().catch(() => ({ items: [], total: 0 }));
+    const items = d?.items ?? [];
+    setVisits(reset ? items : (prev => [...(prev ?? []), ...items]));
+    setVisitsTotal(d?.total ?? 0);
+    setVisitsOffset(reset ? items.length : off + items.length);
+    setVisitsLoading(false);
+  }, [clientId, visitsOffset]);
+
+  useEffect(() => {
+    if (centerTab === 'visits') { loadVisits(visitsFilter, true); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centerTab, visitsFilter, clientId]);
 
   if (loading) return (
     <div className="cp-overlay" onClick={onClose}>
@@ -868,13 +923,17 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                 );
               })()}
 
-              {/* Social links */}
-              {(client.instagram || client.tiktok || client.email) && (
-                <div style={{ fontSize: 12, marginBottom: 8, lineHeight: '1.7', color: 'var(--text-2)' }}>
-                  {client.instagram && <div>Instagram @{client.instagram}</div>}
-                  {client.tiktok && <div>TikTok @{client.tiktok}</div>}
-                  {client.email && <div>{client.email}</div>}
-                </div>
+              {/* Social links + LTV — collapsible */}
+              {(client.instagram || client.tiktok || client.email || (summary?.ltv ?? 0) > 0) && (
+                <details style={{ marginBottom: 8 }}>
+                  <summary style={{ fontSize: 12, color: 'var(--text-2)', cursor: 'pointer', userSelect: 'none', marginBottom: 4 }}>Соцсети и LTV</summary>
+                  <div style={{ fontSize: 12, lineHeight: '1.7', color: 'var(--text-2)', paddingLeft: 4 }}>
+                    {client.instagram && <div>Instagram @{client.instagram}</div>}
+                    {client.tiktok && <div>TikTok @{client.tiktok}</div>}
+                    {client.email && <div>{client.email}</div>}
+                    {(summary?.ltv ?? 0) > 0 && <div style={{ color: 'var(--primary)', fontWeight: 600 }}>LTV {summary!.ltv.toLocaleString('ru-RU')} ₸</div>}
+                  </div>
+                </details>
               )}
 
               {/* Fitbase badge + Edit btn */}
@@ -887,11 +946,9 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
 
               {/* Tags row */}
               <div className="cp-tags" style={{ marginBottom: 10 }}>
-                {(summary?.system_tags ?? []).map(sk => {
-                  const def = SYSTEM_TAG_LABELS[sk];
-                  if (!def) return null;
-                  return <span key={sk} className="cp-tag" style={{ background: def.bg, color: def.color }}>{def.label}</span>;
-                })}
+                {(summary?.auto_labels ?? []).map(al => (
+                  <span key={al.code} className="cp-tag" style={{ background: al.color + '33', color: al.color, border: `1px solid ${al.color}44` }}>{al.name}</span>
+                ))}
                 {(summary?.personal_tags ?? []).map(pt => (
                   <span key={pt.id} className="cp-tag cp-tag--personal"
                     style={{ background: pt.color + '22', color: pt.color, border: `1px solid ${pt.color}44` }}>
@@ -1005,6 +1062,64 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
 
             {/* ── Center column ── */}
             <div className="cp-col cp-col-center">
+
+              {/* Center column tab switcher */}
+              <div className="cp-feed-tabs" style={{ marginBottom: 8 }}>
+                {(['important', 'visits'] as const).map(t => (
+                  <button key={t} className={`cp-feed-tab${centerTab === t ? ' cp-feed-tab--active' : ''}`}
+                    onClick={() => setCenterTab(t)}>
+                    {t === 'important' ? 'Важное' : 'Посещения'}
+                  </button>
+                ))}
+              </div>
+
+              {centerTab === 'visits' && (
+                <div className="cp-window" style={{ flex: 1 }}>
+                  <div className="cp-window-hdr">
+                    Посещения
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {(['all', 'attended', 'no_show', 'cancelled'] as const).map(f => (
+                        <button key={f} className={`cp-btn${visitsFilter === f ? ' cp-btn--primary' : ''}`}
+                          style={{ fontSize: 10, padding: '2px 6px' }}
+                          onClick={() => setVisitsFilter(f)}>
+                          {f === 'all' ? 'Все' : f === 'attended' ? 'Пришла' : f === 'no_show' ? 'Не пришла' : 'Отменена'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                    {visitsLoading && !visits?.length && <div style={{ padding: 12, fontSize: 13, color: 'var(--text-3)' }}>Загрузка…</div>}
+                    {!visitsLoading && visits?.length === 0 && <div style={{ padding: 12, fontSize: 13, color: 'var(--text-3)' }}>Нет посещений</div>}
+                    {(visits ?? []).map(v => {
+                      const statusLabel: Record<string, string> = { attended: 'Пришла', no_show: 'Не пришла', cancelled: 'Отменена', late_cancel: 'Поздняя отмена' };
+                      const statusColor: Record<string, string> = { attended: 'var(--success)', no_show: 'var(--danger)', cancelled: 'var(--text-3)', late_cancel: 'var(--warning,#f59e0b)' };
+                      return (
+                        <div key={v.id} style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <div>
+                            <div style={{ fontWeight: 500 }}>{v.date.split('-').reverse().join('.')}{v.time ? ` · ${v.time}` : ''}</div>
+                            {v.label && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 1 }}>{v.label}</div>}
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: statusColor[v.status] ?? 'var(--text-2)' }}>{statusLabel[v.status] ?? v.status}</span>
+                            <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>{v.source === 'crm' ? 'CRM' : 'Fitbase'}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {visits !== null && visits.length < visitsTotal && (
+                      <div style={{ padding: '8px 14px' }}>
+                        <button className="cp-btn" style={{ width: '100%', fontSize: 12 }}
+                          onClick={() => loadVisits(visitsFilter, false)} disabled={visitsLoading}>
+                          {visitsLoading ? '…' : `Показать ещё (${visitsTotal - visits.length})`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {centerTab === 'important' && (
+              <>
 
               {/* Важное */}
               <div className="cp-window">
@@ -1133,7 +1248,7 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                               <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setFreezeId(cp.id)}>❄ Заморозить</button>
                             )}
                             {cp.status === 'frozen' && (
-                              <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => unfreeze(cp.id)}>▶ Разморозить</button>
+                              <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setUnfreezeId(cp.id)}>▶ Разморозить</button>
                             )}
                             {cp.needs_split && (
                               <button className="cp-btn" style={{ fontSize: 11, color: 'var(--warning)' }} onClick={() => setSplitPlan(cp)}>⚡ Распределить</button>
@@ -1188,6 +1303,9 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                   ))}
                 </div>
               </div>
+
+              </> /* end centerTab === 'important' */
+              )}
             </div>
 
             {/* ── Right column ── */}
@@ -1395,25 +1513,26 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
           <FreezeDialog
             planId={freezeId}
             maxDays={role === 'admin' ? 365 : freezeDays - usedDays}
-            onDone={() => {
-              setFreezeId(null);
-              fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
-                .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => {});
-            }}
+            onDone={() => { setFreezeId(null); reloadPlans(); }}
             onClose={() => setFreezeId(null)}
           />
         );
       })()}
 
+      {/* Unfreeze dialog */}
+      {unfreezeId && (
+        <UnfreezeDialog
+          planId={unfreezeId}
+          onDone={() => { setUnfreezeId(null); reloadPlans(); }}
+          onClose={() => setUnfreezeId(null)}
+        />
+      )}
+
       {/* Split dialog */}
       {splitPlan && (
         <SplitDialog
           plan={splitPlan}
-          onDone={() => {
-            setSplitPlan(null);
-            fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
-              .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => {});
-          }}
+          onDone={() => { setSplitPlan(null); reloadPlans(); }}
           onClose={() => setSplitPlan(null)}
         />
       )}
@@ -1572,11 +1691,11 @@ function ClientsTable({ cols, rows, sortCol, sortDir, activeId, onSort, onRowCli
         return <span style={{ color }}>{d === 0 ? 'Сегодня' : d}</span>;
       }
       case 'tags': {
-        const st = row.system_tags ?? [], pt = row.personal_tags ?? [];
-        if (!st.length && !pt.length) return '—';
+        const al = row.auto_labels ?? [], pt = row.personal_tags ?? [];
+        if (!al.length && !pt.length) return '—';
         return (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-            {st.map(t => { const info = SYSTEM_TAG_LABELS[t]; return info ? <span key={t} style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: info.bg, color: info.color }}>{info.label}</span> : null; })}
+            {al.map(t => <span key={t.code} style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: t.color + '33', color: t.color }}>{t.name}</span>)}
             {pt.map(t => <span key={t.id} style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: t.color + '33', color: t.color }}>{t.name}</span>)}
           </div>
         );
@@ -1700,6 +1819,8 @@ export default function ClientsPage() {
   const [filterSource, setFilterSource] = useState('');
   const [filterComplete, setFilterComplete] = useState('');
   const [filterMinDays, setFilterMinDays] = useState('');
+  const [filterLabel, setFilterLabel] = useState('');
+  const [allClientTags, setAllClientTags] = useState<ClientTag[]>([]);
   const [loading, setLoading]   = useState(false);
   const [popupId, setPopupId]   = useState<string | null>(() => {
     const m = window.location.hash.match(/^#client=(.+)$/);
@@ -1720,6 +1841,7 @@ export default function ClientsPage() {
 
   useEffect(() => {
     fetch('/kviz/api/crm/ad-sources', { credentials: 'include' }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAdSources(d); }).catch(() => {});
+    fetch('/kviz/api/crm/client-tags', { credentials: 'include' }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllClientTags(d); }).catch(() => {});
     fetch('/kviz/api/me', { credentials: 'include' }).then(r => r.json()).then(d => {
       if (d.role) setRole(d.role);
       if (d.login) {
@@ -1755,12 +1877,14 @@ export default function ClientsPage() {
     params.set('sort', sortCol);
     params.set('dir', sortDir);
     if (filterMinDays) params.set('min_days', filterMinDays);
+    if (filterLabel.startsWith('tag:')) params.set('filter_tag', filterLabel.slice(4));
+    else if (filterLabel) params.set('filter_auto_label', filterLabel);
     const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
     const d = await r.json();
     const items: ClientRow[] = d?.items ?? (Array.isArray(d) ? d : []);
     setClients(items); setTotal(d?.total ?? items.length); setOffset(items.length);
     setLoading(false);
-  }, [search, filterSource, filterComplete, sortCol, sortDir, filterMinDays]);
+  }, [search, filterSource, filterComplete, sortCol, sortDir, filterMinDays, filterLabel]);
 
   async function loadMore() {
     setLoading(true);
@@ -1771,6 +1895,8 @@ export default function ClientsPage() {
     params.set('sort', sortCol);
     params.set('dir', sortDir);
     if (filterMinDays) params.set('min_days', filterMinDays);
+    if (filterLabel.startsWith('tag:')) params.set('filter_tag', filterLabel.slice(4));
+    else if (filterLabel) params.set('filter_auto_label', filterLabel);
     const r = await fetch(`/kviz/api/crm/clients?${params}`, { credentials: 'include' });
     const d = await r.json();
     const items: ClientRow[] = d?.items ?? (Array.isArray(d) ? d : []);
@@ -1868,6 +1994,22 @@ export default function ClientsPage() {
           <option value="7">7+ дн. без визита</option>
           <option value="14">14+ дн.</option>
           <option value="30">30+ дн.</option>
+        </select>
+        <select style={SL.filter} value={filterLabel} onChange={e => setFilterLabel(e.target.value)}>
+          <option value="">Все метки</option>
+          <optgroup label="Автометки">
+            <option value="new_client">Новый клиент</option>
+            <option value="subscription_ending">Абонемент заканчивается</option>
+            <option value="measure_overdue">Замер просрочен</option>
+            <option value="measure_soon">Замер скоро</option>
+            <option value="incomplete_profile">Анкета неполная</option>
+            <option value="birthday">День рождения</option>
+          </optgroup>
+          {allClientTags.length > 0 && (
+            <optgroup label="Личные метки">
+              {allClientTags.map(t => <option key={t.id} value={`tag:${t.id}`}>{t.name}</option>)}
+            </optgroup>
+          )}
         </select>
         {/* Mobile sort select */}
         {isMobile && (

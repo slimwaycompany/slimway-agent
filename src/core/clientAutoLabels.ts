@@ -6,6 +6,11 @@ export interface AutoLabelResult {
   code: string; name: string; short_name: string; color: string; sort: number;
 }
 
+export interface ClientExtraData {
+  profile_complete?: boolean;
+  birth_date?: string | null;
+}
+
 export interface BookingInputForLabels {
   id: string; client_id: string; booking_date: string; kind: string;
   client_plan_id: string | null; client_plan_item_id: string | null;
@@ -278,7 +283,8 @@ export async function batchAutoLabelsForDay(
 
 // Mode (b): per-client "as of today" for client list (task 93b)
 export async function batchAutoLabelsToday(
-  clientIds: string[]
+  clientIds: string[],
+  extras?: Map<string, ClientExtraData>
 ): Promise<Map<string, AutoLabelResult[]>> {
   const result = new Map<string, AutoLabelResult[]>();
   for (const id of clientIds) result.set(id, []);
@@ -441,6 +447,24 @@ export async function batchAutoLabelsToday(
         const windowStart = new Date(now.getTime() - windowMs).toISOString();
         const recentCount = visits.filter(ts => ts >= windowStart).length;
         if (recentCount < perWeek * weeks) pushLabel(labels, dIrr);
+      }
+    }
+
+    // incomplete_profile
+    const dIncompletePrfl = defs.get('incomplete_profile');
+    if (dIncompletePrfl) {
+      const extra = extras?.get(clientId);
+      if (extra?.profile_complete === false) pushLabel(labels, dIncompletePrfl);
+    }
+
+    // birthday — MM-DD match in UTC+5
+    const dBirthday = defs.get('birthday');
+    if (dBirthday) {
+      const extra = extras?.get(clientId);
+      const bd = extra?.birth_date;
+      if (bd) {
+        const todayMD = now.toISOString().slice(5, 10); // MM-DD
+        if (bd.slice(5) === todayMD) pushLabel(labels, dBirthday);
       }
     }
 

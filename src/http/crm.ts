@@ -3,6 +3,7 @@ import { supabase } from '../db/supabase';
 import { getSession, requireAuth, requireAdmin, getSessionWithPerms, can, requirePerm } from './auth';
 import { startHistoryImport, runFitbaseHistoryImport, getHistoryImportJob, linkBodyClients, getLinkStats } from '../jobs/fitbaseHistoryImport';
 import { batchAutoLabelsForDay, batchAutoLabelsToday } from '../core/clientAutoLabels';
+import type { ClientExtraData } from '../core/clientAutoLabels';
 
 const BRANCH_ID         = '00000000-0000-0000-0000-000000000001';
 const GENERIC_CRM_ERROR = 'Ошибка кассы, сообщите администратору';
@@ -27,6 +28,20 @@ function iinToDob(iin: string): string | null {
 }
 async function writeAudit(entity_type: string, entity_id: string, action: string, actor: string) {
   try { await supabase.from('crm_audit_log').insert({ entity_type, entity_id, action, actor, details: {} }); } catch {}
+}
+
+async function inChunks<T>(
+  ids: string[],
+  fn: (chunk: string[]) => Promise<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const CHUNK = 150;
+  const results: T[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data, error } = await fn(ids.slice(i, i + CHUNK));
+    if (error) console.error('[inChunks]', error.message);
+    if (data) results.push(...data);
+  }
+  return results;
 }
 
 let _cashPmIds: string[] | null = null;
@@ -344,12 +359,11 @@ async function batchEnrich(
     personalTagsByClient.get(cid)!.push(tag);
   }
 
-  // Measure last by crm_client_id
-  const bodyClientByCrmId = new Map<string,string>(bodyClientRows.map(b => [b.crm_client_id as string, b.id as string]));
-  const measureLastByBodyId = new Map<string,string>();
-  for (const m of (bodyMeasRes.data ?? []) as Record<string,unknown>[]) {
-    if (!measureLastByBodyId.has(m.client_id as string)) measureLastByBodyId.set(m.client_id as string, m.measured_at as string);
-  }
+  // Auto labels (replaces manual system_tags computation from task 86)
+  const extrasMap = new Map<string, ClientExtraData>(
+    clients.map(c => [c.id as string, { profile_complete: c.profile_complete as boolean, birth_date: c.birth_date as string | null }])
+  );
+  const autoLabelsMap = await batchAutoLabelsToday(ids, extrasMap);
 
   return clients.map(c => {
     const cid = c.id as string;
@@ -369,29 +383,6 @@ async function batchEnrich(
       ? (mp.sessions_total != null ? `${mp.sessions_left}/${mp.sessions_total}` : String(mp.sessions_left))
       : null;
 
-    // System tags
-    const visitCount = visitCountMap.get(cid) ?? 0;
-    const systemTags: string[] = [];
-    if (visitCount < 5) systemTags.push('new_client');
-    if (!(c.profile_complete as boolean)) systemTags.push('incomplete_profile');
-    if (mp) {
-      const validUntil = mp.valid_until as string | null;
-      const sessLeft = mp.sessions_left as number | null;
-      if (validUntil) {
-        const diff = Math.ceil((new Date(validUntil).getTime() - new Date(todayStr + 'T00:00:00+05:00').getTime()) / 86400000);
-        if (diff >= 0 && diff <= 7) systemTags.push('subscription_ending');
-      }
-      if (sessLeft != null && sessLeft <= 2 && !systemTags.includes('subscription_ending')) systemTags.push('subscription_ending');
-    }
-    const bodyId = bodyClientByCrmId.get(cid);
-    const measure_last = bodyId ? (measureLastByBodyId.get(bodyId) ?? null) : null;
-    if (measure_last) {
-      const diff = Math.ceil((new Date(todayStr + 'T00:00:00+05:00').getTime() - new Date(measure_last.slice(0,10) + 'T00:00:00+05:00').getTime()) / 86400000);
-      if (diff > 7) systemTags.push('measure_overdue');
-      else if (diff >= 5) systemTags.push('measure_soon');
-    }
-    if ((c.birth_date as string | null)?.slice(5) === todayStr.slice(5)) systemTags.push('birthday');
-
     return {
       ...c,
       last_visit_at,
@@ -399,11 +390,11 @@ async function batchEnrich(
       plan_name,
       extra_plans_count,
       sessions_summary,
-      system_tags: systemTags,
       personal_tags: personalTagsByClient.get(cid) ?? [],
       ltv: ltvByClient.get(cid) ?? 0,
       deposit: depositByClient.get(cid) ?? 0,
       source_name: c.ad_source_id ? (opts?.adSourceMap?.get(c.ad_source_id as string) ?? null) : null,
+      auto_labels: autoLabelsMap.get(c.id as string) ?? [],
     };
   });
 }
@@ -1252,21 +1243,43 @@ export function buildCrmRouter(): Router {
         const needDeposit = sortBy === 'deposit';
         const needPlan    = sortBy === 'plan' || sortBy === 'sessions';
 
-        const [vhAllRes, bkAllRes, ltvSalesRes, depRes, planAllRes] = await Promise.all([
-          needVisits ? supabase.from('crm_visit_history').select('client_id,visit_at').eq('status','attended').in('client_id', allIds) : Promise.resolve({ data: null }),
-          needVisits ? supabase.from('crm_bookings').select('client_id,booking_date').eq('status','attended').in('client_id', allIds) : Promise.resolve({ data: null }),
-          needLtv ? supabase.from('crm_sales').select('id,client_id').in('client_id', allIds) : Promise.resolve({ data: null }),
-          needDeposit ? supabase.from('crm_client_balances').select('client_id,deposit').in('client_id', allIds) : Promise.resolve({ data: null }),
-          needPlan ? supabase.from('crm_client_plans').select('client_id,name,plan_id,sessions_left,valid_until').in('client_id', allIds).in('status', ['active','not_activated']) : Promise.resolve({ data: null }),
+        // Personal tag pre-filter
+        const filterTagId = req.query.filter_tag as string | undefined;
+        let filteredIds = allIds;
+        if (filterTagId) {
+          const tagClientData = await inChunks<Record<string,unknown>>(allIds, (chunk) =>
+            supabase.from('crm_client_tag_links').select('client_id').eq('tag_id', filterTagId).in('client_id', chunk) as any
+          );
+          const tagSet = new Set(tagClientData.map(r => r.client_id as string));
+          filteredIds = allIds.filter(id => tagSet.has(id));
+          if (!filteredIds.length) { res.json({ items: [], total: 0 }); return; }
+        }
+
+        const [vhAll, bkAll, ltvSalesRows, depRows, planAllRows] = await Promise.all([
+          needVisits ? inChunks<Record<string,unknown>>(filteredIds, (chunk) =>
+            supabase.from('crm_visit_history').select('client_id,visit_at').eq('status','attended').in('client_id', chunk) as any
+          ) : Promise.resolve([]),
+          needVisits ? inChunks<Record<string,unknown>>(filteredIds, (chunk) =>
+            supabase.from('crm_bookings').select('client_id,booking_date').eq('status','attended').in('client_id', chunk) as any
+          ) : Promise.resolve([]),
+          needLtv ? inChunks<Record<string,unknown>>(filteredIds, (chunk) =>
+            supabase.from('crm_sales').select('id,client_id').in('client_id', chunk) as any
+          ) : Promise.resolve([]),
+          needDeposit ? inChunks<Record<string,unknown>>(filteredIds, (chunk) =>
+            supabase.from('crm_client_balances').select('client_id,deposit').in('client_id', chunk) as any
+          ) : Promise.resolve([]),
+          needPlan ? inChunks<Record<string,unknown>>(filteredIds, (chunk) =>
+            (supabase.from('crm_client_plans').select('client_id,name,plan_id,sessions_left,valid_until').in('client_id', chunk).in('status', ['active','not_activated'])) as any
+          ) : Promise.resolve([]),
         ]);
 
         const lastVisitAll = new Map<string,string>();
         if (needVisits) {
-          for (const v of (vhAllRes.data ?? []) as Record<string,unknown>[]) {
+          for (const v of vhAll) {
             const lv = lastVisitAll.get(v.client_id as string);
             if (!lv || (v.visit_at as string) > lv) lastVisitAll.set(v.client_id as string, v.visit_at as string);
           }
-          for (const b of (bkAllRes.data ?? []) as Record<string,unknown>[]) {
+          for (const b of bkAll) {
             const lv = lastVisitAll.get(b.client_id as string);
             if (!lv || (b.booking_date as string) > lv) lastVisitAll.set(b.client_id as string, b.booking_date as string);
           }
@@ -1280,7 +1293,7 @@ export function buildCrmRouter(): Router {
 
         if (needLtv) {
           const pmIds = await getCashPmIds();
-          const salesRows = (ltvSalesRes.data ?? []) as Record<string,unknown>[];
+          const salesRows = ltvSalesRows;
           const saleIds = salesRows.map(s => s.id as string);
           const clientBySaleId = new Map<string,string>(salesRows.map(s => [s.id as string, s.client_id as string]));
           const salesAmtByClient = new Map<string,number>();
@@ -1290,6 +1303,8 @@ export function buildCrmRouter(): Router {
               supabase.from('crm_sale_payments').select('sale_id,amount').in('sale_id', saleIds).in('payment_method_id', pmIds),
               supabase.from('crm_refunds').select('id,sale_id').in('sale_id', saleIds),
             ]);
+            if (spRes.error) console.error('[clients/ltv] sale_payments error:', spRes.error.message);
+            if (riRes.error) console.error('[clients/ltv] refunds error:', riRes.error.message);
             for (const p of (spRes.data ?? []) as Record<string,unknown>[]) {
               const cid = clientBySaleId.get(p.sale_id as string);
               if (cid) salesAmtByClient.set(cid, (salesAmtByClient.get(cid) ?? 0) + Number(p.amount ?? 0));
@@ -1298,24 +1313,26 @@ export function buildCrmRouter(): Router {
             const refIds = refRows.map(r => r.id as string);
             const clientByRefId = new Map<string,string>(refRows.map(r => [r.id as string, clientBySaleId.get(r.sale_id as string) ?? '']));
             if (refIds.length) {
-              const { data: rfp } = await supabase.from('crm_refund_payments').select('refund_id,amount').in('refund_id', refIds).in('payment_method_id', pmIds);
+              const { data: rfp, error: rfpErr } = await supabase.from('crm_refund_payments').select('refund_id,amount').in('refund_id', refIds).in('payment_method_id', pmIds);
+              if (rfpErr) console.error('[clients/ltv] refund_payments error:', rfpErr.message);
               for (const p of (rfp ?? []) as Record<string,unknown>[]) {
                 const cid = clientByRefId.get(p.refund_id as string);
                 if (cid) refundAmtByClient.set(cid, (refundAmtByClient.get(cid) ?? 0) + Number(p.amount ?? 0));
               }
             }
           }
-          preLtv = new Map(allIds.map(id => [id, (salesAmtByClient.get(id) ?? 0) - (refundAmtByClient.get(id) ?? 0)]));
+          preLtv = new Map(filteredIds.map(id => [id, (salesAmtByClient.get(id) ?? 0) - (refundAmtByClient.get(id) ?? 0)]));
           sortKeyFn = id => preLtv!.get(id) ?? 0;
         } else if (needDeposit) {
-          preDeposit = new Map((depRes.data ?? []).map((b: Record<string,unknown>) => [b.client_id as string, Number(b.deposit ?? 0)]));
+          preDeposit = new Map(depRows.map((b: Record<string,unknown>) => [b.client_id as string, Number(b.deposit ?? 0)]));
           sortKeyFn = id => preDeposit!.get(id) ?? 0;
         } else if (needPlan) {
-          const plansAll = (planAllRes.data ?? []) as Record<string,unknown>[];
+          const plansAll = planAllRows;
           const planIds = [...new Set(plansAll.map(p => p.plan_id as string).filter(Boolean))];
           const planNameMap = new Map<string,string>();
           if (planIds.length) {
-            const { data: pns } = await supabase.from('crm_plans').select('id,name').in('id', planIds);
+            const { data: pns, error: pnsErr } = await supabase.from('crm_plans').select('id,name').in('id', planIds);
+            if (pnsErr) console.error('[clients/plan] plans error:', pnsErr.message);
             for (const pn of (pns ?? []) as Record<string,unknown>[]) planNameMap.set(pn.id as string, pn.name as string);
           }
           const primaryPlan = new Map<string,Record<string,unknown>>();
@@ -1347,8 +1364,23 @@ export function buildCrmRouter(): Router {
           sortKeyFn = id => dwDays(id);
         }
 
-        let filtered = allIds;
-        if (minDays != null) filtered = allIds.filter(id => dwDays(id) >= minDays!);
+        // Auto-label filter (post-filter, runs batchAutoLabelsToday for filtered set)
+        const filterAutoLabel = req.query.filter_auto_label as string | undefined;
+        if (filterAutoLabel) {
+          let extrasForFilter: Map<string, ClientExtraData> | undefined;
+          if (filterAutoLabel === 'incomplete_profile' || filterAutoLabel === 'birthday') {
+            const extrasData = await inChunks<Record<string,unknown>>(filteredIds, (chunk) =>
+              supabase.from('crm_clients').select('id,profile_complete,birth_date').in('id', chunk) as any
+            );
+            extrasForFilter = new Map(extrasData.map(r => [r.id as string, { profile_complete: r.profile_complete as boolean, birth_date: r.birth_date as string | null }]));
+          }
+          const labelMap = await batchAutoLabelsToday(filteredIds, extrasForFilter);
+          filteredIds = filteredIds.filter(id => (labelMap.get(id) ?? []).some(l => l.code === filterAutoLabel));
+          if (!filteredIds.length) { res.json({ items: [], total: 0 }); return; }
+        }
+
+        let filtered = filteredIds;
+        if (minDays != null) filtered = filteredIds.filter(id => dwDays(id) >= minDays!);
 
         const asc = sortDir === 'asc';
         filtered.sort((a, b) => {
@@ -1999,6 +2031,71 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  r.get('/kviz/api/crm/clients/:id/visits', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const clientId = req.params.id;
+      const limit = Math.min(Number(req.query.limit ?? 30), 100);
+      const offset = Number(req.query.offset ?? 0);
+      const status = req.query.status as string | undefined;
+
+      const ATTENDED = ['attended'];
+      const NO_SHOW  = ['no_show'];
+      const CANCELLED = ['cancelled', 'late_cancel'];
+
+      // Build status filter sets
+      const bkStatuses =
+        status === 'attended'  ? ATTENDED :
+        status === 'no_show'   ? NO_SHOW :
+        status === 'cancelled' ? CANCELLED :
+        ['attended', 'no_show', 'cancelled', 'late_cancel'];
+
+      const vhStatuses =
+        status === 'attended'  ? ['attended'] :
+        status === 'no_show'   ? ['no_show'] :
+        status === 'cancelled' ? [] :
+        ['attended', 'no_show'];
+
+      const [bkRes, vhRes] = await Promise.all([
+        supabase.from('crm_bookings')
+          .select('id,booking_date,booking_time,status,device_type_code')
+          .eq('client_id', clientId).in('status', bkStatuses)
+          .order('booking_date', { ascending: false }).order('booking_time', { ascending: false }),
+        vhStatuses.length
+          ? supabase.from('crm_visit_history')
+              .select('id,visit_at,status,service_name')
+              .eq('client_id', clientId).in('status', vhStatuses)
+              .order('visit_at', { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      if (bkRes.error) console.error('[visits] bookings error', clientId, bkRes.error.message);
+      if ((vhRes as { error: { message: string } | null }).error) console.error('[visits] visit_history error', clientId, (vhRes as { error: { message: string } }).error.message);
+
+      const bkRows = ((bkRes.data ?? []) as Record<string,unknown>[]).map(r => ({
+        id: r.id as string, source: 'crm' as const,
+        date: r.booking_date as string, time: r.booking_time as string | null,
+        status: r.status as string,
+        label: r.device_type_code as string | null,
+      }));
+      const vhRows = (((vhRes as { data: Record<string,unknown>[] | null }).data) ?? []).map(r => ({
+        id: r.id as string, source: 'fitbase' as const,
+        date: (r.visit_at as string).slice(0, 10), time: (r.visit_at as string).slice(11, 16) || null,
+        status: r.status as string,
+        label: r.service_name as string | null,
+      }));
+
+      // Merge & sort by date+time desc
+      const all = [...bkRows, ...vhRows].sort((a, b) => {
+        const da = `${a.date}${a.time ?? '00:00'}`;
+        const db = `${b.date}${b.time ?? '00:00'}`;
+        return da < db ? 1 : da > db ? -1 : 0;
+      });
+
+      res.json({ items: all.slice(offset, offset + limit), total: all.length });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // ── Plan freeze / unfreeze / split ────────────────────────────────────────────
 
   r.post('/kviz/api/crm/client-plans/:id/freeze', async (req, res) => {
@@ -2021,8 +2118,14 @@ export function buildCrmRouter(): Router {
           res.status(400).json({ error: `Превышен лимит заморозки. Доступно: ${maxFreeze - used} дней` }); return;
         }
       }
+      const reason = typeof b.reason === 'string' ? b.reason.trim() : '';
+      if (!reason) { res.status(400).json({ error: 'Укажите причину заморозки' }); return; }
+      const { data: cpFull } = await supabase.from('crm_client_plans').select('client_id').eq('id', req.params.id).single();
       const { error } = await supabase.rpc('crm_plan_freeze', { p_plan_id: req.params.id, p_days: days });
       if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
+      if (cpFull?.client_id) {
+        await supabase.from('crm_client_comments').insert({ client_id: cpFull.client_id, kind: 'freeze', text: reason, author: session.display_name });
+      }
       await writeAudit('client_plan', req.params.id, `freeze:${days}d`, session.display_name);
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -2032,12 +2135,18 @@ export function buildCrmRouter(): Router {
     if (!requireAuth(req, res)) return;
     const session = getSession(req)!;
     try {
+      const b = req.body as Record<string, unknown>;
+      const reason = typeof b.reason === 'string' ? b.reason.trim() : '';
+      if (!reason) { res.status(400).json({ error: 'Укажите причину разморозки' }); return; }
       const { data: cp } = await supabase.from('crm_client_plans')
-        .select('id,status').eq('id', req.params.id).single();
+        .select('id,status,client_id').eq('id', req.params.id).single();
       if (!cp) { res.status(404).json({ error: 'Абонемент не найден' }); return; }
       if (cp.status !== 'frozen') { res.status(400).json({ error: 'Абонемент не заморожен' }); return; }
       const { error } = await supabase.rpc('crm_plan_unfreeze', { p_plan_id: req.params.id });
       if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
+      if (cp.client_id) {
+        await supabase.from('crm_client_comments').insert({ client_id: cp.client_id, kind: 'unfreeze', text: reason, author: session.display_name });
+      }
       await writeAudit('client_plan', req.params.id, 'unfreeze', session.display_name);
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -3450,26 +3559,12 @@ export function buildCrmRouter(): Router {
         measure_count = measure_points.length;
       }
 
-      // System tags
-      const today = todayUtc5();
-      const systemTags: string[] = [];
-      if (visits_attended_total < 5) systemTags.push('new_client');
-      if (client && !client.profile_complete) systemTags.push('incomplete_profile');
-      if (activePlanWithName) {
-        const validUntil = activePlanWithName.valid_until as string | null;
-        const sessLeft = activePlanWithName.sessions_left as number | null;
-        if (validUntil) {
-          const diff = Math.ceil((new Date(validUntil).getTime() - new Date(today + 'T00:00:00+05:00').getTime()) / 86400000);
-          if (diff >= 0 && diff <= 7) systemTags.push('subscription_ending');
-        }
-        if (sessLeft != null && sessLeft <= 2 && !systemTags.includes('subscription_ending')) systemTags.push('subscription_ending');
-      }
-      if (measure_last) {
-        const diff = Math.ceil((new Date(today + 'T00:00:00+05:00').getTime() - new Date(measure_last.slice(0, 10) + 'T00:00:00+05:00').getTime()) / 86400000);
-        if (diff > 7) systemTags.push('measure_overdue');
-        else if (diff >= 5) systemTags.push('measure_soon');
-      }
-      if (client?.birth_date && (client.birth_date as string).slice(5) === today.slice(5)) systemTags.push('birthday');
+      // Auto labels
+      const extrasForSummary = new Map<string, ClientExtraData>([
+        [clientId, { profile_complete: client?.profile_complete as boolean, birth_date: client?.birth_date as string | null }],
+      ]);
+      const autoLabelsMap = await batchAutoLabelsToday([clientId], extrasForSummary);
+      const auto_labels = autoLabelsMap.get(clientId) ?? [];
 
       // Personal tags
       const { data: tagLinks } = await supabase.from('crm_client_tag_links').select('tag_id').eq('client_id', clientId);
@@ -3484,7 +3579,7 @@ export function buildCrmRouter(): Router {
         ltv, active_plan: activePlanWithName, visits_attended_total, last_visit_at,
         inbody_last, inbody_latest, inbody_prev, inbody_count, inbody_first,
         measure_last, measure_latest, measure_first, measure_count, measure_points, body_client_id,
-        system_tags: systemTags, personal_tags,
+        auto_labels, personal_tags,
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
