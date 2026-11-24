@@ -111,6 +111,14 @@
 
 ## Сделано
 
+### 24.11.2026 · хотфикс 89b-1 · showConfirm принимает строку, белый экран при отмене записи
+- **React error #31** (white screen): `showConfirm({...})` передавал объект туда, где ожидается строка → JSX рендерил Promise/объект и крашил.
+- `SchedulePage.tsx`: `cancelBooking()` — `showConfirm(\`Отменить запись?${cancelReason ? '\nПричина: ...' : ''}\`)` (шаблонная строка).
+- `SettingsPage.tsx`: `deleteLabel(id, name)` — добавлен параметр `name`; `showConfirm(\`Удалить этикетку «${name}»?\`)`. Вызов обновлён: `deleteLabel(l.id, l.name)`.
+- **TypeScript (SchedulePage)**: добавлен `sort: number` в тип состояния `labels`; `saveBlockCfg` — выделены `defaults` чтобы не было TS2783 (дублирующий ключ); убран дубль `height: '100vh'` (оставлен только `'100dvh'`).
+- **TypeScript (SettingsPage)**: типизированы два `.then((d: {...}) => ...)` без явного типа; `accentcolor` → `accentColor`; 4 × `d.is_current &&` → `!!d.is_current &&` и аналогично для `is_active`, `user_name`, `error` (тип `unknown` в JSX).
+- 48 ошибок tsc в несвязанных модулях (App.tsx, TV, Reports, Funnel, Manager, Measure) — зафиксированы в `docs/modules/infra.md`, в `npm run build` не добавлять.
+
 ### 24.11.2026 · task 90 (сетка) · Одна невидимая прокрутка, единая шкала времени, реальные имена аппаратов
 - **`SchedulePage.tsx`**: константа `PX_PER_MIN = 1.9` заменила `ROW_H = 64`; высота строки = `grid_step_minutes × PX_PER_MIN` (40 мин → 76 px, 30 мин → 57 px). Все блоки имеют одинаковую высоту тела = `(day_end − day_start) × PX_PER_MIN` → 12:00 у VACU и InfraStep на одной высоте.
 - `gridWrap`: `overflow: visible` вместо `overflowX: auto` → sticky работает через `blocksWrap`, у каждого блока нет своей прокрутки. `blocksWrap` получил классы `sched-scroll sched-blocks`.

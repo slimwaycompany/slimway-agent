@@ -79,7 +79,7 @@
 - Сервер, Supabase, cron, `job_runs` / `job_locks`, `/health`.
 
 ## Открытые баги
-- (нет — боковые кнопки исправлены в 9574ebf)
+- **48 ошибок `tsc --noEmit`** в несвязанных модулях (выявлено хотфикс 89b-1, 24.11.2026): `App.tsx`, `kviz/client/src/components/tv/` (ImageBox, TvBackground, TvScreen, TvScreenEditor, tvScreenLayout.ts), `src/pages/ResultsPage.tsx`, `SummaryPage.tsx`, `src/pages/crm/FunnelPage.tsx`, `StagePopup.tsx`, `src/pages/manager/ManagerPage.tsx`, `src/pages/crm/ClientPage.tsx` (если есть), `src/pages/measure/NewMeasurePage.tsx`, `src/pages/reports/ReportsPage.tsx`, `src/utils/inbody.ts`, `parseLookinBodyCSV.ts`. Не добавлять `tsc --noEmit` в `npm run build` — слишком много, в чужих модулях. Чинить по одному при работе с соответствующим модулем.
 
 ## Следующее
 - Планшет 768–1024: гамбургер или вкладки сверху — не решено.

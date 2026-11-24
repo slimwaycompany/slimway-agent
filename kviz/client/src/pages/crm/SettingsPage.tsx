@@ -1627,7 +1627,7 @@ function MissionSection() {
   useEffect(() => {
     fetch('/kviz/api/results/mission', { credentials: 'include' })
       .then(r => r.ok ? r.json() : {})
-      .then(d => { setMission(d.mission ?? ''); if (d.display_url) setTvUrl(window.location.origin + d.display_url); })
+      .then((d: { mission?: string; display_url?: string }) => { setMission(d.mission ?? ''); if (d.display_url) setTvUrl(window.location.origin + d.display_url); })
       .catch(() => {}).finally(() => setLoading(false));
   }, []);
   async function save() {
@@ -3266,7 +3266,7 @@ function ControlLinesSection() {
                   {pt.checks.map((ch, ci) => (
                     <div key={ch.key} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
                       <input type="checkbox" checked={ch.enabled} onChange={() => toggleCheck(pi, ci)}
-                        style={{ width: 14, height: 14, accentcolor: 'var(--accent)', cursor: 'pointer' }} />
+                        style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer' }} />
                       <span style={{ fontSize: 12, color: 'var(--text)' }}>{ch.type}</span>
                       {Object.keys(ch.params).length > 0 && (
                         <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
@@ -3592,13 +3592,13 @@ function TrustedDevicesSection() {
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                 {String(d.name)}
-                {d.is_current && <span style={{ fontSize: 11, background: 'var(--success-soft)', color: 'var(--success)', padding: '1px 6px', borderRadius: 5, fontWeight: 700 }}>этот компьютер</span>}
+                {!!d.is_current && <span style={{ fontSize: 11, background: 'var(--success-soft)', color: 'var(--success)', padding: '1px 6px', borderRadius: 5, fontWeight: 700 }}>этот компьютер</span>}
                 {!d.is_active && <span style={{ fontSize: 11, background: 'var(--danger-soft)', color: 'var(--danger)', padding: '1px 6px', borderRadius: 5 }}>отключён</span>}
               </div>
               <span style={S.meta}>Добавил: {String(d.created_by ?? '—')} · Последний визит: {d.last_seen_at ? new Date(String(d.last_seen_at)).toLocaleString('ru-RU') : '—'}</span>
             </div>
             <div style={S.rowActions}>
-              {d.is_active && <button style={S.delBtn} onClick={() => deactivate(String(d.id))}>Отключить</button>}
+              {!!d.is_active && <button style={S.delBtn} onClick={() => deactivate(String(d.id))}>Отключить</button>}
             </div>
           </div>
         ))}
@@ -3705,7 +3705,7 @@ function PbxSection() {
                   <div>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>{String(c.client_phone ?? '—')}</span>
                     <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-2)' }}>{String(c.direction ?? '')} · {String(c.status ?? '')}</span>
-                    {c.user_name && <span style={{ marginLeft: 8, fontSize: 12 }}>{String(c.user_name)}</span>}
+                    {!!c.user_name && <span style={{ marginLeft: 8, fontSize: 12 }}>{String(c.user_name)}</span>}
                   </div>
                   <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{c.started_at ? new Date(String(c.started_at)).toLocaleString('ru-RU') : '—'}</span>
                 </div>
@@ -3723,7 +3723,7 @@ function PbxSection() {
                     <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-2)' }}>{String(e.call_uuid ?? '')}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {e.error && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{String(e.error)}</span>}
+                    {!!e.error && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{String(e.error)}</span>}
                     <span style={{ fontSize: 11, background: e.processed ? 'var(--success-soft)' : 'var(--danger-soft)', color: e.processed ? 'var(--success)' : 'var(--danger)', padding: '1px 6px', borderRadius: 4 }}>{e.processed ? 'OK' : 'Ошибка'}</span>
                     <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{e.received_at ? new Date(String(e.received_at)).toLocaleString('ru-RU') : '—'}</span>
                   </div>
@@ -3862,7 +3862,7 @@ function TvSection() {
     api('GET', '/kviz/api/tv/templates').then(r => { if (r.ok) setSlideTemplates(r.data); });
     fetch('/kviz/api/results/mission', { credentials: 'include' })
       .then(r => r.ok ? r.json() : {})
-      .then(d => { if (d.display_url) setTvUrl(window.location.origin + d.display_url); })
+      .then((d: { display_url?: string }) => { if (d.display_url) setTvUrl(window.location.origin + d.display_url); })
       .catch(() => {});
   }, []);
 
@@ -4484,8 +4484,8 @@ function ClassesSection() {
     else setErr((data as { error?: string }).error || 'Ошибка');
   }
 
-  async function deleteLabel(id: number) {
-    const ok2 = await showConfirm({ title: 'Удалить этикетку?', confirmLabel: 'Удалить', cancelLabel: 'Отмена' });
+  async function deleteLabel(id: number, name: string) {
+    const ok2 = await showConfirm(`Удалить этикетку «${name}»?`);
     if (!ok2) return;
     const { ok, data } = await api('DELETE', `/kviz/api/crm/booking-labels/${id}`);
     if (ok) load();
@@ -4578,7 +4578,7 @@ function ClassesSection() {
               </div>
               <div style={S.rowActions}>
                 <button style={S.editBtn} onClick={() => setEditLabel(l)}>Изм.</button>
-                {!l.is_system && <button style={S.delBtn} onClick={() => deleteLabel(l.id)}>Удалить</button>}
+                {!l.is_system && <button style={S.delBtn} onClick={() => deleteLabel(l.id, l.name)}>Удалить</button>}
               </div>
             </div>
           ))}

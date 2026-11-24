@@ -415,7 +415,7 @@ function BookingDetailModal({
   canBook: boolean; canAttend: boolean; isAdmin: boolean;
   onClose: () => void; onDone: (changed: boolean) => void; onRefresh: () => void;
 }) {
-  const [labels, setLabels]       = useState<{ id: number; name: string; color: string; short_name?: string | null; is_active: boolean }[]>([]);
+  const [labels, setLabels]       = useState<{ id: number; name: string; color: string; short_name?: string | null; sort: number; is_active: boolean }[]>([]);
   const [selLabels, setSelLabels] = useState(new Set(booking.labels.map(l => l.id)));
   const [note, setNote]           = useState(booking.note ?? '');
   const [trainer, setTrainer]     = useState(booking.trainer ?? '');
@@ -465,7 +465,7 @@ function BookingDetailModal({
 
   async function doCancel() {
     if (!cancelReason.trim()) { toast.error('Укажите причину отмены'); return; }
-    const confirmed = await showConfirm({ title: 'Отменить запись?', message: cancelReason, confirmLabel: 'Отменить', cancelLabel: 'Нет' });
+    const confirmed = await showConfirm(`Отменить запись?${cancelReason ? `\nПричина: ${cancelReason}` : ''}`);
     if (!confirmed) return;
     setBusy('cancel');
     const { ok, data } = await apiJ('POST', `/kviz/api/crm/schedule/bookings/${booking.id}/cancel`, { reason: cancelReason, force_early: forceEarly });
@@ -673,7 +673,8 @@ export default function SchedulePage() {
 
   function saveBlockCfg(tc: string, cfg: Partial<{ showCancelled: boolean; showRepair: boolean }>) {
     setBlockCfg(prev => {
-      const next = { ...prev, [tc]: { showCancelled: false, showRepair: false, ...prev[tc], ...cfg } };
+      const defaults = { showCancelled: false, showRepair: false };
+      const next = { ...prev, [tc]: { ...defaults, ...prev[tc], ...cfg } };
       try { localStorage.setItem('sched-block-cfg', JSON.stringify(next)); } catch {}
       return next;
     });
@@ -840,7 +841,7 @@ export default function SchedulePage() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const SS: Record<string, React.CSSProperties> = {
-  page:   { height: '100vh', height: '100dvh' as unknown as React.CSSProperties['height'], display: 'flex', flexDirection: 'column', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--bg,#f8fafc)', overflow: 'hidden' },
+  page:   { height: '100dvh' as unknown as React.CSSProperties['height'], display: 'flex', flexDirection: 'column', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--bg,#f8fafc)', overflow: 'hidden' },
   dateNav: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--surface,#fff)', borderBottom: '1px solid var(--border,#e2e8f0)', flexShrink: 0, flexWrap: 'wrap' },
   navBtn:  { padding: '5px 12px', border: '1px solid var(--border,#e2e8f0)', borderRadius: 6, background: 'var(--surface,#fff)', color: 'var(--text,#1a202c)', cursor: 'pointer', fontSize: 13 },
   navBtnActive: { background: 'var(--primary,#02BDB6)', color: '#fff', borderColor: 'var(--primary,#02BDB6)' },
