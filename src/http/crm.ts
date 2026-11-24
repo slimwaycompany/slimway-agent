@@ -613,6 +613,19 @@ export function buildCrmRouter(): Router {
     return null;
   }
 
+  function validateRestriction(b: Record<string, unknown>): string | null {
+    if (Array.isArray(b.allowed_weekdays) && (b.allowed_weekdays as number[]).length === 0) {
+      return 'Выберите хотя бы один день недели';
+    }
+    const hasFrom = !!(b.time_from && String(b.time_from).trim());
+    const hasTo   = !!(b.time_to   && String(b.time_to).trim());
+    if (hasFrom !== hasTo) return 'Укажите и «с», и «до» для ограничения по времени';
+    if (hasFrom && hasTo && String(b.time_from).slice(0,5) >= String(b.time_to).slice(0,5)) {
+      return '«До» должно быть позже «с»';
+    }
+    return null;
+  }
+
   r.post('/kviz/api/crm/plans', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const session = getSession(req)!;
@@ -625,6 +638,8 @@ export function buildCrmRouter(): Router {
       }
       const itemErr = await validateItems(items);
       if (itemErr) { res.status(400).json({ error: itemErr }); return; }
+      const restrictErr = validateRestriction(b);
+      if (restrictErr) { res.status(400).json({ error: restrictErr }); return; }
 
       const { data: plan, error: planErr } = await supabase.from('crm_plans').insert({
         branch_id: BRANCH_ID, kind: b.kind, name: String(b.name).trim(),
@@ -636,6 +651,9 @@ export function buildCrmRouter(): Router {
         auto_activate_days: nNull(b.auto_activate_days),
         max_deferred_start_days: n0(b.max_deferred_start_days),
         is_active: true, sort: n0(b.sort),
+        allowed_weekdays: Array.isArray(b.allowed_weekdays) ? (b.allowed_weekdays as number[]).slice().sort((a,b)=>a-b) : null,
+        time_from: b.time_from ? String(b.time_from).slice(0,5) : null,
+        time_to: b.time_to ? String(b.time_to).slice(0,5) : null,
       }).select().single();
       if (planErr) { res.status(500).json({ error: planErr.message }); return; }
 
@@ -683,6 +701,14 @@ export function buildCrmRouter(): Router {
       if (b.guest_visits         !== undefined) upd.guest_visits         = n0(b.guest_visits);
       if (b.auto_activate_days   !== undefined) upd.auto_activate_days   = nNull(b.auto_activate_days);
       if (b.max_deferred_start_days !== undefined) upd.max_deferred_start_days = n0(b.max_deferred_start_days);
+      if (b.allowed_weekdays !== undefined) {
+        const restrictErr = validateRestriction(b);
+        if (restrictErr) { res.status(400).json({ error: restrictErr }); return; }
+        upd.allowed_weekdays = Array.isArray(b.allowed_weekdays) && (b.allowed_weekdays as number[]).length > 0
+          ? (b.allowed_weekdays as number[]).slice().sort((a,b)=>a-b) : null;
+        upd.time_from = b.time_from ? String(b.time_from).slice(0,5) : null;
+        upd.time_to   = b.time_to   ? String(b.time_to).slice(0,5)   : null;
+      }
 
       const { data, error } = await supabase.from('crm_plans')
         .update(upd).eq('id', req.params.id).eq('branch_id', BRANCH_ID).select().single();
@@ -1918,7 +1944,7 @@ export function buildCrmRouter(): Router {
       // Trigger lifecycle update for this client's plans
       const today = todayUtc5();
       const { data: cps } = await supabase.from('crm_client_plans')
-        .select('id,plan_id,source,name,status,planned_start_date,auto_activate_on,valid_until,extra_until,activated_at,purchased_at,freeze_days_used,sessions_total,sessions_left,needs_split,crm_client_plan_items(*)')
+        .select('id,plan_id,source,name,status,planned_start_date,auto_activate_on,valid_until,extra_until,activated_at,purchased_at,freeze_days_used,sessions_total,sessions_left,needs_split,allowed_weekdays,time_from,time_to,crm_client_plan_items(*)')
         .eq('client_id', req.params.id).order('purchased_at', { ascending: false });
 
       for (const cp of cps || []) {
@@ -2644,7 +2670,7 @@ export function buildCrmRouter(): Router {
 
       const [plansRes, freeRes, bookedRes] = await Promise.all([
         supabase.from('crm_client_plans')
-          .select('id,plan_id,status,valid_until,extra_until,activated_at,crm_plans!plan_id(id,name),crm_client_plan_items(id,device_type_code,device_type_codes,phase,sessions_left,sessions_total,is_unlimited,daily_limit)')
+          .select('id,plan_id,status,valid_until,extra_until,activated_at,allowed_weekdays,time_from,time_to,crm_plans!plan_id(id,name),crm_client_plan_items(id,device_type_code,device_type_codes,phase,sessions_left,sessions_total,is_unlimited,daily_limit)')
           .eq('client_id', clientId).in('status', ['active','not_activated']),
         supabase.from('crm_plans').select('id,name').eq('kind','service').eq('is_free_booking',true).eq('is_active',true),
         supabase.from('crm_bookings').select('client_plan_item_id').eq('client_id', clientId).in('status',['booked','confirmed']).not('client_plan_item_id','is',null),
@@ -2795,15 +2821,31 @@ export function buildCrmRouter(): Router {
 
       const suggestions: { date: string; time: string }[] = [];
       let clientId: string | undefined;
-      // Try to get client_id from plan
+      let planWd: number[] | null = null;
+      let planTf: string | null = null;
+      let planTt: string | null = null;
       if (client_plan_id) {
-        const { data: cp } = await supabase.from('crm_client_plans').select('client_id').eq('id', client_plan_id).single();
-        if (cp) clientId = (cp as Record<string,unknown>).client_id as string;
+        const { data: cp } = await supabase.from('crm_client_plans')
+          .select('client_id,allowed_weekdays,time_from,time_to').eq('id', client_plan_id).single();
+        if (cp) {
+          clientId = (cp as Record<string,unknown>).client_id as string;
+          planWd = (cp as Record<string,unknown>).allowed_weekdays as number[] | null;
+          planTf = (cp as Record<string,unknown>).time_from as string | null;
+          planTt = (cp as Record<string,unknown>).time_to   as string | null;
+        }
       }
 
       outer: for (const d of dates) {
+        // Skip dates that don't match plan weekday restriction
+        if (planWd && planWd.length > 0 && planWd.length < 7) {
+          const dow = new Date(d + 'T12:00:00').getDay();
+          const wd  = dow === 0 ? 7 : dow;
+          if (!planWd.includes(wd)) continue;
+        }
         const isToday = d === date;
-        for (let t = sh; t + step <= em; t += step) {
+        const rStart = planTf ? Math.max(sh, slotMins(planTf.slice(0,5))) : sh;
+        const rEnd   = planTt ? Math.min(em, slotMins(planTt.slice(0,5))) : em;
+        for (let t = rStart; t + step <= rEnd; t += step) {
           if (isToday && t < afterMins + step) continue; // skip current and past slots
           const slotMs  = new Date(`${d}T${minsToStr(t)}:00+05:00`).getTime();
           const slotEndMs = slotMs + step * 60_000;
@@ -2851,6 +2893,8 @@ export function buildCrmRouter(): Router {
     NOTHING_TO_CANCEL:   'Нечего отменять',
     CANNOT_MOVE:         'Перенести нельзя: по записи уже отмечено посещение',
     CLOSED_DAY:          'Филиал в этот день не работает',
+    PLAN_WRONG_DAY:      'Абонемент не действует в этот день',
+    PLAN_WRONG_TIME:     'Абонемент не действует в это время',
   };
 
   function translateScheduleRpcError(msg: string): string {
@@ -2884,9 +2928,14 @@ export function buildCrmRouter(): Router {
     if (!requirePerm(req, res, 'schedule.attend', 'edit', session)) return;
     try {
       const b = req.body as Record<string, unknown>;
-      const { data, error } = await supabase.rpc('crm_booking_set_status', { p: { booking_id: req.params.id, status: b.status, by: session.display_name } });
+      const { data, error } = await supabase.rpc('crm_booking_set_status', {
+        p: { booking_id: req.params.id, status: b.status, by: session.display_name, only_this: Boolean(b.only_this) },
+      });
       if (error) { res.status(409).json({ error: translateScheduleRpcError(error.message) }); return; }
-      await writeAudit('booking', req.params.id, `status:${b.status}`, session.display_name);
+      const ids = (data as Record<string,unknown> | null)?.booking_ids as string[] | undefined;
+      for (const id of (ids ?? [req.params.id])) {
+        await writeAudit('booking', id, `status:${b.status}`, session.display_name);
+      }
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
@@ -2910,7 +2959,26 @@ export function buildCrmRouter(): Router {
     try {
       const b = req.body as Record<string, unknown>;
       const { data, error } = await supabase.rpc('crm_booking_move', { p: { booking_id: req.params.id, date: b.date, time: b.time, device_id: b.device_id ?? null } });
-      if (error) { res.status(409).json({ error: translateScheduleRpcError(error.message) }); return; }
+      if (error) {
+        if (error.message.includes('PLAN_WRONG_DAY') || error.message.includes('PLAN_WRONG_TIME')) {
+          const { data: bk } = await supabase.from('crm_bookings').select('client_plan_id').eq('id', req.params.id).single();
+          const cpId = (bk as Record<string,unknown>)?.client_plan_id as string | null;
+          if (cpId) {
+            const { data: cp } = await supabase.from('crm_client_plans').select('allowed_weekdays,time_from,time_to').eq('id', cpId).single();
+            const days = (cp as Record<string,unknown> | null)?.allowed_weekdays as number[] | null;
+            const tf   = (cp as Record<string,unknown> | null)?.time_from as string | null;
+            const tt   = (cp as Record<string,unknown> | null)?.time_to   as string | null;
+            const DS   = ['','пн','вт','ср','чт','пт','сб','вс'];
+            if (error.message.includes('PLAN_WRONG_DAY') && days?.length) {
+              res.status(409).json({ error: 'Абонемент действует только: ' + [...days].sort((a,b)=>a-b).map(d=>DS[d]).join(', ') }); return;
+            }
+            if (error.message.includes('PLAN_WRONG_TIME') && tf && tt) {
+              res.status(409).json({ error: `Абонемент действует только с ${tf.slice(0,5)} до ${tt.slice(0,5)}` }); return;
+            }
+          }
+        }
+        res.status(409).json({ error: translateScheduleRpcError(error.message) }); return;
+      }
       await writeAudit('booking', req.params.id, 'move', session.display_name);
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -2937,11 +3005,23 @@ export function buildCrmRouter(): Router {
     try {
       const { label_ids } = req.body as { label_ids: number[] };
       if (!Array.isArray(label_ids)) { res.status(400).json({ error: 'label_ids должен быть массивом' }); return; }
-      await supabase.from('crm_booking_label_links').delete().eq('booking_id', req.params.id);
+      // Apply to all non-cancelled bookings in the same group
+      const { data: bk } = await supabase.from('crm_bookings').select('group_id').eq('id', req.params.id).single();
+      const groupId = (bk as Record<string,unknown> | null)?.group_id as string | null;
+      let bookingIds = [req.params.id];
+      if (groupId) {
+        const { data: grp } = await supabase.from('crm_bookings')
+          .select('id').eq('group_id', groupId).not('status', 'in', '("cancelled","late_cancel")');
+        if (grp?.length) bookingIds = (grp as { id: string }[]).map(b => b.id);
+      }
+      for (const bid of bookingIds) {
+        await supabase.from('crm_booking_label_links').delete().eq('booking_id', bid);
+      }
       if (label_ids.length) {
-        await supabase.from('crm_booking_label_links').insert(
-          label_ids.map(lid => ({ booking_id: req.params.id, label_id: lid, set_by: session.display_name }))
+        const rows = bookingIds.flatMap(bid =>
+          label_ids.map(lid => ({ booking_id: bid, label_id: lid, set_by: session.display_name }))
         );
+        await supabase.from('crm_booking_label_links').insert(rows);
       }
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }

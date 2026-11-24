@@ -23,6 +23,9 @@
 - Функции: `crm_checkout(jsonb)`, `crm_refund(jsonb)` — одна транзакция; `crm_shift_expected_cash(uuid)`. Execute только у сервера.
 
 ## Сделано
+### 24.11.2026 · task 89 (2) · Показ ограничения «Когда действует» в каталоге
+- **`KassaPage.tsx`**: интерфейс `Plan` — добавлены `allowed_weekdays?`, `time_from?`, `time_to?`. Карточка абонемента/услуги показывает строку ограничения оранжевым (`formatPlanRestriction`), если ограничение есть.
+
 ### 24.11.2026 · task 89 · Cross-абонементы в каталоге, поиск по названию/цене
 - **`KassaPage.tsx`**: `Plan.items` обновлён — `device_type_code: string | null`, `device_type_codes?`, `is_unlimited?`, `daily_limit?`. Загружаются `deviceTypes` (GET /crm/device-types). Строка состава в карточке плана использует `itemLabel(i, dtNameMap)`. Добавлено поле `planSearch` — фильтр по названию и цене на вкладках Абонемент/Услуга.
 

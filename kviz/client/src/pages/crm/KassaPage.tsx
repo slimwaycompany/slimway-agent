@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import { itemLabel } from '../../utils/planItemLabel';
+import { formatPlanRestriction } from '../../lib/planRestriction';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ interface Plan {
   id: string; name: string; kind: string; price: number; is_active: boolean;
   validity_days: number | null; max_deferred_start_days: number;
   auto_activate_days: number | null;
+  allowed_weekdays?: number[] | null; time_from?: string | null; time_to?: string | null;
   items: { device_type_code: string | null; device_type_codes?: string[] | null; phase: string; sessions: number; is_unlimited?: boolean; daily_limit?: number | null }[];
 }
 interface Product { id: string; name: string; stock: number; retail_price: number | null; is_active: boolean }
@@ -470,6 +472,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
                 <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
                   {p.validity_days ? `${p.validity_days} дн.` : '∞'} · {p.items.map(i => itemLabel(i, dtNameMap)).join(' · ')}
                 </div>
+                {formatPlanRestriction(p) && <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 1 }}>{formatPlanRestriction(p)}</div>}
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--primary)', marginTop: 4 }}>{fmtMoney(p.price)}</div>
                 {(isGuest || client === null) && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Нужен клиент</div>}
               </div>

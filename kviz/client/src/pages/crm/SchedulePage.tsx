@@ -3,6 +3,7 @@ import { PermContext, usePerm } from '../../lib/permContext';
 import { toast } from '../../lib/toast';
 import { showConfirm } from '../../lib/confirm';
 import { itemLabel } from '../../utils/planItemLabel';
+import { planMatchesSlot } from '../../lib/planRestriction';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ interface DayData {
 interface ClientOption {
   id: string; plan_id: string; status: string;
   valid_until: string | null; extra_until: string | null;
+  allowed_weekdays?: number[] | null; time_from?: string | null; time_to?: string | null;
   crm_plans: { id: string; name: string } | null;
   items: { id: string; device_type_code: string | null; device_type_codes?: string[] | null; phase: string; sessions_left: number | null; sessions_total: number | null; is_unlimited?: boolean; daily_limit?: number | null; booked_ahead: number }[];
 }
@@ -262,11 +264,25 @@ function BookingFormPanel({
           <>
             {options.plans.length === 0
               ? <div style={SS.warn}>Нет активных абонементов</div>
-              : <select style={SS.inp} value={planId} onChange={e => setPlanId(e.target.value)}>
-                  <option value="">— выберите абонемент —</option>
-                  {options.plans.map(p => <option key={p.id} value={p.id}>{p.crm_plans?.name} · {p.status}</option>)}
-                </select>
+              : <div style={{ marginBottom: 8, maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+                  {options.plans.map(p => {
+                    const reason = planMatchesSlot(p, date, slot);
+                    const isSel  = planId === p.id;
+                    return (
+                      <div key={p.id} onClick={() => setPlanId(p.id)}
+                        style={{ padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid var(--border)',
+                          background: isSel ? 'var(--primary-soft)' : 'transparent',
+                          opacity: reason ? 0.5 : 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: isSel ? 600 : 400 }}>{p.crm_plans?.name} · {p.status}</div>
+                        {reason && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{reason}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
             }
+            {slot && options.plans.length > 0 && options.plans.every(p => !!planMatchesSlot(p, date, slot)) && (
+              <div style={SS.warn}>На это время у клиента нет подходящего абонемента</div>
+            )}
             {selPlan && !matchItem && (
               <div style={SS.warn}>Нет абонемента с этим аппаратом. <a href="#" onClick={(e) => { e.preventDefault(); window.location.href = '/kviz/crm/cashier'; }}>Открыть Кассу</a></div>
             )}
@@ -353,6 +369,7 @@ function BookingDetailModal({
   const [trainer, setTrainer]     = useState(booking.trainer ?? '');
   const [users, setUsers]         = useState<{ display_name: string }[]>([]);
   const [busy, setBusy]           = useState<string | null>(null);
+  const [onlyThis, setOnlyThis]   = useState(false);
   const [showMove, setShowMove]   = useState(false);
   const [showCancel, setShowCancel] = useState(false);
   const [moveDate, setMoveDate]   = useState(booking.booking_date);
@@ -369,7 +386,7 @@ function BookingDetailModal({
 
   async function setStatus(status: string) {
     setBusy(status);
-    const { ok, data } = await apiJ('POST', `/kviz/api/crm/schedule/bookings/${booking.id}/status`, { status });
+    const { ok, data } = await apiJ('POST', `/kviz/api/crm/schedule/bookings/${booking.id}/status`, { status, only_this: onlyThis });
     setBusy(null);
     if (ok) { toast.success('Статус обновлён'); onDone(true); }
     else toast.error((data as { error: string }).error);
@@ -436,6 +453,12 @@ function BookingDetailModal({
         )}
 
         {/* Status buttons */}
+        {canAttend && !isCancelled && group.length >= 2 && (
+          <label style={SS.checkLabel}>
+            <input type="checkbox" checked={onlyThis} onChange={e => setOnlyThis(e.target.checked)} />
+            Только эта запись
+          </label>
+        )}
         {canAttend && !isCancelled && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
             {!isAttended && booking.status !== 'confirmed' && (
@@ -500,7 +523,9 @@ function BookingDetailModal({
         {/* Labels */}
         {canBook && labels.filter(l => l.is_active).length > 0 && (
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 4 }}>Этикетки</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 4 }}>
+              Этикетки{group.length >= 2 ? ' — для обеих записей' : ''}
+            </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {labels.filter(l => l.is_active).map(l => (
                 <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>

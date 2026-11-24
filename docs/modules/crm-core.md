@@ -21,8 +21,9 @@
 - `crm_client_comments` — id, client_id, text, author, created_at, updated_at (task 86)
 - `crm_payment_methods` — kind: cash / cashless / deposit / bonus (депозит и бонусы системные)
 - `crm_device_types` (vacuactiv, infrastep, infrashape, rollshape), `crm_devices` — №, default_phase active/finishing, session_minutes, status working/repair/disabled/broken
-- `crm_plans` — kind abonement/service; цена, is_promo («Акция»), is_free_booking, is_system, validity_days, extra_days, freeze_days, guest_visits, auto_activate_days, max_deferred_start_days
-- `crm_plan_items` — состав: вид аппарата + фаза + сеансы
+- `crm_plans` — kind abonement/service; цена, is_promo («Акция»), is_free_booking, is_system, validity_days, extra_days, freeze_days, guest_visits, auto_activate_days, max_deferred_start_days; **+ allowed_weekdays int[], time_from time, time_to time (ограничение «Когда действует», task 89)**
+- `crm_client_plans` — **+ allowed_weekdays, time_from, time_to: копируются из crm_plans по триггеру при продаже** (task 89)
+- `crm_plan_items` — состав: вид аппарата + фаза + сеансы; **+ device_type_codes text[] для Cross-пула, is_unlimited bool, daily_limit int** (task 89)
 - `crm_suppliers` (+ link), `crm_products`, `crm_product_supplies` (партии: quantity, remaining, закуп, розница, дата), вью `crm_product_stock`
 - `crm_promo_codes` (percent/fixed, лимиты, applies_to_all) + `crm_promo_targets` (plan/product)
 - `crm_audit_log`
@@ -47,7 +48,17 @@
 - `ClientForm`: 2-колоночная сетка → 1 колонка на ≤640px (`client-form-grid`).
 - `SettingsPage`: sidebar скрывается при выборе раздела (`settings-sidebar--hidden`), кнопка `← Назад` в заголовке контента.
 
+## Ключевые решения (добавлены)
+- **«Когда действует» (task 89, 24.11):** `crm_plans` и `crm_client_plans` хранят `allowed_weekdays int[]` (1=пн–7=вс; null = без ограничения), `time_from time`, `time_to time`. При продаже через `crm_checkout` значения копируются в `crm_client_plans` по триггеру. Шаблон (crm_plans) и проданный абонемент (crm_client_plans) хранят их независимо — изменение шаблона не затрагивает уже выданные абонементы. Lib `planRestriction.ts` на клиенте: `formatPlanRestriction` (строка «пн–пт · 08:00–17:00»), `planMatchesSlot` (проверка по дате+слоту). Серверные ошибки PLAN_WRONG_DAY/PLAN_WRONG_TIME для crm_booking_move возвращают реальные дни/время из абонемента.
+
 ## Сделано
+### 24.11.2026 · task 89 (2) · Ограничение абонемента: «Когда действует» в Настройках + показ везде
+- **`src/http/crm.ts`**: POST/PATCH /plans принимают `allowed_weekdays`, `time_from`, `time_to` с валидацией; GET client-options и GET clients/:id/plans возвращают эти поля; suggest фильтрует даты/слоты по ограничению.
+- **`SettingsPage.tsx`**: форма абонемента — блок «Когда действует»: 7 кнопок-дней, поля время «с/до», пресеты (Весь день / Дневной / Вечерний / Выходные). Список планов показывает ограничение оранжевым текстом.
+- **`KassaPage.tsx`**: карточка абонемента — строка ограничения оранжевым.
+- **`ClientsPage.tsx`**: вкладка Абонементы — строка ограничения оранжевым под сеансами.
+- **Новый `kviz/client/src/lib/planRestriction.ts`**: `formatPlanRestriction`, `planMatchesSlot`.
+
 ### 24.11.2026 · task 89 · Cross (пул) абонементы: itemLabel, SettingsPage, сервер, SplitDialog
 - **`kviz/client/src/utils/planItemLabel.ts`** (новый): `itemLabel(item, dtNameMap)` — унифицированное отображение состава (одиночный, пул Cross, безлимит, ×N, из/остаток).
 - **`kviz/client/src/pages/crm/SettingsPage.tsx`** — `PlansSection` полностью переписана: `LocalItem` с `is_cross`, `is_unlimited`, `daily_limit`; Cross-строки группируются в синем блоке с одним полем «Сеансов»; в списке состав показывает `itemLabel`.
@@ -144,7 +155,10 @@
 - Вкладка Настройки — 7 групп: **Моё** (Оформление), **Студия** (Аппараты, Занятия и расписание, ТВ-экран), **Что продаём** (Абонементы, Услуги, Промокоды, Товары и склад, Поставщики), **Деньги** (Виды оплаты, Финансы), **Заявки** (Воронки CRM, Рекламные источники, Причины отказа, Теги заявок, Типы задач, Скриптолог), **Команда** (Сотрудники, График смен, Контроль менеджеров, Линейки ролей, Дов. компьютеры), **Связи и данные** (Сопоставление FB, АТС, Данные InBody). Переименования: «Занятия» → «Занятия и расписание», «Сервис» → «Данные InBody». Поиск с синонимами в верхней части меню. Каждый раздел виден только при праве `settings.<раздел>`; «Оформление» — без прав, всем. Вкладка Клиенты (список, анкета, карточка).
 
 ## Открытые баги
-- (нет активных)
+- **[24.11, после task 89] Форма состава абонемента (Cross):**
+  - у обычной (не Cross) строки не видно выбранного аппарата — выпадающий список сжат в стрелку «∨», название аппарата не читается;
+  - фаза захардкожена: у Cross-строк «Активная» без выбора, у строки RollShape подставляется «Завершающая». **Решение Сергея (24.11, меняет прежнее «фаза Cross всегда активная»):** у КАЖДОЙ строки, включая пул Cross, фаза выбирается вручную — «Активная» / «Завершающая», выбор обязателен, без значения по умолчанию; без фазы абонемент не сохраняется;
+  - в пул можно добавить один аппарат дважды (VacuActiv + VacuActiv) — должна быть ошибка «Аппарат уже есть в составе».
 
 ## Следующее
 

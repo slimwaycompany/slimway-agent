@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { showConfirm } from '../../lib/confirm';
 import { toast } from '../../lib/toast';
 import { useBreakpoint } from '../../lib/useBreakpoint';
+import { formatPlanRestriction } from '../../lib/planRestriction';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ interface ClientPlan {
   purchased_at: string; activated_at: string | null; valid_until: string | null;
   sessions_total?: number | null; sessions_left?: number | null; needs_split?: boolean;
   freeze_days_used?: number | null;
+  allowed_weekdays?: number[] | null; time_from?: string | null; time_to?: string | null;
   plan: { id: string; name: string; kind: string; freeze_days?: number | null } | null;
   crm_client_plan_items: { device_type_code: string | null; device_type_codes?: string[] | null; sessions_total: number; sessions_left: number; phase: string; is_unlimited?: boolean; daily_limit?: number | null }[];
 }
@@ -1095,6 +1097,9 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                           <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
                             Остаток: {cp.sessions_left}{cp.sessions_total != null ? `/${cp.sessions_total}` : ''} сеансов
                           </div>
+                        )}
+                        {formatPlanRestriction(cp) && (
+                          <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 2 }}>{formatPlanRestriction(cp)}</div>
                         )}
                         {canEdit && (
                           <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>

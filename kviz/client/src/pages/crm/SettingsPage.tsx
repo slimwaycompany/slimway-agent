@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef, useCallback, useContext, useMemo } from 'react';
 import { itemLabel } from '../../utils/planItemLabel';
+import { formatPlanRestriction } from '../../lib/planRestriction';
 import { toast } from '../../lib/toast';
 import { PermContext } from '../../lib/permContext';
 import { showConfirm } from '../../lib/confirm';
@@ -27,7 +28,7 @@ import {
 
 interface DeviceType { code: string; name: string; sort: number; grid_step_minutes?: number }
 interface Device { id: string; branch_id: string; type_code: string; number: string; default_phase: string | null; session_minutes: number | null; status: string; notes: string | null }
-interface Plan { id: string; kind: string; name: string; description: string | null; price: number; is_promo: boolean; is_free_booking: boolean; validity_days: number | null; extra_days: number | null; freeze_days: number | null; guest_visits: number | null; auto_activate_days: number | null; max_deferred_start_days: number | null; is_active: boolean; is_system: boolean; sort: number; items?: PlanItem[] }
+interface Plan { id: string; kind: string; name: string; description: string | null; price: number; is_promo: boolean; is_free_booking: boolean; validity_days: number | null; extra_days: number | null; freeze_days: number | null; guest_visits: number | null; auto_activate_days: number | null; max_deferred_start_days: number | null; is_active: boolean; is_system: boolean; sort: number; items?: PlanItem[]; allowed_weekdays?: number[] | null; time_from?: string | null; time_to?: string | null }
 interface PlanItem { id: string; plan_id: string; device_type_code: string | null; device_type_codes?: string[] | null; phase: string | null; sessions: number; is_unlimited?: boolean; daily_limit?: number | null; sort: number }
 interface Supplier { id: string; name: string; phone: string | null; link: string | null; notes: string | null; is_active: boolean }
 interface Product { id: string; name: string; barcode: string | null; is_active: boolean; stock: number; retail_price: number | null }
@@ -305,6 +306,9 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
   const [showArchived, setShowArchived] = useState(false);
   const [err, setErr]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [weekdays, setWeekdays] = useState<Set<number>>(new Set([1,2,3,4,5,6,7]));
+  const [timeFrom, setTimeFrom] = useState('');
+  const [timeTo, setTimeTo]     = useState('');
 
   const load = useCallback(async () => {
     const [p, t, d] = await Promise.all([
@@ -323,6 +327,9 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
     if (plan === 'new') {
       setLocalItems([]);
       setCrossSessions(16);
+      setWeekdays(new Set([1,2,3,4,5,6,7]));
+      setTimeFrom('');
+      setTimeTo('');
     } else {
       const expanded: LocalItem[] = [];
       let cs = 16;
@@ -338,6 +345,9 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
       }
       setCrossSessions(cs);
       setLocalItems(expanded);
+      setWeekdays(plan.allowed_weekdays?.length ? new Set(plan.allowed_weekdays) : new Set([1,2,3,4,5,6,7]));
+      setTimeFrom(plan.time_from?.slice(0,5) ?? '');
+      setTimeTo(plan.time_to?.slice(0,5) ?? '');
     }
     setEditPlan(plan);
   }
@@ -382,6 +392,10 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
   async function savePlan(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setErr(''); setLoading(true);
 
+    if (weekdays.size === 0) { setErr('Выберите хотя бы один день недели'); setLoading(false); return; }
+    if ((timeFrom && !timeTo) || (!timeFrom && timeTo)) { setErr('Укажите и «с», и «до» для ограничения по времени'); setLoading(false); return; }
+    if (timeFrom && timeTo && timeFrom >= timeTo) { setErr('«До» должно быть позже «с»'); setLoading(false); return; }
+
     const crossIdxs = localItems.map((_, i) => i).filter(i => localItems[i].is_cross);
     if (crossIdxs.length === 1) { setErr('В пуле Cross минимум 2 аппарата'); setLoading(false); return; }
 
@@ -414,6 +428,9 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
       max_deferred_start_days: Number(fd.get('max_deferred_start_days') || 0),
       sort: Number(fd.get('sort') || 0),
       items: [...poolItem, ...regularItems],
+      allowed_weekdays: weekdays.size < 7 ? [...weekdays].sort((a,b)=>a-b) : null,
+      time_from: timeFrom || null,
+      time_to: timeTo || null,
     };
     if (editPlan !== 'new') body.is_active = fd.get('is_active') === 'on';
     const url    = editPlan === 'new' ? '/kviz/api/crm/plans' : `/kviz/api/crm/plans/${(editPlan as Plan).id}`;
@@ -478,6 +495,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
                 </div>
               </div>
               {compStr && <span style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>{compStr}</span>}
+              {formatPlanRestriction(p) && <span style={{ fontSize: 11, color: 'var(--warning)', marginTop: 1 }}>{formatPlanRestriction(p)}</span>}
             </div>
           );
         })}
@@ -589,6 +607,45 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
                   {kind === 'abonement' ? 'Добавьте хотя бы 1 аппарат' : 'Нет аппаратов (необязательно)'}
                 </div>
               )}
+            </div>
+
+            {/* Когда действует */}
+            <div style={{ marginBottom: 12, background: 'var(--surface-2)', padding: 10, borderRadius: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Когда действует</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8 }}>Ограничение копируется в абонемент при продаже. Изменение шаблона не меняет уже проданные абонементы.</div>
+              {/* Presets */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                {[
+                  { label: 'Весь день',  wd: [1,2,3,4,5,6,7], tf: '', tt: '' },
+                  { label: 'Дневной',    wd: [1,2,3,4,5],     tf: '08:00', tt: '17:00' },
+                  { label: 'Вечерний',   wd: [1,2,3,4,5],     tf: '17:00', tt: '22:00' },
+                  { label: 'Выходные',   wd: [6,7],           tf: '', tt: '' },
+                ].map(p => (
+                  <button type="button" key={p.label}
+                    style={{ ...S.addBtn, fontSize: 11, padding: '3px 10px', background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}
+                    onClick={() => { setWeekdays(new Set(p.wd)); setTimeFrom(p.tf); setTimeTo(p.tt); }}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {/* Day toggles */}
+              <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+                {([['пн',1],['вт',2],['ср',3],['чт',4],['пт',5],['сб',6],['вс',7]] as [string,number][]).map(([lbl, d]) => (
+                  <button type="button" key={d}
+                    style={{ padding: '4px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1px solid var(--border)', minWidth: 32,
+                      background: weekdays.has(d) ? 'var(--primary)' : 'var(--surface)', color: weekdays.has(d) ? '#fff' : 'var(--text)' }}
+                    onClick={() => setWeekdays(prev => { const s = new Set(prev); s.has(d) ? s.delete(d) : s.add(d); return s; })}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {/* Time range */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-2)' }}>с</span>
+                <input type="time" step={600} style={{ ...S.inp, width: 110 }} value={timeFrom} onChange={e => setTimeFrom(e.target.value)} />
+                <span style={{ fontSize: 12, color: 'var(--text-2)' }}>до</span>
+                <input type="time" step={600} style={{ ...S.inp, width: 110 }} value={timeTo} onChange={e => setTimeTo(e.target.value)} />
+              </div>
             </div>
 
             <div style={S.mBtns}>

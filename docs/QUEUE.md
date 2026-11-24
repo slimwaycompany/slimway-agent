@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 89b | crm-core, crm-kassa, crm-schedule | Пара броней (статус+этикетки на обе) + ограничение абонемента по дням и времени | ТЗ в чате | ✅ готово (см. Журнал) |
 | 89 | crm-core, crm-kassa, crm-schedule | Cross (пул) абонементы: itemLabel утилита, форма состава с Cross, сервер, касса (поиск), расписание, SplitDialog | ТЗ в чате | ✅ готово (см. Журнал) |
 | 88 | crm-core | Таблица клиентов: колонки с заголовками, ширина и порядок перетаскиванием, видимость, серверная сортировка, вид в localStorage | `docs/tasks/88-crm-core-clients-table.md` | ✅ готово (aff16fa) |
 | 87 | crm-core, zamery | Карточка клиента: доработки по замечаниям (левая колонка, визиты, источник, Важное, таймеры, список) | `docs/tasks/87-crm-core-client-card-fixes.md` | ✅ готово (см. Журнал) |
@@ -151,6 +152,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 24.11.2026 | Claude | 89b Пара броней + ограничение по дням/времени: новый `lib/planRestriction.ts`; POST /status — only_this + booking_ids[]; PUT /labels — group-wide; POST /move — умные ошибки PLAN_WRONG_DAY/TIME; suggest фильтрует по allowed_weekdays/time_from/time_to; SettingsPage форма «Когда действует» (7 кнопок дней, время, пресеты); показ ограничения в Касса/Клиенты/Расписание (форма записи — серые планы с причиной); ClientOption + ClientPlan + Plan + крючок only_this в деталях брони. | см. хэш | build ✅. Нужна проверка на проде. |
 | 24.11.2026 | Claude | 89 Cross-абонементы: `planItemLabel.ts` (itemLabel), SettingsPage (Cross UI + pool grouping), crm.ts (validateItems async, pool rows, split endpoint), KassaPage (itemLabel + planSearch), SchedulePage (matchItem pool), ClientsPage SplitDialog (Cross toggle), .gitignore (screenshot-*.png, .playwright-mcp/) | см. хэш | build ✅. Проверить на проде: создать Cross-абонемент, купить клиенту, записать на аппарат пула, сделать SplitDialog с Cross. |
 | 24.11.2026 | Claude | 87.3+ crm-core: фикс `DeviceType.is_active` — поле не существует в `crm_device_types`, фильтр убран → VacuActiv/InfraShape поля теперь отображаются в редакторе «Важное». | 5252c3f | build ✅. Проверено на проде: поля появились, сохранение работает. |
 | 24.11.2026 | Claude | 87.3 crm-core: Важное — `important_note` убран из редактора/просмотра; 4 поля Vacu/ИК двумя парами (VacuActiv + InfraShape) в одну строку с `flex-wrap`; только `contraindications` и `skirt_size` остались. InBody: `tbw` заменён на `whr,data` (несуществующая колонка вызывала ошибку → «Нет InBody»); `console.error` при ошибке Supabase. Переход: `<a href>` и `window.location.href` → `navigate()` через `useNavigate` в `ClientPopup`; в `ClientPage` кнопка «← К клиенту» при наличии `location.state.fromCrmClientId`, navigates к `/crm/clients#client=<id>`. | 3c4fcc9 | build ✅. Проверено на проде: InBody 5 тестов, Важное 4 поля, отчёт открывается, «← К клиенту» возвращает в попап. |
