@@ -48,6 +48,12 @@
 - `SettingsPage`: sidebar скрывается при выборе раздела (`settings-sidebar--hidden`), кнопка `← Назад` в заголовке контента.
 
 ## Сделано
+### 24.11.2026 · (task 87.3) · Карточка клиента: Важное без important_note, InBody без tbw, переход через router
+- **Важное (важное/device_settings):** `important_note` убран из редактора и просмотра (данные в БД не тронуты). Вместо вертикального списка аппаратов — одна строка из двух пар: VacuActiv и InfraShape бок о бок (`flex-wrap: wrap`, на телефоне переносятся). Только `contraindications` и `skirt_size` остались.
+- **InBody — `tbw` → `whr,data`:** в `src/http/crm.ts` summary-запрос `inbody_tests` убрана несуществующая колонка `tbw`; добавлены `whr,data`. Добавлен `console.error` при ошибке запроса.
+- **Переход на отчёт через router:** `ClientsPage.tsx` — `<a href>` и `window.location.href` заменены на `navigate('/reports/client/:id', { state: { fromCrmClientId } })`. Добавлен `useNavigate` в импорт и в `ClientPopup`.
+- **Кнопка «← К клиенту»:** в `ClientPage.tsx` читается `location.state.fromCrmClientId`; если задан — показывается кнопка, которая делает `navigate('/crm/clients#client=<id>')` — возвращает в список и открывает попап.
+
 ### 24.11.2026 · (task 87.2) · Карточка клиента: фиксы task 87
 - **device_settings NOT NULL:** `saveImportant` отправляет `{}` вместо `null`; сервер PATCH заменяет null/не-объект на `{}`.
 - **InBody регрессия:** summary использует `client.phone` как fallback если `body_clients.phone_digits` null.

@@ -2825,9 +2825,10 @@ export function buildCrmRouter(): Router {
       let inbody_count = 0;
       let inbody_first: string | null = null;
       if (phoneForInBody) {
-        const { data: ibRows } = await supabase.from('inbody_tests')
-          .select('tested_at,weight,pbf,smm,ffm,vfl,bfm,bmi,bmr,tbw,inbody_score')
+        const { data: ibRows, error: ibErr } = await supabase.from('inbody_tests')
+          .select('tested_at,weight,pbf,smm,ffm,vfl,bfm,bmi,bmr,whr,inbody_score,data')
           .eq('phone_digits', phoneForInBody).order('tested_at', { ascending: false });
+        if (ibErr) console.error('[summary] inbody_tests error client_id:', clientId, ibErr.message);
         inbody_count = (ibRows ?? []).length;
         if (ibRows?.[0]) { inbody_last = (ibRows[0] as Record<string,unknown>).tested_at as string; inbody_latest = ibRows[0] as Record<string,unknown>; }
         if (ibRows?.[1]) inbody_prev = ibRows[1] as Record<string,unknown>;

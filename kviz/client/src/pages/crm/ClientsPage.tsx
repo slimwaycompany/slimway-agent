@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { showConfirm } from '../../lib/confirm';
 import { toast } from '../../lib/toast';
 
@@ -518,6 +519,7 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   clientId: string; adSources: AdSource[]; role: string;
   onClose: () => void; onEdit: () => void;
 }) {
+  const navigate = useNavigate();
   const [client, setClient] = useState<ClientFull | null>(null);
   const [summary, setSummary] = useState<ClientSummary | null>(null);
   const [plans, setPlans] = useState<ClientPlan[] | null>(null);
@@ -535,7 +537,7 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   const [allTags, setAllTags] = useState<ClientTag[]>([]);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [importantEdit, setImportantEdit] = useState(false);
-  const [importantForm, setImportantForm] = useState<{ skirt_size: string; device_settings: Record<string, { vacu: string; ik: string }>; important_note: string; contraindications: string }>({ skirt_size: '', device_settings: {}, important_note: '', contraindications: '' });
+  const [importantForm, setImportantForm] = useState<{ skirt_size: string; device_settings: Record<string, { vacu: string; ik: string }>; contraindications: string }>({ skirt_size: '', device_settings: {}, contraindications: '' });
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
   const [referrerName, setReferrerName] = useState<string | null>(null);
 
@@ -582,7 +584,6 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
       setImportantForm({
         skirt_size: (cd as ClientFull).skirt_size ?? '',
         device_settings: dsForm,
-        important_note: (cd as ClientFull).important_note ?? '',
         contraindications: (cd as ClientFull).contraindications ?? '',
       });
       setLoading(false);
@@ -608,11 +609,10 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     const { ok, data } = await apiJSON('PATCH', `/kviz/api/crm/clients/${clientId}`, {
       skirt_size: importantForm.skirt_size || null,
       device_settings: Object.keys(dsClean).length ? dsClean : {},
-      important_note: importantForm.important_note || null,
       contraindications: importantForm.contraindications || null,
     });
     if (!ok) { toast.error(data.error || 'Ошибка'); return; }
-    setClient(prev => prev ? { ...prev, skirt_size: importantForm.skirt_size || null, device_settings: Object.keys(dsClean).length ? dsClean : {}, important_note: importantForm.important_note || null, contraindications: importantForm.contraindications || null } : prev);
+    setClient(prev => prev ? { ...prev, skirt_size: importantForm.skirt_size || null, device_settings: Object.keys(dsClean).length ? dsClean : {}, contraindications: importantForm.contraindications || null } : prev);
     setImportantEdit(false);
     toast.success('Сохранено');
   }
@@ -890,35 +890,35 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                           {['XS','S','M','L','XL','XXL','XXXL'].map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                       </div>
-                      {(['important_note', 'contraindications'] as const).map(k => (
-                        <div key={k}>
-                          <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>{k === 'important_note' ? 'Важное' : 'Противопоказания'}</label>
-                          <textarea value={importantForm[k]} onChange={e => setImportantForm(f => ({ ...f, [k]: e.target.value }))}
-                            style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
-                        </div>
-                      ))}
-                      {deviceTypes.filter(dt => ['vacuactiv', 'infrashape'].includes(dt.code)).map(dt => {
-                        const dv = importantForm.device_settings[dt.code] ?? { vacu: '', ik: '' };
-                        return (
-                          <div key={dt.code}>
-                            <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>{dt.name ?? dt.code}</label>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>Vacu</div>
-                                <input type="number" inputMode="numeric" min={0} max={99} value={dv.vacu}
-                                  onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, vacu: e.target.value } } }))}
-                                  style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>ИК</div>
-                                <input type="number" inputMode="numeric" min={0} max={99} value={dv.ik}
-                                  onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, ik: e.target.value } } }))}
-                                  style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {deviceTypes.filter(dt => ['vacuactiv', 'infrashape'].includes(dt.code)).map(dt => {
+                          const dv = importantForm.device_settings[dt.code] ?? { vacu: '', ik: '' };
+                          return (
+                            <div key={dt.code} style={{ flex: '1 1 140px', minWidth: 140 }}>
+                              <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>{dt.name ?? dt.code}</label>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>Vacu</div>
+                                  <input type="number" inputMode="numeric" min={0} max={99} value={dv.vacu}
+                                    onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, vacu: e.target.value } } }))}
+                                    style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>ИК</div>
+                                  <input type="number" inputMode="numeric" min={0} max={99} value={dv.ik}
+                                    onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, ik: e.target.value } } }))}
+                                    style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>Противопоказания</label>
+                        <textarea value={importantForm.contraindications} onChange={e => setImportantForm(f => ({ ...f, contraindications: e.target.value }))}
+                          style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
+                      </div>
                     </div>
                   ) : (
                     <div style={{ fontSize: 13 }}>
@@ -931,9 +931,8 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                         if (val.ik != null) parts.push(`ИК ${val.ik}`);
                         return parts.length ? <div key={dt.code} style={{ padding: '2px 0', fontSize: 13 }}>{dt.name ?? dt.code} — {parts.join(' · ')}</div> : null;
                       })}
-                      {client.important_note && <div style={{ padding: '4px 0', color: '#b45309', fontSize: 13 }}>⚠ {client.important_note}</div>}
                       {client.contraindications && <div style={{ padding: '4px 0', color: 'var(--danger)', fontSize: 13 }}>Противопоказания: {client.contraindications}</div>}
-                      {!client.skirt_size && !Object.values(client.device_settings ?? {}).some(v => v && typeof v === 'object' && (v.vacu != null || v.ik != null)) && !client.important_note && !client.contraindications && (
+                      {!client.skirt_size && !Object.values(client.device_settings ?? {}).some(v => v && typeof v === 'object' && (v.vacu != null || v.ik != null)) && !client.contraindications && (
                         <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет данных</div>
                       )}
                     </div>
@@ -1159,10 +1158,10 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                         </div>
                       )}
                       {summary.body_client_id && (
-                        <a href={`/reports/client/${summary.body_client_id}`} target="_self"
-                          style={{ display: 'block', marginTop: 8, fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>
+                        <button onClick={() => navigate(`/reports/client/${summary.body_client_id}`, { state: { fromCrmClientId: clientId } })}
+                          style={{ marginTop: 8, fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
                           → Открыть отчёт
-                        </a>
+                        </button>
                       )}
                     </>
                   ) : (
@@ -1173,7 +1172,7 @@ function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
 
               {/* Замеры */}
               <div className="cp-window" style={{ cursor: summary?.body_client_id ? 'pointer' : undefined }}
-                onClick={() => { if (summary?.body_client_id) window.location.href = `/reports/client/${summary.body_client_id}`; }}>
+                onClick={() => { if (summary?.body_client_id) navigate(`/reports/client/${summary.body_client_id}`, { state: { fromCrmClientId: clientId } }); }}>
                 <div className="cp-window-hdr">
                   Замеры тела
                   {(summary?.measure_count ?? 0) > 0 && (

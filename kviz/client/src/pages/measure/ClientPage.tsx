@@ -1564,6 +1564,7 @@ export default function ClientPage() {
   const location = useLocation();
   // When navigated from Reports context, skip MeasureLayout wrapper and use navigate(-1) for back
   const fromReports = (location.state as Record<string,unknown> | null)?.fromReports === true;
+  const fromCrmClientId = (location.state as Record<string,unknown> | null)?.fromCrmClientId as string | undefined;
   const [client, setClient] = useState<Client | null>(null);
   const [studioResult, setStudioResult] = useState<StudioResult | null>(null);
   const [inbodyTests, setInbodyTests] = useState<InBodyTest[]>([]);
@@ -1699,6 +1700,10 @@ export default function ClientPage() {
         <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
             onClick={() => fromReports ? navigate(-1) : navigate('/measure/reports')}>← Назад</button>
+          {fromCrmClientId && (
+            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
+              onClick={() => navigate(`/crm/clients#client=${fromCrmClientId}`)}>← К клиенту</button>
+          )}
           <div style={{ flex: 1, fontWeight: 700, fontSize: 17 }}>{client.name}</div>
           {ms.length > 0 && (
             <button className="btn btn-secondary" style={{ fontSize: 13, padding: '6px 12px' }}
