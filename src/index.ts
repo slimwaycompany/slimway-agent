@@ -368,6 +368,63 @@ async function handleCrmImportFixPrices(req: express.Request, res: express.Respo
 app.get('/run/crm-import-fix-prices',  handleCrmImportFixPrices);
 app.post('/run/crm-import-fix-prices', handleCrmImportFixPrices);
 
+// crm-fill-plan-prices: backfill price/sale_id/sold_by in crm_client_plans from crm_sale_items
+async function runCrmFillPlanPrices(dry: boolean): Promise<Record<string, number>> {
+  let checked = 0, updated = 0, skipped = 0;
+
+  const { data: plans, error: pe } = await supabase
+    .from('crm_client_plans')
+    .select('id, client_id, plan_id, purchased_at')
+    .is('price', null)
+    .eq('source', 'fitbase')
+    .limit(2000);
+  if (pe) throw new Error(pe.message);
+
+  for (const cp of (plans ?? []) as Record<string,unknown>[]) {
+    checked++;
+    if (!cp.plan_id) { skipped++; continue; }
+
+    // Find sale item matching this client+plan closest by date
+    const { data: items } = await supabase
+      .from('crm_sale_items')
+      .select('id, sale_id, unit_price, crm_sales!inner(id, client_id, cashier, source)')
+      .eq('item_type', 'plan')
+      .eq('plan_id', cp.plan_id as string)
+      .eq('crm_sales.client_id', cp.client_id as string)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    const si = ((items ?? []) as Record<string,unknown>[])[0];
+    if (!si || !si.unit_price || Number(si.unit_price) <= 0) { skipped++; continue; }
+
+    const sale = (si.crm_sales as Record<string,unknown>[] | Record<string,unknown>);
+    const saleRow = Array.isArray(sale) ? sale[0] : sale;
+    if (!dry) {
+      const { error: ue } = await supabase.from('crm_client_plans').update({
+        price:   Number(si.unit_price),
+        sale_id: si.sale_id as string,
+        sold_by: (saleRow?.cashier as string) ?? null,
+      }).eq('id', cp.id as string);
+      if (ue) { console.error('[fill-plan-prices] update error', cp.id, ue.message); skipped++; continue; }
+    }
+    updated++;
+  }
+  return { checked, updated, skipped, dry: dry ? 1 : 0 };
+}
+
+async function handleCrmFillPlanPrices(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const dry = req.query.mode !== 'apply';
+  try {
+    const result = await runCrmFillPlanPrices(dry);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+app.get('/run/crm-fill-plan-prices',  handleCrmFillPlanPrices);
+app.post('/run/crm-fill-plan-prices', handleCrmFillPlanPrices);
+
 // scriptolog-reminders: every 15 min 09:00-22:00 Almaty (window checked inside job)
 async function handleScriptologReminders(req: express.Request, res: express.Response): Promise<void> {
   if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }

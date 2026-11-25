@@ -48,6 +48,7 @@ export const PERM_CATALOG: PermBlock[] = [
       { key: 'clients.plans',     label: 'Абонементы клиента',    kind: 'row' },
       { key: 'clients.sales',     label: 'Продажи клиента',       kind: 'row' },
       { key: 'clients.import',    label: 'Импорт из Fitbase',     kind: 'row' },
+      { key: 'clients.log',       label: 'Системный журнал',      kind: 'row' },
     ],
   },
   {

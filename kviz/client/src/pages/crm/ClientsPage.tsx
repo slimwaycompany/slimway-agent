@@ -101,7 +101,8 @@ interface ClientPlan {
   sessions_total?: number | null; sessions_left?: number | null; needs_split?: boolean;
   freeze_days_used?: number | null;
   allowed_weekdays?: number[] | null; time_from?: string | null; time_to?: string | null;
-  plan: { id: string; name: string; kind: string; freeze_days?: number | null } | null;
+  price?: number | null; sale_id?: string | null; sold_by?: string | null;
+  plan: { id: string; name: string; kind: string; freeze_days?: number | null; extra_days?: number | null } | null;
   crm_client_plan_items: { device_type_code: string | null; device_type_codes?: string[] | null; sessions_total: number; sessions_left: number; phase: string; is_unlimited?: boolean; daily_limit?: number | null }[];
 }
 
@@ -682,6 +683,132 @@ class PopupErrorBoundary extends Component<{ onClose: () => void; children: Reac
   }
 }
 
+// ── PlanDetailModal ────────────────────────────────────────────────────────────
+
+function PlanDetailModal({ plan, clientId: modalClientId, dtNameMap, canEdit, onFreeze, onUnfreeze, onSplit, onClose }: {
+  plan: ClientPlan; clientId: string; dtNameMap: Record<string, string>; canEdit: boolean;
+  onFreeze: () => void; onUnfreeze: () => void; onSplit: () => void; onClose: () => void;
+}) {
+  const [planVisits, setPlanVisits] = useState<{ id: string; date: string; time: string | null; status: string; label: string | null }[] | null>(null);
+  const [freezeHistory, setFreezeHistory] = useState<{ id: string; kind: string; text: string; author: string; at: string }[] | null>(null);
+
+  useEffect(() => {
+    fetch(`/kviz/api/crm/client-plans/${plan.id}/visits`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setPlanVisits(Array.isArray(d) ? d : [])).catch(() => setPlanVisits([]));
+    // freeze/unfreeze history from client actions feed
+    fetch(`/kviz/api/crm/clients/${modalClientId}/feed?kind=actions`, { credentials: 'include' })
+      .then(r => r.json()).then((d: unknown[]) => {
+        setFreezeHistory((d ?? []).filter((x: any) => x.kind === 'action' && (x.text?.startsWith('❄') || x.text?.startsWith('▶'))).slice(0, 10) as any);
+      }).catch(() => setFreezeHistory([]));
+  }, [plan.id]);
+
+  const planName = plan.plan?.name ?? plan.name ?? '—';
+  const extraDays = plan.plan?.extra_days ?? 0;
+
+  // 4 dates
+  const purchased  = plan.purchased_at;
+  const activated  = plan.activated_at;
+  const preEnd     = plan.valid_until ? new Date(new Date(plan.valid_until).getTime() - 10 * 86400000).toISOString().slice(0, 10) : null;
+  const end        = plan.valid_until;
+  const endExtra   = end && extraDays > 0 ? new Date(new Date(end).getTime() + extraDays * 86400000).toISOString().slice(0, 10) : null;
+
+  const st = PLAN_STATUS[plan.status] ?? { text: plan.status, color: 'var(--text-2)', bg: 'var(--surface-2)' };
+
+  const statusColor: Record<string, string> = { attended: 'var(--success)', no_show: 'var(--danger)', cancelled: 'var(--text-3)', late_cancel: 'var(--warning,#f59e0b)' };
+  const statusLabel: Record<string, string> = { attended: 'Пришла', no_show: 'Не пришла', cancelled: 'Отменена', late_cancel: 'Поздняя отмена' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onClose}>
+      <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 24, width: 'min(520px, 96vw)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 12px 48px rgba(0,0,0,.3)' }}
+        onClick={e => e.stopPropagation()}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>{planName}</div>
+            <span className="cp-plan-status" style={{ background: st.bg, color: st.color, marginTop: 4, display: 'inline-block' }}>{st.text}</span>
+          </div>
+          <button className="cp-btn" onClick={onClose} style={{ fontSize: 13, padding: '4px 10px' }}>✕</button>
+        </div>
+
+        {/* 4 dates */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+          {[
+            { label: 'Куплен',           val: fmtDate(purchased) },
+            { label: 'Активирован',      val: fmtDate(activated) },
+            { label: 'Предв. окончание', val: fmtDate(preEnd) },
+            { label: endExtra ? `Окончание (до ${fmtDate(endExtra)})` : 'Окончание', val: fmtDate(end) },
+          ].map(({ label, val }) => (
+            <div key={label} style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '8px 12px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>{label}</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{val}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Price + seller */}
+        {(plan.price || plan.sold_by) && (
+          <div style={{ display: 'flex', gap: 16, marginBottom: 14, fontSize: 13 }}>
+            {plan.price != null && <div><span style={{ color: 'var(--text-2)' }}>Цена: </span><b>{plan.price.toLocaleString('ru-RU')} ₸</b></div>}
+            {plan.sold_by && <div><span style={{ color: 'var(--text-2)' }}>Продавец: </span>{plan.sold_by}</div>}
+          </div>
+        )}
+
+        {/* Composition */}
+        {plan.crm_client_plan_items.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Состав:</div>
+            {plan.crm_client_plan_items.map((it, i) => (
+              <div key={i} style={{ fontSize: 13, padding: '3px 0' }}>
+                {!it.device_type_code && it.device_type_codes?.length
+                  ? `${it.device_type_codes.map(c => dtNameMap[c] ?? c).join(' / ')}: ${it.is_unlimited ? '∞' : `${it.sessions_left}/${it.sessions_total}`}`
+                  : it.is_unlimited
+                    ? `${dtNameMap[it.device_type_code ?? ''] ?? it.device_type_code ?? '?'}: без лимита`
+                    : `${dtNameMap[it.device_type_code ?? ''] ?? it.device_type_code ?? '?'}: ${it.sessions_left}/${it.sessions_total}`
+                }
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Freeze history */}
+        {(freezeHistory ?? []).length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>История заморозок:</div>
+            {(freezeHistory ?? []).map((f, i) => (
+              <div key={i} style={{ fontSize: 12, padding: '3px 0', color: 'var(--text-2)' }}>
+                {fmtDate(f.at)} — {f.text} ({f.author})
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Visits by plan */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Посещения по абонементу:</div>
+          {planVisits === null && <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Загрузка…</div>}
+          {planVisits?.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Нет посещений</div>}
+          {(planVisits ?? []).map(v => (
+            <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+              <span>{fmtDate(v.date)}{v.time ? ` · ${v.time}` : ''}{v.label ? ` · ${v.label}` : ''}</span>
+              <span style={{ color: statusColor[v.status] ?? 'var(--text-2)' }}>{statusLabel[v.status] ?? v.status}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Action buttons */}
+        {canEdit && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {plan.status === 'active' && <button className="cp-btn cp-btn--primary" style={{ fontSize: 12 }} onClick={() => { onFreeze(); onClose(); }}>❄ Заморозить</button>}
+            {plan.status === 'frozen' && <button className="cp-btn cp-btn--primary" style={{ fontSize: 12 }} onClick={() => { onUnfreeze(); onClose(); }}>▶ Разморозить</button>}
+            {plan.needs_split && <button className="cp-btn" style={{ fontSize: 12, color: 'var(--warning)' }} onClick={() => { onSplit(); onClose(); }}>⚡ Распределить</button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── ClientPopup ────────────────────────────────────────────────────────────────
 
 export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
@@ -694,7 +821,8 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   const [plans, setPlans] = useState<ClientPlan[] | null>(null);
   const [planFilter, setPlanFilter] = useState<'all' | 'active' | 'closed'>('all');
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
-  const [feedTab, setFeedTab] = useState<'all' | 'comments' | 'tasks' | 'log'>('all');
+  const [feedTab, setFeedTab] = useState<'all' | 'comments' | 'tasks' | 'actions'>('all');
+  const [planDetailId, setPlanDetailId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -725,7 +853,9 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   }, [clientId]);
 
   const loadFeed = useCallback(async () => {
-    const r = await fetch(`/kviz/api/crm/clients/${clientId}/feed?kind=${feedTab}`, { credentials: 'include' });
+    // 'all' on server returns comments+tasks+log; 'actions' returns human-readable actions
+    const serverKind = feedTab === 'actions' ? 'actions' : feedTab;
+    const r = await fetch(`/kviz/api/crm/clients/${clientId}/feed?kind=${serverKind}`, { credentials: 'include' });
     const d = await r.json().catch(() => []);
     setFeedItems(Array.isArray(d) ? d : []);
   }, [clientId, feedTab]);
@@ -887,51 +1017,67 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
             {/* ── Left column ── */}
             <div className="cp-col cp-col-left">
 
-              {/* Identity block — no avatar, name directly */}
+              {/* ФИО */}
               <div style={{ marginBottom: 8, paddingRight: 28 }}>
-                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: '1.25', wordBreak: 'break-word' }}>{client.full_name}</div>
+                <div style={{ fontSize: 23, fontWeight: 700, lineHeight: '1.25', wordBreak: 'break-word' }}>{client.full_name}</div>
               </div>
 
-              {/* Phone row */}
+              {/* Телефон */}
               {client.phone && (
                 <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 5 }}>{fmtPhone(client.phone)}</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 5 }}>{fmtPhone(client.phone)}</div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button className="cp-btn" style={{ fontSize: 11 }}
+                    <button className="cp-btn" style={{ fontSize: 12 }}
                       onClick={() => navigator.clipboard.writeText(fmtPhone(client.phone!)).then(() => toast.info('Телефон скопирован'))}>
                       ⎘ Копировать
                     </button>
                     <a href={`https://wa.me/${client.phone}`} target="_blank" rel="noreferrer"
-                      style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: '#25D366', color: '#fff', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}>
+                      style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, background: '#25D366', color: '#fff', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}>
                       WhatsApp
                     </a>
                     <a href={`tel:+${client.phone}`}
-                      style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'var(--primary)', color: '#fff', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}>
+                      style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, background: 'var(--primary)', color: '#fff', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}>
                       Позвонить
                     </a>
                   </div>
                 </div>
               )}
 
-              {/* Birth date + age */}
+              {/* Депозит + Бонусы */}
+              {balance && (balance.deposit > 0 || balance.bonus > 0) && (
+                <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 14 }}>
+                  {balance.deposit > 0 && <div><span style={{ color: 'var(--text-2)' }}>Депозит: </span><b style={{ color: 'var(--success)' }}>{balance.deposit.toLocaleString('ru-RU')} ₸</b></div>}
+                  {balance.bonus > 0 && <div><span style={{ color: 'var(--text-2)' }}>Бонусы: </span><b>{balance.bonus} б.</b></div>}
+                </div>
+              )}
+
+              {/* Дата рождения */}
               {(() => {
                 const bd = client.birth_date || (client.iin && client.iin.length >= 7 ? iinToDob(client.iin) : null);
                 return (
-                  <div style={{ fontSize: 13, marginBottom: 8, color: bd ? 'var(--text)' : 'var(--text-3)' }}>
+                  <div style={{ fontSize: 14, marginBottom: 8, color: bd ? 'var(--text)' : 'var(--text-3)' }}>
                     {bd ? `${fmtDate(bd)} · ${ageFromDate(bd)}` : 'Дата рождения не указана'}
                   </div>
                 );
               })()}
 
-              {/* Social links + LTV — collapsible */}
-              {(client.instagram || client.tiktok || client.email || (summary?.ltv ?? 0) > 0) && (
+              {/* Источник + визиты */}
+              <div style={{ fontSize: 13, marginBottom: 8, lineHeight: '1.6' }}>
+                {source && <div><span style={{ color: 'var(--text-2)' }}>Источник: </span>{source.name}{referrerName ? ` / ${referrerName}` : ''}</div>}
+                {summary && <div><span style={{ color: 'var(--text-2)' }}>Клиент с: </span>{fmtDate(client.created_at)}</div>}
+                {summary && <div><span style={{ color: 'var(--text-2)' }}>Визитов: </span>{summary.visits_attended_total}</div>}
+                {summary?.last_visit_at && <div><span style={{ color: 'var(--text-2)' }}>Последний: </span>{fmtDate(summary.last_visit_at)}</div>}
+                {summary && (summary.ltv ?? 0) > 0 && <div><span style={{ color: 'var(--text-2)' }}>LTV: </span><b style={{ color: 'var(--primary)' }}>{summary.ltv.toLocaleString('ru-RU')} ₸</b></div>}
+              </div>
+
+              {/* Соцсети */}
+              {(client.instagram || client.tiktok || client.email) && (
                 <details style={{ marginBottom: 8 }}>
-                  <summary style={{ fontSize: 12, color: 'var(--text-2)', cursor: 'pointer', userSelect: 'none', marginBottom: 4 }}>Соцсети и LTV</summary>
-                  <div style={{ fontSize: 12, lineHeight: '1.7', color: 'var(--text-2)', paddingLeft: 4 }}>
+                  <summary style={{ fontSize: 13, color: 'var(--text-2)', cursor: 'pointer', userSelect: 'none', marginBottom: 4 }}>Соцсети</summary>
+                  <div style={{ fontSize: 13, lineHeight: '1.7', color: 'var(--text-2)', paddingLeft: 4 }}>
                     {client.instagram && <div>Instagram @{client.instagram}</div>}
                     {client.tiktok && <div>TikTok @{client.tiktok}</div>}
                     {client.email && <div>{client.email}</div>}
-                    {(summary?.ltv ?? 0) > 0 && <div style={{ color: 'var(--primary)', fontWeight: 600 }}>LTV {summary!.ltv.toLocaleString('ru-RU')} ₸</div>}
                   </div>
                 </details>
               )}
@@ -939,12 +1085,12 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
               {/* Fitbase badge + Edit btn */}
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
                 {client.fitbase_client_id && (
-                  <span style={{ fontSize: 11, background: 'var(--accent-soft, #ede9fe)', color: 'var(--accent)', padding: '1px 7px', borderRadius: 4 }}>Fitbase #{client.fitbase_client_id}</span>
+                  <span style={{ fontSize: 12, background: 'var(--accent-soft, #ede9fe)', color: 'var(--accent)', padding: '1px 7px', borderRadius: 4 }}>Fitbase #{client.fitbase_client_id}</span>
                 )}
-                {canEdit && <button className="cp-btn" style={{ fontSize: 11 }} onClick={onEdit}>✎ Редактировать</button>}
+                {canEdit && <button className="cp-btn" style={{ fontSize: 12 }} onClick={onEdit}>✎ Редактировать</button>}
               </div>
 
-              {/* Tags row */}
+              {/* Метки */}
               <div className="cp-tags" style={{ marginBottom: 10 }}>
                 {(summary?.auto_labels ?? []).map(al => (
                   <span key={al.code} className="cp-tag" style={{ background: al.color + '33', color: al.color, border: `1px solid ${al.color}44` }}>{al.name}</span>
@@ -953,12 +1099,12 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                   <span key={pt.id} className="cp-tag cp-tag--personal"
                     style={{ background: pt.color + '22', color: pt.color, border: `1px solid ${pt.color}44` }}>
                     {pt.name}
-                    {canEdit && <span style={{ marginLeft: 4, opacity: .7, fontSize: 10, cursor: 'pointer' }} onClick={() => removeTag(pt.id)}>✕</span>}
+                    {canEdit && <span style={{ marginLeft: 4, opacity: .7, fontSize: 11, cursor: 'pointer' }} onClick={() => removeTag(pt.id)}>✕</span>}
                   </span>
                 ))}
                 {canEdit && (
                   <div style={{ position: 'relative' }}>
-                    <button className="cp-btn" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setTagPickerOpen(v => !v)}>+ Метка</button>
+                    <button className="cp-btn" style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => setTagPickerOpen(v => !v)}>+ Метка</button>
                     {tagPickerOpen && unassignedPersonalTags.length > 0 && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,.12)', zIndex: 10, minWidth: 160, padding: 4 }}>
                         {unassignedPersonalTags.map(t => (
@@ -971,7 +1117,7 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                       </div>
                     )}
                     {tagPickerOpen && unassignedPersonalTags.length === 0 && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: 'var(--text-3)', zIndex: 10, minWidth: 180 }}>
+                      <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', fontSize: 13, color: 'var(--text-3)', zIndex: 10, minWidth: 180 }}>
                         Все метки уже назначены
                       </div>
                     )}
@@ -979,77 +1125,49 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                 )}
               </div>
 
-              {/* Info rows */}
-              <div style={{ fontSize: 14, lineHeight: '1.6', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                {source && (
-                  <div className="cp-row"><span className="cp-row-key">Источник</span><span className="cp-row-val">{source.name}{referrerName ? ` / ${referrerName}` : ''}</span></div>
-                )}
-                <div className="cp-row"><span className="cp-row-key">Клиент с</span><span className="cp-row-val">{fmtDate(client.created_at)}</span></div>
-                <div className="cp-row">
-                  <span className="cp-row-key">LTV</span>
-                  <span className="cp-row-val" style={{ color: 'var(--primary)', fontWeight: 700 }}>{summary ? summary.ltv.toLocaleString('ru-RU') + ' ₸' : '…'}</span>
-                </div>
-                <div className="cp-row">
-                  <span className="cp-row-key">Визитов</span>
-                  <span className="cp-row-val">{summary?.visits_attended_total ?? '…'}</span>
-                </div>
-                {summary?.last_visit_at && (
-                  <div className="cp-row"><span className="cp-row-key">Последний визит</span><span className="cp-row-val">{fmtDate(summary.last_visit_at)}</span></div>
-                )}
-                {balance && balance.deposit > 0 && (
-                  <div className="cp-row"><span className="cp-row-key">Депозит</span><span className="cp-row-val" style={{ color: 'var(--success)' }}>{balance.deposit.toLocaleString('ru-RU')} ₸</span></div>
-                )}
-                {balance && balance.bonus > 0 && (
-                  <div className="cp-row"><span className="cp-row-key">Бонусы</span><span className="cp-row-val">{balance.bonus} б.</span></div>
-                )}
-              </div>
-
-              {/* Active plan */}
-              {displayPlan && (
-                <div className="cp-window" style={{ marginTop: 12 }}>
-                  <div className="cp-window-hdr">
-                    Активный абонемент
-                    {extraPlansCount > 0 && <span style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 400 }}>+ещё {extraPlansCount}</span>}
-                  </div>
-                  <div className="cp-window-body">
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{displayPlan.plan?.name ?? displayPlan.name ?? 'Без названия'}</div>
-                    {displayPlan.valid_until && (
-                      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>До: {fmtDate(displayPlan.valid_until)}</div>
-                    )}
-                    {displayPlan.crm_client_plan_items.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
-                        {displayPlan.crm_client_plan_items.map((it, i) => (
-                          <div key={i} style={{ fontSize: 12, color: 'var(--text-2)' }}>
-                            {!it.device_type_code && it.device_type_codes?.length
-                              ? `${it.device_type_codes.map(c => dtNameMap[c] ?? c).join(' / ')}: ${it.is_unlimited ? (it.daily_limit ? '1 в день' : '∞') : `${it.sessions_left}/${it.sessions_total}`}`
-                              : it.is_unlimited
-                                ? `${it.device_type_code ? (dtNameMap[it.device_type_code] ?? it.device_type_code) : '?'}: без лимита${it.daily_limit ? ' · 1 в день' : ''}`
-                                : `${it.device_type_code ? (dtNameMap[it.device_type_code] ?? it.device_type_code) : '?'}: ${it.sessions_left}/${it.sessions_total}`
-                            }
+              {/* Активные абонементы — по карточке на каждый */}
+              {activePlans.length > 0 && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.03em' }}>Абонементы</div>
+                  {activePlans.map(cp => {
+                    const st = PLAN_STATUS[cp.status] ?? { text: cp.status, color: 'var(--text-2)', bg: 'var(--surface-2)' };
+                    return (
+                      <div key={cp.id} className="cp-window" style={{ cursor: 'pointer', marginTop: 0 }}
+                        onClick={() => setPlanDetailId(cp.id)}>
+                        <div className="cp-window-body">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                            <span style={{ fontWeight: 600, fontSize: 14 }}>{cp.plan?.name ?? cp.name ?? '—'}</span>
+                            <span className="cp-plan-status" style={{ background: st.bg, color: st.color, flexShrink: 0 }}>{st.text}</span>
                           </div>
-                        ))}
+                          {cp.valid_until && <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>До: {fmtDate(cp.valid_until)}</div>}
+                          {cp.price != null && <div style={{ fontSize: 13, color: 'var(--text-2)' }}>{cp.price.toLocaleString('ru-RU')} ₸{cp.sold_by ? ` · ${cp.sold_by}` : ''}</div>}
+                          {cp.crm_client_plan_items.length > 0 && (
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                              {cp.crm_client_plan_items.map((it, i) => (
+                                <span key={i} style={{ fontSize: 12, background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 4 }}>
+                                  {!it.device_type_code && it.device_type_codes?.length
+                                    ? `${it.device_type_codes.map(c => dtNameMap[c] ?? c).join('/')}: ${it.is_unlimited ? '∞' : `${it.sessions_left}/${it.sessions_total}`}`
+                                    : it.is_unlimited
+                                      ? `${dtNameMap[it.device_type_code ?? ''] ?? it.device_type_code ?? '?'}: ∞`
+                                      : `${dtNameMap[it.device_type_code ?? ''] ?? it.device_type_code ?? '?'}: ${it.sessions_left}/${it.sessions_total}`
+                                  }
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    {displayPlan.crm_client_plan_items.length === 0 && displayPlan.sessions_left != null && (
-                      <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Остаток: {displayPlan.sessions_left}{displayPlan.sessions_total != null ? `/${displayPlan.sessions_total}` : ''} сеансов</div>
-                    )}
-                    {(() => {
-                      const st = PLAN_STATUS[displayPlan.status] ?? { text: displayPlan.status, color: 'var(--text-2)', bg: 'var(--surface-2)' };
-                      return <span className="cp-plan-status" style={{ background: st.bg, color: st.color }}>{st.text}</span>;
-                    })()}
-                    {displayPlan.status === 'active' && canEdit && (
-                      <button className="cp-btn" style={{ fontSize: 11, marginTop: 6 }} onClick={() => setFreezeId(displayPlan.id)}>❄ Заморозить</button>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
               )}
 
               {/* Details accordion */}
-              <button className="cp-accord-btn" onClick={() => setInfoOpen(v => !v)}>
+              <button className="cp-accord-btn" style={{ marginTop: 10 }} onClick={() => setInfoOpen(v => !v)}>
                 {infoOpen ? '▴' : '▾'} Подробнее
               </button>
               {infoOpen && (
-                <div style={{ fontSize: 13, lineHeight: '1.7', paddingTop: 4 }}>
+                <div style={{ fontSize: 14, lineHeight: '1.7', paddingTop: 4 }}>
                   {client.iin && <div className="cp-row"><span className="cp-row-key">ИИН</span><span className="cp-row-val">{role === 'admin' ? client.iin : client.iin.slice(0, 6) + '******'}</span></div>}
                   {client.id_issued_by && <div className="cp-row"><span className="cp-row-key">Документ</span><span className="cp-row-val">{client.id_issued_by}</span></div>}
                   {client.id_valid_until && <div className="cp-row"><span className="cp-row-key">Действует до</span><span className="cp-row-val">{fmtDate(client.id_valid_until)}</span></div>}
@@ -1068,7 +1186,7 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                 {(['important', 'visits'] as const).map(t => (
                   <button key={t} className={`cp-feed-tab${centerTab === t ? ' cp-feed-tab--active' : ''}`}
                     onClick={() => setCenterTab(t)}>
-                    {t === 'important' ? 'Важное' : 'Посещения'}
+                    {t === 'important' ? 'Покупки' : 'Посещения'}
                   </button>
                 ))}
               </div>
@@ -1120,74 +1238,6 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
 
               {centerTab === 'important' && (
               <>
-
-              {/* Важное */}
-              <div className="cp-window">
-                <div className="cp-window-hdr">
-                  Важное
-                  {canEdit && !importantEdit && <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setImportantEdit(true)}>✎</button>}
-                  {importantEdit && <div style={{ display: 'flex', gap: 4 }}><button className="cp-btn cp-btn--primary" style={{ fontSize: 11 }} onClick={saveImportant}>Сохранить</button><button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setImportantEdit(false)}>Отмена</button></div>}
-                </div>
-                <div className="cp-window-body">
-                  {importantEdit ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div>
-                        <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>Размер юбки</label>
-                        <select value={importantForm.skirt_size} onChange={e => setImportantForm(f => ({ ...f, skirt_size: e.target.value }))}
-                          style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }}>
-                          <option value="">— не указан —</option>
-                          {['XS','S','M','L','XL','XXL','XXXL'].map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                        {deviceTypes.filter(dt => ['vacuactiv', 'infrashape'].includes(dt.code)).map(dt => {
-                          const dv = importantForm.device_settings[dt.code] ?? { vacu: '', ik: '' };
-                          return (
-                            <div key={dt.code} style={{ flex: '1 1 140px', minWidth: 140 }}>
-                              <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>{dt.name ?? dt.code}</label>
-                              <div style={{ display: 'flex', gap: 8 }}>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>Vacu</div>
-                                  <input type="number" inputMode="numeric" min={0} max={99} value={dv.vacu}
-                                    onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, vacu: e.target.value } } }))}
-                                    style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>ИК</div>
-                                  <input type="number" inputMode="numeric" min={0} max={99} value={dv.ik}
-                                    onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, ik: e.target.value } } }))}
-                                    style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>Противопоказания</label>
-                        <textarea value={importantForm.contraindications} onChange={e => setImportantForm(f => ({ ...f, contraindications: e.target.value }))}
-                          style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 13 }}>
-                      {client.skirt_size && <div className="cp-row"><span className="cp-row-key">Юбка</span><span className="cp-row-val">{client.skirt_size}</span></div>}
-                      {deviceTypes.filter(dt => ['vacuactiv', 'infrashape'].includes(dt.code)).map(dt => {
-                        const val = client.device_settings?.[dt.code];
-                        if (!val || typeof val !== 'object') return null;
-                        const parts: string[] = [];
-                        if (val.vacu != null) parts.push(`Vacu ${val.vacu}`);
-                        if (val.ik != null) parts.push(`ИК ${val.ik}`);
-                        return parts.length ? <div key={dt.code} style={{ padding: '2px 0', fontSize: 13 }}>{dt.name ?? dt.code} — {parts.join(' · ')}</div> : null;
-                      })}
-                      {client.contraindications && <div style={{ padding: '4px 0', color: 'var(--danger)', fontSize: 13 }}>Противопоказания: {client.contraindications}</div>}
-                      {!client.skirt_size && !Object.values(client.device_settings ?? {}).some(v => v && typeof v === 'object' && (v.vacu != null || v.ik != null)) && !client.contraindications && (
-                        <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет данных</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
 
               {/* Пакеты */}
               <div className="cp-window">
@@ -1268,9 +1318,9 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
               <div className="cp-window">
                 <div className="cp-window-hdr">Лента</div>
                 <div className="cp-feed-tabs">
-                  {(['all', 'comments', 'tasks', 'log'] as const).map(t => (
+                  {(['all', 'comments', 'tasks', 'actions'] as const).map(t => (
                     <button key={t} className={`cp-feed-tab${feedTab === t ? ' cp-feed-tab--active' : ''}`} onClick={() => setFeedTab(t)}>
-                      {t === 'all' ? 'Всё' : t === 'comments' ? 'Комментарии' : t === 'tasks' ? 'Задачи' : 'Лог'}
+                      {t === 'all' ? 'Всё' : t === 'comments' ? 'Комментарии' : t === 'tasks' ? 'Задачи' : 'Действия'}
                     </button>
                   ))}
                 </div>
@@ -1499,6 +1549,81 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                 </div>
               </div>
 
+              {/* Важное */}
+              <div className="cp-window">
+                <div className="cp-window-hdr">
+                  Важное
+                  {canEdit && !importantEdit && (
+                    <button className="cp-btn" style={{ fontSize: 12 }} onClick={() => setImportantEdit(true)}>✎</button>
+                  )}
+                  {canEdit && importantEdit && (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="cp-btn cp-btn--primary" style={{ fontSize: 12 }} onClick={saveImportant}>Сохранить</button>
+                      <button className="cp-btn" style={{ fontSize: 12 }} onClick={() => setImportantEdit(false)}>Отмена</button>
+                    </div>
+                  )}
+                </div>
+                <div className="cp-window-body">
+                  {importantEdit ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>Размер юбки</label>
+                        <select value={importantForm.skirt_size} onChange={e => setImportantForm(f => ({ ...f, skirt_size: e.target.value }))}
+                          style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }}>
+                          <option value="">— не указан —</option>
+                          {['XS','S','M','L','XL','XXL','XXXL'].map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {deviceTypes.filter(dt => ['vacuactiv', 'infrashape'].includes(dt.code)).map(dt => {
+                          const dv = importantForm.device_settings[dt.code] ?? { vacu: '', ik: '' };
+                          return (
+                            <div key={dt.code} style={{ flex: '1 1 140px', minWidth: 140 }}>
+                              <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>{dt.name ?? dt.code}</label>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>Vacu</div>
+                                  <input type="number" inputMode="numeric" min={0} max={99} value={dv.vacu}
+                                    onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, vacu: e.target.value } } }))}
+                                    style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>ИК</div>
+                                  <input type="number" inputMode="numeric" min={0} max={99} value={dv.ik}
+                                    onChange={e => setImportantForm(f => ({ ...f, device_settings: { ...f.device_settings, [dt.code]: { ...dv, ik: e.target.value } } }))}
+                                    style={{ width: '100%', padding: '5px 8px', border: '1.5px solid var(--input-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: 'var(--text-2)', display: 'block', marginBottom: 2 }}>Противопоказания</label>
+                        <textarea value={importantForm.contraindications} onChange={e => setImportantForm(f => ({ ...f, contraindications: e.target.value }))}
+                          style={{ width: '100%', padding: '6px 10px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 48, boxSizing: 'border-box' as const }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13 }}>
+                      {client.skirt_size && <div className="cp-row"><span className="cp-row-key">Юбка</span><span className="cp-row-val">{client.skirt_size}</span></div>}
+                      {deviceTypes.filter(dt => ['vacuactiv', 'infrashape'].includes(dt.code)).map(dt => {
+                        const val = client.device_settings?.[dt.code];
+                        if (!val || typeof val !== 'object') return null;
+                        const parts: string[] = [];
+                        if (val.vacu != null) parts.push(`Vacu ${val.vacu}`);
+                        if (val.ik != null) parts.push(`ИК ${val.ik}`);
+                        return parts.length ? <div key={dt.code} style={{ padding: '2px 0', fontSize: 13 }}>{dt.name ?? dt.code} — {parts.join(' · ')}</div> : null;
+                      })}
+                      {client.contraindications && <div style={{ padding: '4px 0', color: 'var(--danger)', fontSize: 13 }}>Противопоказания: {client.contraindications}</div>}
+                      {!client.skirt_size && !Object.values(client.device_settings ?? {}).some(v => v && typeof v === 'object' && (v.vacu != null || v.ik != null)) && !client.contraindications && (
+                        <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Нет данных</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -1536,6 +1661,24 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
           onClose={() => setSplitPlan(null)}
         />
       )}
+
+      {/* Plan detail modal */}
+      {planDetailId && (() => {
+        const cp = (plans ?? []).find(p => p.id === planDetailId);
+        if (!cp) return null;
+        return (
+          <PlanDetailModal
+            plan={cp}
+            clientId={clientId}
+            dtNameMap={dtNameMap}
+            canEdit={canEdit}
+            onFreeze={() => setFreezeId(cp.id)}
+            onUnfreeze={() => setUnfreezeId(cp.id)}
+            onSplit={() => setSplitPlan(cp)}
+            onClose={() => setPlanDetailId(null)}
+          />
+        );
+      })()}
     </>
   );
 }

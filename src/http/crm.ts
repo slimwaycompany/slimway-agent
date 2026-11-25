@@ -1982,6 +1982,22 @@ export function buildCrmRouter(): Router {
       }
       const result = data as { sale_id: string; number: number; total: number };
       await writeAudit('sale', result.sale_id, 'checkout', session.display_name);
+
+      // Fill price/sale_id/sold_by in resulting crm_client_plans
+      const planItem = items.find(it => it.type === 'plan');
+      if (planItem && payload.client_id) {
+        const { data: saleItems } = await supabase.from('crm_sale_items')
+          .select('plan_id,unit_price').eq('sale_id', result.sale_id).eq('item_type', 'plan');
+        for (const si of (saleItems ?? []) as Record<string,unknown>[]) {
+          if (!si.plan_id || !si.unit_price) continue;
+          await supabase.from('crm_client_plans')
+            .update({ price: Number(si.unit_price), sale_id: result.sale_id, sold_by: session.display_name })
+            .eq('client_id', payload.client_id as string)
+            .eq('plan_id', si.plan_id as string)
+            .is('price', null);
+        }
+      }
+
       res.json(result);
     } catch (e) {
       console.error('[checkout] unexpected:', e);
@@ -2054,7 +2070,7 @@ export function buildCrmRouter(): Router {
       // Trigger lifecycle update for this client's plans
       const today = todayUtc5();
       const { data: cps } = await supabase.from('crm_client_plans')
-        .select('id,plan_id,source,name,status,planned_start_date,auto_activate_on,valid_until,extra_until,activated_at,purchased_at,freeze_days_used,sessions_total,sessions_left,needs_split,allowed_weekdays,time_from,time_to,crm_client_plan_items(*)')
+        .select('id,plan_id,source,name,status,planned_start_date,auto_activate_on,valid_until,extra_until,activated_at,purchased_at,freeze_days_used,sessions_total,sessions_left,needs_split,allowed_weekdays,time_from,time_to,price,sale_id,sold_by,crm_client_plan_items(*)')
         .eq('client_id', req.params.id).order('purchased_at', { ascending: false });
 
       for (const cp of cps || []) {
@@ -2086,7 +2102,7 @@ export function buildCrmRouter(): Router {
       // Join with plan names (only for plans with plan_id)
       const planIds = [...new Set((cps || []).map(cp => cp.plan_id).filter(Boolean))];
       const { data: plans } = planIds.length
-        ? await supabase.from('crm_plans').select('id,name,kind,freeze_days').in('id', planIds)
+        ? await supabase.from('crm_plans').select('id,name,kind,freeze_days,extra_days').in('id', planIds)
         : { data: [] };
       const planMap = new Map((plans || []).map((p: Record<string,unknown>) => [p.id, p]));
 
@@ -2121,12 +2137,12 @@ export function buildCrmRouter(): Router {
 
       const [bkRes, vhRes] = await Promise.all([
         supabase.from('crm_bookings')
-          .select('id,booking_date,booking_time,status,device_type_code')
+          .select('id,booking_date,starts_at,status,device_type_code')
           .eq('client_id', clientId).in('status', bkStatuses)
-          .order('booking_date', { ascending: false }).order('booking_time', { ascending: false }),
+          .order('booking_date', { ascending: false }).order('starts_at', { ascending: false }),
         vhStatuses.length
           ? supabase.from('crm_visit_history')
-              .select('id,visit_at,status,service_name')
+              .select('id,visit_at,status,training_name')
               .eq('client_id', clientId).in('status', vhStatuses)
               .order('visit_at', { ascending: false })
           : Promise.resolve({ data: [], error: null }),
@@ -2137,7 +2153,7 @@ export function buildCrmRouter(): Router {
 
       const bkRows = ((bkRes.data ?? []) as Record<string,unknown>[]).map(r => ({
         id: r.id as string, source: 'crm' as const,
-        date: r.booking_date as string, time: r.booking_time as string | null,
+        date: r.booking_date as string, time: r.starts_at ? (r.starts_at as string).slice(11, 16) : null,
         status: r.status as string,
         label: r.device_type_code as string | null,
       }));
@@ -2145,7 +2161,7 @@ export function buildCrmRouter(): Router {
         id: r.id as string, source: 'fitbase' as const,
         date: (r.visit_at as string).slice(0, 10), time: (r.visit_at as string).slice(11, 16) || null,
         status: r.status as string,
-        label: r.service_name as string | null,
+        label: r.training_name as string | null,
       }));
 
       // Merge & sort by date+time desc
@@ -2156,6 +2172,26 @@ export function buildCrmRouter(): Router {
       });
 
       res.json({ items: all.slice(offset, offset + limit), total: all.length });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Visits by plan ────────────────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/client-plans/:id/visits', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const planId = req.params.id;
+      const { data, error } = await supabase.from('crm_bookings')
+        .select('id,booking_date,starts_at,status,device_type_code')
+        .eq('client_plan_id', planId)
+        .in('status', ['attended', 'no_show', 'cancelled', 'late_cancel'])
+        .order('booking_date', { ascending: false }).order('starts_at', { ascending: false })
+        .limit(100);
+      if (error) { console.error('[plan-visits]', planId, error.message); res.status(500).json({ error: 'Ошибка загрузки посещений' }); return; }
+      res.json((data ?? []).map((r: Record<string,unknown>) => ({
+        id: r.id, date: r.booking_date, time: r.starts_at ? (r.starts_at as string).slice(11, 16) : null,
+        status: r.status, label: r.device_type_code,
+      })));
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -2540,12 +2576,30 @@ export function buildCrmRouter(): Router {
           items.push({ id: t.id as string, kind: 'task', at: t.created_at as string, text: t.description as string,
             author: (t.created_by as string) ?? '—', extra: { status: TASK_STATUS_RU[t.status as string] ?? (t.status as string), due_at: t.due_at as string | null } });
       }
-      if (kind === 'all' || kind === 'log') {
-        const { data: logs } = await supabase.from('crm_audit_log')
-          .select('id,action,actor,created_at').eq('entity_type', 'client').eq('entity_id', clientId)
+      if (kind === 'all' || kind === 'actions' || kind === 'log') {
+        // Human-readable actions: freeze/unfreeze comments + audit log
+        const { data: actions } = await supabase.from('crm_client_comments')
+          .select('id,kind,text,author,created_at').eq('client_id', clientId)
+          .in('kind', ['freeze', 'unfreeze', 'break', 'agreement'])
           .lt('created_at', before).order('created_at', { ascending: false }).limit(LIMIT);
-        for (const l of (logs ?? []) as Record<string,unknown>[])
-          items.push({ id: l.id as string, kind: 'audit', at: l.created_at as string, text: l.action as string, author: l.actor as string });
+        for (const c of (actions ?? []) as Record<string,unknown>[]) {
+          const kindLabel: Record<string, string> = { freeze: '❄ Заморозка', unfreeze: '▶ Разморозка', break: '⚡ Разбивка', agreement: '📋 Договор' };
+          items.push({ id: `act-${c.id as string}`, kind: 'action', at: c.created_at as string,
+            text: `${kindLabel[c.kind as string] ?? c.kind}: ${c.text as string}`, author: c.author as string });
+        }
+        const { data: logs } = await supabase.from('crm_audit_log')
+          .select('id,action,actor,created_at,details').eq('entity_type', 'client').eq('entity_id', clientId)
+          .lt('created_at', before).order('created_at', { ascending: false }).limit(LIMIT);
+        const ACTION_LABEL: Record<string, string> = {
+          checkout: 'Продажа', refund: 'Возврат', 'plan.freeze': 'Заморозка абонемента',
+          'plan.unfreeze': 'Разморозка абонемента', 'plan.split': 'Распределение абонемента',
+          'client.edit': 'Редактирование анкеты',
+        };
+        for (const l of (logs ?? []) as Record<string,unknown>[]) {
+          const label = ACTION_LABEL[l.action as string] ?? (l.action as string);
+          items.push({ id: l.id as string, kind: kind === 'log' ? 'audit' : 'action',
+            at: l.created_at as string, text: label, author: l.actor as string });
+        }
       }
 
       items.sort((a, b) => b.at.localeCompare(a.at));
