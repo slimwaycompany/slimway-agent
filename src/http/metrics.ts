@@ -1141,5 +1141,254 @@ export function buildMetricsRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // ── Trial Peak ──────────────────────────────────────────────────────────────
+
+  router.get('/kviz/api/metrics/trial-peak', async (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const yekNow = new Date(Date.now() + 5 * 3600_000);
+      const todayUTC5 = yekNow.toISOString().slice(0, 10);
+      const monthStartUTC5 = todayUTC5.slice(0, 7) + '-01';
+
+      const from    = String(req.query.from  || monthStartUTC5);
+      const to      = String(req.query.to    || todayUTC5);
+      const group   = (['day','week','month'].includes(String(req.query.group)) ? String(req.query.group) : 'day') as 'day'|'week'|'month';
+      const sources = Array.isArray(req.query.sources) ? (req.query.sources as string[]).map(String)
+                    : req.query.sources ? [String(req.query.sources)] : [];
+      const manager = req.query.manager ? String(req.query.manager) : null;
+
+      // helpers
+      function tpAddDays(d: string, n: number): string {
+        const dt = new Date(d + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() + n);
+        return dt.toISOString().slice(0, 10);
+      }
+      function tpWeekStart(d: string): string {
+        const dt = new Date(d + 'T00:00:00Z');
+        const diff = (dt.getUTCDay() + 3) % 7; // 0 if Thursday
+        return tpAddDays(d, -diff);
+      }
+      function tpDateUTC5(iso: string): string {
+        return new Date(new Date(iso).getTime() + 5 * 3600_000).toISOString().slice(0, 10);
+      }
+      function tpHourUTC5(iso: string | null): number | null {
+        if (!iso) return null;
+        return (new Date(iso).getUTCHours() + 5) % 24;
+      }
+      function tpHourKey(h: number | null): string {
+        if (h == null) return 'до 08';
+        if (h < 8) return 'до 08';
+        if (h > 23) return 'после 23';
+        return String(h).padStart(2,'0') + ':00';
+      }
+      const HOUR_KEYS = ['до 08', ...Array.from({length: 16}, (_,i) => String(i+8).padStart(2,'0')+':00'), 'после 23'];
+
+      // load visits: extend range by 30 days to capture cohort (booked in period, visited later)
+      const toExt = tpAddDays(to, 30);
+      const rawVisits = await fetchAll((off, lim) =>
+        supabase.from('fitbase_visits')
+          .select('fitbase_id,client_fitbase_id,status,booked_at,visit_at,visit_date')
+          .eq('is_trial', true)
+          .gte('visit_date', from)
+          .lte('visit_date', toExt)
+          .range(off, off + lim - 1)
+      );
+      // also load visits booked in [from, to] but scheduled before from (edge case: rescheduled)
+      const bookedEarlyRaw = await fetchAll((off, lim) =>
+        supabase.from('fitbase_visits')
+          .select('fitbase_id,client_fitbase_id,status,booked_at,visit_at,visit_date')
+          .eq('is_trial', true)
+          .lt('visit_date', from)
+          .gte('booked_at', from + 'T00:00:00+05:00')
+          .lte('booked_at', to + 'T23:59:59+05:00')
+          .range(off, off + lim - 1)
+      );
+      const seenIds = new Set(rawVisits.map(v => v.fitbase_id as string));
+      const allRaw = [...rawVisits, ...bookedEarlyRaw.filter(v => !seenIds.has(v.fitbase_id as string))];
+
+      // source/manager filter via lead map
+      const clm = await buildClientLeadMap();
+      type TV = { fitbase_id: string; cid: number|null; status: number|null; booked_at: string|null; visit_at: string|null; visit_date: string|null; src: string|null; mgr: string|null };
+      const visits: TV[] = allRaw.map(v => {
+        const cid = v.client_fitbase_id != null ? Number(v.client_fitbase_id) : null;
+        const lead = cid != null ? clm.get(cid) : undefined;
+        return { fitbase_id: v.fitbase_id as string, cid, status: v.status != null ? Number(v.status) : null, booked_at: (v.booked_at as string|null) ?? null, visit_at: (v.visit_at as string|null) ?? null, visit_date: (v.visit_date as string|null) ?? null, src: lead?.source ?? null, mgr: lead?.manager ?? null };
+      }).filter(v => {
+        if (sources.length > 0 && !sources.includes(v.src ?? '')) return false;
+        if (manager && !(v.mgr ?? '').toLowerCase().includes(manager.toLowerCase())) return false;
+        return true;
+      });
+
+      // partition helpers (status 2 = cancelled, excluded everywhere)
+      const notCancelledV = (v: TV) => v.status !== 2;
+      const visitedV      = (v: TV) => v.status === 3;
+      const inPeriodByVisitDate = (v: TV) => v.visit_date != null && v.visit_date >= from && v.visit_date <= to;
+      const inPeriodByBookedAt  = (v: TV) => { if (!v.booked_at) return false; const d = tpDateUTC5(v.booked_at); return d >= from && d <= to; };
+
+      // generate periods (all, no gaps)
+      function genPeriods(): { key: string; label: string; from: string; to: string }[] {
+        const res: { key: string; label: string; from: string; to: string }[] = [];
+        if (group === 'day') {
+          let d = from;
+          while (d <= to) {
+            const dt = new Date(d + 'T00:00:00Z');
+            const dd = dt.getUTCDate(), mm = dt.toLocaleString('ru', { month: 'short', timeZone: 'UTC' });
+            res.push({ key: d, label: `${dd}.${String(dt.getUTCMonth()+1).padStart(2,'0')}`, from: d, to: d });
+            d = tpAddDays(d, 1);
+          }
+        } else if (group === 'week') {
+          let ws = tpWeekStart(from);
+          while (ws <= to) {
+            const we = tpAddDays(ws, 6);
+            const dFrom = new Date(ws + 'T00:00:00Z'), dTo = new Date(we + 'T00:00:00Z');
+            const fD = dFrom.getUTCDate(), fM = dFrom.toLocaleString('ru', { month: 'short', timeZone: 'UTC' });
+            const tD = dTo.getUTCDate(), tM = dTo.toLocaleString('ru', { month: 'short', timeZone: 'UTC' });
+            const label = `Чт ${String(fD).padStart(2,'0')}.${String(dFrom.getUTCMonth()+1).padStart(2,'0')}–Ср ${String(tD).padStart(2,'0')}.${String(dTo.getUTCMonth()+1).padStart(2,'0')}`;
+            res.push({ key: ws, label, from: ws, to: we });
+            ws = tpAddDays(ws, 7);
+          }
+        } else { // month
+          let ym = from.slice(0, 7);
+          const ymTo = to.slice(0, 7);
+          while (ym <= ymTo) {
+            const [y, m] = ym.split('-').map(Number);
+            const lastDay = new Date(y, m, 0).getDate();
+            const monthLabel = new Date(ym + '-01T00:00:00Z').toLocaleString('ru', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+            res.push({ key: ym, label: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1), from: ym + '-01', to: `${ym}-${String(lastDay).padStart(2,'0')}` });
+            const nextM = m === 12 ? 1 : m + 1, nextY = m === 12 ? y + 1 : y;
+            ym = `${nextY}-${String(nextM).padStart(2,'0')}`;
+          }
+        }
+        return res;
+      }
+      const periods = genPeriods();
+
+      // compute period metrics
+      function periodKey(v: TV, useBooked: boolean): string | null {
+        const dateStr = useBooked
+          ? (v.booked_at ? tpDateUTC5(v.booked_at) : null)
+          : v.visit_date;
+        if (!dateStr) return null;
+        if (group === 'day') return dateStr;
+        if (group === 'week') return tpWeekStart(dateStr);
+        return dateStr.slice(0, 7);
+      }
+
+      // build maps
+      const pBooked    = new Map<string, number>();
+      const pScheduled = new Map<string, number>();
+      const pPrVisit   = new Map<string, number>();
+      const pPrBooked  = new Map<string, number>();
+      for (const p of periods) { pBooked.set(p.key,0); pScheduled.set(p.key,0); pPrVisit.set(p.key,0); pPrBooked.set(p.key,0); }
+
+      for (const v of visits) {
+        if (notCancelledV(v)) {
+          const bk = inPeriodByBookedAt(v) ? periodKey(v, true) : null;
+          if (bk && pBooked.has(bk)) pBooked.set(bk, (pBooked.get(bk)??0) + 1);
+          const sc = inPeriodByVisitDate(v) ? periodKey(v, false) : null;
+          if (sc && pScheduled.has(sc)) pScheduled.set(sc, (pScheduled.get(sc)??0) + 1);
+        }
+        if (visitedV(v)) {
+          const pv = inPeriodByVisitDate(v) ? periodKey(v, false) : null;
+          if (pv && pPrVisit.has(pv)) pPrVisit.set(pv, (pPrVisit.get(pv)??0) + 1);
+          const pb = inPeriodByBookedAt(v) ? periodKey(v, true) : null;
+          if (pb && pPrBooked.has(pb)) pPrBooked.set(pb, (pPrBooked.get(pb)??0) + 1);
+        }
+      }
+
+      const periodsResult = periods.map(p => ({
+        key: p.key, label: p.label, from: p.from, to: p.to,
+        booked: pBooked.get(p.key)??0,
+        scheduled: pScheduled.get(p.key)??0,
+        pr_by_visit: pPrVisit.get(p.key)??0,
+        pr_by_booked: pPrBooked.get(p.key)??0,
+      }));
+
+      // by_hour (over the entire period)
+      type HourMap = Map<string, { booked: number; scheduled: number; pr_by_visit: number; pr_by_booked: number }>;
+      const hMap: HourMap = new Map(HOUR_KEYS.map(k => [k, { booked:0, scheduled:0, pr_by_visit:0, pr_by_booked:0 }]));
+      for (const v of visits) {
+        if (notCancelledV(v)) {
+          if (inPeriodByBookedAt(v)) {
+            const h = tpHourKey(tpHourUTC5(v.booked_at));
+            hMap.get(h)!.booked++;
+          }
+          if (inPeriodByVisitDate(v)) {
+            const h = tpHourKey(tpHourUTC5(v.visit_at));
+            hMap.get(h)!.scheduled++;
+          }
+        }
+        if (visitedV(v)) {
+          if (inPeriodByVisitDate(v)) {
+            const h = tpHourKey(tpHourUTC5(v.visit_at));
+            hMap.get(h)!.pr_by_visit++;
+          }
+          if (inPeriodByBookedAt(v)) {
+            const h = tpHourKey(tpHourUTC5(v.booked_at));
+            hMap.get(h)!.pr_by_booked++;
+          }
+        }
+      }
+      const by_hour = HOUR_KEYS.map(k => ({ key: k, ...hMap.get(k)! }));
+
+      // heatmap: day × hour (by visit_date and visit_at time for scheduled/pr_by_visit; by booked_at for booked/pr_by_booked)
+      const days: string[] = [];
+      { let d = from; while (d <= to) { days.push(d); d = tpAddDays(d, 1); } }
+      const heatmap = days.map(day => {
+        const cells: Record<string, { booked: number; scheduled: number; pr_by_visit: number; pr_by_booked: number }> = {};
+        for (const hk of HOUR_KEYS) cells[hk] = { booked:0, scheduled:0, pr_by_visit:0, pr_by_booked:0 };
+        for (const v of visits) {
+          if (notCancelledV(v)) {
+            if (inPeriodByBookedAt(v) && v.booked_at && tpDateUTC5(v.booked_at) === day) {
+              const h = tpHourKey(tpHourUTC5(v.booked_at));
+              cells[h].booked++;
+            }
+            if (v.visit_date === day) {
+              const h = tpHourKey(tpHourUTC5(v.visit_at));
+              cells[h].scheduled++;
+            }
+          }
+          if (visitedV(v)) {
+            if (v.visit_date === day) {
+              const h = tpHourKey(tpHourUTC5(v.visit_at));
+              cells[h].pr_by_visit++;
+            }
+            if (inPeriodByBookedAt(v) && v.booked_at && tpDateUTC5(v.booked_at) === day) {
+              const h = tpHourKey(tpHourUTC5(v.booked_at));
+              cells[h].pr_by_booked++;
+            }
+          }
+        }
+        const dt = new Date(day + 'T00:00:00Z');
+        const DOW = ['вс','пн','вт','ср','чт','пт','сб'];
+        const label = `${String(dt.getUTCDate()).padStart(2,'0')}.${String(dt.getUTCMonth()+1).padStart(2,'0')} ${DOW[dt.getUTCDay()]}`;
+        const total = { booked:0, scheduled:0, pr_by_visit:0, pr_by_booked:0 };
+        for (const hk of HOUR_KEYS) { total.booked += cells[hk].booked; total.scheduled += cells[hk].scheduled; total.pr_by_visit += cells[hk].pr_by_visit; total.pr_by_booked += cells[hk].pr_by_booked; }
+        return { date: day, label, cells, total };
+      });
+
+      // peaks: for each metric, find period and hour with max
+      function peakOf(arr: { key: string; val: number }[]): { key: string; val: number } {
+        return arr.reduce((best, cur) => cur.val > best.val ? cur : best, { key: '', val: 0 });
+      }
+      const peaks = {
+        booked:      { period: peakOf(periodsResult.map(p => ({ key: p.key, val: p.booked }))),      hour: peakOf(by_hour.map(h => ({ key: h.key, val: h.booked }))) },
+        scheduled:   { period: peakOf(periodsResult.map(p => ({ key: p.key, val: p.scheduled }))),   hour: peakOf(by_hour.map(h => ({ key: h.key, val: h.scheduled }))) },
+        pr_by_visit: { period: peakOf(periodsResult.map(p => ({ key: p.key, val: p.pr_by_visit }))), hour: peakOf(by_hour.map(h => ({ key: h.key, val: h.pr_by_visit }))) },
+        pr_by_booked:{ period: peakOf(periodsResult.map(p => ({ key: p.key, val: p.pr_by_booked }))),hour: peakOf(by_hour.map(h => ({ key: h.key, val: h.pr_by_booked }))) },
+      };
+
+      // available sources/managers for filter dropdowns (from all visits in extended range, unfiltered)
+      const availSrcs = new Set<string>(), availMgrs = new Set<string>();
+      for (const v of allRaw) {
+        const cid = v.client_fitbase_id != null ? Number(v.client_fitbase_id) : null;
+        const lead = cid != null ? clm.get(cid) : undefined;
+        if (lead?.source) availSrcs.add(lead.source);
+        if (lead?.manager) availMgrs.add(lead.manager);
+      }
+
+      res.json({ periods: periodsResult, by_hour, heatmap, peaks, availableSources: [...availSrcs].sort(), availableManagers: [...availMgrs].sort() });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   return router;
 }

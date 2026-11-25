@@ -32,7 +32,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu' | 'control' | 'control2' | 'plan-fact' | 'kassa-closings';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu' | 'control' | 'control2' | 'plan-fact' | 'kassa-closings' | 'trial-peak';
 
 interface TbuPeriod {
   label: string; from: string; to: string;
@@ -125,6 +125,7 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
       { id: 'fact-day',      label: 'Факт дня',           desc: 'Что произошло в период',                  adminOnly: true },
       { id: 'day-rhythm',    label: 'Дневной такт',       desc: 'Судьба лидов периода',                    adminOnly: true },
       { id: 'daily-metrics', label: 'Метрики по дням',    desc: 'Воронка и продажи по дням месяца',         adminOnly: true },
+      { id: 'trial-peak',    label: 'Пик пробных',        desc: 'Когда больше всего пробных записано и пришло', adminOnly: true },
     ],
   },
 ];
@@ -235,6 +236,7 @@ export default function ReportsPage() {
       {section === 'control2'        && isAdmin && <Control2Section />}
       {section === 'plan-fact'       && isAdmin && <PlanFactSection />}
       {section === 'kassa-closings'  && <KassaClosingsSection />}
+      {section === 'trial-peak'      && isAdmin && <TrialPeakSection />}
     </div>
   );
 }
@@ -3493,6 +3495,214 @@ function MField({ label, children }: { label: string; children: React.ReactNode 
     <div>
       <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4, marginTop: 12 }}>{label}</label>
       {children}
+    </div>
+  );
+}
+
+// ── Trial Peak Section ────────────────────────────────────────────────────────
+
+interface TpPeriod { key: string; label: string; from: string; to: string; booked: number; scheduled: number; pr_by_visit: number; pr_by_booked: number }
+interface TpHour   { key: string; booked: number; scheduled: number; pr_by_visit: number; pr_by_booked: number }
+interface TpCell   { booked: number; scheduled: number; pr_by_visit: number; pr_by_booked: number }
+interface TpDay    { date: string; label: string; cells: Record<string, TpCell>; total: TpCell }
+interface TpPeaks  { period: { key: string; val: number }; hour: { key: string; val: number } }
+interface TpData   { periods: TpPeriod[]; by_hour: TpHour[]; heatmap: TpDay[]; peaks: Record<string, TpPeaks>; availableSources: string[]; availableManagers: string[] }
+
+const TP_HOUR_KEYS = ['до 08','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00','после 23'];
+
+function TpTile({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
+  return (
+    <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '10px 16px', minWidth: 110, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', flex: '0 0 auto' }}>
+      <div style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--primary)', lineHeight: 1.2 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function TrialPeakSection() {
+  const [availSources, setAvailSrc] = useState<string[]>([]);
+  const [availMgr, setAvailMgr]     = useState<string[]>([]);
+  const { from, to, sources, manager, setManager, filterBar, sourceBar } = useFunnelFilters(availSources);
+  const [data, setData]           = useState<TpData | null>(null);
+  const [loading, setLoading]     = useState(false);
+  const [group, setGroup]         = useState<'day'|'week'|'month'>('day');
+  const [mode, setMode]           = useState<'booked'|'scheduled'|'all'>('booked');
+  const [chartType, setChartType] = useState<'bar'|'line'|'hour'>('bar');
+  const [filtersOpen, setFiltersOpen] = useState(() => window.innerWidth > 640);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const sp = new URLSearchParams({ from, to, group });
+      sources.forEach(src => sp.append('sources', src));
+      if (manager) sp.set('manager', manager);
+      const r = await fetch(`/kviz/api/metrics/trial-peak?${sp}`, { credentials: 'include' });
+      if (!r.ok) return;
+      const d: TpData = await r.json();
+      setData(d);
+      setAvailSrc(d.availableSources);
+      setAvailMgr(d.availableManagers);
+    } catch {} finally { setLoading(false); }
+  }, [from, to, group, sources, manager]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const totals = useMemo(() => data?.periods.reduce(
+    (a, p) => ({ booked: a.booked+p.booked, scheduled: a.scheduled+p.scheduled, pr_by_visit: a.pr_by_visit+p.pr_by_visit, pr_by_booked: a.pr_by_booked+p.pr_by_booked }),
+    { booked: 0, scheduled: 0, pr_by_visit: 0, pr_by_booked: 0 }
+  ) ?? null, [data]);
+
+  const chartData     = chartType === 'hour' ? (data?.by_hour ?? []) : (data?.periods ?? []);
+  const xKey          = chartType === 'hour' ? 'key' : 'label';
+  const showBooked    = mode !== 'scheduled';
+  const showScheduled = mode !== 'booked';
+  const hmMetric: keyof TpCell = mode === 'scheduled' ? 'scheduled' : 'booked';
+  const hmMax    = data ? Math.max(1, ...data.heatmap.flatMap(d => Object.values(d.cells).map(c => c[hmMetric]))) : 1;
+  const peaks    = data?.peaks;
+  const mainPeak = mode === 'scheduled' ? peaks?.scheduled : peaks?.booked;
+  const mainTotal = totals ? (mode === 'scheduled' ? totals.scheduled : totals.booked) : 0;
+  const arrivedN  = totals ? (mode === 'scheduled' ? totals.pr_by_visit : totals.pr_by_booked) : 0;
+  const arrivedPct = mainTotal > 0 ? Math.round((arrivedN / mainTotal) * 100) : null;
+  const filterCount = sources.length + (manager ? 1 : 0);
+
+  const TH: React.CSSProperties = { padding: '3px 5px', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', whiteSpace: 'nowrap', textAlign: 'center' };
+
+  return (
+    <div style={s.section}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+        <button style={s.csvBtn} onClick={() => setFiltersOpen(v => !v)}>
+          {filtersOpen ? '▲ Фильтры' : `▼ Фильтры${filterCount > 0 ? ` (${filterCount})` : ''}`}
+        </button>
+        <button style={s.csvBtn} onClick={load} disabled={loading}>{loading ? 'Загрузка…' : '↺ Обновить'}</button>
+      </div>
+
+      {filtersOpen && (
+        <>
+          {filterBar}
+          <div style={{ marginBottom: 10 }}>
+            <select value={manager} onChange={e => setManager(e.target.value)} style={{ ...s.dateInp, minWidth: 160 }}>
+              <option value="">Все менеджеры</option>
+              {availMgr.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          {sourceBar}
+        </>
+      )}
+
+      <div style={{ ...s.filterRow, marginBottom: 8 }}>
+        {(['day','week','month'] as const).map(g => (
+          <button key={g} style={{ ...s.chip, ...(group === g ? s.chipActive : {}) }} onClick={() => setGroup(g)}>
+            {g === 'day' ? 'День' : g === 'week' ? 'Неделя' : 'Месяц'}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ ...s.filterRow, marginBottom: 12 }}>
+        {(['booked','scheduled','all'] as const).map(v => (
+          <button key={v} style={{ ...s.chip, ...(mode === v ? s.chipActive : {}) }} onClick={() => setMode(v)}>
+            {v === 'booked' ? 'По дню пробного' : v === 'scheduled' ? 'По дню записи' : 'Все три'}
+          </button>
+        ))}
+        <span style={{ flex: 1 }} />
+        {(['bar','line','hour'] as const).map(ct => (
+          <button key={ct} style={{ ...s.chip, ...(chartType === ct ? s.chipActive : {}) }} onClick={() => setChartType(ct)}>
+            {ct === 'bar' ? 'Столбцы' : ct === 'line' ? 'Линия' : 'По часам'}
+          </button>
+        ))}
+      </div>
+
+      {totals && mode !== 'all' && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+          <TpTile label="Всего за период" value={mainTotal} />
+          {mainPeak && mainPeak.period.val > 0 && (
+            <TpTile label="Пик" value={mainPeak.period.val} sub={mainPeak.period.key} />
+          )}
+          {mainPeak && mainPeak.hour.val > 0 && (
+            <TpTile label="Пиковый час" value={mainPeak.hour.key} sub={`${mainPeak.hour.val} чел.`} />
+          )}
+          {arrivedPct !== null && (
+            <TpTile label="Дошли" value={`${arrivedPct}%`} sub={`${arrivedN} чел.`} />
+          )}
+        </div>
+      )}
+
+      {!data && loading && <div style={s.empty}>Загрузка…</div>}
+      {data && data.periods.length === 0 && !loading && <div style={s.empty}>Нет пробных за период</div>}
+
+      {data && data.periods.length > 0 && (
+        <>
+          <div style={{ width: '100%', height: 240, marginBottom: 24 }}>
+            <ResponsiveContainer>
+              {chartType === 'line' ? (
+                <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey={xKey} tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} width={28} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Legend />
+                  {showBooked    && <Line type="monotone" dataKey="booked"       stroke="var(--chart-1)" dot={false} name="Записали" />}
+                  {showBooked    && <Line type="monotone" dataKey="pr_by_booked" stroke="var(--chart-3)" dot={false} name="Пришли (к)" strokeDasharray="4 2" />}
+                  {showScheduled && <Line type="monotone" dataKey="scheduled"    stroke="var(--chart-2)" dot={false} name="Записаны" />}
+                  {showScheduled && <Line type="monotone" dataKey="pr_by_visit"  stroke="var(--chart-3)" dot={false} name="Пришли" strokeDasharray="4 2" />}
+                </LineChart>
+              ) : (
+                <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey={xKey} tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} width={28} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Legend />
+                  {showBooked    && <Bar dataKey="booked"       fill="var(--chart-1)" name="Записали" />}
+                  {showBooked    && <Bar dataKey="pr_by_booked" fill="var(--chart-3)" name="Пришли (к)" />}
+                  {showScheduled && <Bar dataKey="scheduled"    fill="var(--chart-2)" name="Записаны" />}
+                  {showScheduled && <Bar dataKey="pr_by_visit"  fill="var(--chart-3)" name="Пришли" />}
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+
+          <div style={s.sectionTitle}>
+            Тепловая карта: {hmMetric === 'booked' ? 'записали' : 'запланировано'} по дням и часам
+          </div>
+          <div style={{ overflowX: 'auto', marginBottom: 24 }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...TH, textAlign: 'left' as const, position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 2, minWidth: 68 }}>День</th>
+                  {TP_HOUR_KEYS.map(h => <th key={h} style={TH}>{h.includes(':') ? h.slice(0, 2) : h}</th>)}
+                  <th style={{ ...TH, fontWeight: 700, color: 'var(--text)' }}>∑</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.heatmap.map(day => (
+                  <tr key={day.date}>
+                    <td style={{ padding: '2px 5px', fontSize: 11, fontWeight: 600, position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 1, whiteSpace: 'nowrap' }}>
+                      {day.label}
+                    </td>
+                    {TP_HOUR_KEYS.map(hk => {
+                      const cell = day.cells[hk] ?? { booked: 0, scheduled: 0, pr_by_visit: 0, pr_by_booked: 0 };
+                      const val  = cell[hmMetric];
+                      const pct  = Math.round((val / hmMax) * 85);
+                      return (
+                        <td key={hk} style={{
+                          ...TH,
+                          background: val > 0 ? `color-mix(in srgb, var(--chart-1) ${pct}%, var(--surface))` : 'var(--surface)',
+                          color: pct > 50 ? 'var(--surface)' : 'var(--text)',
+                          borderRadius: 2,
+                        }}>
+                          {val || ''}
+                        </td>
+                      );
+                    })}
+                    <td style={{ ...TH, fontWeight: 700, color: 'var(--text)' }}>{day.total[hmMetric] || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }
