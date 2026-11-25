@@ -32,7 +32,7 @@ interface SalesData {
   ops: SalesOp[];
 }
 
-type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu' | 'control' | 'control2' | 'plan-fact';
+type Section = 'shifts' | 'tasks' | 'studio' | 'sales' | 'renewals' | 'fact-day' | 'day-rhythm' | 'occupancy' | 'measures' | 'inbody' | 'daily-metrics' | 'payroll' | 'tbu' | 'control' | 'control2' | 'plan-fact' | 'kassa-closings';
 
 interface TbuPeriod {
   label: string; from: string; to: string;
@@ -100,13 +100,14 @@ const REPORT_COLUMNS: { title: string; adminOnly: boolean; items: { id: Section;
     ],
   },
   {
-    title: 'Продажи', adminOnly: true,
+    title: 'Продажи', adminOnly: false,
     items: [
-      { id: 'sales',      label: 'Отчёт по продажам', desc: 'Операции Fitbase, разбивка',      adminOnly: true },
-      { id: 'renewals',   label: 'Продления',          desc: 'Новые, продления, вернулись',      adminOnly: true },
-      { id: 'plan-fact',  label: 'План-факт (срез)',   desc: 'Срез на дату, план по шагам',      adminOnly: true },
-      { id: 'payroll',    label: 'Зарплата',           desc: 'Расчёт зарплаты сотрудников',      adminOnly: true },
-      { id: 'tbu',        label: 'ТБУ',               desc: 'Точка безубыточности, каскад',     adminOnly: true },
+      { id: 'sales',           label: 'Отчёт по продажам', desc: 'Операции Fitbase, разбивка',      adminOnly: true },
+      { id: 'renewals',        label: 'Продления',          desc: 'Новые, продления, вернулись',      adminOnly: true },
+      { id: 'plan-fact',       label: 'План-факт (срез)',   desc: 'Срез на дату, план по шагам',      adminOnly: true },
+      { id: 'payroll',         label: 'Зарплата',           desc: 'Расчёт зарплаты сотрудников',      adminOnly: true },
+      { id: 'tbu',             label: 'ТБУ',               desc: 'Точка безубыточности, каскад',     adminOnly: true },
+      { id: 'kassa-closings',  label: 'Закрытия кассы',    desc: 'Покупюрные ведомости и итоги',      adminOnly: false },
     ],
   },
   {
@@ -233,6 +234,7 @@ export default function ReportsPage() {
       {section === 'control'         && isAdmin && <ControlSection />}
       {section === 'control2'        && isAdmin && <Control2Section />}
       {section === 'plan-fact'       && isAdmin && <PlanFactSection />}
+      {section === 'kassa-closings'  && <KassaClosingsSection />}
     </div>
   );
 }
@@ -4463,6 +4465,127 @@ function PlanFactSection() {
             <div><b>Прогноз на месяц</b> — экстраполяция текущего темпа на оставшиеся рабочие дни (в скобках % от личного плана).</div>
             <div><b>Нужно в день</b> — (личный план − факт) ÷ оставшиеся рабочие дни.</div>
             <div style={{marginTop:4,color:'var(--text-3)'}}>Бонус 30 000 ₸ начисляется за выполнение общего плана отдела на 100%. Расчёт — в отчёте «Зарплата».</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Kassa Closings Section ────────────────────────────────────────────────────
+
+interface KassaClosing {
+  id: string; shift_date: string; number: number; closing_no: number;
+  opened_by: string; opened_at: string; closed_by: string; closed_at: string;
+  opening_cash: number; expected_cash: number; counted_cash: number; difference: number;
+  closing_doc: Record<string,number> | null;
+}
+
+function KassaClosingsSection() {
+  const [rows, setRows] = useState<KassaClosing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [selected, setSelected] = useState<KassaClosing | null>(null);
+  const printRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch('/kviz/api/crm/kassa/closings?limit=50', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setRows(d); else setErr(d.error || 'Ошибка'); })
+      .catch(() => setErr('Ошибка загрузки'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function fmtM(n: number) { return Number(n).toLocaleString('ru-RU') + ' ₸'; }
+  function fmtDT(iso: string) { return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+
+  function handlePrint(d: KassaClosing) {
+    if (!printRef.current) return;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Закрытие №${d.closing_no}</title>
+<style>body{font-family:Arial,sans-serif;font-size:13px;margin:20px}h2{margin:0 0 12px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:5px 8px}th{background:#f0f0f0;text-align:left}</style></head>
+<body><h2>Закрытие кассы №${d.closing_no}</h2>
+<p>Смена: ${d.shift_date} · Открыл: ${d.opened_by} · Закрыл: ${d.closed_by}</p>
+<table><tr><th>Показатель</th><th>Сумма, ₸</th></tr>
+<tr><td>Остаток на открытие</td><td>${Number(d.opening_cash).toLocaleString('ru-RU')}</td></tr>
+<tr><td>Ожидаемые наличные</td><td>${Number(d.expected_cash).toLocaleString('ru-RU')}</td></tr>
+<tr><td><b>Фактически</b></td><td><b>${Number(d.counted_cash).toLocaleString('ru-RU')}</b></td></tr>
+<tr><td style="color:${Number(d.difference)>=0?'green':'red'}"><b>${Number(d.difference)>=0?'Излишек':'Недостача'}</b></td>
+<td style="color:${Number(d.difference)>=0?'green':'red'}"><b>${Math.abs(Number(d.difference)).toLocaleString('ru-RU')}</b></td></tr>
+</table></body></html>`;
+    const iframe = printRef.current;
+    iframe.srcdoc = html;
+    iframe.onload = () => { iframe.contentWindow?.print(); };
+  }
+
+  if (loading) return <div style={{ padding: 24, color: 'var(--text-3)' }}>Загрузка…</div>;
+  if (err) return <div style={{ padding: 24, color: 'var(--danger)' }}>{err}</div>;
+
+  return (
+    <div style={{ padding: '16px 20px' }}>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Закрытия кассы</div>
+      {rows.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Закрытий с покупюрной ведомостью нет</div>}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--surface-2)' }}>
+              {['№ закрытия', 'Дата смены', 'Открыл', 'Закрыл', 'Ожидаемые', 'Фактически', 'Разница', ''].map(h => (
+                <th key={h} style={{ padding: '8px 10px', borderBottom: '2px solid var(--border)', textAlign: h === '' ? 'right' : 'left', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => (
+              <tr key={row.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '8px 10px', fontWeight: 700 }}>#{row.closing_no}</td>
+                <td style={{ padding: '8px 10px' }}>{row.shift_date}</td>
+                <td style={{ padding: '8px 10px', color: 'var(--text-2)', fontSize: 12 }}>{row.opened_by}<br/>{fmtDT(row.opened_at)}</td>
+                <td style={{ padding: '8px 10px', color: 'var(--text-2)', fontSize: 12 }}>{row.closed_by}<br/>{fmtDT(row.closed_at)}</td>
+                <td style={{ padding: '8px 10px' }}>{fmtM(row.expected_cash)}</td>
+                <td style={{ padding: '8px 10px', fontWeight: 600 }}>{fmtM(row.counted_cash)}</td>
+                <td style={{ padding: '8px 10px', fontWeight: 600, color: row.difference >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                  {row.difference >= 0 ? '+' : ''}{fmtM(row.difference)}
+                </td>
+                <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                  <button style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', fontSize: 12, cursor: 'pointer', marginRight: 4 }} onClick={() => setSelected(row)}>Детали</button>
+                  <button style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', fontSize: 12, cursor: 'pointer' }} onClick={() => handlePrint(row)}>Печать</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <iframe ref={printRef} style={{ display: 'none' }} title="print" />
+      {selected && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 24, width: 'min(480px,96vw)', maxHeight: '85vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontWeight: 700, fontSize: 15 }}>Закрытие №{selected.closing_no} · {selected.shift_date}</span>
+              <button style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--text-2)' }} onClick={() => setSelected(null)}>✕</button>
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+              <div><b>Открыл:</b> {selected.opened_by}, {fmtDT(selected.opened_at)}</div>
+              <div><b>Закрыл:</b> {selected.closed_by}, {fmtDT(selected.closed_at)}</div>
+              <div><b>Остаток на открытие:</b> {fmtM(selected.opening_cash)}</div>
+              {selected.closing_doc && (
+                <>
+                  <div><b>Продажи нал.:</b> {fmtM(Number((selected.closing_doc as Record<string,number>).cash_sales ?? 0))}</div>
+                  <div><b>Продажи карта:</b> {fmtM(Number((selected.closing_doc as Record<string,number>).card_sales ?? 0))}</div>
+                  <div><b>Возвраты нал.:</b> {fmtM(Number((selected.closing_doc as Record<string,number>).cash_refunds ?? 0))}</div>
+                  <div><b>Внесения:</b> {fmtM(Number((selected.closing_doc as Record<string,number>).mov_in ?? 0))}</div>
+                  <div><b>Изъятия:</b> {fmtM(Number((selected.closing_doc as Record<string,number>).mov_out ?? 0))}</div>
+                </>
+              )}
+              <div><b>Ожидаемые наличные:</b> {fmtM(selected.expected_cash)}</div>
+              <div><b>Фактически:</b> {fmtM(selected.counted_cash)}</div>
+              <div style={{ color: selected.difference >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
+                {selected.difference >= 0 ? 'Излишек' : 'Недостача'}: {fmtM(Math.abs(selected.difference))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+              <button style={{ padding: '7px 14px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => handlePrint(selected)}>Печать</button>
+              <button style={{ padding: '7px 14px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, cursor: 'pointer', color: 'var(--text)' }} onClick={() => setSelected(null)}>Закрыть</button>
+            </div>
           </div>
         </div>
       )}

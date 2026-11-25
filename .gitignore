@@ -21,3 +21,4 @@ probe_result.json
 screenshot-*.png
 .playwright-mcp/
 /*.txt
+~$*

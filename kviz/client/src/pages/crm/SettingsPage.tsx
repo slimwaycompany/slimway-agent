@@ -21,7 +21,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Palette, Cpu, CalendarDays, Monitor, Ticket, Sparkles, Tag, Package, Truck,
   CreditCard, Banknote, Filter, Megaphone, XCircle, Hash, CheckSquare,
-  MessageSquare, Users, CalendarCheck, BarChart2, Layers, Laptop, Link, Phone, Activity, User, Building2,
+  MessageSquare, Users, CalendarCheck, BarChart2, Layers, Laptop, Link, Phone, Activity, User, Building2, Lock,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'branch' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'client-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules';
+type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'branch' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'client-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules' | 'kassa-passwords';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -4351,6 +4351,98 @@ function LeadRulesSection() {
 }
 
 interface NavSectionDef { id: Section; label: string; Icon: LucideIcon; permKey?: string }
+// ── KassaPasswordsSection ─────────────────────────────────────────────────────
+
+function KassaPasswordsSection() {
+  const [status, setStatus] = useState<{ locked: boolean; locked_at: string | null; failed_attempts: number; has_sales_password: boolean; has_full_password: boolean } | null>(null);
+  const [salesPass, setSalesPass] = useState('');
+  const [salesPass2, setSalesPass2] = useState('');
+  const [fullPass, setFullPass] = useState('');
+  const [fullPass2, setFullPass2] = useState('');
+  const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
+  const [saving, setSaving] = useState('');
+
+  const { can } = useContext(PermContext);
+  const canEdit = can('settings.kassa_passwords', 'edit');
+
+  const load = useCallback(async () => {
+    const { data } = await api('GET', '/kviz/api/crm/kassa/status');
+    if (data && data.locked !== undefined) setStatus(data);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function setPassword(kind: 'sales' | 'full', password: string, password2: string) {
+    if (password !== password2) { setErr('Пароли не совпадают'); return; }
+    setSaving(kind); setErr(''); setMsg('');
+    const { ok, data } = await api('POST', '/kviz/api/crm/kassa/set-password', { kind, password: password || undefined });
+    setSaving('');
+    if (ok) { setMsg(`Пароль ${kind === 'sales' ? 'продаж' : 'полного доступа'} сохранён`); setSalesPass(''); setSalesPass2(''); setFullPass(''); setFullPass2(''); load(); }
+    else setErr((data as { error?: string }).error || 'Ошибка');
+  }
+
+  async function unlock() {
+    setSaving('unlock'); setErr(''); setMsg('');
+    const { ok, data } = await api('POST', '/kviz/api/crm/kassa/unlock');
+    setSaving('');
+    if (ok) { setMsg('Касса разблокирована'); load(); }
+    else setErr((data as { error?: string }).error || 'Ошибка');
+  }
+
+  return (
+    <div style={S.section}>
+      <div style={S.subTitle}>Пароли кассы</div>
+      <p style={{ fontSize: 13, color: 'var(--text-2)', margin: '8px 0 16px' }}>
+        Пароль кассы запрашивается при каждом открытии вкладки «Касса». Режим «Продажи» — только продажи и закрытие смены. Режим «Полный» — всё.
+      </p>
+      {status && (
+        <div style={{ background: status.locked ? 'var(--danger-soft)' : 'var(--success-soft,#e8f5e9)', color: status.locked ? 'var(--danger)' : 'var(--success)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+          {status.locked
+            ? `🔒 Касса заблокирована с ${new Date(status.locked_at!).toLocaleString('ru-RU')} · ${status.failed_attempts} неверных попыток`
+            : `✓ Касса не заблокирована · неверных попыток: ${status.failed_attempts}`}
+        </div>
+      )}
+      {status?.locked && canEdit && (
+        <button style={{ ...S.saveBtn, marginBottom: 16, background: 'var(--danger)' }} disabled={saving === 'unlock'} onClick={unlock}>
+          {saving === 'unlock' ? '…' : 'Разблокировать кассу'}
+        </button>
+      )}
+      {err && <div style={S.errBox}>{err}</div>}
+      {msg && <div style={{ background: 'var(--success-soft,#e8f5e9)', color: 'var(--success)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{msg}</div>}
+      {canEdit && (
+        <>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                Пароль «Продажи» {status?.has_sales_password ? '(установлен)' : '(не установлен)'}
+              </div>
+              <label style={S.label}>Новый пароль (пусто = удалить)</label>
+              <input style={S.inp} type="password" value={salesPass} onChange={e => setSalesPass(e.target.value)} placeholder="Пароль режима продаж" />
+              <label style={{ ...S.label, marginTop: 8 }}>Повторите пароль</label>
+              <input style={S.inp} type="password" value={salesPass2} onChange={e => setSalesPass2(e.target.value)} placeholder="Повторите пароль" />
+              <button style={{ ...S.saveBtn, marginTop: 10 }} disabled={saving === 'sales'} onClick={() => setPassword('sales', salesPass, salesPass2)}>
+                {saving === 'sales' ? '…' : 'Сохранить'}
+              </button>
+            </div>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                Пароль «Полный доступ» {status?.has_full_password ? '(установлен)' : '(не установлен)'}
+              </div>
+              <label style={S.label}>Новый пароль (пусто = удалить)</label>
+              <input style={S.inp} type="password" value={fullPass} onChange={e => setFullPass(e.target.value)} placeholder="Пароль полного доступа" />
+              <label style={{ ...S.label, marginTop: 8 }}>Повторите пароль</label>
+              <input style={S.inp} type="password" value={fullPass2} onChange={e => setFullPass2(e.target.value)} placeholder="Повторите пароль" />
+              <button style={{ ...S.saveBtn, marginTop: 10 }} disabled={saving === 'full'} onClick={() => setPassword('full', fullPass, fullPass2)}>
+                {saving === 'full' ? '…' : 'Сохранить'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 interface NavGroupDef   { id: string;  label: string; sections: NavSectionDef[] }
 
 const NAV_GROUPS_DEF: NavGroupDef[] = [
@@ -4372,8 +4464,9 @@ const NAV_GROUPS_DEF: NavGroupDef[] = [
     { id: 'suppliers',  label: 'Поставщики',     Icon: Truck,    permKey: 'settings.suppliers' },
   ]},
   { id: 'money',  label: 'Деньги',        sections: [
-    { id: 'payments', label: 'Виды оплаты', Icon: CreditCard, permKey: 'settings.payments' },
-    { id: 'finance',  label: 'Финансы',     Icon: Banknote,   permKey: 'settings.finance' },
+    { id: 'payments',         label: 'Виды оплаты',  Icon: CreditCard, permKey: 'settings.payments' },
+    { id: 'finance',          label: 'Финансы',       Icon: Banknote,   permKey: 'settings.finance' },
+    { id: 'kassa-passwords',  label: 'Пароли кассы',  Icon: Lock,       permKey: 'settings.kassa_passwords' },
   ]},
   { id: 'leads',  label: 'Заявки',        sections: [
     { id: 'funnels',       label: 'Воронки CRM',          Icon: Filter,        permKey: 'settings.funnels' },
@@ -4990,6 +5083,7 @@ export default function SettingsPage() {
         {section === 'control-devices'  && <TrustedDevicesSection />}
         {section === 'pbx'              && <PbxSection />}
         {section === 'tv'               && <TvSection />}
+        {section === 'kassa-passwords'  && <KassaPasswordsSection />}
       </div>
     </div>
   );

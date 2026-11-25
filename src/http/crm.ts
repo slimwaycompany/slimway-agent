@@ -1,12 +1,67 @@
+import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { supabase } from '../db/supabase';
-import { getSession, requireAuth, requireAdmin, getSessionWithPerms, can, requirePerm } from './auth';
+import { getSession, requireAuth, requireAdmin, getSessionWithPerms, can, requirePerm, windowSecret } from './auth';
 import { startHistoryImport, runFitbaseHistoryImport, getHistoryImportJob, linkBodyClients, getLinkStats } from '../jobs/fitbaseHistoryImport';
 import { batchAutoLabelsForDay, batchAutoLabelsToday } from '../core/clientAutoLabels';
 import type { ClientExtraData } from '../core/clientAutoLabels';
 
 const BRANCH_ID         = '00000000-0000-0000-0000-000000000001';
 const GENERIC_CRM_ERROR = 'Ошибка кассы, сообщите администратору';
+
+// ── Kassa token (extra auth layer, stored only in React state) ─────────────────
+
+interface KassaTokenPayload {
+  branch_id: string;
+  mode: 'sales' | 'full' | 'master';
+  user_id: string;
+  user_login: string;
+  issued_at: number;
+  exp: number;
+  kv: 1;
+}
+
+function makeKassaToken(p: Omit<KassaTokenPayload, 'exp' | 'kv'>): string {
+  const payload: KassaTokenPayload = { ...p, exp: Math.floor(Date.now() / 1000) + 12 * 3600, kv: 1 };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', windowSecret()).update('kassa.' + encoded).digest('base64url');
+  return `${encoded}.${sig}`;
+}
+
+function parseKassaToken(token: string | undefined): KassaTokenPayload | null {
+  if (!token) return null;
+  const dot = token.lastIndexOf('.');
+  if (dot <= 0) return null;
+  const encoded = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = crypto.createHmac('sha256', windowSecret()).update('kassa.' + encoded).digest('base64url');
+  try {
+    const eSig = Buffer.from(expected, 'base64url');
+    const gSig = Buffer.from(sig, 'base64url');
+    if (eSig.length !== gSig.length) return null;
+    if (!crypto.timingSafeEqual(eSig, gSig)) return null;
+    const data = JSON.parse(Buffer.from(encoded, 'base64url').toString()) as KassaTokenPayload;
+    if (data.exp <= Math.floor(Date.now() / 1000)) return null;
+    if (data.kv !== 1) return null;
+    return data;
+  } catch { return null; }
+}
+
+// Returns mode on success, responds with 403 and returns null on failure.
+// Pass allowedModes=[] to allow any mode.
+function requireKassaToken(
+  req: Request, res: Response,
+  allowedModes: Array<'sales' | 'full' | 'master'> = []
+): KassaTokenPayload | null {
+  const token = req.headers['x-kassa-token'] as string | undefined;
+  const payload = parseKassaToken(token);
+  if (!payload) { res.status(403).json({ error: 'Требуется вход в кассу' }); return null; }
+  if (allowedModes.length > 0 && !allowedModes.includes(payload.mode)) {
+    res.status(403).json({ error: 'Недоступно в режиме продаж' }); return null;
+  }
+  return payload;
+}
 const VALID_PHASES   = new Set(['active', 'finishing']);
 const VALID_STATUSES = new Set(['working', 'repair', 'disabled', 'broken']);
 const VALID_PM_KIND  = new Set(['cash', 'cashless']);
@@ -1703,6 +1758,7 @@ export function buildCrmRouter(): Router {
   r.post('/kviz/api/crm/shifts', async (req, res) => {
     const session = await getSessionWithPerms(req);
     if (!requirePerm(req, res, 'kassa.shift', 'edit', session)) return;
+    if (!requireKassaToken(req, res)) return;
     try {
       // Only one open shift allowed
       const { data: existing } = await supabase.from('crm_cash_shifts')
@@ -1739,6 +1795,7 @@ export function buildCrmRouter(): Router {
   r.patch('/kviz/api/crm/shifts/:id/close', async (req, res) => {
     const session = await getSessionWithPerms(req);
     if (!requirePerm(req, res, 'kassa.shift', 'edit', session)) return;
+    if (!requireKassaToken(req, res)) return;
     try {
       const { data: shift } = await supabase.from('crm_cash_shifts').select('*').eq('id', req.params.id).single();
       if (!shift) { res.status(404).json({ error: 'Смена не найдена' }); return; }
@@ -1778,6 +1835,7 @@ export function buildCrmRouter(): Router {
 
   r.get('/kviz/api/crm/shifts/:id/movements', async (req, res) => {
     if (!requireAuth(req, res)) return;
+    if (!requireKassaToken(req, res, ['full', 'master'])) return;
     try {
       const { data, error } = await supabase.from('crm_cash_movements')
         .select('*').eq('shift_id', req.params.id).order('created_at');
@@ -1788,6 +1846,7 @@ export function buildCrmRouter(): Router {
 
   r.post('/kviz/api/crm/shifts/:id/movements', async (req, res) => {
     if (!requireAuth(req, res)) return;
+    if (!requireKassaToken(req, res, ['full', 'master'])) return;
     const session = getSession(req)!;
     try {
       const b = req.body as Record<string, unknown>;
@@ -1814,6 +1873,7 @@ export function buildCrmRouter(): Router {
 
   r.get('/kviz/api/crm/shifts/:id/sales', async (req, res) => {
     if (!requireAuth(req, res)) return;
+    if (!requireKassaToken(req, res, ['full', 'master'])) return;
     try {
       let q = supabase.from('crm_sales')
         .select('id,number,client_id,cashier,manager,total,discount_kind,status,created_at,crm_sale_payments(payment_method_id,amount)')
@@ -1844,6 +1904,7 @@ export function buildCrmRouter(): Router {
 
   r.get('/kviz/api/crm/sales/:id', async (req, res) => {
     if (!requireAuth(req, res)) return;
+    if (!requireKassaToken(req, res, ['full', 'master'])) return;
     try {
       const { data, error } = await supabase.from('crm_sales')
         .select('*,crm_sale_items(*),crm_sale_payments(*)')
@@ -1858,6 +1919,7 @@ export function buildCrmRouter(): Router {
   r.post('/kviz/api/crm/checkout', async (req, res) => {
     const session = await getSessionWithPerms(req);
     if (!requirePerm(req, res, 'kassa.sale', 'edit', session)) return;
+    if (!requireKassaToken(req, res)) return;
     try {
       const b = req.body as Record<string, unknown>;
       if (b.discount_kind === 'admin' && session.role !== 'admin') {
@@ -1932,6 +1994,7 @@ export function buildCrmRouter(): Router {
   r.post('/kviz/api/crm/refund', async (req, res) => {
     const session = await getSessionWithPerms(req);
     if (!requirePerm(req, res, 'kassa.refunds', 'edit', session)) return;
+    if (!requireKassaToken(req, res, ['full', 'master'])) return;
     try {
       const b = req.body as Record<string, unknown>;
       const { data: openShift } = await supabase.from('crm_cash_shifts')
@@ -2213,6 +2276,7 @@ export function buildCrmRouter(): Router {
 
   r.post('/kviz/api/crm/clients/:id/balance-ops', async (req, res) => {
     if (!requireAdmin(req, res)) return;
+    if (!requireKassaToken(req, res, ['full', 'master'])) return;
     const session = getSession(req)!;
     try {
       const b = req.body as Record<string, unknown>;
@@ -3582,6 +3646,319 @@ export function buildCrmRouter(): Router {
         auto_labels, personal_tags,
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Kassa auth ────────────────────────────────────────────────────────────────
+
+  // POST /kviz/api/crm/kassa/auth — verify kassa password, return mode token
+  r.post('/kviz/api/crm/kassa/auth', async (req, res) => {
+    const session = await getSession(req);
+    if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const { password } = req.body as { password?: string };
+    if (!password) { res.status(400).json({ error: 'Укажите пароль' }); return; }
+
+    try {
+      const { data: branch } = await supabase
+        .from('crm_branches')
+        .select('kassa_sales_pass_hash,kassa_full_pass_hash,kassa_failed_attempts,kassa_locked_at')
+        .eq('id', BRANCH_ID).single();
+      if (!branch) { res.status(500).json({ error: 'Ошибка конфигурации' }); return; }
+
+      const isLocked = branch.kassa_locked_at != null;
+
+      async function logEvent(mode: string | null, event: string) {
+        try {
+          await supabase.from('crm_kassa_auth_log').insert({
+            branch_id: BRANCH_ID, user_login: session!.login, user_name: session!.display_name,
+            mode: mode ?? 'unknown', event,
+          });
+        } catch {}
+      }
+
+      // Try master password first (always bypasses lockout)
+      const masterHash = process.env.KASSA_MASTER_PASSWORD_HASH;
+      if (masterHash) {
+        const isMaster = await bcrypt.compare(password, masterHash).catch(() => false);
+        if (isMaster) {
+          // Reset lockout on master login
+          await supabase.from('crm_branches').update({ kassa_failed_attempts: 0, kassa_locked_at: null }).eq('id', BRANCH_ID);
+          const token = makeKassaToken({ branch_id: BRANCH_ID, mode: 'master', user_id: session.id, user_login: session.login, issued_at: Math.floor(Date.now() / 1000) });
+          await logEvent('master', 'login');
+          res.json({ token, mode: 'master' }); return;
+        }
+      }
+
+      // If locked, only master can unlock (checked above)
+      if (isLocked) {
+        await logEvent(null, 'fail');
+        res.status(423).json({ error: 'Касса заблокирована после 5 неверных попыток. Обратитесь к администратору или введите полный пароль.' }); return;
+      }
+
+      // Try full password
+      const fullHash = branch.kassa_full_pass_hash as string | null;
+      if (fullHash) {
+        const isFull = await bcrypt.compare(password, fullHash).catch(() => false);
+        if (isFull) {
+          await supabase.from('crm_branches').update({ kassa_failed_attempts: 0, kassa_locked_at: null }).eq('id', BRANCH_ID);
+          const token = makeKassaToken({ branch_id: BRANCH_ID, mode: 'full', user_id: session.id, user_login: session.login, issued_at: Math.floor(Date.now() / 1000) });
+          await logEvent('full', 'login');
+          res.json({ token, mode: 'full' }); return;
+        }
+      }
+
+      // Try sales password
+      const salesHash = branch.kassa_sales_pass_hash as string | null;
+      if (salesHash) {
+        const isSales = await bcrypt.compare(password, salesHash).catch(() => false);
+        if (isSales) {
+          await supabase.from('crm_branches').update({ kassa_failed_attempts: 0, kassa_locked_at: null }).eq('id', BRANCH_ID);
+          const token = makeKassaToken({ branch_id: BRANCH_ID, mode: 'sales', user_id: session.id, user_login: session.login, issued_at: Math.floor(Date.now() / 1000) });
+          await logEvent('sales', 'login');
+          res.json({ token, mode: 'sales' }); return;
+        }
+      }
+
+      // No password matched — increment failure counter
+      const attempts = (Number(branch.kassa_failed_attempts) || 0) + 1;
+      const shouldLock = attempts >= 5;
+      await supabase.from('crm_branches').update({
+        kassa_failed_attempts: attempts,
+        kassa_locked_at: shouldLock ? new Date().toISOString() : null,
+      }).eq('id', BRANCH_ID);
+      await logEvent(null, shouldLock ? 'locked' : 'fail');
+
+      if (shouldLock) {
+        res.status(423).json({ error: 'Касса заблокирована после 5 неверных попыток.' }); return;
+      }
+      res.status(401).json({ error: `Неверный пароль. Попыток осталось: ${5 - attempts}` });
+    } catch (e) { console.error('[kassa/auth]', e); res.status(500).json({ error: 'Ошибка' }); }
+  });
+
+  // POST /kviz/api/crm/kassa/set-password — set/clear kassa passwords
+  r.post('/kviz/api/crm/kassa/set-password', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.kassa_passwords', 'edit', session)) return;
+    const { kind, password } = req.body as { kind?: string; password?: string };
+    if (kind !== 'sales' && kind !== 'full') { res.status(400).json({ error: 'kind: sales или full' }); return; }
+    const field = kind === 'sales' ? 'kassa_sales_pass_hash' : 'kassa_full_pass_hash';
+    try {
+      const hash = password ? await bcrypt.hash(password, 10) : null;
+      const { error } = await supabase.from('crm_branches').update({ [field]: hash }).eq('id', BRANCH_ID);
+      if (error) { res.status(500).json({ error: 'Не удалось сохранить' }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // GET /kviz/api/crm/kassa/status — lockout status for settings page
+  r.get('/kviz/api/crm/kassa/status', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.kassa_passwords', 'view', session)) return;
+    try {
+      const { data } = await supabase
+        .from('crm_branches')
+        .select('kassa_failed_attempts,kassa_locked_at,kassa_sales_pass_hash,kassa_full_pass_hash')
+        .eq('id', BRANCH_ID).single();
+      res.json({
+        locked: data?.kassa_locked_at != null,
+        locked_at: data?.kassa_locked_at ?? null,
+        failed_attempts: data?.kassa_failed_attempts ?? 0,
+        has_sales_password: !!data?.kassa_sales_pass_hash,
+        has_full_password: !!data?.kassa_full_pass_hash,
+      });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // POST /kviz/api/crm/kassa/unlock — admin unlock
+  r.post('/kviz/api/crm/kassa/unlock', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.kassa_passwords', 'edit', session)) return;
+    try {
+      await supabase.from('crm_branches').update({ kassa_failed_attempts: 0, kassa_locked_at: null }).eq('id', BRANCH_ID);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Kassa closings (Reports) ────────────────────────────────────────────────
+
+  r.get('/kviz/api/crm/kassa/closings', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'kassa.closings', 'view', session)) return;
+    try {
+      const limit = Math.min(Number(req.query.limit ?? 50), 100);
+      const offset = Number(req.query.offset ?? 0);
+      const { data, error } = await supabase.from('crm_cash_shifts')
+        .select('id,shift_date,number,opened_by,opened_at,closed_by,closed_at,opening_cash,expected_cash,counted_cash,difference,closing_no,closing_doc,status')
+        .eq('branch_id', BRANCH_ID).eq('status', 'closed').not('closing_no', 'is', null)
+        .order('closing_no', { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data ?? []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Shift: closing data for bill-counting form ─────────────────────────────
+
+  r.get('/kviz/api/crm/shifts/:id/closing-data', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'kassa.shift', 'view', session)) return;
+    if (!requireKassaToken(req, res)) return;
+    try {
+      const shiftId = req.params.id;
+      const { data: shift } = await supabase.from('crm_cash_shifts')
+        .select('id,shift_date,number,opened_by,opened_at,opening_cash,branch_id').eq('id', shiftId).single();
+      if (!shift || (shift.branch_id as string) !== BRANCH_ID) { res.status(404).json({ error: 'Смена не найдена' }); return; }
+
+      // Cash sales and refunds (only shifts with this shift_id)
+      const [movRes, salesPayRes, refundPayRes] = await Promise.all([
+        supabase.from('crm_cash_movements').select('type,amount').eq('shift_id', shiftId),
+        supabase.from('crm_sale_payments').select('amount,payment_method_id,crm_payment_methods(kind)')
+          .eq('crm_sales.shift_id', shiftId)
+          .in('crm_payment_methods.kind', ['cash', 'cashless'])
+          // Note: joining through crm_sales isn't directly supported this way in Supabase
+          // Using a different approach via crm_sales
+          .neq('amount', -1), // placeholder; will re-query below
+        Promise.resolve({ data: null }),
+      ]);
+
+      // Get all sales for this shift
+      const { data: salesInShift } = await supabase.from('crm_sales').select('id').eq('shift_id', shiftId);
+      const saleIds = (salesInShift ?? []).map((s: Record<string, unknown>) => s.id as string);
+
+      const { data: salePays } = saleIds.length
+        ? await supabase.from('crm_sale_payments').select('amount,payment_method_id,crm_payment_methods(kind)').in('sale_id', saleIds)
+        : { data: [] as unknown[] };
+      const { data: refundsInShift } = await supabase.from('crm_refunds').select('id').eq('shift_id', shiftId);
+      const refundIds = (refundsInShift ?? []).map((r: Record<string, unknown>) => r.id as string);
+      const { data: refundPays } = refundIds.length
+        ? await supabase.from('crm_refund_payments').select('amount,payment_method_id,crm_payment_methods(kind)').in('refund_id', refundIds)
+        : { data: [] as unknown[] };
+
+      let cashSales = 0, cardSales = 0, cashRefunds = 0, cardRefunds = 0;
+      for (const p of (salePays ?? []) as Array<Record<string, unknown>>) {
+        const kind = (p.crm_payment_methods as Record<string, unknown> | null)?.kind as string ?? '';
+        if (kind === 'cash') cashSales += Number(p.amount);
+        else if (kind === 'cashless') cardSales += Number(p.amount);
+      }
+      for (const p of (refundPays ?? []) as Array<Record<string, unknown>>) {
+        const kind = (p.crm_payment_methods as Record<string, unknown> | null)?.kind as string ?? '';
+        if (kind === 'cash') cashRefunds += Number(p.amount);
+        else if (kind === 'cashless') cardRefunds += Number(p.amount);
+      }
+
+      let movIn = 0, movOut = 0;
+      for (const m of (movRes.data ?? []) as Array<Record<string, unknown>>) {
+        if (m.type === 'in') movIn += Number(m.amount);
+        else movOut += Number(m.amount);
+      }
+
+      const opening = Number(shift.opening_cash);
+      const expectedCash = opening + cashSales + movIn - cashRefunds - movOut;
+
+      // Next closing_no: max of crm_cash_shifts.closing_no and cash_closings.number
+      const [crmMaxRes, oldMaxRes] = await Promise.all([
+        supabase.from('crm_cash_shifts').select('closing_no').eq('branch_id', BRANCH_ID).not('closing_no', 'is', null).order('closing_no', { ascending: false }).limit(1),
+        supabase.from('cash_closings').select('number').order('number', { ascending: false }).limit(1),
+      ]);
+      const crmMax = Number((crmMaxRes.data?.[0] as Record<string, unknown> | undefined)?.closing_no ?? 0);
+      const oldMax = Number((oldMaxRes.data?.[0] as Record<string, unknown> | undefined)?.number ?? 0);
+      const nextClosingNo = Math.max(crmMax, oldMax) + 1;
+
+      res.json({
+        shift_date: shift.shift_date, opened_by: shift.opened_by, opened_at: shift.opened_at,
+        opening, cash_sales: cashSales, card_sales: cardSales,
+        cash_refunds: cashRefunds, card_refunds: cardRefunds,
+        mov_in: movIn, mov_out: movOut, expected_cash: expectedCash,
+        next_closing_no: nextClosingNo,
+      });
+    } catch (e) { console.error('[closing-data]', e); res.status(500).json({ error: String(e) }); }
+  });
+
+  // PATCH /kviz/api/crm/shifts/:id/close-with-doc
+  r.patch('/kviz/api/crm/shifts/:id/close-with-doc', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'kassa.shift', 'edit', session)) return;
+    if (!requireKassaToken(req, res)) return;
+    try {
+      const shiftId = req.params.id;
+      const { counted_cash, cash_count, comment } = req.body as { counted_cash: number; cash_count?: Record<string, number>; comment?: string };
+      if (counted_cash === undefined || counted_cash === null) { res.status(400).json({ error: 'counted_cash обязателен' }); return; }
+
+      const { data: shift } = await supabase.from('crm_cash_shifts')
+        .select('id,shift_date,number,opened_by,opened_at,opening_cash,status,branch_id').eq('id', shiftId).single();
+      if (!shift) { res.status(404).json({ error: 'Смена не найдена' }); return; }
+      if ((shift.branch_id as string) !== BRANCH_ID) { res.status(403).json({ error: 'Нет доступа' }); return; }
+      if ((shift.status as string) !== 'open') { res.status(400).json({ error: 'Смена уже закрыта' }); return; }
+
+      // Build totals
+      const { data: salesInShift } = await supabase.from('crm_sales').select('id').eq('shift_id', shiftId);
+      const saleIds = (salesInShift ?? []).map((s: Record<string, unknown>) => s.id as string);
+      const { data: refundsInShift } = await supabase.from('crm_refunds').select('id').eq('shift_id', shiftId);
+      const refundIds = (refundsInShift ?? []).map((r: Record<string, unknown>) => r.id as string);
+
+      const [movRes, salePays, refundPays] = await Promise.all([
+        supabase.from('crm_cash_movements').select('type,amount').eq('shift_id', shiftId),
+        saleIds.length ? supabase.from('crm_sale_payments').select('amount,payment_method_id,crm_payment_methods(kind)').in('sale_id', saleIds) : { data: [] as unknown[] },
+        refundIds.length ? supabase.from('crm_refund_payments').select('amount,payment_method_id,crm_payment_methods(kind)').in('refund_id', refundIds) : { data: [] as unknown[] },
+      ]);
+
+      let cashSales = 0, cardSales = 0, cashRefunds = 0, cardRefunds = 0;
+      for (const p of (salePays.data ?? []) as Array<Record<string, unknown>>) {
+        const kind = (p.crm_payment_methods as Record<string, unknown> | null)?.kind as string ?? '';
+        if (kind === 'cash') cashSales += Number(p.amount);
+        else if (kind === 'cashless') cardSales += Number(p.amount);
+      }
+      for (const p of (refundPays.data ?? []) as Array<Record<string, unknown>>) {
+        const kind = (p.crm_payment_methods as Record<string, unknown> | null)?.kind as string ?? '';
+        if (kind === 'cash') cashRefunds += Number(p.amount);
+        else if (kind === 'cashless') cardRefunds += Number(p.amount);
+      }
+      let movIn = 0, movOut = 0;
+      for (const m of (movRes.data ?? []) as Array<Record<string, unknown>>) {
+        if (m.type === 'in') movIn += Number(m.amount);
+        else movOut += Number(m.amount);
+      }
+
+      const opening = Number(shift.opening_cash);
+      const expectedCash = opening + cashSales + movIn - cashRefunds - movOut;
+      const difference = Number(counted_cash) - expectedCash;
+
+      // Determine closing_no
+      const [crmMaxRes, oldMaxRes] = await Promise.all([
+        supabase.from('crm_cash_shifts').select('closing_no').eq('branch_id', BRANCH_ID).not('closing_no', 'is', null).order('closing_no', { ascending: false }).limit(1),
+        supabase.from('cash_closings').select('number').order('number', { ascending: false }).limit(1),
+      ]);
+      const crmMax = Number((crmMaxRes.data?.[0] as Record<string, unknown> | undefined)?.closing_no ?? 0);
+      const oldMax = Number((oldMaxRes.data?.[0] as Record<string, unknown> | undefined)?.number ?? 0);
+      const closingNo = Math.max(crmMax, oldMax) + 1;
+
+      const closedBy = session.display_name;
+      const closedAt = new Date().toISOString();
+
+      const closing_doc = {
+        closing_no: closingNo, shift_date: shift.shift_date,
+        opened_at: shift.opened_at, closed_at: closedAt,
+        opened_by: shift.opened_by, closed_by: closedBy,
+        opening_cash: opening,
+        cash_sales: cashSales, card_sales: cardSales,
+        cash_refunds: cashRefunds, card_refunds: cardRefunds,
+        mov_in: movIn, mov_out: movOut,
+        expected_cash: expectedCash,
+        counted_cash: Number(counted_cash),
+        difference,
+        cash_count: cash_count ?? null,
+        comment: comment ?? null,
+      };
+
+      const { error } = await supabase.from('crm_cash_shifts').update({
+        status: 'closed', closed_by: closedBy, closed_at: closedAt,
+        expected_cash: expectedCash, counted_cash: Number(counted_cash), difference,
+        closing_no: closingNo, cash_count: cash_count ?? null,
+        closing_doc, closing_doc_at: closedAt,
+      }).eq('id', shiftId);
+
+      if (error) { console.error('[close-with-doc]', error); res.status(500).json({ error: 'Не удалось закрыть смену' }); return; }
+      res.json({ ok: true, closing_no: closingNo, closing_doc });
+    } catch (e) { console.error('[close-with-doc]', e); res.status(500).json({ error: String(e) }); }
   });
 
   return r;

@@ -48,6 +48,10 @@
 - **Пerm-ключи формата `block.row` (task 56):** `manager.tasks`, `clients.phone`, `kassa.sale` и т.д. Для новой вкладки/отчёта/действия — ОБЯЗАТЕЛЬНО добавить в `PERM_CATALOG` (src/core/permissions.ts) и в пресеты нужных должностей. Серверные проверки: `const session = await getSessionWithPerms(req); if (!requirePerm(req, res, 'block.row', 'edit', session)) return;` (тип `session` автоматически сужается до `ExtendedSession` после проверки).
 
 ## Сделано
+### 25.11.2026 · task 96 · Новые права kassa.closings и settings.kassa_passwords
+- `src/core/permissions.ts`: добавлены `kassa.closings` (просмотр раздела «Закрытия кассы» в Отчётах) и `settings.kassa_passwords` (управление паролями кассы в Настройках). Добавлены в пресеты нужных должностей.
+- `SettingsPage.tsx`: раздел «Пароли кассы» (Section `'kassa-passwords'`, Icon Lock) в группе «money»; `KassaPasswordsSection` с настройкой паролей sales/full/master, статусом блокировки и кнопкой разблокировки.
+
 ### 19.11.2026 · f7d896f · task 70 — Профиль и Выйти в Настройках
 
 - `permContext.tsx`: добавлен `display_name: string` в `PermContextValue` и дефолт `''` в `createContext`.

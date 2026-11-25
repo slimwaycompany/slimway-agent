@@ -23,7 +23,7 @@ export interface ExtendedSession extends TokenPayload {
   all_branches: boolean;
 }
 
-function windowSecret(): string {
+export function windowSecret(): string {
   return env.WINDOW_SECRET || env.CRON_SECRET;
 }
 

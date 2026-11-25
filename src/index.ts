@@ -292,6 +292,82 @@ async function handleCrmLifecycle(req: express.Request, res: express.Response): 
 app.get('/run/crm-lifecycle',  handleCrmLifecycle);
 app.post('/run/crm-lifecycle', handleCrmLifecycle);
 
+// crm-import-fix-prices: fix ~515 Fitbase sales imported with total=0
+async function runCrmImportFixPrices(dry: boolean): Promise<Record<string, number>> {
+  let checked = 0, updated = 0, skipped = 0;
+
+  // Get crm_sales with fitbase_order_id and total=0
+  const { data: zeroes, error: ze } = await supabase
+    .from('crm_sales')
+    .select('id, fitbase_order_id')
+    .eq('total', 0)
+    .not('fitbase_order_id', 'is', null)
+    .limit(600);
+  if (ze) throw new Error(ze.message);
+
+  for (const sale of (zeroes || [])) {
+    checked++;
+    const orderId = Number(sale.fitbase_order_id);
+    if (!orderId) { skipped++; continue; }
+
+    // Find in fitbase_operations by raw->>'order_id'
+    const { data: ops } = await supabase
+      .from('fitbase_operations')
+      .select('id, raw')
+      .filter('raw->>order_id', 'eq', String(orderId))
+      .limit(1);
+    const op = ops?.[0] as Record<string, unknown> | undefined;
+    if (!op) { skipped++; continue; }
+
+    const raw = op.raw as Record<string, unknown>;
+    const amount = Number(raw.amount ?? raw.total ?? 0);
+    if (!amount) { skipped++; continue; }
+
+    // Parse items and payments from raw
+    const rawItems = Array.isArray(raw.items) ? raw.items as Record<string, unknown>[] : [];
+    const rawPays  = Array.isArray(raw.payments) ? raw.payments as Record<string, unknown>[] : [];
+
+    if (!dry) {
+      await supabase.from('crm_sales').update({ total: amount }).eq('id', sale.id as string);
+      // Update items if present
+      for (const it of rawItems) {
+        const itemAmt = Number(it.amount ?? it.price ?? 0);
+        if (it.id && itemAmt) {
+          await supabase.from('crm_sale_items')
+            .update({ amount: itemAmt, unit_price: Number(it.unit_price ?? it.price ?? itemAmt) })
+            .eq('sale_id', sale.id as string)
+            .eq('id', it.id as string);
+        }
+      }
+      // Update payments if present
+      for (const p of rawPays) {
+        const payAmt = Number(p.amount ?? 0);
+        if (p.id && payAmt) {
+          await supabase.from('crm_sale_payments')
+            .update({ amount: payAmt })
+            .eq('sale_id', sale.id as string)
+            .eq('id', p.id as string);
+        }
+      }
+    }
+    updated++;
+  }
+  return { checked, updated, skipped, dry: dry ? 1 : 0 };
+}
+
+async function handleCrmImportFixPrices(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const dry = req.query.mode !== 'apply';
+  try {
+    const result = await runCrmImportFixPrices(dry);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+}
+app.get('/run/crm-import-fix-prices',  handleCrmImportFixPrices);
+app.post('/run/crm-import-fix-prices', handleCrmImportFixPrices);
+
 // scriptolog-reminders: every 15 min 09:00-22:00 Almaty (window checked inside job)
 async function handleScriptologReminders(req: express.Request, res: express.Response): Promise<void> {
   if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }

@@ -1,5 +1,4 @@
 ﻿import { useState, useEffect, useRef, useCallback } from 'react';
-import CashClosing from './CashClosing';
 import LeadDrawer from '../crm/LeadDrawer';
 import MyMonthPage from './MyMonthPage';
 
@@ -114,7 +113,6 @@ export default function ManagerPage() {
   const [shiftBusy, setShiftBusy] = useState(false);
   const [shiftErr, setShiftErr] = useState<string | null>(null);
   const [, setTick] = useState(0);
-  const [showCashClosing, setShowCashClosing] = useState(false);
 
   // Check-in state
   const [checkinStatus, setCheckinStatus] = useState<{ trusted: boolean; device_name: string | null; hide_on_mobile: boolean } | null>(null);
@@ -356,10 +354,8 @@ export default function ManagerPage() {
           {user.role === 'admin' && (
             <a href="/kviz/manager/admin" style={s.adminLink}>⚙ Настройки</a>
           )}
-          <button onClick={() => setShowCashClosing(true)} style={s.btnCashClose}>Закрытие смены</button>
         </div>
       </div>
-      {showCashClosing && <CashClosing onClose={() => setShowCashClosing(false)} />}
 
       {/* Shift block */}
       {shiftData !== null && (
@@ -563,9 +559,6 @@ export default function ManagerPage() {
                 <button style={s.btnCancel} disabled={busy[task.id]} onClick={() => unmarkDone(task.id)}>
                   {busy[task.id] ? '...' : 'Отменить'}
                 </button>
-              )}
-              {/касс/i.test(task.title) && (
-                <button style={s.btnCashClose} onClick={() => setShowCashClosing(true)}>X-отчёт</button>
               )}
             </div>
           </div>

@@ -49,12 +49,47 @@ function fmtDT(iso: string) {
   return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-async function api(method: string, url: string, body?: unknown) {
+async function api(method: string, url: string, body?: unknown, kassaToken?: string | null) {
   const opts: RequestInit = { method, credentials: 'include' };
-  if (body !== undefined) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+  const headers: Record<string,string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (kassaToken) headers['X-Kassa-Token'] = kassaToken;
+  if (Object.keys(headers).length) opts.headers = headers;
+  if (body !== undefined) opts.body = JSON.stringify(body);
   const r = await fetch(url, opts);
   const d = await r.json().catch(() => ({}));
   return { ok: r.ok, data: d };
+}
+
+// ── KassaAuthOverlay ───────────────────────────────────────────────────────────
+
+function KassaAuthOverlay({ onAuth }: { onAuth: (token: string, mode: string) => void }) {
+  const [password, setPassword] = useState('');
+  const [err, setErr] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setErr(''); setSaving(true);
+    const { ok, data } = await api('POST', '/kviz/api/crm/kassa/auth', { password });
+    setSaving(false);
+    if (!ok) { setErr(data.error || 'Ошибка'); setPassword(''); return; }
+    onAuth(data.token as string, data.mode as string);
+  }
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', fontFamily: "'Manrope',system-ui,sans-serif", background: 'var(--surface-2)' }}>
+      <form style={{ background: 'var(--surface)', borderRadius: 16, border: '1px solid var(--border)', padding: '32px 40px', textAlign: 'center', maxWidth: 360, width: '90%' }} onSubmit={submit}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🔐</div>
+        <h2 style={{ margin: '0 0 8px', fontSize: 20 }}>Вход в кассу</h2>
+        <p style={{ color: 'var(--text-2)', fontSize: 14, margin: '0 0 20px' }}>Введите пароль кассы для доступа</p>
+        <input style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--input-border)', borderRadius: 8, fontSize: 16, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
+          type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Пароль кассы" autoFocus required />
+        {err && <div style={{ background: 'var(--danger-soft)', color: 'var(--danger)', padding: '7px 10px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{err}</div>}
+        <button style={{ padding: '12px', background: 'var(--primary)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}
+          type="submit" disabled={saving}>{saving ? '…' : 'Войти'}</button>
+      </form>
+    </div>
+  );
 }
 
 function cartItemTotal(item: CartItem): number {
@@ -64,7 +99,7 @@ function cartItemTotal(item: CartItem): number {
 
 // ── MovementModal ──────────────────────────────────────────────────────────────
 
-function MovementModal({ shiftId, onDone, onClose }: { shiftId: string; onDone: () => void; onClose: () => void }) {
+function MovementModal({ shiftId, kassaToken, onDone, onClose }: { shiftId: string; kassaToken: string; onDone: () => void; onClose: () => void }) {
   const [dir, setDir] = useState<'in' | 'out'>('in');
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
@@ -75,7 +110,7 @@ function MovementModal({ shiftId, onDone, onClose }: { shiftId: string; onDone: 
     e.preventDefault(); setErr(''); setSaving(true);
     const { ok, data } = await api('POST', `/kviz/api/crm/shifts/${shiftId}/movements`, {
       type: dir, amount: Number(amount), comment,
-    });
+    }, kassaToken);
     setSaving(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
     onDone();
@@ -103,53 +138,123 @@ function MovementModal({ shiftId, onDone, onClose }: { shiftId: string; onDone: 
   );
 }
 
-// ── CloseShiftModal ────────────────────────────────────────────────────────────
+// ── CloseShiftWithDoc ─────────────────────────────────────────────────────────
 
-function CloseShiftModal({ shift, onDone, onClose }: { shift: Shift; onDone: () => void; onClose: () => void }) {
-  const [expected, setExpected] = useState<number | null>(null);
-  const [counted, setCounted] = useState('');
+const NOTES = [20000, 10000, 5000, 2000, 1000, 500];
+const COINS = [200, 100, 50, 20, 10, 5, 2, 1];
+
+function CloseShiftWithDoc({ shift, kassaToken, onDone, onClose }: { shift: Shift; kassaToken: string; onDone: () => void; onClose: () => void }) {
+  const [closingData, setClosingData] = useState<Record<string,number> | null>(null);
+  const [counts, setCounts] = useState<Record<number, string>>({});
   const [comment, setComment] = useState('');
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
+  const [closedDoc, setClosedDoc] = useState<Record<string,unknown> | null>(null);
+  const printRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    api('GET', `/kviz/api/crm/shifts/${shift.id}/expected-cash`).then(({ data }) => {
-      if (data.expected_cash !== undefined) setExpected(Number(data.expected_cash));
-    });
-  }, [shift.id]);
+    api('GET', `/kviz/api/crm/shifts/${shift.id}/closing-data`, undefined, kassaToken)
+      .then(({ data }) => { if (data && data.expected_cash !== undefined) setClosingData(data); });
+  }, [shift.id, kassaToken]);
 
-  const countedNum = Number(counted) || 0;
-  const diff = expected !== null ? countedNum - expected : null;
+  const countedCash = [...NOTES, ...COINS].reduce((s, d) => s + d * (Number(counts[d]) || 0), 0);
+  const diff = closingData ? countedCash - Number(closingData.expected_cash) : null;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setErr(''); setSaving(true);
-    const { ok, data } = await api('PATCH', `/kviz/api/crm/shifts/${shift.id}/close`, {
-      counted_cash: countedNum, comment: comment || null,
-    });
+    const cashCount: Record<string, number> = {};
+    [...NOTES, ...COINS].forEach(d => { if (Number(counts[d]) > 0) cashCount[String(d)] = Number(counts[d]); });
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/shifts/${shift.id}/close-with-doc`, {
+      counted_cash: countedCash, cash_count: cashCount, comment: comment || null,
+    }, kassaToken);
     setSaving(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
-    onDone();
+    setClosedDoc(data.closing_doc as Record<string,unknown>);
+  }
+
+  function handlePrint() {
+    if (!closedDoc || !printRef.current) return;
+    const d = closedDoc as Record<string,number & string>;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Закрытие смены №${d.closing_no}</title>
+<style>body{font-family:Arial,sans-serif;font-size:13px;margin:20px}h2{margin:0 0 12px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:5px 8px}th{background:#f0f0f0;text-align:left}</style></head>
+<body><h2>Закрытие кассы №${d.closing_no}</h2>
+<p>Дата смены: ${d.shift_date} · Открыл: ${d.opened_by} · Закрыл: ${d.closed_by}</p>
+<table><tr><th>Показатель</th><th>Сумма, ₸</th></tr>
+<tr><td>Остаток на открытие</td><td>${Number(d.opening_cash).toLocaleString('ru-RU')}</td></tr>
+<tr><td>Продажи наличными</td><td>${Number(d.cash_sales).toLocaleString('ru-RU')}</td></tr>
+<tr><td>Продажи картой</td><td>${Number(d.card_sales).toLocaleString('ru-RU')}</td></tr>
+<tr><td>Возвраты наличными</td><td>${Number(d.cash_refunds).toLocaleString('ru-RU')}</td></tr>
+<tr><td>Внесения</td><td>${Number(d.mov_in).toLocaleString('ru-RU')}</td></tr>
+<tr><td>Изъятия</td><td>${Number(d.mov_out).toLocaleString('ru-RU')}</td></tr>
+<tr><td><b>Ожидаемые наличные</b></td><td><b>${Number(d.expected_cash).toLocaleString('ru-RU')}</b></td></tr>
+<tr><td><b>Фактически</b></td><td><b>${Number(d.counted_cash).toLocaleString('ru-RU')}</b></td></tr>
+<tr><td style="color:${Number(d.difference)>=0?'green':'red'}"><b>${Number(d.difference)>=0?'Излишек':'Недостача'}</b></td>
+<td style="color:${Number(d.difference)>=0?'green':'red'}"><b>${Math.abs(Number(d.difference)).toLocaleString('ru-RU')}</b></td></tr>
+</table></body></html>`;
+    const iframe = printRef.current;
+    iframe.srcdoc = html;
+    iframe.onload = () => { iframe.contentWindow?.print(); };
+  }
+
+  if (closedDoc) {
+    return (
+      <div style={S.overlay}>
+        <div style={{ ...S.modal, textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>✅</div>
+          <h3 style={{ margin: '0 0 12px' }}>Смена закрыта · №{closedDoc.closing_no as number}</h3>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button style={S.saveBtn} onClick={handlePrint}>Печать</button>
+            <a href="/kviz/api/cash/closing-template" download style={{ ...S.outlineBtn, textDecoration: 'none' }}>Скачать шаблон</a>
+            <button style={S.cancelBtn} onClick={onDone}>Закрыть</button>
+          </div>
+          <iframe ref={printRef} style={{ display: 'none' }} title="print" />
+        </div>
+      </div>
+    );
   }
 
   return (
     <div style={S.overlay}>
-      <form style={S.modal} onSubmit={submit}>
+      <form style={{ ...S.modal, maxWidth: 500 }} onSubmit={submit}>
         <h3 style={S.modalTitle}>Закрытие смены</h3>
-        <div style={S.infoRow}><span style={S.infoKey}>Открыта</span><span>{shift.opened_by}, {fmtDT(shift.opened_at)}</span></div>
-        <div style={S.infoRow}><span style={S.infoKey}>Ожидаемые наличные</span><span>{expected === null ? '…' : fmtMoney(expected)}</span></div>
-        <label style={{ ...S.label, marginTop: 12 }}>Фактически в кассе, ₸ *</label>
-        <input style={S.inp} type="number" min="0" value={counted} onChange={e => setCounted(e.target.value)} required />
-        {diff !== null && counted !== '' && (
-          <div style={{ fontSize: 13, marginTop: 4, color: diff >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-            {diff >= 0 ? `Излишек +${fmtMoney(diff)}` : `Недостача ${fmtMoney(-diff)}`}
-          </div>
-        )}
-        <label style={S.label}>Комментарий</label>
-        <input style={S.inp} value={comment} onChange={e => setComment(e.target.value)} />
-        {err && <div style={S.err}>{err}</div>}
+        {closingData ? (
+          <>
+            <div style={S.infoRow}><span style={S.infoKey}>Открыл</span><span>{shift.opened_by}, {fmtDT(shift.opened_at)}</span></div>
+            <div style={S.infoRow}><span style={S.infoKey}>Ожидаемые наличные</span><span style={{ fontWeight: 700 }}>{fmtMoney(closingData.expected_cash)}</span></div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>Покупюрная ведомость</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr><th style={{ textAlign: 'left', padding: '3px 6px', borderBottom: '1px solid var(--border)', color: 'var(--text-2)', fontWeight: 600 }}>Номинал</th><th style={{ width: 90, padding: '3px 6px', borderBottom: '1px solid var(--border)', color: 'var(--text-2)', fontWeight: 600 }}>Кол-во</th><th style={{ width: 110, textAlign: 'right', padding: '3px 6px', borderBottom: '1px solid var(--border)', color: 'var(--text-2)', fontWeight: 600 }}>Сумма</th></tr></thead>
+              <tbody>
+                {[...NOTES, ...COINS].map(d => (
+                  <tr key={d}>
+                    <td style={{ padding: '3px 6px', color: 'var(--text)' }}>{d >= 1000 ? d.toLocaleString('ru-RU') + ' ₸' : d + ' ₸'}</td>
+                    <td style={{ padding: '3px 6px' }}>
+                      <input style={{ ...S.inp, padding: '3px 6px', fontSize: 13, width: 80 }} type="number" min="0" value={counts[d] ?? ''} onChange={e => setCounts(c => ({ ...c, [d]: e.target.value }))} placeholder="0" />
+                    </td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', fontWeight: 500 }}>{d * (Number(counts[d]) || 0) > 0 ? fmtMoney(d * (Number(counts[d]) || 0)) : '—'}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={2} style={{ padding: '6px 6px', fontWeight: 700 }}>Итого подсчитано</td>
+                  <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: 15, color: 'var(--accent)' }}>{fmtMoney(countedCash)}</td>
+                </tr>
+              </tbody>
+            </table>
+            {diff !== null && countedCash > 0 && (
+              <div style={{ fontSize: 13, marginTop: 6, color: diff >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                {diff >= 0 ? `Излишек +${fmtMoney(diff)}` : `Недостача ${fmtMoney(-diff)}`}
+              </div>
+            )}
+            <label style={S.label}>Комментарий</label>
+            <input style={S.inp} value={comment} onChange={e => setComment(e.target.value)} />
+          </>
+        ) : <div style={{ color: 'var(--text-3)', fontSize: 13, padding: '12px 0' }}>Загрузка…</div>}
+        {err && <div style={{ ...S.err, marginTop: 8 }}>{err}</div>}
         <div style={S.modalBtns}>
           <button type="button" style={S.cancelBtn} onClick={onClose}>Отмена</button>
-          <button type="submit" style={{ ...S.saveBtn, background: 'var(--danger)' }} disabled={saving}>{saving ? '…' : 'Закрыть смену'}</button>
+          <button type="submit" style={{ ...S.saveBtn, background: 'var(--danger)' }} disabled={saving || !closingData || countedCash <= 0}>
+            {saving ? '…' : 'Закрыть смену'}
+          </button>
         </div>
       </form>
     </div>
@@ -158,8 +263,8 @@ function CloseShiftModal({ shift, onDone, onClose }: { shift: Shift; onDone: () 
 
 // ── RefundDialog ───────────────────────────────────────────────────────────────
 
-function RefundDialog({ sale, payMethods, onDone, onClose }: {
-  sale: SaleFull; payMethods: PM[]; onDone: () => void; onClose: () => void;
+function RefundDialog({ sale, payMethods, kassaToken, onDone, onClose }: {
+  sale: SaleFull; payMethods: PM[]; kassaToken: string; onDone: () => void; onClose: () => void;
 }) {
   const [reason, setReason] = useState('');
   const [amounts, setAmounts] = useState<Record<string, string>>({});
@@ -177,7 +282,7 @@ function RefundDialog({ sale, payMethods, onDone, onClose }: {
     const payments = refundPay
       .filter(p => p.methodId && Number(p.amount) > 0)
       .map(p => ({ method_id: p.methodId, amount: Number(p.amount) }));
-    const { ok, data } = await api('POST', '/kviz/api/crm/refund', { sale_id: sale.id, reason, items, payments });
+    const { ok, data } = await api('POST', '/kviz/api/crm/refund', { sale_id: sale.id, reason, items, payments }, kassaToken);
     setSaving(false);
     if (!ok) { setErr(data.error || 'Ошибка возврата'); return; }
     onDone();
@@ -226,9 +331,10 @@ function RefundDialog({ sale, payMethods, onDone, onClose }: {
 
 // ── SaleScreen ─────────────────────────────────────────────────────────────────
 
-function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onDone }: {
+function SaleScreen({ shift, role, displayName, payMethods, users, kassaToken, kassaMode, onCancel, onDone }: {
   shift: Shift; role: string; displayName: string;
-  payMethods: PM[]; users: AppUser[]; onCancel: () => void; onDone: (num: number) => void;
+  payMethods: PM[]; users: AppUser[]; kassaToken: string; kassaMode: string;
+  onCancel: () => void; onDone: (num: number) => void;
 }) {
   const [tab, setTab] = useState<'abonement' | 'service' | 'product' | 'deposit' | 'bonus'>('abonement');
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -348,11 +454,10 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
     setBonusSaving(true);
     const { ok, data } = await api('POST', `/kviz/api/crm/clients/${clientId}/balance-ops`, {
       wallet: bonusWallet, direction: bonusDir, amount: Number(bonusAmt), reason: bonusReason,
-    });
+    }, kassaToken);
     setBonusSaving(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
     setBonusAmt(''); setBonusReason('');
-    // refresh balance
     api('GET', `/kviz/api/crm/clients/${clientId}/balance`).then(({ data: d }) => setBalanceInfo(d));
   }
 
@@ -379,7 +484,7 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
     if (discountKind === 'promo' && promoData) { payload.promo_code_id = promoData.id; }
     if (discountKind === 'admin') { payload.admin_discount_type = adminDiscType; payload.admin_discount_value = Number(adminDiscVal); }
 
-    const { ok, data } = await api('POST', '/kviz/api/crm/checkout', payload);
+    const { ok, data } = await api('POST', '/kviz/api/crm/checkout', payload, kassaToken);
     setSaving(false);
     if (!ok) { setErr(data.error || 'Ошибка оформления'); return; }
     onDone(data.number as number);
@@ -394,12 +499,13 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
   const noClient = client === null;
   const showProfileWarn = client !== null && client !== 'guest' && !client.profile_complete;
 
+  const isSalesMode = kassaMode === 'sales';
   const TABS: { key: typeof tab; label: string; disabled: boolean }[] = [
     { key: 'abonement', label: 'Абонементы', disabled: isGuest },
     { key: 'service',   label: 'Услуги',     disabled: isGuest },
     { key: 'product',   label: 'Товары',     disabled: false },
     { key: 'deposit',   label: 'Депозит',    disabled: isGuest },
-    { key: 'bonus',     label: 'Бонусы',     disabled: role !== 'admin' || isGuest || noClient },
+    ...(!isSalesMode ? [{ key: 'bonus' as typeof tab, label: 'Бонусы', disabled: role !== 'admin' || isGuest || noClient }] : []),
   ];
 
   return (
@@ -642,9 +748,9 @@ function SaleScreen({ shift, role, displayName, payMethods, users, onCancel, onD
 
 // ── ShiftOpen ──────────────────────────────────────────────────────────────────
 
-function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNewSale }: {
+function ShiftOpen({ shift, role, displayName, payMethods, users, kassaToken, kassaMode, onClosed, onNewSale }: {
   shift: Shift; role: string; displayName: string;
-  payMethods: PM[]; users: AppUser[];
+  payMethods: PM[]; users: AppUser[]; kassaToken: string; kassaMode: string;
   onClosed: () => void; onNewSale: () => void;
 }) {
   const [movements, setMovements] = useState<Movement[]>([]);
@@ -652,17 +758,19 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
   const [showMovement, setShowMovement] = useState(false);
   const [showClose, setShowClose] = useState(false);
   const [selectedSale, setSelectedSale] = useState<SaleFull | null>(null);
-  const [refundDone, setRefundDone] = useState(false);
+  const isSalesMode = kassaMode === 'sales';
 
   const load = useCallback(() => {
-    api('GET', `/kviz/api/crm/shifts/${shift.id}/movements`).then(({ data }) => { if (Array.isArray(data)) setMovements(data); });
-    api('GET', `/kviz/api/crm/shifts/${shift.id}/sales`).then(({ data }) => { if (Array.isArray(data)) setSales(data); });
-  }, [shift.id]);
+    if (!isSalesMode) {
+      api('GET', `/kviz/api/crm/shifts/${shift.id}/movements`, undefined, kassaToken).then(({ data }) => { if (Array.isArray(data)) setMovements(data); });
+      api('GET', `/kviz/api/crm/shifts/${shift.id}/sales`, undefined, kassaToken).then(({ data }) => { if (Array.isArray(data)) setSales(data); });
+    }
+  }, [shift.id, kassaToken, isSalesMode]);
 
   useEffect(() => { load(); }, [load]);
 
   async function openRefund(saleId: string) {
-    const { data } = await api('GET', `/kviz/api/crm/sales/${saleId}`);
+    const { data } = await api('GET', `/kviz/api/crm/sales/${saleId}`, undefined, kassaToken);
     setSelectedSale(data as SaleFull);
   }
 
@@ -679,9 +787,10 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
         </div>
         <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button style={{ ...S.saveBtn, width: '100%' }} onClick={onNewSale}>+ Новая продажа</button>
-          <button style={{ ...S.outlineBtn, width: '100%' }} onClick={() => setShowMovement(true)}>Внесение / Изъятие</button>
+          {!isSalesMode && <button style={{ ...S.outlineBtn, width: '100%' }} onClick={() => setShowMovement(true)}>Внесение / Изъятие</button>}
           <button style={{ ...S.outlineBtn, width: '100%', color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => setShowClose(true)}>Закрыть смену</button>
         </div>
+        {!isSalesMode && (
         <div className="kassa-shift-sidebar-movements" style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>ДВИЖЕНИЯ НАЛИЧНЫХ</div>
           {movements.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Нет движений</div>}
@@ -697,6 +806,7 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
             </div>
           ))}
         </div>
+        )}
       </div>
 
       {/* Right: sales list */}
@@ -718,18 +828,18 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
                 {sale.discount_kind !== 'none' && ` · скидка (${sale.discount_kind})`}
               </div>
             </div>
-            {role === 'admin' && sale.status === 'completed' && (
+            {!isSalesMode && role === 'admin' && sale.status === 'completed' && (
               <button style={{ ...S.outlineBtn, fontSize: 12, color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => openRefund(sale.id)}>Возврат</button>
             )}
           </div>
         ))}
       </div>
 
-      {showMovement && <MovementModal shiftId={shift.id} onDone={() => { setShowMovement(false); load(); }} onClose={() => setShowMovement(false)} />}
-      {showClose && <CloseShiftModal shift={shift} onDone={() => { setShowClose(false); onClosed(); }} onClose={() => setShowClose(false)} />}
-      {selectedSale && !refundDone && (
-        <RefundDialog sale={selectedSale} payMethods={payMethods}
-          onDone={() => { setRefundDone(false); setSelectedSale(null); load(); }}
+      {showMovement && <MovementModal shiftId={shift.id} kassaToken={kassaToken} onDone={() => { setShowMovement(false); load(); }} onClose={() => setShowMovement(false)} />}
+      {showClose && <CloseShiftWithDoc shift={shift} kassaToken={kassaToken} onDone={() => { setShowClose(false); onClosed(); }} onClose={() => setShowClose(false)} />}
+      {selectedSale && (
+        <RefundDialog sale={selectedSale} payMethods={payMethods} kassaToken={kassaToken}
+          onDone={() => { setSelectedSale(null); load(); }}
           onClose={() => setSelectedSale(null)} />
       )}
     </div>
@@ -738,7 +848,7 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, onClosed, onNe
 
 // ── ShiftClosed ────────────────────────────────────────────────────────────────
 
-function ShiftClosed({ role, onOpened }: { role: string; onOpened: () => void }) {
+function ShiftClosed({ role, kassaToken, onOpened }: { role: string; kassaToken: string; onOpened: () => void }) {
   const [openingCash, setOpeningCash] = useState('');
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
@@ -747,7 +857,7 @@ function ShiftClosed({ role, onOpened }: { role: string; onOpened: () => void })
     setErr(''); setSaving(true);
     const body: Record<string, unknown> = {};
     if (role === 'admin' && openingCash !== '') body.opening_cash = Number(openingCash);
-    const { ok, data } = await api('POST', '/kviz/api/crm/shifts', body);
+    const { ok, data } = await api('POST', '/kviz/api/crm/shifts', body, kassaToken);
     setSaving(false);
     if (!ok) { setErr(data.error || 'Ошибка'); return; }
     onOpened();
@@ -786,8 +896,10 @@ export default function KassaPage() {
   const [payMethods, setPayMethods] = useState<PM[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [lastSaleNum, setLastSaleNum] = useState<number | null>(null);
+  const [kassaToken, setKassaToken] = useState<string | null>(null);
+  const [kassaMode, setKassaMode] = useState('');
 
-  async function loadState() {
+  async function loadState(token: string) {
     const [meRes, shiftRes, pmRes, usersRes] = await Promise.all([
       api('GET', '/kviz/api/me'),
       api('GET', '/kviz/api/crm/shifts/current'),
@@ -805,7 +917,13 @@ export default function KassaPage() {
     }
   }
 
-  useEffect(() => { loadState(); }, []);
+  function handleAuth(token: string, mode: string) {
+    setKassaToken(token);
+    setKassaMode(mode);
+    loadState(token);
+  }
+
+  if (!kassaToken) return <KassaAuthOverlay onAuth={handleAuth} />;
 
   if (screen === 'loading') return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Manrope',system-ui,sans-serif", color: 'var(--text-3)' }}>Загрузка…</div>;
 
@@ -822,11 +940,12 @@ export default function KassaPage() {
   );
 
   if (screen === 'closed') return (
-    <ShiftClosed role={role} onOpened={() => loadState()} />
+    <ShiftClosed role={role} kassaToken={kassaToken} onOpened={() => loadState(kassaToken)} />
   );
 
   if (screen === 'sale' && shift) return (
     <SaleScreen shift={shift} role={role} displayName={displayName} payMethods={payMethods} users={users}
+      kassaToken={kassaToken} kassaMode={kassaMode}
       onCancel={() => setScreen('open')}
       onDone={(num) => { setLastSaleNum(num); setScreen('done'); }}
     />
@@ -834,7 +953,8 @@ export default function KassaPage() {
 
   if (screen === 'open' && shift) return (
     <ShiftOpen shift={shift} role={role} displayName={displayName} payMethods={payMethods} users={users}
-      onClosed={() => loadState()}
+      kassaToken={kassaToken} kassaMode={kassaMode}
+      onClosed={() => loadState(kassaToken)}
       onNewSale={() => setScreen('sale')}
     />
   );

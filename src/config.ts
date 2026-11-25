@@ -38,6 +38,7 @@ const envSchema = z.object({
   ONLINEPBX_DOMAIN:         z.string().optional(),
   ONLINEPBX_API_KEY:        z.string().optional(),
   FITBASE_OPS_SINCE: z.string().default('2026-01-01'),
+  KASSA_MASTER_PASSWORD_HASH: z.string().optional(), // bcrypt hash; not set = master password disabled
   WATCH_RULES:                    z.string().default('NEW_LEAD,NEW_LEAD_NO_TASK,UNCONFIRMED_3H,NO_SHOW_UNCONFIRMED,NO_SHOW_NO_MARK,NO_SHOW_MARKED,CONTRACT_ENDING,CONTRACT_ENDED,AGENT_TASK,MANAGER_TASK_MISSED,SHIFT_LATE,SHIFT_NOT_CLOSED'),
   WATCH_NO_SHOW_EXCLUDE_TRAININGS: z.string().default('Аренда'),
   WATCH_EXCLUDE_CLIENT_IDS:        z.string().default('294'),

@@ -7,17 +7,17 @@
 | Модуль | Файл | Чат в claude.ai | Статус | Обновлено | Последнее изменение |
 |---|---|---|---|---|---|
 | Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 71: меню кружка (#top-bar z-index:10), stopPropagation в ua-menu, window.blur close, logout All-paths cookie |
-| Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 19.11.2026 | task 70: ProfileSection в Настройках (Профиль → Выйти), display_name в PermContext |
+| Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 25.11.2026 | task 96: права kassa.closings + settings.kassa_passwords, раздел «Пароли кассы» в Настройках |
 | Агент воронки Fitbase | `modules/agent.md` | Агент и овчарка | 🟢 | 12.11.2026 | task 48: syncVisits date_to fix (Fitbase требует date_to для /schedule-registration) |
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 72: sw.js не перехватывает navigate-запросы — FetchEvent network error исправлен |
-| Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟢 | 17.11.2026 | task 62: подвкладка «Мой месяц» — план, заработок, продажи, смены, задачи, клиенты, мотивация |
+| Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟢 | 25.11.2026 | task 96: убрана кнопка «Закрытие смены» — перенесена в Кассу |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | ⚪ | 21.11.2026 | task 80: вкладка скрыта (KVIZ_TAB_VISIBLE=false), логика qualify перенесена в этапы CRM |
 | Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 25.11.2026 | task 95: VFL из позиции 150 (÷100, floor), prefix IBData= strip |
-| Отчёты | `modules/reports.md` | Отчёты | 🟢 | 19.11.2026 | task 72: фикс ReferenceError в PlanFactSection (Fragment без импорта React) |
+| Отчёты | `modules/reports.md` | Отчёты | 🟢 | 25.11.2026 | task 96: раздел «Закрытия кассы» в колонке Продажи |
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 17.11.2026 | task 64: живой фон (blob-анимация), тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка, эффекты в редакторе |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟡 | 25.11.2026 | хотфикс 94-1: reloadPlans TDZ — карточка клиента снова открывается |
-| CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 24.11.2026 | task 89(2): ограничение абонемента показывается в карточке; ждёт проверки на проде |
+| CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟡 | 25.11.2026 | task 96: пароли кассы (bcrypt, HMAC, lockout), CloseShiftWithDoc, фикс импорта цен; ждёт SQL |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 25.11.2026 | хотфикс 94-1: ПКМ → ClientPopup больше не белый экран |
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 21.11.2026 | task 81: единый формат вариантов id/label, none_option, not_none, checklist без потерь, sw.js |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
@@ -26,6 +26,7 @@
 | Контроль менеджеров | `modules/control.md` | Контроль | 🟡 | 18.11.2026 | task 66: каталог проверок, линейки ролей (версии), движок v2, конструктор в Настройках, API, temp экран |
 | Telegram-бот клиентов | `modules/telegram-bot.md` | Telegram-бот клиентов | 🟡 | 17.11.2026 | task 60: InBody детальный экран — 4 блока (состав/до цели/с прошлого/со старта), навигация ‹/›, ideal_weight |
 | Виртуальная АТС (OnlinePBX) | `modules/pbx.md` | АТС (OnlinePBX) | 🟡 | 21.11.2026 | модуль создан; приёмник вебхука из task 65, объём «виртуальной АТС» уточняется |
+| OCR (лист, QR, штрих-коды, EAN) | `modules/ocr.md` | OCR | ⚪ | 25.11.2026 | модуль заведён; QR InBody уже в zamery.md, требования собираются |
 
 Вкладка «Воронка» — модуль `modules/crm-leads.md` (пока заглушка, собираем требования).
 

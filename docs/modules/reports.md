@@ -93,6 +93,10 @@
 - Фильтры с `flexWrap:'wrap'` — переносятся на мобиле.
 
 ## Сделано
+### 25.11.2026 · task 96 · Раздел «Закрытия кассы» в Продажах
+- `ReportsPage.tsx`: тип Section расширен `'kassa-closings'`; раздел «Закрытия кассы» добавлен в колонку «Продажи» (`adminOnly: false`, право `kassa.closings`); `KassaClosingsSection` — таблица закрытых смен с датой/номером/суммой, кнопка печати PDF, детальный модал с покупюрной ведомостью.
+- Колонка «Продажи» стала доступна не только admin (`adminOnly: false`) — благодаря правам `kassa.closings`.
+
 ### 19.11.2026 · 60825f6 · task 72 — фикс ReferenceError Fragment в PlanFactSection
 
 - `ReportsPage.tsx`: добавлен `Fragment` в импорт из 'react'; `React.Fragment` → `Fragment` в двух местах (строки map внутри таблицы шагов). Причина: `React` не импортировался, `React.Fragment` при рантайме давал ReferenceError.
