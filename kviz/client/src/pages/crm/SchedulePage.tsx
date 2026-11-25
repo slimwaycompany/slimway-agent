@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { useState, useEffect, useCallback, useContext, useRef, useMemo } from 'react';
 import { CalendarPlus, SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PermContext, usePerm } from '../../lib/permContext';
@@ -37,9 +37,15 @@ interface BookingData {
   auto_labels: AutoLabelData[];
   client_tags: ClientTagData[];
 }
+interface NearbyBooking {
+  id: string; booking_date: string; starts_at: string;
+  device_type_code: string; status: string;
+  client: { full_name: string; phone: string | null } | null;
+}
 interface DayData {
   date: string; day_start: string; day_end: string; now: string;
   blocks: DayBlock[]; bookings: BookingData[]; is_open?: boolean;
+  special_day?: { is_open: boolean; note: string | null } | null;
 }
 interface DayNote { id: string; text: string; author: string; author_user_id: string; created_at: string; edited: boolean; can_edit: boolean }
 interface ClientOption {
@@ -871,6 +877,57 @@ export default function SchedulePage() {
   const [smsBlock, setSmsBlock]   = useState<string | null>(null);
   const [formCtx, setFormCtx]     = useState<{ type_code: string; slot?: string; device_id?: string; freeTime?: boolean; isVirtualDevice?: boolean } | null>(null);
   const [detail, setDetail]       = useState<BookingData | null>(null);
+  const [searchQ, setSearchQ]         = useState('');
+  const [labelFilter, setLabelFilter] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem('sched-label-filter'); return s ? new Set(JSON.parse(s) as string[]) : new Set(); } catch { return new Set(); }
+  });
+  const [searchIdx, setSearchIdx]     = useState(0);
+  const [nearbyBkgs, setNearbyBkgs]   = useState<NearbyBooking[]>([]);
+  const [nearbyOpen, setNearbyOpen]   = useState(false);
+  const [labelMenuOpen, setLabelMenuOpen] = useState(false);
+  const nearbyTimer = useRef<number | null>(null);
+
+  const allAutoLabels = useMemo(() => {
+    const m = new Map<string, AutoLabelData>();
+    for (const b of dayData?.bookings ?? []) for (const al of b.auto_labels) m.set(al.code, al);
+    return [...m.values()].sort((a, b) => a.sort - b.sort);
+  }, [dayData]);
+
+  const allClientTags = useMemo(() => {
+    const m = new Map<string, ClientTagData>();
+    for (const b of dayData?.bookings ?? []) for (const ct of b.client_tags) m.set(ct.id, ct);
+    return [...m.values()];
+  }, [dayData]);
+
+  const allBookingLabels = useMemo(() => {
+    const m = new Map<number, BookingLabel>();
+    for (const b of dayData?.bookings ?? []) for (const bl of b.labels) m.set(bl.id, bl);
+    return [...m.values()].sort((a, b) => a.sort - b.sort);
+  }, [dayData]);
+
+  const matchedBids = useMemo(() => {
+    if (!dayData || (searchQ.length < 2 && labelFilter.size === 0)) return null;
+    const q = searchQ.toLowerCase();
+    const qd = searchQ.replace(/\D/g, '');
+    const matched = new Set<string>();
+    for (const b of dayData.bookings) {
+      const name = (b.client?.full_name ?? '').toLowerCase();
+      const ph   = (b.client?.phone ?? '').replace(/\D/g, '');
+      const ms = searchQ.length < 2 || name.includes(q) || (qd.length >= 2 && ph.includes(qd));
+      const ml = labelFilter.size === 0 ||
+        b.auto_labels.some(al => labelFilter.has(`al:${al.code}`)) ||
+        b.client_tags.some(ct => labelFilter.has(`ct:${ct.id}`)) ||
+        b.labels.some(bl => labelFilter.has(`bl:${bl.id}`));
+      if (ms && ml) matched.add(b.id);
+    }
+    return matched;
+  }, [dayData, searchQ, labelFilter]);
+
+  const matchedList = useMemo(() => {
+    if (!matchedBids) return [];
+    return dayData?.bookings.filter(b => matchedBids.has(b.id))
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()) ?? [];
+  }, [matchedBids, dayData]);
 
   const loadDay = useCallback(async (d: string) => {
     setLoading(true);
@@ -886,6 +943,36 @@ export default function SchedulePage() {
     fetch('/kviz/api/crm/ad-sources', { credentials: 'include' }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAdSources(d); }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setSearchQ(''); setNearbyOpen(false); setLabelMenuOpen(false); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
+    if (searchQ.length < 2) { setNearbyBkgs([]); setNearbyOpen(false); return; }
+    if (nearbyTimer.current) clearTimeout(nearbyTimer.current);
+    nearbyTimer.current = window.setTimeout(async () => {
+      const r = await fetch(`/kviz/api/crm/schedule/client-bookings?search=${encodeURIComponent(searchQ)}`, { credentials: 'include' });
+      if (r.ok) { const d = await r.json() as NearbyBooking[]; setNearbyBkgs(d); setNearbyOpen(d.length > 0); }
+    }, 250);
+    return () => { if (nearbyTimer.current) clearTimeout(nearbyTimer.current); };
+  }, [searchQ]);
+
+  function saveLabelFilter(next: Set<string>) {
+    setLabelFilter(next);
+    try { localStorage.setItem('sched-label-filter', JSON.stringify([...next])); } catch {}
+  }
+
+  function goMatch(dir: 1 | -1) {
+    if (!matchedList.length) return;
+    const idx = (searchIdx + dir + matchedList.length) % matchedList.length;
+    setSearchIdx(idx);
+    document.querySelector<HTMLElement>(`[data-bid="${matchedList[idx]!.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
   function saveBlockCfg(tc: string, cfg: Partial<{ showCancelled: boolean; showRepair: boolean; extraVirtual: 0 | 1 | 2 | 3 }>) {
     setBlockCfg(prev => {
       const defaults = { showCancelled: false, showRepair: false, extraVirtual: 0 as const };
@@ -899,7 +986,7 @@ export default function SchedulePage() {
   const isPast = date < today;
 
   return (
-    <div style={SS.page} onClick={() => { if (cfgOpen) setCfgOpen(null); }}>
+    <div style={SS.page} onClick={() => { if (cfgOpen) setCfgOpen(null); if (labelMenuOpen) setLabelMenuOpen(false); }}>
       {/* Date navigation */}
       <div style={SS.dateNav}>
         <button style={SS.navBtn} onClick={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate()-1); return n.toISOString().slice(0,10); })}>← Вчера</button>
@@ -908,16 +995,120 @@ export default function SchedulePage() {
         <input type="date" value={date} onChange={e => setDate(e.target.value)} style={SS.dateInput} />
         <span style={SS.dateLabel}>{(() => { const s = fmtWeekday(date); return s.charAt(0).toUpperCase() + s.slice(1); })()}</span>
         {loading && <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 8 }}>загрузка…</span>}
+        {/* Client search */}
+        <div style={{ position: 'relative' }}>
+          <input
+            type="search" placeholder="Поиск клиента…" value={searchQ}
+            onChange={e => { setSearchQ(e.target.value); setSearchIdx(0); }}
+            onFocus={() => { if (nearbyBkgs.length > 0) setNearbyOpen(true); }}
+            onBlur={() => window.setTimeout(() => setNearbyOpen(false), 200)}
+            style={{ ...SS.dateInput, width: 170, paddingRight: searchQ ? 24 : 8 }}
+          />
+          {searchQ && (
+            <button onClick={() => { setSearchQ(''); setNearbyOpen(false); }}
+              style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 2, fontSize: 14, lineHeight: 1 }}>
+              ✕
+            </button>
+          )}
+          {nearbyOpen && nearbyBkgs.length > 0 && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'var(--surface,#fff)', border: '1px solid var(--border,#e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.12)', minWidth: 280, maxHeight: 320, overflowY: 'auto', marginTop: 4 }}>
+              <div style={{ padding: '5px 12px', fontSize: 11, color: 'var(--text-3,#94a3b8)', fontWeight: 700, borderBottom: '1px solid var(--border,#e2e8f0)', textTransform: 'uppercase' }}>Ближайшие записи</div>
+              {nearbyBkgs.map(b => (
+                <div key={b.id}
+                  style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border,#e2e8f0)', fontSize: 13 }}
+                  onMouseDown={() => { setDate(b.booking_date); setNearbyOpen(false); setSearchQ(b.client?.full_name ?? searchQ); }}>
+                  <div style={{ fontWeight: 600 }}>{b.client?.full_name}</div>
+                  <div style={{ color: 'var(--text-2,#64748b)', fontSize: 12 }}>{b.booking_date} · {b.device_type_code}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {matchedBids !== null && matchedList.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-2,#64748b)' }}>
+            <span>{Math.min(searchIdx + 1, matchedList.length)} из {matchedList.length}</span>
+            <button style={SS.navBtn} title="Предыдущее" onClick={() => goMatch(-1)}>↑</button>
+            <button style={SS.navBtn} title="Следующее" onClick={() => goMatch(1)}>↓</button>
+          </div>
+        )}
+        {/* Label filter */}
+        <div style={{ position: 'relative' }}>
+          <button
+            style={{ ...SS.navBtn, ...(labelFilter.size > 0 ? SS.navBtnActive : {}) }}
+            onClick={e => { e.stopPropagation(); setLabelMenuOpen(o => !o); }}>
+            Метки{labelFilter.size > 0 ? ` (${labelFilter.size})` : ' ▾'}
+          </button>
+          {labelMenuOpen && (
+            <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100, background: 'var(--surface,#fff)', border: '1px solid var(--border,#e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.12)', minWidth: 220, maxHeight: 400, overflowY: 'auto', marginTop: 4, padding: 8 }}
+              onClick={e => e.stopPropagation()}>
+              {allAutoLabels.length > 0 && (
+                <>
+                  <div style={{ fontSize: 10, color: 'var(--text-3,#94a3b8)', fontWeight: 700, padding: '2px 4px 4px', textTransform: 'uppercase' }}>Автометки</div>
+                  {allAutoLabels.map(al => {
+                    const key = `al:${al.code}`;
+                    return (
+                      <label key={key} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px', cursor: 'pointer', fontSize: 13 }}>
+                        <input type="checkbox" checked={labelFilter.has(key)} onChange={e => { const n = new Set(labelFilter); e.target.checked ? n.add(key) : n.delete(key); saveLabelFilter(n); }} />
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: al.color, flexShrink: 0 }} />
+                        {al.name}
+                      </label>
+                    );
+                  })}
+                </>
+              )}
+              {allClientTags.length > 0 && (
+                <>
+                  <div style={{ fontSize: 10, color: 'var(--text-3,#94a3b8)', fontWeight: 700, padding: '6px 4px 4px', textTransform: 'uppercase' }}>Теги клиентов</div>
+                  {allClientTags.map(ct => {
+                    const key = `ct:${ct.id}`;
+                    return (
+                      <label key={key} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px', cursor: 'pointer', fontSize: 13 }}>
+                        <input type="checkbox" checked={labelFilter.has(key)} onChange={e => { const n = new Set(labelFilter); e.target.checked ? n.add(key) : n.delete(key); saveLabelFilter(n); }} />
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: ct.color, flexShrink: 0 }} />
+                        {ct.name}
+                      </label>
+                    );
+                  })}
+                </>
+              )}
+              {allBookingLabels.length > 0 && (
+                <>
+                  <div style={{ fontSize: 10, color: 'var(--text-3,#94a3b8)', fontWeight: 700, padding: '6px 4px 4px', textTransform: 'uppercase' }}>Этикетки записи</div>
+                  {allBookingLabels.map(bl => {
+                    const key = `bl:${bl.id}`;
+                    return (
+                      <label key={key} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px', cursor: 'pointer', fontSize: 13 }}>
+                        <input type="checkbox" checked={labelFilter.has(key)} onChange={e => { const n = new Set(labelFilter); e.target.checked ? n.add(key) : n.delete(key); saveLabelFilter(n); }} />
+                        <span style={{ width: 10, height: 10, borderRadius: 2, background: bl.color, flexShrink: 0 }} />
+                        {bl.name}
+                      </label>
+                    );
+                  })}
+                </>
+              )}
+              {labelFilter.size > 0 && (
+                <button style={{ ...SS.smallBtn, width: '100%', marginTop: 8 }} onClick={() => saveLabelFilter(new Set())}>Сбросить фильтр</button>
+              )}
+            </div>
+          )}
+        </div>
         <button style={{ ...SS.navBtn, marginLeft: 'auto' }}
           onClick={() => notesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           💬 Заметки{notesCount > 0 ? ` (${notesCount})` : ''}
         </button>
       </div>
 
+      {/* Special day note (open but with note) */}
+      {dayData && dayData.is_open !== false && dayData.special_day?.note && (
+        <div style={{ padding: '5px 16px', background: 'var(--warning-soft,#fef9c3)', borderBottom: '1px solid var(--warning,#fbbf24)', fontSize: 13, color: 'var(--text,#1a202c)', flexShrink: 0 }}>
+          {dayData.special_day.note}
+        </div>
+      )}
       {/* Closed day */}
       {dayData && dayData.is_open === false && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: 'var(--text-2,#64748b)' }}>
-          Филиал в этот день не работает
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 15, color: 'var(--text-2,#64748b)' }}>
+          <span>Филиал в этот день не работает</span>
+          {dayData.special_day?.note && <span style={{ fontSize: 13, color: 'var(--text-3,#94a3b8)' }}>{dayData.special_day.note}</span>}
         </div>
       )}
 
@@ -1090,7 +1281,10 @@ export default function SchedulePage() {
                               const isNonSlot = !slots.includes(minsToStr(startMins));
                               return (
                                 <div key={b.id}
-                                  style={{ position: 'absolute', top, left: 2, right: 2, height, zIndex: 1, pointerEvents: 'auto', cursor: 'pointer' }}
+                                  data-bid={b.id}
+                                  style={{ position: 'absolute', top, left: 2, right: 2, height, zIndex: 1, pointerEvents: 'auto', cursor: 'pointer',
+                                    ...(matchedBids !== null ? { opacity: matchedBids.has(b.id) ? 1 : 0.2, outline: matchedBids.has(b.id) ? '2px solid var(--primary,#02BDB6)' : 'none', borderRadius: 4 } : {}),
+                                  }}
                                   title="ЛКМ — запись, ПКМ — карточка клиента"
                                   onClick={e => { e.stopPropagation(); setDetail(b); }}
                                   onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setClientPopupId(b.client_id); }}

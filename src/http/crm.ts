@@ -2767,6 +2767,51 @@ export function buildCrmRouter(): Router {
     } catch (e) { console.error('[branch] put:', e); res.status(500).json({ error: 'Не удалось сохранить, попробуйте ещё раз' }); }
   });
 
+  // ── Branch: special day exceptions ───────────────────────────────────────────
+
+  r.get('/kviz/api/crm/branch/exceptions', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.branch', 'view', session)) return;
+    try {
+      const { data, error } = await supabase.from('crm_branch_hours_exceptions')
+        .select('day,is_open,note').eq('branch_id', BRANCH_ID).order('day');
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json(data || []);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/branch/exceptions', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.branch', 'edit', session)) return;
+    try {
+      const { day, is_open, note } = req.body as Record<string, unknown>;
+      if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(String(day))) {
+        res.status(400).json({ error: 'Неверный формат даты' }); return;
+      }
+      let conflict_count = 0;
+      if (!is_open) {
+        const { count } = await supabase.from('crm_bookings').select('id', { count: 'exact', head: true })
+          .eq('branch_id', BRANCH_ID).eq('booking_date', String(day)).in('status', ['booked', 'confirmed', 'attended']);
+        conflict_count = count ?? 0;
+      }
+      const { error } = await supabase.from('crm_branch_hours_exceptions')
+        .upsert({ branch_id: BRANCH_ID, day: String(day), is_open: Boolean(is_open), note: note || null }, { onConflict: 'branch_id,day' });
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true, conflict_count });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.delete('/kviz/api/crm/branch/exceptions/:day', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.branch', 'edit', session)) return;
+    try {
+      const { error } = await supabase.from('crm_branch_hours_exceptions')
+        .delete().eq('branch_id', BRANCH_ID).eq('day', req.params.day);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // ── Schedule: day view ────────────────────────────────────────────────────────
 
   r.get('/kviz/api/crm/schedule/day', async (req, res) => {
@@ -2776,11 +2821,12 @@ export function buildCrmRouter(): Router {
       const dateStr = String(req.query.date || todayUtc5());
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) { res.status(400).json({ error: 'Неверная дата' }); return; }
 
-      const [settingsRows, deviceTypesRaw, devicesRaw, dayHoursRes] = await Promise.all([
+      const [settingsRows, deviceTypesRaw, devicesRaw, dayHoursRes, exRes] = await Promise.all([
         supabase.from('crm_settings').select('key,value').in('key', ['schedule.day_start','schedule.day_end']),
         supabase.from('crm_device_types').select('code,name,sort,grid_step_minutes').order('sort'),
         supabase.from('crm_devices').select('id,type_code,number,status,session_minutes,is_virtual').eq('branch_id', BRANCH_ID).not('status', 'eq', 'disabled').order('number'),
         supabase.rpc('crm_day_hours', { p_date: dateStr }),
+        supabase.from('crm_branch_hours_exceptions').select('is_open,note').eq('branch_id', BRANCH_ID).eq('day', dateStr).maybeSingle(),
       ]);
 
       const settingsMap: Record<string, string> = {};
@@ -2793,9 +2839,11 @@ export function buildCrmRouter(): Router {
       // slice to HH:MM — Postgres time type may return HH:MM:SS
       const dayStart = ((dh?.open_time  as string | null) ?? fallbackStart).slice(0, 5);
       const dayEnd   = ((dh?.close_time as string | null) ?? fallbackEnd).slice(0, 5);
+      const exRow = exRes.data as { is_open: boolean; note: string | null } | null;
+      const special_day = exRow ? { is_open: exRow.is_open, note: exRow.note } : null;
 
       if (!is_open) {
-        res.json({ date: dateStr, day_start: dayStart, day_end: dayEnd, now: new Date().toISOString(), blocks: [], bookings: [], is_open: false });
+        res.json({ date: dateStr, day_start: dayStart, day_end: dayEnd, now: new Date().toISOString(), blocks: [], bookings: [], is_open: false, special_day });
         return;
       }
 
@@ -2900,7 +2948,37 @@ export function buildCrmRouter(): Router {
       });
 
       const now = new Date().toISOString();
-      res.json({ date: dateStr, day_start: dayStart, day_end: dayEnd, now, blocks, bookings, is_open: true });
+      res.json({ date: dateStr, day_start: dayStart, day_end: dayEnd, now, blocks, bookings, is_open: true, special_day });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Schedule: client upcoming bookings search ────────────────────────────────
+
+  r.get('/kviz/api/crm/schedule/client-bookings', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'schedule.main', 'view', session)) return;
+    try {
+      const search = String(req.query.search || '').trim();
+      if (search.length < 2) { res.json([]); return; }
+      const digits = search.replace(/\D/g, '');
+      let q = supabase.from('crm_clients').select('id,full_name,phone').eq('branch_id', BRANCH_ID).eq('is_deleted', false);
+      q = digits.length >= 4
+        ? q.or(`full_name.ilike.%${search}%,phone.ilike.%${digits}%`)
+        : q.ilike('full_name', `%${search}%`);
+      const { data: clients } = await q.limit(20);
+      if (!clients?.length) { res.json([]); return; }
+      const clientIds = clients.map((c: Record<string,unknown>) => c.id as string);
+      const { data: bookings } = await supabase.from('crm_bookings')
+        .select('id,booking_date,starts_at,device_type_code,client_id,status')
+        .eq('branch_id', BRANCH_ID).in('client_id', clientIds)
+        .gte('booking_date', todayUtc5()).in('status', ['booked', 'confirmed'])
+        .order('starts_at').limit(10);
+      const clientMap = new Map((clients || []).map((c: Record<string,unknown>) => [c.id as string, c]));
+      res.json((bookings || []).map((b: Record<string,unknown>) => ({
+        id: b.id, booking_date: b.booking_date, starts_at: b.starts_at,
+        device_type_code: b.device_type_code, status: b.status,
+        client: clientMap.get(b.client_id as string) ?? null,
+      })));
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 

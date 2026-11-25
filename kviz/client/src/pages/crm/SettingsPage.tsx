@@ -4842,12 +4842,19 @@ function BranchSection() {
   const [hours, setHours]     = useState<{ weekday: number; is_open: boolean; open_time: string; close_time: string }[]>([]);
   const [saving, setSaving]   = useState(false);
   const [err, setErr]         = useState('');
-  // form key forces remount after load so defaultValues refresh
   const [formKey, setFormKey] = useState(0);
+  const [exceptions, setExceptions]   = useState<{ day: string; is_open: boolean; note: string | null }[]>([]);
+  const [exDay, setExDay]             = useState('');
+  const [exIsOpen, setExIsOpen]       = useState(true);
+  const [exNote, setExNote]           = useState('');
+  const [exSaving, setExSaving]       = useState(false);
 
   const load = useCallback(async () => {
-    const r = await fetch('/kviz/api/crm/branch', { credentials: 'include' });
-    const d = await r.json();
+    const [r1, r2] = await Promise.all([
+      fetch('/kviz/api/crm/branch', { credentials: 'include' }),
+      fetch('/kviz/api/crm/branch/exceptions', { credentials: 'include' }),
+    ]);
+    const d = await r1.json();
     if (d.branch) setBranch(d.branch as Record<string,unknown>);
     const rawHours: Record<string,unknown>[] = Array.isArray(d.hours) ? d.hours : [];
     setHours(Array.from({ length: 7 }, (_, i) => {
@@ -4857,8 +4864,30 @@ function BranchSection() {
         : { weekday: i + 1, is_open: true, open_time: '07:00', close_time: '22:00' };
     }));
     setFormKey(k => k + 1);
+    try { const exData = await r2.json(); if (Array.isArray(exData)) setExceptions(exData as { day: string; is_open: boolean; note: string | null }[]); } catch {}
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  async function saveException() {
+    if (!exDay || exSaving) return;
+    setExSaving(true);
+    const r = await fetch('/kviz/api/crm/branch/exceptions', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ day: exDay, is_open: exIsOpen, note: exNote.trim() || null }),
+    });
+    const d = await r.json() as { error?: string; conflict_count?: number };
+    setExSaving(false);
+    if (!r.ok) { toast.error(d.error || 'Ошибка'); return; }
+    if (d.conflict_count) toast.info(`На этот день есть ${d.conflict_count} записей`);
+    setExDay(''); setExNote(''); setExIsOpen(true);
+    await load();
+  }
+
+  async function deleteException(day: string) {
+    if (!await showConfirm(`Удалить особый день ${day}?`)) return;
+    await fetch(`/kviz/api/crm/branch/exceptions/${day}`, { method: 'DELETE', credentials: 'include' });
+    await load();
+  }
 
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setSaving(true); setErr('');
@@ -4996,6 +5025,41 @@ function BranchSection() {
         {err && <div style={S.errBox}>{err}</div>}
         <button type="submit" style={S.saveBtn} disabled={saving}>{saving ? 'Сохранение…' : 'Сохранить'}</button>
       </form>
+      {/* Особые дни */}
+      <div style={{ marginTop: 28, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
+        <div style={S.subTitle}>Особые дни</div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 10, marginBottom: 14 }}>
+          <div>
+            <label style={S.label}>Дата</label>
+            <input type="date" style={{ ...S.inp, width: 148 }} value={exDay} onChange={e => setExDay(e.target.value)} />
+          </div>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, flexShrink: 0, paddingBottom: 2 }}>
+            <input type="checkbox" checked={exIsOpen} onChange={e => setExIsOpen(e.target.checked)} />
+            Открыто
+          </label>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <label style={S.label}>Заметка</label>
+            <input type="text" style={S.inp} placeholder="Например: короткий день" value={exNote} onChange={e => setExNote(e.target.value)} />
+          </div>
+          <button style={{ ...S.saveBtn, minWidth: 90 }} disabled={!exDay || exSaving} type="button" onClick={() => void saveException()}>
+            {exSaving ? '…' : 'Добавить'}
+          </button>
+        </div>
+        {exceptions.length === 0 ? (
+          <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Особых дней не задано</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {exceptions.map(ex => (
+              <div key={ex.day} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '7px 12px', background: 'var(--surface-2,#f8fafc)', borderRadius: 8, fontSize: 13 }}>
+                <span style={{ fontWeight: 700, minWidth: 110 }}>{ex.day}</span>
+                <span style={{ color: ex.is_open ? 'var(--success,#16a34a)' : 'var(--danger,#ef4444)', minWidth: 68 }}>{ex.is_open ? 'Открыто' : 'Закрыто'}</span>
+                {ex.note && <span style={{ flex: 1, color: 'var(--text-2)' }}>{ex.note}</span>}
+                <button style={{ ...S.iconBtn, marginLeft: 'auto' }} title="Удалить" onClick={() => void deleteException(ex.day)}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
