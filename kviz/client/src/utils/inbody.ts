@@ -71,7 +71,10 @@ function seg5(s: string, pos: number, div = 100): { right_arm: number; left_arm:
   return { right_arm: v(0), left_arm: v(1), trunk: v(2), right_leg: v(3), left_leg: v(4) };
 }
 
-export function parseInBody(raw: string): InBodyData | null {
+export function parseInBody(rawInput: string): InBodyData | null {
+  // strip optional URL prefix, e.g. https://qrcode.inbody.com/?IBData=270-...
+  const ibIdx = rawInput.indexOf('IBData=');
+  const raw = ibIdx >= 0 ? rawInput.slice(ibIdx + 7) : rawInput;
   try {
     // ── Header: device ID + user phone (padded with !)
     const excl = raw.indexOf('!');
@@ -176,8 +179,8 @@ export function parseInBody(raw: string): InBodyData | null {
     const kcalStr = data.slice(160, 164);
     const recommended_kcal = /^\d{4}$/.test(kcalStr) ? parseInt(kcalStr, 10) : null;
     const lean_norm: [number, number] = [ffm_min ?? 0, ffm_max ?? 0];
-    const vflStr = data.slice(228, 232);
-    const vfl = /^\d{4}$/.test(vflStr) ? parseInt(vflStr, 10) : null;
+    const vflStr = data.slice(150, 154);
+    const vfl = /^\d{4}$/.test(vflStr) ? Math.floor(parseInt(vflStr, 10) / 100) : null;
 
     // ── Derived
     const bmi     = Math.round(weight_kg / ((height_cm / 100) ** 2) * 10) / 10;
@@ -235,6 +238,7 @@ export function selfCheck(): string[] {
   check('lean_by_segment.right_arm', d.lean_by_segment.right_arm, 2.91);
   check('lean_by_segment.trunk',     d.lean_by_segment.trunk,     24.3);
   check('fat_by_segment.trunk',      d.fat_by_segment.trunk,      4.7); // was 0.47 (÷100), fixed to ÷10
+  check('vfl', d.vfl, 4); // data[150:154]=0446, floor(446/100)=4; sheet "фон 8" = normal-range top, not the value
   return errors;
 }
 

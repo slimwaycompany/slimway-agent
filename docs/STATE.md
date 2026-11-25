@@ -12,7 +12,7 @@
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 72: sw.js не перехватывает navigate-запросы — FetchEvent network error исправлен |
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟢 | 17.11.2026 | task 62: подвкладка «Мой месяц» — план, заработок, продажи, смены, задачи, клиенты, мотивация |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | ⚪ | 21.11.2026 | task 80: вкладка скрыта (KVIZ_TAB_VISIBLE=false), логика qualify перенесена в этапы CRM |
-| Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 20.11.2026 | task 77: NormBar без нормы → значение вместо «—»; Row dp-пропс; Минералы 2 знака |
+| Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 25.11.2026 | task 95: VFL из позиции 150 (÷100, floor), prefix IBData= strip |
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 19.11.2026 | task 72: фикс ReferenceError в PlanFactSection (Fragment без импорта React) |
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 17.11.2026 | task 64: живой фон (blob-анимация), тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка, эффекты в редакторе |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |

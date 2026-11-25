@@ -43,6 +43,13 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
+### 25.11.2026 · task 95 · QR — висцеральный жир из позиции 150, префикс IBData
+
+- **kviz/client/src/utils/inbody.ts**: `vfl` теперь из `data.slice(150, 154)` (4 цифры сразу после норм ВИР, bc-смещение 127); формула `Math.floor(parseInt / 100)` — деление на 100, округление вниз; в `selfCheck` добавлена проверка `vfl=4` для SAMPLE ("фон 8 на листе" = верхняя граница нормы, не само значение).
+- **parseInBody**: перед парсингом отрезает префикс `IBData=` (строки вида `https://qrcode.inbody.com/?IBData=270-...` теперь корректно разбираются).
+
+**Правило:** VFL в InBody QR — `data.slice(150, 154)`, делить на 100, `Math.floor`. Позиция: bc (data.slice(23)) смещение 127, сразу после двух норм ВИР (4 цифры на каждую).
+
 ### 23.11.2026 · 2680116 · task 85 — связка body_clients ↔ crm_clients, UI в Настройках
 - `body_clients` получила колонки `crm_client_id uuid references crm_clients` и `crm_link_method text check in ('fitbase_id','phone','manual')`.
 - `src/jobs/fitbaseHistoryImport.ts`: `linkBodyClients()` — автосвязка по `fitbase_client_id`, затем по последним 10 цифрам телефона (только уникальное совпадение); не перезаписывает `crm_link_method='manual'`; `getLinkStats()` — счётчики (linked, no_crm_pair, disputed).
