@@ -6,6 +6,7 @@ import { toast } from '../../lib/toast';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea, Cell, LabelList } from 'recharts';
 import OccupancySection from './OccupancySection';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
+import { closingDocHtml } from '../../lib/closingDocHtml';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -4712,19 +4713,9 @@ function KassaClosingsSection() {
 
   function handlePrint(d: KassaClosing) {
     if (!printRef.current) return;
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Закрытие №${d.closing_no}</title>
-<style>body{font-family:Arial,sans-serif;font-size:13px;margin:20px}h2{margin:0 0 12px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:5px 8px}th{background:#f0f0f0;text-align:left}</style></head>
-<body><h2>Закрытие кассы №${d.closing_no}</h2>
-<p>Смена: ${d.shift_date} · Открыл: ${d.opened_by} · Закрыл: ${d.closed_by}</p>
-<table><tr><th>Показатель</th><th>Сумма, ₸</th></tr>
-<tr><td>Остаток на открытие</td><td>${Number(d.opening_cash).toLocaleString('ru-RU')}</td></tr>
-<tr><td>Ожидаемые наличные</td><td>${Number(d.expected_cash).toLocaleString('ru-RU')}</td></tr>
-<tr><td><b>Фактически</b></td><td><b>${Number(d.counted_cash).toLocaleString('ru-RU')}</b></td></tr>
-<tr><td style="color:${Number(d.difference)>=0?'green':'red'}"><b>${Number(d.difference)>=0?'Излишек':'Недостача'}</b></td>
-<td style="color:${Number(d.difference)>=0?'green':'red'}"><b>${Math.abs(Number(d.difference)).toLocaleString('ru-RU')}</b></td></tr>
-</table></body></html>`;
+    const doc = d.closing_doc ?? d;
     const iframe = printRef.current;
-    iframe.srcdoc = html;
+    iframe.srcdoc = closingDocHtml(doc as Parameters<typeof closingDocHtml>[0]);
     iframe.onload = () => { iframe.contentWindow?.print(); };
   }
 

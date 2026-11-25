@@ -785,6 +785,10 @@ async function clearStaleLocks(): Promise<void> {
 
 clearStaleLocks().catch(() => {/* already logged inside */});
 cleanLegacyPermKeys().catch(() => {/* already logged inside */});
+const _kmph = process.env.KASSA_MASTER_PASSWORD_HASH;
+if (_kmph && !/^\$2[aby]\$\d{2}\$.{53}$/.test(_kmph)) {
+  console.warn('[kassa] KASSA_MASTER_PASSWORD_HASH задан, но это не bcrypt-хэш — мастер-пароль отключён');
+}
 seedOkkPosition().then(() => seedPositionPresets()).catch(() => {/* already logged inside */});
 seedDefaultVersions().catch((e: Error) => console.error('[startup] seedDefaultVersions:', e.message));
 app.listen(env.PORT, () => console.log(`[server] port ${env.PORT}`));

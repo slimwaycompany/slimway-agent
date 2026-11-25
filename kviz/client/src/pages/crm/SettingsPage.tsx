@@ -2,7 +2,7 @@
 import { itemLabel } from '../../utils/planItemLabel';
 import { formatPlanRestriction } from '../../lib/planRestriction';
 import { toast } from '../../lib/toast';
-import { PermContext } from '../../lib/permContext';
+import { PermContext, usePerm } from '../../lib/permContext';
 import { showConfirm } from '../../lib/confirm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { parseLookinBodyCSV } from '../../utils/parseLookinBodyCSV';
@@ -4354,7 +4354,7 @@ interface NavSectionDef { id: Section; label: string; Icon: LucideIcon; permKey?
 // ── KassaPasswordsSection ─────────────────────────────────────────────────────
 
 function KassaPasswordsSection() {
-  const [status, setStatus] = useState<{ locked: boolean; locked_at: string | null; failed_attempts: number; has_sales_password: boolean; has_full_password: boolean } | null>(null);
+  const [status, setStatus] = useState<{ locked: boolean; locked_at: string | null; failed_attempts: number; has_sales_password: boolean; has_full_password: boolean; master_configured: boolean } | null>(null);
   const [salesPass, setSalesPass] = useState('');
   const [salesPass2, setSalesPass2] = useState('');
   const [fullPass, setFullPass] = useState('');
@@ -4363,8 +4363,7 @@ function KassaPasswordsSection() {
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState('');
 
-  const { can } = useContext(PermContext);
-  const canEdit = can('settings.kassa_passwords', 'edit');
+  const canEdit = usePerm('settings.kassa_passwords', 'edit');
 
   const load = useCallback(async () => {
     const { data } = await api('GET', '/kviz/api/crm/kassa/status');
@@ -4400,6 +4399,11 @@ function KassaPasswordsSection() {
           {status.locked
             ? `🔒 Касса заблокирована с ${new Date(status.locked_at!).toLocaleString('ru-RU')} · ${status.failed_attempts} неверных попыток`
             : `✓ Касса не заблокирована · неверных попыток: ${status.failed_attempts}`}
+        </div>
+      )}
+      {status && (
+        <div style={{ fontSize: 13, color: status.master_configured ? 'var(--success)' : 'var(--text-2)', marginBottom: 12 }}>
+          Мастер-пароль: {status.master_configured ? '✓ настроен (env)' : 'не настроен — разблокировка только вручную через Render'}
         </div>
       )}
       {status?.locked && canEdit && (

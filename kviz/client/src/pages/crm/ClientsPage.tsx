@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { showConfirm } from '../../lib/confirm';
 import { toast } from '../../lib/toast';
 import { useBreakpoint } from '../../lib/useBreakpoint';
+import { usePerm } from '../../lib/permContext';
 import { formatPlanRestriction } from '../../lib/planRestriction';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -2083,6 +2085,29 @@ export default function ClientsPage() {
     setJunkReport(d);
   }
 
+  const canExport = usePerm('clients.export', 'edit');
+  const [exporting, setExporting] = useState(false);
+
+  async function exportClients() {
+    setExporting(true);
+    try {
+      const sp = new URLSearchParams();
+      if (search) sp.set('search', search);
+      if (filterSource) sp.set('ad_source_id', filterSource);
+      if (filterComplete) sp.set('profile_complete', filterComplete);
+      const r = await fetch(`/kviz/api/crm/clients/export?${sp}`, { credentials: 'include' });
+      if (!r.ok) { toast.error('Нет доступа к выгрузке'); return; }
+      const rows: Record<string, unknown>[] = await r.json();
+      const ws = XLSX.utils.json_to_sheet(rows, { header: ['full_name','phone','birth_date','status','source','profile_complete','fitbase_client_id','created_at'] });
+      ws['!cols'] = [{ wch: 30 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.sheet_add_aoa(ws, [['Имя', 'Телефон', 'Дата рождения', 'Статус', 'Источник', 'Анкета', 'Fitbase ID', 'Создан']], { origin: 'A1' });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Клиенты');
+      XLSX.writeFile(wb, `clients_${new Date().toISOString().slice(0,10)}.xlsx`);
+    } catch { toast.error('Ошибка выгрузки'); }
+    finally { setExporting(false); }
+  }
+
   async function openEdit(id: string) {
     const r = await fetch(`/kviz/api/crm/clients/${id}`, { credentials: 'include' });
     const d = await r.json();
@@ -2186,6 +2211,7 @@ export default function ClientsPage() {
         )}
         {role === 'admin' && <button style={SL.outlineBtn} onClick={() => setShowImport(v => !v)}>↓ Fitbase</button>}
         {role === 'admin' && <button style={SL.outlineBtn} onClick={loadJunkReport}>Мусор</button>}
+        {canExport && <button style={SL.outlineBtn} disabled={exporting} onClick={exportClients}>{exporting ? '…' : 'Excel'}</button>}
       </div>
       {showImport && role === 'admin' && <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}><FitbaseImport onDone={load} /></div>}
       {junkReport && role === 'admin' && (

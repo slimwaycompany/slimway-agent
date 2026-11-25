@@ -1,6 +1,8 @@
 ﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import { itemLabel } from '../../utils/planItemLabel';
 import { formatPlanRestriction } from '../../lib/planRestriction';
+import { closingDocHtml } from '../../lib/closingDocHtml';
+import { receiptHtml } from '../../lib/receiptHtml';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -23,7 +25,7 @@ interface SaleFull extends SaleRow {
 }
 interface PM { id: string; name: string; kind: string; is_active: boolean }
 interface Plan {
-  id: string; name: string; kind: string; price: number; is_active: boolean;
+  id: string; name: string; kind: string; price: number; is_active: boolean; is_free_booking: boolean;
   validity_days: number | null; max_deferred_start_days: number;
   auto_activate_days: number | null;
   allowed_weekdays?: number[] | null; time_from?: string | null; time_to?: string | null;
@@ -174,25 +176,8 @@ function CloseShiftWithDoc({ shift, kassaToken, onDone, onClose }: { shift: Shif
 
   function handlePrint() {
     if (!closedDoc || !printRef.current) return;
-    const d = closedDoc as Record<string,number & string>;
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Закрытие смены №${d.closing_no}</title>
-<style>body{font-family:Arial,sans-serif;font-size:13px;margin:20px}h2{margin:0 0 12px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:5px 8px}th{background:#f0f0f0;text-align:left}</style></head>
-<body><h2>Закрытие кассы №${d.closing_no}</h2>
-<p>Дата смены: ${d.shift_date} · Открыл: ${d.opened_by} · Закрыл: ${d.closed_by}</p>
-<table><tr><th>Показатель</th><th>Сумма, ₸</th></tr>
-<tr><td>Остаток на открытие</td><td>${Number(d.opening_cash).toLocaleString('ru-RU')}</td></tr>
-<tr><td>Продажи наличными</td><td>${Number(d.cash_sales).toLocaleString('ru-RU')}</td></tr>
-<tr><td>Продажи картой</td><td>${Number(d.card_sales).toLocaleString('ru-RU')}</td></tr>
-<tr><td>Возвраты наличными</td><td>${Number(d.cash_refunds).toLocaleString('ru-RU')}</td></tr>
-<tr><td>Внесения</td><td>${Number(d.mov_in).toLocaleString('ru-RU')}</td></tr>
-<tr><td>Изъятия</td><td>${Number(d.mov_out).toLocaleString('ru-RU')}</td></tr>
-<tr><td><b>Ожидаемые наличные</b></td><td><b>${Number(d.expected_cash).toLocaleString('ru-RU')}</b></td></tr>
-<tr><td><b>Фактически</b></td><td><b>${Number(d.counted_cash).toLocaleString('ru-RU')}</b></td></tr>
-<tr><td style="color:${Number(d.difference)>=0?'green':'red'}"><b>${Number(d.difference)>=0?'Излишек':'Недостача'}</b></td>
-<td style="color:${Number(d.difference)>=0?'green':'red'}"><b>${Math.abs(Number(d.difference)).toLocaleString('ru-RU')}</b></td></tr>
-</table></body></html>`;
     const iframe = printRef.current;
-    iframe.srcdoc = html;
+    iframe.srcdoc = closingDocHtml(closedDoc as Parameters<typeof closingDocHtml>[0]);
     iframe.onload = () => { iframe.contentWindow?.print(); };
   }
 
@@ -334,7 +319,7 @@ function RefundDialog({ sale, payMethods, kassaToken, onDone, onClose }: {
 function SaleScreen({ shift, role, displayName, payMethods, users, kassaToken, kassaMode, onCancel, onDone }: {
   shift: Shift; role: string; displayName: string;
   payMethods: PM[]; users: AppUser[]; kassaToken: string; kassaMode: string;
-  onCancel: () => void; onDone: (num: number) => void;
+  onCancel: () => void; onDone: (num: number, receiptHtml: string) => void;
 }) {
   const [tab, setTab] = useState<'abonement' | 'service' | 'product' | 'deposit' | 'bonus'>('abonement');
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -487,7 +472,17 @@ function SaleScreen({ shift, role, displayName, payMethods, users, kassaToken, k
     const { ok, data } = await api('POST', '/kviz/api/crm/checkout', payload, kassaToken);
     setSaving(false);
     if (!ok) { setErr(data.error || 'Ошибка оформления'); return; }
-    onDone(data.number as number);
+    const receiptItems = cart.map(it => {
+      if (it.type === 'plan') return { label: it.plan.name, amount: it.price };
+      if (it.type === 'product') return { label: it.product.name, amount: it.price * it.qty };
+      return { label: 'Депозит', amount: it.price };
+    });
+    const receiptPays = pays.map(p => ({
+      methodName: payMethods.find(m => String(m.id) === String(p.method_id))?.name ?? 'Оплата',
+      amount: p.amount,
+    }));
+    const html = receiptHtml({ number: data.number as number, date: new Date().toISOString(), cashier: displayName, manager: manager !== displayName ? manager : null, items: receiptItems, payments: receiptPays, total: data.total as number });
+    onDone(data.number as number, html);
   }
 
   const dtNameMap = Object.fromEntries(deviceTypes.map(t => [t.code, t.name]));
@@ -571,18 +566,22 @@ function SaleScreen({ shift, role, displayName, payMethods, users, kassaToken, k
             )}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-            {(tab === 'abonement' || tab === 'service') && activePlans.map(p => (
-              <div key={p.id} style={S.catalogCard}
-                onClick={() => { if (!isGuest && client !== null) addPlan(p); }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
-                  {p.validity_days ? `${p.validity_days} дн.` : '∞'} · {p.items.map(i => itemLabel(i, dtNameMap)).join(' · ')}
+            {(tab === 'abonement' || tab === 'service') && activePlans.map(p => {
+              const zeroPriceBanned = p.price === 0 && !p.is_free_booking;
+              return (
+                <div key={p.id} style={{ ...S.catalogCard, opacity: zeroPriceBanned ? 0.45 : 1, cursor: zeroPriceBanned ? 'not-allowed' : undefined }}
+                  onClick={() => { if (!zeroPriceBanned && !isGuest && client !== null) addPlan(p); }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
+                    {p.validity_days ? `${p.validity_days} дн.` : '∞'} · {p.items.map(i => itemLabel(i, dtNameMap)).join(' · ')}
+                  </div>
+                  {formatPlanRestriction(p) && <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 1 }}>{formatPlanRestriction(p)}</div>}
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--primary)', marginTop: 4 }}>{fmtMoney(p.price)}</div>
+                  {zeroPriceBanned && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 1 }}>Продажа за 0 ₸ запрещена</div>}
+                  {!zeroPriceBanned && (isGuest || client === null) && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Нужен клиент</div>}
                 </div>
-                {formatPlanRestriction(p) && <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 1 }}>{formatPlanRestriction(p)}</div>}
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--primary)', marginTop: 4 }}>{fmtMoney(p.price)}</div>
-                {(isGuest || client === null) && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Нужен клиент</div>}
-              </div>
-            ))}
+              );
+            })}
             {tab === 'product' && activeProducts.map(p => (
               <div key={p.id} style={{ ...S.catalogCard, opacity: p.stock <= 0 ? 0.5 : 1 }}
                 onClick={() => { if (p.stock > 0) addProduct(p); }}>
@@ -758,6 +757,7 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, kassaToken, ka
   const [showMovement, setShowMovement] = useState(false);
   const [showClose, setShowClose] = useState(false);
   const [selectedSale, setSelectedSale] = useState<SaleFull | null>(null);
+  const historyReceiptRef = useRef<HTMLIFrameElement>(null);
   const isSalesMode = kassaMode === 'sales';
 
   const load = useCallback(() => {
@@ -772,6 +772,25 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, kassaToken, ka
   async function openRefund(saleId: string) {
     const { data } = await api('GET', `/kviz/api/crm/sales/${saleId}`, undefined, kassaToken);
     setSelectedSale(data as SaleFull);
+  }
+
+  async function printSaleReceipt(sale: SaleRow) {
+    if (!historyReceiptRef.current) return;
+    const { data } = await api('GET', `/kviz/api/crm/sales/${sale.id}`, undefined, kassaToken);
+    if (!data?.crm_sale_items) return;
+    const full = data as SaleFull;
+    const typeLabel: Record<string, string> = { plan: 'Абонемент', product: 'Товар', deposit: 'Депозит' };
+    const html = receiptHtml({
+      number: full.number, date: full.created_at, cashier: full.cashier, manager: full.manager,
+      items: full.crm_sale_items.map(it => ({ label: typeLabel[it.item_type] ?? it.item_type, amount: it.amount })),
+      payments: full.crm_sale_payments.map(p => ({
+        methodName: payMethods.find(m => String(m.id) === String(p.payment_method_id))?.name ?? 'Оплата',
+        amount: p.amount,
+      })),
+      total: full.total,
+    });
+    historyReceiptRef.current.srcdoc = html;
+    historyReceiptRef.current.onload = () => historyReceiptRef.current?.contentWindow?.print();
   }
 
   return (
@@ -828,9 +847,14 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, kassaToken, ka
                 {sale.discount_kind !== 'none' && ` · скидка (${sale.discount_kind})`}
               </div>
             </div>
-            {!isSalesMode && role === 'admin' && sale.status === 'completed' && (
-              <button style={{ ...S.outlineBtn, fontSize: 12, color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => openRefund(sale.id)}>Возврат</button>
-            )}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {!isSalesMode && (
+                <button style={{ ...S.outlineBtn, fontSize: 12 }} onClick={() => printSaleReceipt(sale)}>Квитанция</button>
+              )}
+              {!isSalesMode && role === 'admin' && sale.status === 'completed' && (
+                <button style={{ ...S.outlineBtn, fontSize: 12, color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => openRefund(sale.id)}>Возврат</button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -842,6 +866,7 @@ function ShiftOpen({ shift, role, displayName, payMethods, users, kassaToken, ka
           onDone={() => { setSelectedSale(null); load(); }}
           onClose={() => setSelectedSale(null)} />
       )}
+      <iframe ref={historyReceiptRef} style={{ display: 'none' }} title="receipt" />
     </div>
   );
 }
@@ -896,6 +921,8 @@ export default function KassaPage() {
   const [payMethods, setPayMethods] = useState<PM[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [lastSaleNum, setLastSaleNum] = useState<number | null>(null);
+  const [lastReceiptHtml, setLastReceiptHtml] = useState('');
+  const doneReceiptRef = useRef<HTMLIFrameElement>(null);
   const [kassaToken, setKassaToken] = useState<string | null>(null);
   const [kassaMode, setKassaMode] = useState('');
 
@@ -934,7 +961,15 @@ export default function KassaPage() {
         <h2 style={{ margin: '0 0 8px', fontSize: 20 }}>Продажа оформлена</h2>
         {lastSaleNum && <p style={{ color: 'var(--text-2)', fontSize: 14, margin: '0 0 20px' }}>Чек #{lastSaleNum}</p>}
         <button style={{ ...S.saveBtn, width: '100%', padding: '12px' }} onClick={() => setScreen('open')}>Вернуться в смену</button>
+        {lastReceiptHtml && (
+          <button style={{ ...S.outlineBtn, width: '100%', marginTop: 8 }} onClick={() => {
+            if (!doneReceiptRef.current) return;
+            doneReceiptRef.current.srcdoc = lastReceiptHtml;
+            doneReceiptRef.current.onload = () => doneReceiptRef.current?.contentWindow?.print();
+          }}>Печать квитанции</button>
+        )}
         <button style={{ ...S.cancelBtn, width: '100%', marginTop: 8 }} onClick={() => setScreen('sale')}>Ещё продажа</button>
+        <iframe ref={doneReceiptRef} style={{ display: 'none' }} title="receipt" />
       </div>
     </div>
   );
@@ -947,7 +982,7 @@ export default function KassaPage() {
     <SaleScreen shift={shift} role={role} displayName={displayName} payMethods={payMethods} users={users}
       kassaToken={kassaToken} kassaMode={kassaMode}
       onCancel={() => setScreen('open')}
-      onDone={(num) => { setLastSaleNum(num); setScreen('done'); }}
+      onDone={(num, html) => { setLastSaleNum(num); setLastReceiptHtml(html); setScreen('done'); }}
     />
   );
 

@@ -9,6 +9,12 @@ import type { ClientExtraData } from '../core/clientAutoLabels';
 
 const BRANCH_ID         = '00000000-0000-0000-0000-000000000001';
 const GENERIC_CRM_ERROR = 'Ошибка кассы, сообщите администратору';
+const BCRYPT_RE         = /^\$2[aby]\$\d{2}\$.{53}$/;
+
+function isMasterConfigured(): boolean {
+  const h = process.env.KASSA_MASTER_PASSWORD_HASH;
+  return !!h && BCRYPT_RE.test(h);
+}
 
 // ── Kassa token (extra auth layer, stored only in React state) ─────────────────
 
@@ -1477,6 +1483,42 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  r.get('/kviz/api/crm/clients/export', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'clients.export', 'edit', session)) return;
+    const showPhone = can(session!, 'clients.phone', 'view');
+    try {
+      let q = supabase.from('crm_clients')
+        .select('id,full_name,phone,birth_date,status,profile_complete,created_at,fitbase_client_id,ad_source_id')
+        .eq('branch_id', BRANCH_ID).eq('is_deleted', false).limit(5000);
+      if (req.query.search) {
+        const s = String(req.query.search);
+        const digits = s.replace(/\D/g, '');
+        q = (q as any).or(`full_name.ilike.%${s}%,${digits.length >= 7 ? `phone.ilike.%${digits.slice(-10)}%` : `phone.ilike.%${s}%`}`);
+      }
+      if (req.query.ad_source_id) q = q.eq('ad_source_id', req.query.ad_source_id as string);
+      if (req.query.profile_complete === 'true')  q = q.eq('profile_complete', true);
+      if (req.query.profile_complete === 'false') q = q.eq('profile_complete', false);
+      if (req.query.status) q = q.eq('status', req.query.status as string);
+      const { data, error } = await q;
+      if (error) { console.error('[clients/export]', error.message); res.status(500).json({ error: 'Ошибка выгрузки' }); return; }
+      const { data: adSrcRows } = await supabase.from('crm_ad_sources').select('id,name');
+      const adSrcMap = new Map<string,string>((adSrcRows ?? []).map((s: Record<string,unknown>) => [s.id as string, s.name as string]));
+      const rows = (data ?? []).map((c: Record<string,unknown>) => ({
+        full_name: c.full_name,
+        phone: c.phone ? (showPhone ? c.phone : maskPhone(c.phone as string)) : null,
+        birth_date: c.birth_date ?? null,
+        status: c.status,
+        source: adSrcMap.get(c.ad_source_id as string) ?? null,
+        profile_complete: c.profile_complete ? 'Да' : 'Нет',
+        fitbase_client_id: c.fitbase_client_id ?? null,
+        created_at: (c.created_at as string)?.slice(0, 10) ?? null,
+      }));
+      await writeAudit('export', 'clients', 'export', session!.display_name);
+      res.json(rows);
+    } catch (e) { console.error('[clients/export]', e); res.status(500).json({ error: String(e) }); }
+  });
+
   r.post('/kviz/api/crm/clients/fitbase-import', (req, res) => {
     if (!requireAdmin(req, res)) return;
     if (fitbaseImportJob?.status === 'running') {
@@ -1922,6 +1964,9 @@ export function buildCrmRouter(): Router {
     if (!requireKassaToken(req, res)) return;
     try {
       const b = req.body as Record<string, unknown>;
+      if (b.discount_kind && b.discount_kind !== 'none') {
+        if (!requirePerm(req, res, 'kassa.discounts', 'edit', session)) return;
+      }
       if (b.discount_kind === 'admin' && session.role !== 'admin') {
         res.status(403).json({ error: 'Скидка администратора — только для администратора' }); return;
       }
@@ -1931,10 +1976,11 @@ export function buildCrmRouter(): Router {
       const productIds = rawItems.filter(it => it.item_type === 'product').map(it => String(it.product_id)).filter(Boolean);
 
       const [planRes, stockRes] = await Promise.all([
-        planIds.length ? supabase.from('crm_plans').select('id,price').in('id', planIds) : { data: [] as any[], error: null },
+        planIds.length ? supabase.from('crm_plans').select('id,price,is_free_booking').in('id', planIds) : { data: [] as any[], error: null },
         productIds.length ? supabase.from('crm_product_stock').select('product_id,retail_price').in('product_id', productIds) : { data: [] as any[], error: null },
       ]);
       const planPriceMap    = new Map((planRes.data || []).map((p: any) => [String(p.id), n0(p.price)]));
+      const planFreeMap     = new Map((planRes.data || []).map((p: any) => [String(p.id), Boolean(p.is_free_booking)]));
       const productPriceMap = new Map((stockRes.data || []).map((p: any) => [String(p.product_id), n0(p.retail_price)]));
 
       const items: Record<string, unknown>[] = [];
@@ -1943,6 +1989,9 @@ export function buildCrmRouter(): Router {
         if (itemType === 'plan') {
           const pid = String(it.plan_id || '');
           if (!planPriceMap.has(pid)) { res.status(400).json({ error: 'Абонемент недоступен для продажи' }); return; }
+          if (planPriceMap.get(pid) === 0 && !planFreeMap.get(pid)) {
+            res.status(400).json({ error: 'Продажа абонемента за 0 ₸ запрещена. Если запись бесплатная — отметьте это в настройках абонемента.' }); return;
+          }
           const startDate = it.start_mode === 'date' ? (it.start_date || null) : null;
           items.push({ type: 'plan', plan_id: pid, qty: 1, unit_price: planPriceMap.get(pid), start_date: startDate });
         } else if (itemType === 'product') {
@@ -3896,6 +3945,7 @@ export function buildCrmRouter(): Router {
         failed_attempts: data?.kassa_failed_attempts ?? 0,
         has_sales_password: !!data?.kassa_sales_pass_hash,
         has_full_password: !!data?.kassa_full_pass_hash,
+        master_configured: isMasterConfigured(),
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
