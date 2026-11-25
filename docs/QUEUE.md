@@ -16,6 +16,7 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 94-1 | crm-core, crm-schedule | Хотфикс: reloadPlans TDZ — карточка клиента не открывается (Cannot access 'nt' before initialization) | ТЗ в чате | ✅ готово (см. Журнал) |
 | 94 | crm-core | Список клиентов: фильтры (chunked .in, label filter), автометки вместо system_tags (incomplete_profile + birthday), вкладка Посещения, абонемент с ценой + детальный попап, заморозка с причиной, сворачиваемые соцсети | `docs/tasks/94-crm-core-card-visits-plans-labels.md` | 🟡 частично (ч.1-3,5,6 ✅; ч.4 PlanDetailModal отложен — нужен SQL price; SQL нужен: incomplete_profile + birthday labels) |
 | 93 | crm-schedule, crm-core | Автометки клиента: расчёт (8 типов), плашки на бронях (3+N), блок «Метки клиента» в деталях брони, Настройки → Автометки | ТЗ в чате | ✅ готово (e93e913) |
 | 92 | crm-schedule | Заметки менеджеров на день: мини-чат под расписанием, GET/POST/PATCH/DELETE, can_edit, мягкое удаление, 30-сек полинг, кнопка «💬 Заметки (N)» | ТЗ в чате | ✅ готово (см. Журнал) |
@@ -159,6 +160,7 @@
 ## Журнал
 
 | Дата | Агент | Задача | Результат / коммит | Примечание |
+| 25.11.2026 | Claude Code | 94-1 crm-core/crm-schedule: reloadPlans/loadVisits перенесены до первого useEffect в ClientPopup; tsc --noEmit: TDZ-ошибок нет. | см. коммит | build ✅. check:mobile — браузер упал на crm-schedule (проблема проде, не кода). |
 | 25.11.2026 | Claude Code | 95 zamery: vfl из data[150:154] (÷100, floor); IBData= prefix strip в parseInBody; selfCheck vfl=4 (SAMPLE). | см. коммит | build ✅. Строки 25.11 и 21 (ожидается vfl=16 и 21) требуют проверки с реальными QR-данными. |
 | 24.11.2026 | Claude Code | 94 crm-core: `inChunks<T>` хелпер (.in() по 150 id); GET /clients all-scan: 5 запросов через inChunks, pre-фильтр по tag, post-фильтр по auto_label; GET /summary: system_tags → auto_labels (batchAutoLabelsToday); новый GET /clients/:id/visits (crm_bookings+crm_visit_history, limit/offset/status); freeze/unfreeze: обязательный reason → crm_client_comments kind='freeze'/'unfreeze'; clientAutoLabels: ClientExtraData, incomplete_profile + birthday через extras; ClientsPage: auto_labels вместо system_tags, FreezeDialog+UnfreezeDialog с reason, вкладка Посещения в попапе, фильтр меток в тулбаре, соцсети+LTV в сворачиваемый <details>. | pending | build ✅. Не сделано: PlanDetailModal (ч.4) — нужен SQL price. Нужен SQL: INSERT incomplete_profile+birthday в crm_client_auto_labels. |
 | 24.11.2026 | Claude Code | 93 crm-schedule/crm-core: `src/core/clientAutoLabels.ts` — 2-раундовый пакетный расчёт (8 запросов на N клиентов), `batchAutoLabelsForDay` (для расписания) + `batchAutoLabelsToday` (для списка клиентов); `crm.ts` — `GET /crm/clients/auto-labels`, `GET/PATCH /crm/client-auto-labels/:code`, schedule/day обогащён `auto_labels+client_tags` (5+2 паралл. запроса); `SchedulePage.tsx` — 3+N чипы на карточке, блок «Метки клиента» в деталях брони; `SettingsPage.tsx` — подраздел «Автометки клиента» в ClassesSection (вкл/выкл, цвет, inline-редактирование параметров). ClientsPage НЕ трогалась (93b). | e93e913 | build ✅. Нужна проверка на проде. |

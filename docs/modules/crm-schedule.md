@@ -23,6 +23,9 @@
 - RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`, `crm_day_hours(p_date)` → (is_open, open_time, close_time)
 
 ## Сделано
+### 25.11.2026 · хотфикс 94-1 · ПКМ по брони → белый экран (тот же TDZ в ClientPopup)
+- Причина и фикс — те же, что в crm-core.md 94-1: ПКМ в Расписании открывает `ClientPopup` из `ClientsPage.tsx`, после хотфикса работает корректно.
+
 ### 24.11.2026 · task 93 · Автометки клиента — плашки в расписании, Настройки
 - **`src/core/clientAutoLabels.ts`** (новый): `batchAutoLabelsForDay` — пакетный расчёт авто-меток для N броней (2 раунда по 5+3 параллельных запроса); `batchAutoLabelsToday` — то же для списка клиентов; 8 типов меток: new_client, last_session, measure_inbody, measure_body, plan_ending, plan_ended, no_visits, weight_plateau, irregular. Все параметры из `crm_client_auto_labels.params`. Связь InBody через `body_clients.crm_client_id → phone_digits → inbody_tests`.
 - **`src/http/crm.ts`**: import `batchAutoLabelsForDay/batchAutoLabelsToday`; `GET /kviz/api/crm/clients/auto-labels?ids=...` (до `clients/:id`); `GET /kviz/api/crm/client-auto-labels` (settings.classes view); `PATCH /kviz/api/crm/client-auto-labels/:code` (debt заблокирован, валидация параметров); schedule/day: 5-way parallel + второй round с `batchAutoLabelsForDay` + теги → `auto_labels + client_tags` в каждой брони.
@@ -200,6 +203,8 @@
 - App.tsx: маршрут `/crm/schedule` → `SchedulePage`; check-mobile.js: добавлена секция `classes`.
 
 ## Открытые баги
+- **[25.11.2026] ПКМ по брони → белый экран.** Консоль: `Uncaught ReferenceError: Cannot access 'nt' before initialization` (index-14vw575R.js:588 — бандл SchedulePage). 24.11 ПКМ (ClientPopup) работал. Вероятно, после задачи 93 или правок ClientsPage из чата «Настройки и клиенты» — переменная/компонент используется до объявления (TDZ) или циклический импорт SchedulePage ↔ ClientsPage (export ClientPopup). Проверить `git log` по ClientsPage.tsx и SchedulePage.tsx после a6e990b.
+  - Уточнение 25.11: та же ошибка во вкладке Клиенты при открытии карточки («Не удалось открыть карточку»). Сломалось с последним пушем — задача 94 (7f05121, crm-core: фильтры по меткам, посещения, заморозка). Причина в ClientPopup (crm-core), чинить в чате «Настройки и клиенты»; см. crm-core.md → Открытые баги.
 
 ## Следующее
 - **(план ТЗ от 24.11.2026):** 93 (автометки клиента: SQL + расписание, показ в списке клиентов).

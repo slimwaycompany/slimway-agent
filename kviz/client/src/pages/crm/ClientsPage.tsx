@@ -730,6 +730,25 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     setFeedItems(Array.isArray(d) ? d : []);
   }, [clientId, feedTab]);
 
+  const reloadPlans = useCallback(() => {
+    setPlans(null);
+    fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => setPlans([]));
+  }, [clientId]);
+
+  const loadVisits = useCallback(async (filter: typeof visitsFilter, reset: boolean) => {
+    setVisitsLoading(true);
+    const off = reset ? 0 : visitsOffset;
+    const params = new URLSearchParams({ limit: '30', offset: String(off), status: filter });
+    const r = await fetch(`/kviz/api/crm/clients/${clientId}/visits?${params}`, { credentials: 'include' });
+    const d = await r.json().catch(() => ({ items: [], total: 0 }));
+    const items = d?.items ?? [];
+    setVisits(reset ? items : (prev => [...(prev ?? []), ...items]));
+    setVisitsTotal(d?.total ?? 0);
+    setVisitsOffset(reset ? items.length : off + items.length);
+    setVisitsLoading(false);
+  }, [clientId, visitsOffset]);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -814,25 +833,6 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     if (!ok) { toast.error(data.error || 'Ошибка'); return; }
     loadSummary();
   }
-
-  const reloadPlans = useCallback(() => {
-    setPlans(null);
-    fetch(`/kviz/api/crm/clients/${clientId}/plans`, { credentials: 'include' })
-      .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => setPlans([]));
-  }, [clientId]);
-
-  const loadVisits = useCallback(async (filter: typeof visitsFilter, reset: boolean) => {
-    setVisitsLoading(true);
-    const off = reset ? 0 : visitsOffset;
-    const params = new URLSearchParams({ limit: '30', offset: String(off), status: filter });
-    const r = await fetch(`/kviz/api/crm/clients/${clientId}/visits?${params}`, { credentials: 'include' });
-    const d = await r.json().catch(() => ({ items: [], total: 0 }));
-    const items = d?.items ?? [];
-    setVisits(reset ? items : (prev => [...(prev ?? []), ...items]));
-    setVisitsTotal(d?.total ?? 0);
-    setVisitsOffset(reset ? items.length : off + items.length);
-    setVisitsLoading(false);
-  }, [clientId, visitsOffset]);
 
   useEffect(() => {
     if (centerTab === 'visits') { loadVisits(visitsFilter, true); }
