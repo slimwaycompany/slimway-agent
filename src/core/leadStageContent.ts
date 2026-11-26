@@ -18,7 +18,7 @@ export interface StageItem {
   label: string;
   hint?: string;
   required: boolean;
-  options?: string[];
+  options?: Array<string | { id: string; label: string }>;
   who: ItemWho;
   rule?: ItemRule;
   // new fields for multi/number/date types
@@ -70,7 +70,14 @@ export const STAGE_CONTENT: StageContent[] = [
       { key: "inbox_check_source", block: "Первый контакт", type: "check", label: "Открыть карточку, проверить источник", required: true, who: "human" },
       { key: "inbox_call_60", block: "Первый контакт", type: "check", label: "Позвонить в течение 60 секунд, если возможно", required: false, who: "human" },
       { key: "inbox_whatsapp", block: "Первый контакт", type: "check", label: "Если не ответил — сообщение в WhatsApp", required: false, who: "human" },
-      { key: "inbox_contact_result", block: "Первый контакт", type: "text", label: "Результат попытки связи", required: true, who: "human" },
+      { key: "inbox_contact_result", block: "Первый контакт", type: "question", label: "Результат попытки связи", required: true, who: "human", options: [
+        { id: "answered",        label: "Ответил" },
+        { id: "no_answer",       label: "Нет ответа" },
+        { id: "busy",            label: "Занят" },
+        { id: "rejected",        label: "Сбросил" },
+        { id: "callback",        label: "Просит перезвонить" },
+        { id: "not_convenient",  label: "Не удобно говорить" },
+      ] },
       { key: "inbox_auto_first_contact", block: "Автоматика", type: "check", label: "Создать задачу на первый контакт", required: false, who: "auto", rule: "lead_first_contact" },
     ],
   },

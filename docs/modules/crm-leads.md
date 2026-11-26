@@ -7,6 +7,32 @@
 
 ## Сделано
 
+### 26.11.2026 · task 108В · фильтры, дебаунс поиск, сумма бюджета, режим Список, мобильная доска, дубли, Не удобно говорить, ноты Fitbase
+
+**`src/http/crmLeads.ts`**:
+- `GET /crm/leads`: новые серверные фильтры `manager_user_id`, `ad_source_id`, `tag` (`.contains`), `created_from`/`created_to` (gte/lte по `fb_created_at`).
+- `GET /crm/leads/check-phone?phone=`: возвращает открытые заявки и клиентов CRM с этим телефоном для предупреждения о дублях.
+- `POST /crm/leads/:id/move`: если ответ `inbox_contact_result = 'not_convenient'` и этап inbox → автоперенос в «Отложенное решение» + задача «Перезвонить» на завтра 10:00 UTC+5.
+
+**`src/core/leadStageContent.ts`**: `inbox_contact_result` → `type: "question"` с 6 вариантами (Ответил / Нет ответа / Занят / Сбросил / Просит перезвонить / **Не удобно говорить** `{id:"not_convenient"}`). Тип `options` расширен до `Array<string | {id,label}>`.
+
+**`src/jobs/crmLeadsSync.ts`**: `syncNotes()` — батч 50 заявок за раз (ротация через `sync_state.crm_notes_offset`), Fitbase `/note?client_id=X`, дедуп по `fitbase_note_id`, вставка в `crm_lead_activity` с `kind='comment'` и `meta.source='fitbase'`. Пауза 300–500 мс. Вызывается в `runCrmLeadsSync()`.
+
+**`kviz/client/src/pages/crm/FunnelPage.tsx`** переписан:
+- Фильтр-панель: менеджер, источник, тег, пресет даты (сегодня/вчера/7д/30д/свой период). Сохраняются в localStorage. Счётчик активных фильтров. Кнопка «Сбросить».
+- Поиск: дебаунс 300 мс, от 2 символов, `AbortController` отменяет предыдущий запрос.
+- Шапка колонки: кол-во и сумма бюджета «12 · 840 000 ₸».
+- Переключатель «⊞ Доска / ☰ Список», сохраняется в localStorage, по умолчанию «Список» на мобиле ≤640.
+- Режим «Список»: таблица с сортировкой; на мобиле — карточки.
+- Мобильная доска (≤640): scroll-snap по колонкам, полоса навигации по этапам, кнопка «Этап ▾» в карточке → bottom sheet выбора этапа → StagePopup подтверждения.
+- CreateLeadModal: проверка телефона на 11 цифр → `GET /check-phone` → жёлтое предупреждение со ссылками на найденные заявки/клиентов.
+
+**`kviz/client/src/pages/crm/LeadDrawer.tsx`**:
+- iOS fix: `height: 100dvh` вместо `bottom: 0` у drawer-контейнера — фиксирует прыжок при открытии клавиатуры.
+- Вкладка «Произвольные поля»: показывает `custom_fields[]` из Fitbase в виде таблицы name→value. Пустые данные — подсказка с SQL.
+
+**Часть 15 — нужен SQL** (если хотим редактируемые поля): `CREATE TABLE crm_custom_field_defs (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), branch_id uuid REFERENCES crm_branches(id), name text NOT NULL, field_type text CHECK (field_type IN ('text','number','date','list')), list_options jsonb DEFAULT '[]', sort int DEFAULT 0, is_active bool DEFAULT true, funnel_id uuid REFERENCES crm_funnels(id))` + `ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS custom_fields_v2 jsonb DEFAULT '{}'`.
+
 ### 21.11.2026 · task 81 · единый формат вариантов (объект id/label), none_option и not_none, сохранение чек-листа без потерь
 
 **Причина:** React #31 — objects are not valid as React child: `bant_contra.options` в БД хранился как `{id,label}[]` (после редактирования в UI), StagePopup рендерил `{opt}` как строку → краш.

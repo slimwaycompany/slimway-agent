@@ -281,12 +281,13 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
       {/* Overlay */}
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 100 }} onClick={onClose} />
 
-      {/* Drawer */}
+      {/* Drawer — height:100dvh fixes iOS keyboard jump on fixed elements */}
       <div
         ref={drawerRef}
         style={{
-          position: 'fixed', top: 0, right: 0, bottom: 0,
+          position: 'fixed', top: 0, right: 0,
           width: 'min(100vw, 480px)',
+          height: '100dvh',
           background: 'var(--surface)', zIndex: 101,
           display: 'flex', flexDirection: 'column',
           boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
@@ -318,8 +319,28 @@ export default function LeadDrawer({ leadId, funnels, onClose, onSaved, onDelete
         {!lead && <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>Загрузка...</div>}
 
         {lead && tab === 'custom' && (
-          <div style={{ padding: 16, flex: 1, color: 'var(--text-3)', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ textAlign: 'center' }}><div style={{ fontSize: 36, marginBottom: 8 }}>🚧</div>В разработке</div>
+          <div style={{ padding: 16, flex: 1, overflowY: 'auto' }}>
+            {Array.isArray(lead.custom_fields) && (lead.custom_fields as unknown[]).length > 0 ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <tbody>
+                  {(lead.custom_fields as Record<string, unknown>[]).map((f, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '7px 10px 7px 0', fontWeight: 600, color: 'var(--text-2)', width: '40%', verticalAlign: 'top' }}>
+                        {String(f.name ?? f.label ?? f.key ?? `Поле ${i + 1}`)}
+                      </td>
+                      <td style={{ padding: '7px 0', color: 'var(--text)', wordBreak: 'break-word' }}>
+                        {String(f.value ?? f.val ?? '—')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ color: 'var(--text-3)', fontSize: 13, textAlign: 'center', marginTop: 24 }}>
+                Произвольные поля не заданы.<br />
+                <span style={{ fontSize: 12 }}>Для добавления полей нужна таблица <code>crm_custom_field_defs</code> (SQL — в отчёте задачи 108В).</span>
+              </div>
+            )}
           </div>
         )}
 

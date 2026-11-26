@@ -315,9 +315,14 @@ export function buildCrmLeadsRouter(): Router {
     if (!requireAuth(req, res)) return;
     try {
       let q = supabase.from('crm_leads').select('*').eq('branch_id', BRANCH_ID);
-      if (req.query.funnel_id) q = q.eq('funnel_id', req.query.funnel_id as string);
-      if (req.query.stage_id)  q = q.eq('stage_id',  req.query.stage_id  as string);
+      if (req.query.funnel_id)        q = q.eq('funnel_id',        req.query.funnel_id        as string);
+      if (req.query.stage_id)         q = q.eq('stage_id',         req.query.stage_id         as string);
       if (!req.query.is_archived || req.query.is_archived === '0') q = q.eq('is_archived', false);
+      if (req.query.manager_user_id)  q = q.eq('manager_user_id',  req.query.manager_user_id  as string);
+      if (req.query.ad_source_id)     q = q.eq('ad_source_id',     req.query.ad_source_id     as string);
+      if (req.query.tag)              q = q.contains('tags', [req.query.tag as string]);
+      if (req.query.created_from)     q = q.gte('fb_created_at',   req.query.created_from     as string);
+      if (req.query.created_to)       q = q.lte('fb_created_at',   (req.query.created_to as string) + 'T23:59:59Z');
       if (req.query.search) {
         const s = `%${req.query.search}%`;
         q = q.or(`name.ilike.${s},surname.ilike.${s},phone.ilike.${s},title.ilike.${s}`);
@@ -402,6 +407,25 @@ export function buildCrmLeadsRouter(): Router {
       await writeActivity(leadId, 'created', 'Заявка создана вручную', session.display_name);
       runLeadRules({ type: 'lead_created', leadId }).catch(console.error);
       res.json(data);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Check phone duplicates (before /:id to avoid route conflict) ───────────────
+  r.get('/kviz/api/crm/leads/check-phone', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const phone = normPhone(String(req.query.phone ?? ''));
+    if (!phone) { res.json({ leads: [], clients: [] }); return; }
+    try {
+      const [leadsRes, clientsRes] = await Promise.all([
+        supabase.from('crm_leads')
+          .select('id,title,name,surname,stage_id,funnel_id,manager_user_id,fitbase_manager_name')
+          .eq('branch_id', BRANCH_ID).eq('phone', phone).eq('is_archived', false).limit(5),
+        supabase.from('crm_clients')
+          .select('id,full_name,phone').eq('branch_id', BRANCH_ID).eq('phone', phone).eq('is_deleted', false).limit(5),
+      ]);
+      if (leadsRes.error) console.error('[check-phone] leads:', leadsRes.error.message);
+      if (clientsRes.error) console.error('[check-phone] clients:', clientsRes.error.message);
+      res.json({ leads: leadsRes.data || [], clients: clientsRes.data || [] });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -633,6 +657,44 @@ export function buildCrmLeadsRouter(): Router {
           author: session.display_name,
         }));
         await supabase.from('crm_lead_answers').insert(rows);
+      }
+
+      // Auto-move: "Не удобно говорить" in inbox → "Отложенное решение" + "Перезвонить" task
+      const notConvenient = answers.find(
+        a => a.item_key === 'inbox_contact_result' && a.answer_option === 'not_convenient',
+      );
+      if (notConvenient && st.kind === 'inbox') {
+        try {
+          const { data: delayStage } = await supabase.from('crm_funnel_stages')
+            .select('id,name,funnel_id').eq('branch_id', BRANCH_ID)
+            .ilike('name', '%отложен%').maybeSingle();
+          if (delayStage) {
+            const ds = delayStage as Record<string, unknown>;
+            await supabase.from('crm_leads').update({
+              stage_id: ds.id, funnel_id: ds.funnel_id ?? (st.funnel_id ?? null),
+              stage_changed_at: new Date().toISOString(),
+            }).eq('id', req.params.id).eq('branch_id', BRANCH_ID);
+            await writeActivity(req.params.id, 'stage_change',
+              `Этап → ${ds.name} [авто: не удобно говорить]`, 'Автоматика');
+            const { data: leadRow } = await supabase.from('crm_leads')
+              .select('manager_user_id').eq('id', req.params.id).single();
+            const { data: callType } = await supabase.from('crm_task_types')
+              .select('id').eq('branch_id', BRANCH_ID).ilike('name', '%Звонок%').limit(1).maybeSingle();
+            const tomorrow = new Date(Date.now() + 5 * 3600_000);
+            tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+            tomorrow.setUTCHours(5, 0, 0, 0); // 10:00 UTC+5
+            await supabase.from('crm_lead_tasks').insert({
+              branch_id: BRANCH_ID, lead_id: req.params.id,
+              type_id: (callType as Record<string, unknown> | null)?.id ?? null,
+              description: '[АВТО] Перезвонить (не удобно говорить)',
+              due_at: tomorrow.toISOString(), status: 'open',
+              created_by: null,
+              responsible_user_id: (leadRow as Record<string, unknown> | null)?.manager_user_id ?? null,
+              fitbase_responsible: [],
+            });
+            await writeActivity(req.params.id, 'task', '[АВТО] Перезвонить (не удобно говорить)', 'Автоматика');
+          }
+        } catch (e) { console.error('[move] not_convenient auto-move:', e); }
       }
 
       runLeadRules({ type: 'stage_enter', leadId: req.params.id, stageId: b.stage_id as string }).catch(console.error);

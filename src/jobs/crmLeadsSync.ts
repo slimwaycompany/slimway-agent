@@ -453,6 +453,72 @@ async function syncClientStatuses(): Promise<void> {
   await supabase.from('sync_state').upsert({ key: 'crm_clients_status_at', value: today }, { onConflict: 'key' });
 }
 
+async function syncNotes(): Promise<{ synced: number; errors: number }> {
+  const { data: cursorData } = await supabase.from('sync_state')
+    .select('value').eq('key', 'crm_notes_offset').maybeSingle();
+  const offset = Number((cursorData as Record<string, unknown> | null)?.value ?? 0);
+
+  const { data: leads } = await supabase.from('crm_leads')
+    .select('id,fitbase_client_id')
+    .eq('branch_id', BRANCH_ID)
+    .not('fitbase_client_id', 'is', null)
+    .order('synced_at', { ascending: true })
+    .range(offset, offset + 49);
+
+  if (!leads?.length) {
+    await supabase.from('sync_state').upsert({ key: 'crm_notes_offset', value: 0 }, { onConflict: 'key' });
+    return { synced: 0, errors: 0 };
+  }
+
+  let synced = 0;
+  let errors = 0;
+  for (const lead of leads) {
+    const clientId = Number((lead as Record<string, unknown>).fitbase_client_id);
+    const leadId   = (lead as Record<string, unknown>).id as string;
+    try {
+      const notes = await paginateGet('/note', { client_id: clientId, page_size: 100 }, 'crm-notes');
+      if (!notes.length) continue;
+
+      const { data: existing } = await supabase.from('crm_lead_activity')
+        .select('fitbase_note_id').eq('lead_id', leadId).not('fitbase_note_id', 'is', null);
+      const existingIds = new Set((existing || []).map(e => String((e as Record<string, unknown>).fitbase_note_id)));
+
+      const toInsert = notes
+        .filter(n => { const nb = n as Record<string, unknown>; return nb.id != null && !existingIds.has(String(nb.id)); })
+        .map(n => {
+          const nb = n as Record<string, unknown>;
+          const rawTs = nb.created_at ?? nb.ts;
+          const noteTs = rawTs ? new Date(Number(rawTs) * 1000).toISOString() : new Date().toISOString();
+          return {
+            branch_id: BRANCH_ID, lead_id: leadId,
+            kind: 'comment',
+            text: String(nb.text ?? nb.note ?? nb.body ?? '').trim(),
+            author: String(nb.author_name ?? nb.full_name ?? 'Fitbase'),
+            fitbase_note_id: Number(nb.id),
+            meta: { source: 'fitbase', fb_created_at: noteTs },
+          };
+        })
+        .filter(r => r.text);
+
+      if (toInsert.length) {
+        for (let i = 0; i < toInsert.length; i += 100) {
+          const { error } = await supabase.from('crm_lead_activity').insert(toInsert.slice(i, i + 100));
+          if (error) console.error('[crm-leads-sync] notes insert:', error.message);
+          else synced += toInsert.slice(i, i + 100).length;
+        }
+      }
+      await new Promise(r => setTimeout(r, 300 + Math.random() * 200));
+    } catch (e) {
+      console.error(`[crm-leads-sync] notes lead=${leadId}:`, e);
+      errors++;
+    }
+  }
+
+  const nextOffset = leads.length < 50 ? 0 : offset + 50;
+  await supabase.from('sync_state').upsert({ key: 'crm_notes_offset', value: nextOffset }, { onConflict: 'key' });
+  return { synced, errors };
+}
+
 export async function runCrmLeadsSync(): Promise<Record<string, unknown>> {
   if (!await isFitbaseSyncEnabled()) {
     console.log('[crm-leads-sync] disabled by flag');
@@ -462,6 +528,7 @@ export async function runCrmLeadsSync(): Promise<Record<string, unknown>> {
   let funnelsMeta = { funnels: 0, stages: 0 };
   let leadsMeta   = { total: 0, upserted: 0, skipped: 0, failed: 0 };
   let tasksMeta   = { total: 0, upserted: 0, failed: 0 };
+  let notesMeta   = { synced: 0, errors: 0 };
   const errors: string[] = [];
 
   try { await syncDicts();                        } catch (e) { errors.push(`dicts: ${e}`); }
@@ -469,6 +536,7 @@ export async function runCrmLeadsSync(): Promise<Record<string, unknown>> {
   try { leadsMeta   = await syncLeads();          } catch (e) { errors.push(`leads: ${e}`); }
   try { tasksMeta   = await syncTasks();          } catch (e) { errors.push(`tasks: ${e}`); }
   try { await syncClientStatuses();               } catch (e) { errors.push(`client_statuses: ${e}`); }
+  try { notesMeta   = await syncNotes();          } catch (e) { errors.push(`notes: ${e}`); }
 
-  return { ...funnelsMeta, leads: leadsMeta, tasks: tasksMeta, errors, ms: Date.now() - start };
+  return { ...funnelsMeta, leads: leadsMeta, tasks: tasksMeta, notes: notesMeta, errors, ms: Date.now() - start };
 }
