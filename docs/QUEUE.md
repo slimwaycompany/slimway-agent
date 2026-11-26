@@ -16,6 +16,8 @@
 
 | № | Модуль | Задача | ТЗ | Статус |
 |---|--------|--------|----|--------|
+| 110 | crm-core, infra, protect, logins, ovcharka, zamery, ocr, tv, telegram-bot, control, pbx, manager | А: окно абонемента (бывш. 109) · Б: защита и инфраструктура (бывш. сводка 101) · В: замеры, ТВ, бот (бывш. 103) · Г: контроль и АТС (бывш. 102, нужен SQL блоки 2–3) | `docs/tasks/110-crm-plan-window-infra-zamery-tv-control.md` | ⏳ ждёт |
+| 109 | crm-core | Окно абонемента (PlanWindow) | `docs/tasks/109-crm-core-plan-window-redesign.md` | ↪ поглощена задачей 110 (блок А) |
 | 108 | crm-kassa, reports, crm-core, crm-schedule, zamery, logins, crm-leads | Печать закрытия смены по Excel-шаблону, раздел Метки, метка «Нужна оплата», интервал замеров, перенос записи по правам, вкладка «Записи», воронка: фильтры/Список/мобильная доска/дубли | `docs/tasks/108-crm-print-labels-reschedule-leads.md` | ✅ готово (см. Журнал) — блоки А✅ Б✅ В✅ |
 | 107 | reports | План-факт (срез): считать по продавцу (кассиру Fitbase), а не менеджеру лида; возврат — у продавца исходной продажи | `docs/tasks/107-reports-plan-fact-seller.md` | ✅ готово (см. Журнал) |
 | 99 | crm-kassa, logins, crm-core | Фикс серый экран «Пароли кассы», мастер-пароль диагностика, печать закрытия смены по образцу, запрет 0 ₸, квитанция, серверные права, выгрузка клиентов | `docs/tasks/98-crm-kassa-fixes-perms-export.md` | ✅ готово (см. Журнал) |
