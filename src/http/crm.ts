@@ -4116,6 +4116,15 @@ export function buildCrmRouter(): Router {
       const closedBy = session.display_name;
       const closedAt = new Date().toISOString();
 
+      const { data: branch } = await supabase.from('crm_branches')
+        .select('legal_name,bin,city,address').eq('id', BRANCH_ID).single();
+      const branchSnap = {
+        legal_name: (branch as Record<string, unknown> | null)?.legal_name as string | null ?? null,
+        bin:        (branch as Record<string, unknown> | null)?.bin        as string | null ?? null,
+        city:       (branch as Record<string, unknown> | null)?.city       as string | null ?? null,
+        address:    (branch as Record<string, unknown> | null)?.address    as string | null ?? null,
+      };
+
       const closing_doc = {
         closing_no: closingNo, shift_date: shift.shift_date,
         opened_at: shift.opened_at, closed_at: closedAt,
@@ -4129,6 +4138,7 @@ export function buildCrmRouter(): Router {
         difference,
         cash_count: cash_count ?? null,
         comment: comment ?? null,
+        ...branchSnap,
       };
 
       const { error } = await supabase.from('crm_cash_shifts').update({

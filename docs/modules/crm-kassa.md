@@ -23,6 +23,10 @@
 - Функции: `crm_checkout(jsonb)`, `crm_refund(jsonb)` — одна транзакция; `crm_shift_expected_cash(uuid)`. Execute только у сервера.
 
 ## Сделано
+### 26.11.2026 · task 108 (А) · Печать закрытия смены по Excel-шаблону
+- **`kviz/client/src/lib/closingDocHtml.ts`** полностью переписан: HTML-разметка заменена встроенной константой `TEMPLATE` (точная копия `templates/zakrytie-smeny.html`); замена плейсхолдеров `{{...}}` через `vals`-объект; HTML-экранирование через `esc()`; деньги — `fmtMoney()` (целые, ` / ` → обычный пробел); даты — `fmtDT()` UTC+5 (`Asia/Yekaterinburg`); купюры/монеты из `cash_count`. Добавлены поля `legal_name`, `bin`, `city`, `address` в `ClosingDoc`.
+- **`src/http/crm.ts`** (`PATCH /shifts/:id/close-with-doc`): перед сборкой `closing_doc` запрашивает `crm_branches` и добавляет `legal_name`, `bin`, `city`, `address` в снимок — для новых закрытий branch-info уже в `closing_doc`. Старые закрытия показывают пустую организацию/адрес.
+
 ### 25.11.2026 · task 98 · Серый экран, мастер-пароль, печать, 0₸, квитанция, права, выгрузка
 - **Hotfix**: `SettingsPage.tsx` — `KassaPasswordsSection` заменено `useContext(PermContext).can` → `usePerm('settings.kassa_passwords','edit')`. Добавлен `import { usePerm }` в файл.
 - **Мастер-пароль**: `src/http/crm.ts` — `isMasterConfigured()` (regex `/^\$2[aby]\$\d{2}\$.{53}$/`); `GET /kassa/status` теперь возвращает `master_configured: boolean`. UI: строка «Мастер-пароль: настроен/не настроен». `src/index.ts` — startup `console.warn` если хэш есть, но не bcrypt.
@@ -57,6 +61,7 @@
 - Промокод или скидка админа — не вместе; на пополнение депозита скидки не действуют. Расчёт скидки — на сервере (% до целого тенге, фиксированная — пропорционально).
 - Только админ: менять остаток открытия, цену строки, скидка, возврат, бонусы.
 - Возврат абонемента: сумму вводит админ, причина обязательна; товар возвращается на склад по партиям.
+- **Печать закрытия смены — только `templates/zakrytie-smeny.html`** (копия Excel-шаблона), разметку не менять; при изменении xlsx — перегенерировать html и обновить константу `TEMPLATE` в `closingDocHtml.ts`.
 - Закрытие смены — `CloseShiftWithDoc` в Кассе: покупюрная ведомость (купюры 500–20000, монеты 1–200), ожидаемая наличность (`/shifts/:id/closing-data`), JSON-снимок `closing_doc`, `closing_no` (max из обеих таблиц + 1), печать HTML через `iframe.srcdoc`, Excel-шаблон с `/kviz/api/cash/closing-template`. Старый `CashClosing.tsx` в Менеджере убран.
 - Пароль кассы: bcryptjs, режимы `sales`/`full`/`master`; токен HMAC-SHA256 (12ч, `kv:1`, `kassa.` prefix при подписи) в памяти React — уход с вкладки = пароль снова. Мастер-пароль только из env `KASSA_MASTER_PASSWORD_HASH`, нет env — не работает без ошибки. 5 неверных → `kassa_locked_at`, разблокирует full/master.
 - Тестовые продажи — на клиенте «ТЕСТ Тестов»; чистка — SQL от Claude.

@@ -17,7 +17,7 @@
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 17.11.2026 | task 64: живой фон (blob-анимация), тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка, эффекты в редакторе |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 25.11.2026 | task 97: новый макет карточки, PlanDetailModal, лента «Действия», цены абонементов, право clients.log |
-| CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟢 | 25.11.2026 | task 98: hotfix серый экран, мастер-пароль диагностика, печать A4, 0₸ запрет, квитанция, kassa.discounts, выгрузка клиентов |
+| CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟢 | 26.11.2026 | task 108A: печать закрытия смены — Excel-шаблон один в один (closingDocHtml → TEMPLATE + placeholders, branch info в closing_doc) |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 25.11.2026 | task 95: поиск клиента и фильтр по меткам в расписании, особые дни филиала |
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 21.11.2026 | task 81: единый формат вариантов id/label, none_option, not_none, checklist без потерь, sw.js |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
