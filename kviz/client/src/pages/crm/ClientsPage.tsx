@@ -7,6 +7,7 @@ import { toast } from '../../lib/toast';
 import { useBreakpoint } from '../../lib/useBreakpoint';
 import { usePerm } from '../../lib/permContext';
 import { formatPlanRestriction } from '../../lib/planRestriction';
+import PlanWindow from './PlanWindow';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -685,132 +686,6 @@ class PopupErrorBoundary extends Component<{ onClose: () => void; children: Reac
   }
 }
 
-// ── PlanDetailModal ────────────────────────────────────────────────────────────
-
-function PlanDetailModal({ plan, clientId: modalClientId, dtNameMap, canEdit, onFreeze, onUnfreeze, onSplit, onClose }: {
-  plan: ClientPlan; clientId: string; dtNameMap: Record<string, string>; canEdit: boolean;
-  onFreeze: () => void; onUnfreeze: () => void; onSplit: () => void; onClose: () => void;
-}) {
-  const [planVisits, setPlanVisits] = useState<{ id: string; date: string; time: string | null; status: string; label: string | null }[] | null>(null);
-  const [freezeHistory, setFreezeHistory] = useState<{ id: string; kind: string; text: string; author: string; at: string }[] | null>(null);
-
-  useEffect(() => {
-    fetch(`/kviz/api/crm/client-plans/${plan.id}/visits`, { credentials: 'include' })
-      .then(r => r.json()).then(d => setPlanVisits(Array.isArray(d) ? d : [])).catch(() => setPlanVisits([]));
-    // freeze/unfreeze history from client actions feed
-    fetch(`/kviz/api/crm/clients/${modalClientId}/feed?kind=actions`, { credentials: 'include' })
-      .then(r => r.json()).then((d: unknown[]) => {
-        setFreezeHistory((d ?? []).filter((x: any) => x.kind === 'action' && (x.text?.startsWith('❄') || x.text?.startsWith('▶'))).slice(0, 10) as any);
-      }).catch(() => setFreezeHistory([]));
-  }, [plan.id]);
-
-  const planName = plan.plan?.name ?? plan.name ?? '—';
-  const extraDays = plan.plan?.extra_days ?? 0;
-
-  // 4 dates
-  const purchased  = plan.purchased_at;
-  const activated  = plan.activated_at;
-  const preEnd     = plan.valid_until ? new Date(new Date(plan.valid_until).getTime() - 10 * 86400000).toISOString().slice(0, 10) : null;
-  const end        = plan.valid_until;
-  const endExtra   = end && extraDays > 0 ? new Date(new Date(end).getTime() + extraDays * 86400000).toISOString().slice(0, 10) : null;
-
-  const st = PLAN_STATUS[plan.status] ?? { text: plan.status, color: 'var(--text-2)', bg: 'var(--surface-2)' };
-
-  const statusColor: Record<string, string> = { attended: 'var(--success)', no_show: 'var(--danger)', cancelled: 'var(--text-3)', late_cancel: 'var(--warning,#f59e0b)' };
-  const statusLabel: Record<string, string> = { attended: 'Пришла', no_show: 'Не пришла', cancelled: 'Отменена', late_cancel: 'Поздняя отмена' };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={onClose}>
-      <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 24, width: 'min(520px, 96vw)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 12px 48px rgba(0,0,0,.3)' }}
-        onClick={e => e.stopPropagation()}>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>{planName}</div>
-            <span className="cp-plan-status" style={{ background: st.bg, color: st.color, marginTop: 4, display: 'inline-block' }}>{st.text}</span>
-          </div>
-          <button className="cp-btn" onClick={onClose} style={{ fontSize: 13, padding: '4px 10px' }}>✕</button>
-        </div>
-
-        {/* 4 dates */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
-          {[
-            { label: 'Куплен',           val: fmtDate(purchased) },
-            { label: 'Активирован',      val: fmtDate(activated) },
-            { label: 'Предв. окончание', val: fmtDate(preEnd) },
-            { label: endExtra ? `Окончание (до ${fmtDate(endExtra)})` : 'Окончание', val: fmtDate(end) },
-          ].map(({ label, val }) => (
-            <div key={label} style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '8px 12px' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>{label}</div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{val}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Price + seller */}
-        {(plan.price || plan.sold_by) && (
-          <div style={{ display: 'flex', gap: 16, marginBottom: 14, fontSize: 13 }}>
-            {plan.price != null && <div><span style={{ color: 'var(--text-2)' }}>Цена: </span><b>{plan.price.toLocaleString('ru-RU')} ₸</b></div>}
-            {plan.sold_by && <div><span style={{ color: 'var(--text-2)' }}>Продавец: </span>{plan.sold_by}</div>}
-          </div>
-        )}
-
-        {/* Composition */}
-        {plan.crm_client_plan_items.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Состав:</div>
-            {plan.crm_client_plan_items.map((it, i) => (
-              <div key={i} style={{ fontSize: 13, padding: '3px 0' }}>
-                {!it.device_type_code && it.device_type_codes?.length
-                  ? `${it.device_type_codes.map(c => dtNameMap[c] ?? c).join(' / ')}: ${it.is_unlimited ? '∞' : `${it.sessions_left}/${it.sessions_total}`}`
-                  : it.is_unlimited
-                    ? `${dtNameMap[it.device_type_code ?? ''] ?? it.device_type_code ?? '?'}: без лимита`
-                    : `${dtNameMap[it.device_type_code ?? ''] ?? it.device_type_code ?? '?'}: ${it.sessions_left}/${it.sessions_total}`
-                }
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Freeze history */}
-        {(freezeHistory ?? []).length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>История заморозок:</div>
-            {(freezeHistory ?? []).map((f, i) => (
-              <div key={i} style={{ fontSize: 12, padding: '3px 0', color: 'var(--text-2)' }}>
-                {fmtDate(f.at)} — {f.text} ({f.author})
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Visits by plan */}
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Посещения по абонементу:</div>
-          {planVisits === null && <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Загрузка…</div>}
-          {planVisits?.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Нет посещений</div>}
-          {(planVisits ?? []).map(v => (
-            <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
-              <span>{fmtDate(v.date)}{v.time ? ` · ${v.time}` : ''}{v.label ? ` · ${v.label}` : ''}</span>
-              <span style={{ color: statusColor[v.status] ?? 'var(--text-2)' }}>{statusLabel[v.status] ?? v.status}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Action buttons */}
-        {canEdit && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {plan.status === 'active' && <button className="cp-btn cp-btn--primary" style={{ fontSize: 12 }} onClick={() => { onFreeze(); onClose(); }}>❄ Заморозить</button>}
-            {plan.status === 'frozen' && <button className="cp-btn cp-btn--primary" style={{ fontSize: 12 }} onClick={() => { onUnfreeze(); onClose(); }}>▶ Разморозить</button>}
-            {plan.needs_split && <button className="cp-btn" style={{ fontSize: 12, color: 'var(--warning)' }} onClick={() => { onSplit(); onClose(); }}>⚡ Распределить</button>}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── ClientPopup ────────────────────────────────────────────────────────────────
 
 export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
@@ -1341,7 +1216,9 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                     const freezeDays = (cp.plan?.freeze_days ?? 0) as number;
                     const usedDays = (cp.freeze_days_used ?? 0) as number;
                     return (
-                      <div key={cp.id} style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                      <div key={cp.id} className="cp-plan-row"
+                        style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontSize: 13 }}
+                        onClick={() => setPlanDetailId(cp.id)}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                           <span style={{ fontWeight: 600 }}>{planName}</span>
                           <span className="cp-plan-status" style={{ background: st.bg, color: st.color, flexShrink: 0 }}>{st.text}</span>
@@ -1374,7 +1251,8 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                           <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 2 }}>{formatPlanRestriction(cp)}</div>
                         )}
                         {canEdit && (
-                          <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}
+                            onClick={e => e.stopPropagation()}>
                             {cp.status === 'active' && (
                               <button className="cp-btn" style={{ fontSize: 11 }} onClick={() => setFreezeId(cp.id)}>❄ Заморозить</button>
                             )}
@@ -1743,14 +1621,14 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
         />
       )}
 
-      {/* Plan detail modal */}
+      {/* Plan detail window */}
       {planDetailId && (() => {
         const cp = (plans ?? []).find(p => p.id === planDetailId);
         if (!cp) return null;
         return (
-          <PlanDetailModal
+          <PlanWindow
+            mode="client"
             plan={cp}
-            clientId={clientId}
             dtNameMap={dtNameMap}
             canEdit={canEdit}
             onFreeze={() => setFreezeId(cp.id)}

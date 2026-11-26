@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef, useCallback, useContext, useMemo } from 'react';
+import PlanWindow, { type TPlan } from './PlanWindow';
 import { itemLabel } from '../../utils/planItemLabel';
 import { formatPlanRestriction } from '../../lib/planRestriction';
 import { toast } from '../../lib/toast';
@@ -306,6 +307,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
   const [showArchived, setShowArchived] = useState(false);
   const [err, setErr]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [viewPlan, setViewPlan] = useState<Plan | null>(null);
   const [crossPhase, setCrossPhase] = useState('');
   const [weekdays, setWeekdays] = useState<Set<number>>(new Set([1,2,3,4,5,6,7]));
   const [timeFrom, setTimeFrom] = useState('');
@@ -475,7 +477,9 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
         {visible.map(p => {
           const compStr = (p.items || []).map(it => itemLabel(it, dtNameMap)).join(' · ');
           return (
-            <div key={p.id} style={{ ...S.row, opacity: p.is_active ? 1 : 0.6, flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div key={p.id} className="cp-plan-row"
+              style={{ ...S.row, opacity: p.is_active ? 1 : 0.6, flexDirection: 'column', alignItems: 'flex-start' }}
+              onClick={() => setViewPlan(p)}>
               <div style={{ display: 'flex', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                 <div>
                   <span style={{ fontWeight: 600 }}>{p.name}</span>
@@ -483,7 +487,7 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
                   {p.is_promo  && <span style={{ ...S.badge, background: 'var(--warning-soft)', color: 'var(--warning)' }}>Акция</span>}
                   <span style={S.meta}>{fmtPrice(p.price)}{p.validity_days ? ` · ${p.validity_days} дн` : ''}</span>
                 </div>
-                <div style={S.rowActions}>
+                <div style={S.rowActions} onClick={e => e.stopPropagation()}>
                   {!p.is_system && <button style={S.editBtn} onClick={() => openEdit(p)}>✎</button>}
                   {!p.is_system && (
                     <button style={S.editBtn} onClick={() => doArchive(p)}>
@@ -504,6 +508,17 @@ function PlansSection({ kind }: { kind: 'abonement' | 'service' }) {
         })}
         {!visible.length && <div style={S.empty}>Нет записей</div>}
       </div>
+
+      {viewPlan && (
+        <PlanWindow
+          mode="template"
+          plan={viewPlan as TPlan}
+          dtNameMap={dtNameMap}
+          canEdit={!viewPlan.is_system}
+          onEdit={() => { setViewPlan(null); openEdit(viewPlan); }}
+          onClose={() => setViewPlan(null)}
+        />
+      )}
 
       {editPlan && (
         <Modal

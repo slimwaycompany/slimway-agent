@@ -7,10 +7,12 @@ interface ModalProps {
   /** Buttons pinned to bottom. On mobile: pinned inside sheet. */
   actions?: React.ReactNode;
   wide?: boolean;
+  size?: 'wide' | 'xl';
 }
 
 /** On desktop: centered overlay. On phone (≤640px): bottom sheet. */
-export default function Modal({ title, onClose, children, actions, wide }: ModalProps) {
+export default function Modal({ title, onClose, children, actions, wide, size }: ModalProps) {
+  const sizeClass = size === 'xl' ? ' ui-modal-sheet--xl' : (size === 'wide' || wide) ? ' ui-modal-sheet--wide' : '';
   return (
     <Dialog.Root open onOpenChange={open => { if (!open) onClose(); }}>
       <Dialog.Portal>
@@ -19,7 +21,7 @@ export default function Modal({ title, onClose, children, actions, wide }: Modal
           onClick={e => { if (e.target === e.currentTarget) onClose(); }}
         >
           <Dialog.Content
-            className={`ui-modal-sheet${wide ? ' ui-modal-sheet--wide' : ''}`}
+            className={`ui-modal-sheet${sizeClass}`}
             onInteractOutside={e => e.preventDefault()}
           >
             <div className="ui-modal-header">

@@ -2297,6 +2297,115 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // ── Plan detail (sale + visits merged + freeze history) ───────────────────────
+
+  r.get('/kviz/api/crm/client-plans/:id/detail', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const planId = req.params.id;
+
+      const { data: cp } = await supabase.from('crm_client_plans')
+        .select('id,client_id,sale_id,fitbase_contract_id').eq('id', planId).single();
+      if (!cp) { res.status(404).json({ error: 'Абонемент не найден' }); return; }
+
+      const cpR = cp as Record<string,unknown>;
+      const saleId = cpR.sale_id as string | null;
+      const contractId = cpR.fitbase_contract_id as number | null;
+      const clientId = cpR.client_id as string;
+
+      const [saleRes, itemsCntRes, paysRes, bookingsRes, historyRes, auditRes] = await Promise.all([
+        saleId
+          ? supabase.from('crm_sales').select('number,total,cashier,created_at').eq('id', saleId).single()
+          : Promise.resolve({ data: null }),
+        saleId
+          ? supabase.from('crm_sale_items').select('id', { count: 'exact', head: true }).eq('sale_id', saleId)
+          : Promise.resolve({ count: 0, data: null }),
+        saleId
+          ? supabase.from('crm_sale_payments').select('amount,payment_method_id').eq('sale_id', saleId)
+          : Promise.resolve({ data: [] }),
+        supabase.from('crm_bookings')
+          .select('id,booking_date,starts_at,status,device_type_code')
+          .eq('client_plan_id', planId)
+          .in('status', ['attended', 'no_show', 'cancelled', 'late_cancel'])
+          .order('booking_date', { ascending: false }).order('starts_at', { ascending: false })
+          .limit(300),
+        contractId
+          ? supabase.from('crm_visit_history')
+              .select('id,visit_at,status,training_name')
+              .eq('fitbase_contract_id', contractId)
+              .order('visit_at', { ascending: false }).limit(300)
+          : Promise.resolve({ data: [] }),
+        supabase.from('crm_audit_log')
+          .select('id,action,actor,created_at')
+          .eq('entity_type', 'client_plan').eq('entity_id', planId)
+          .order('created_at', { ascending: false }).limit(100),
+      ]);
+
+      // Build sale object
+      let sale = null;
+      if (saleRes.data) {
+        const s = saleRes.data as Record<string,unknown>;
+        const pays = (paysRes.data ?? []) as Record<string,unknown>[];
+        const pmIds = [...new Set(pays.map(p => p.payment_method_id as string).filter(Boolean))];
+        let pmMap = new Map<string,{name:string,kind:string}>();
+        if (pmIds.length) {
+          const { data: pmRows } = await supabase.from('crm_payment_methods').select('id,name,kind').in('id', pmIds);
+          for (const pm of pmRows ?? []) {
+            const m = pm as Record<string,unknown>;
+            pmMap.set(m.id as string, { name: m.name as string, kind: m.kind as string });
+          }
+        }
+        sale = {
+          number: s.number, created_at: s.created_at, cashier: s.cashier, total: s.total,
+          items_count: (itemsCntRes as Record<string,unknown>).count ?? 0,
+          payments: pays.map(p => {
+            const pm = pmMap.get(p.payment_method_id as string);
+            return { amount: p.amount, name: pm?.name ?? '', kind: pm?.kind ?? '' };
+          }),
+        };
+      }
+
+      // Merge visits
+      const bkRows = ((bookingsRes.data ?? []) as Record<string,unknown>[]).map(b => ({
+        id: `b:${b.id}`, date: b.booking_date as string,
+        time: b.starts_at ? (b.starts_at as string).slice(11, 16) : null,
+        status: b.status as string, device: b.device_type_code as string | null, source: 'crm' as const,
+      }));
+      const vhRows = ((historyRes.data ?? []) as Record<string,unknown>[]).map(h => {
+        const vAt = h.visit_at as string;
+        return {
+          id: `h:${h.id}`, date: vAt ? vAt.slice(0, 10) : null,
+          time: vAt ? vAt.slice(11, 16) : null,
+          status: h.status as string, device: h.training_name as string | null, source: 'fitbase' as const,
+        };
+      });
+      const visits = [...bkRows, ...vhRows].sort((a, b) =>
+        `${b.date ?? ''}${b.time ?? ''}`.localeCompare(`${a.date ?? ''}${a.time ?? ''}`)
+      );
+
+      // Freeze history
+      const freezeEntries = ((auditRes.data ?? []) as Record<string,unknown>[])
+        .filter(a => typeof a.action === 'string' && ((a.action as string).startsWith('freeze:') || a.action === 'unfreeze'));
+      const freezes = await Promise.all(freezeEntries.map(async a => {
+        const action = a.action as string;
+        const ts = new Date(a.created_at as string);
+        let reason = '';
+        if (action !== 'unfreeze') {
+          const { data: cmts } = await supabase.from('crm_client_comments')
+            .select('text').eq('client_id', clientId).eq('kind', 'freeze')
+            .gte('created_at', new Date(ts.getTime() - 120000).toISOString())
+            .lte('created_at', new Date(ts.getTime() + 120000).toISOString()).limit(1);
+          reason = ((cmts as Record<string,unknown>[])?.[0]?.text as string) ?? '';
+        }
+        const dm = action.match(/^freeze:(\d+)d$/);
+        return { at: a.created_at, kind: action === 'unfreeze' ? 'unfreeze' : 'freeze', days: dm ? Number(dm[1]) : null, reason, author: a.actor };
+      }));
+
+      const attended = visits.filter(v => v.status === 'attended').length;
+      res.json({ sale, visits, freezes, counts: { attended, no_show: visits.filter(v => v.status === 'no_show').length, total: visits.length } });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // ── Visits by plan ────────────────────────────────────────────────────────────
 
   r.get('/kviz/api/crm/client-plans/:id/visits', async (req, res) => {
