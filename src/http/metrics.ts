@@ -1039,8 +1039,6 @@ export function buildMetricsRouter(): Router {
       const wdElapsed    = workingDays.filter(d => d <= dateStr).length;
       const wdRemaining  = workingDays.filter(d => d > dateStr).length;
 
-      const clm = await buildClientLeadMap();
-
       const allOps = await fetchAll((off, lim) =>
         supabase.from('fitbase_operations')
           .select('fitbase_id,op_type,amount,manager,cashier,item,raw,client_name,op_date')
@@ -1075,14 +1073,42 @@ export function buildMetricsRouter(): Router {
       const cleanRef  = pfRefOrd.filter(o => !isTst(o));
       const cls = (o: OrderRow) => classifyPurchase(o, cbc);
 
+      // Build itemToOriginal for attributing refunds to the original seller
+      const itemToOriginal = new Map<number, { cashier: string }>();
+      for (const o of cleanSale) {
+        if (o.itemId != null && o.cashier) itemToOriginal.set(o.itemId, { cashier: o.cashier });
+      }
+      const refMissingIds = [...new Set(
+        cleanRef.map(o => o.itemId).filter((x): x is number => x != null && !itemToOriginal.has(x))
+      )];
+      if (refMissingIds.length > 0) {
+        const twoYearsAgo = `${year - 2}-${String(monthNum).padStart(2, '0')}-01`;
+        const histOps = await fetchAll((off, lim) =>
+          supabase.from('fitbase_operations')
+            .select('fitbase_id,cashier,raw,op_date')
+            .neq('op_type', 'refund').gt('amount', 0)
+            .gte('op_date', twoYearsAgo).lt('op_date', monthStart)
+            .range(off, off + lim - 1)
+        );
+        for (const o of groupOrders(histOps)) {
+          if (o.itemId != null && o.cashier && !itemToOriginal.has(o.itemId)) {
+            itemToOriginal.set(o.itemId, { cashier: o.cashier });
+          }
+        }
+      }
+      const origCashierForRefund = (o: OrderRow): string => {
+        const orig = o.itemId != null ? itemToOriginal.get(o.itemId) : null;
+        return orig?.cashier ?? o.cashier ?? '';
+      };
+
       const hidden = new Set<string>();
       for (const [name, info] of finStaffMap.entries()) { if (info.hidden) hidden.add(name); }
 
       const deptStep = monthPlan > 0 ? monthPlan / TOTAL_STEPS : 0;
 
-      function computeFact(filterFn: (o: OrderRow) => boolean) {
-        const ms = cleanSale.filter(filterFn);
-        const mr = cleanRef.filter(filterFn);
+      function computeFact(seller: string | null = null) {
+        const ms = seller !== null ? cleanSale.filter(o => o.cashier === seller) : cleanSale;
+        const mr = seller !== null ? cleanRef.filter(o => origCashierForRefund(o) === seller) : cleanRef;
         const mn = ms.filter(o => cls(o) === 'new');
         const mk = ms.filter(o => cls(o) === 'renewal');
         const sa = ms.reduce((s, o) => s + o.amount, 0);
@@ -1114,19 +1140,27 @@ export function buildMetricsRouter(): Router {
         return { plan, step_plan: stepPlan, plan_on_date: pod, fact: f.fact, new_amount: f.newAmt, renewal_amount: f.renewAmt, new_count: f.newCnt, renewal_count: f.renewCnt, pct_of_step: pct, deviation: dev, pct_of_month: pom, forecast: fct, forecast_pct: fcp, needed_per_day: npd, status: st, steps: f.stepFacts, steps_running: sr };
       }
 
-      const allMgrSet = new Set<string>();
-      for (const o of cleanSale) allMgrSet.add(clMgr(o.cid, clm));
+      // Collect sellers from sales and refund attribution
+      const salesSellerSet = new Set<string>();
+      for (const o of cleanSale) if (o.cashier) salesSellerSet.add(o.cashier);
+      for (const o of cleanRef) { const c = origCashierForRefund(o); if (c) salesSellerSet.add(c); }
 
-      const managers = [...allMgrSet]
-        .filter(m => !hidden.has(m) && m !== '(без менеджера)')
-        .map(mgr => {
-          const pp = sellerPlans.get(mgr) ?? 0;
+      // Add sellers with plan but no sales this month (not hidden)
+      const allSellerSet = new Set<string>(salesSellerSet);
+      for (const seller of sellerPlans.keys()) if (!hidden.has(seller)) allSellerSet.add(seller);
+
+      const sellers = [...allSellerSet]
+        .filter(s => !hidden.has(s))
+        .map(seller => {
+          const pp = sellerPlans.get(seller) ?? 0;
           const sp = pp > 0 ? pp / TOTAL_STEPS : 0;
-          return { name: mgr, ...buildRow(pp, sp, computeFact(o => clMgr(o.cid, clm) === mgr)) };
+          const info = finStaffMap.get(seller);
+          const display_name = info?.display_name ?? seller;
+          return { name: seller, display_name, ...buildRow(pp, sp, computeFact(seller)) };
         })
         .sort((a, b) => b.fact - a.fact);
 
-      const deptRow = buildRow(monthPlan, deptStep, computeFact(() => true));
+      const deptRow = buildRow(monthPlan, deptStep, computeFact(null));
 
       const spVals = [...sellerPlans.values()].filter(v => v > 0);
       const personalStepPlan = spVals.length > 0 ? spVals.reduce((a,b)=>a+b,0) / spVals.length / TOTAL_STEPS : 0;
@@ -1135,7 +1169,8 @@ export function buildMetricsRouter(): Router {
         date: dateStr, month: monthStr, steps_done: stepsDone, total_steps: TOTAL_STEPS, step_days: STEP_DAYS,
         month_plan: monthPlan, dept_step_plan: deptStep, personal_step_plan: personalStepPlan,
         working_days_month: workingDays.length, working_days_elapsed: wdElapsed, working_days_remaining: wdRemaining,
-        managers, dept: deptRow, has_hidden_sellers: [...allMgrSet].some(m => hidden.has(m)),
+        sellers, dept: deptRow,
+        has_hidden_sellers: [...salesSellerSet].some(s => hidden.has(s)) || cleanSale.some(o => !o.cashier),
         seller_plans: Object.fromEntries(sellerPlans),
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }

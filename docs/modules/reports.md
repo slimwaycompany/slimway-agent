@@ -40,6 +40,8 @@
 - Отчёт по замерам и по InBody ведут на одну страницу результатов клиента внутри «Отчётов» (фигура слева).
 - Боковая панель — слева (переехала с правой стороны).
 
+- **План-факт (срез) — строки по продавцу = кассир Fitbase (created_by_user), возврат — у продавца исходной продажи.** Ключ для плана = `fitbase_operations.cashier`; `display_name` из `fin_staff.fitbase_name`; продажи без кассира — только в ОТДЕЛ.
+
 ### Структура `/lead` и `/finance-operation`
 - `/lead`: `id`, `name`, `surname`, `phone`, `client_id` (Fitbase client id, null для новых), `manager.full_name` (менеджер лида), `advertising_source.name` (источник), `funnel_step.*`, `created_at` (unix-строка)
 - `/finance-operation` (через `/till-order-steps`): `id`, `order_id` (все строки одного заказа — один order_id), `item_id` (id абонемента клиента для item_type='contract'), `item_type`, `item.name`, `amount` (отрицательный у возврата), `manager.full_name`, `created_by_user.full_name` (кассир), `client.id`, `payment_type`
@@ -93,6 +95,11 @@
 - Фильтры с `flexWrap:'wrap'` — переносятся на мобиле.
 
 ## Сделано
+### 26.11.2026 · task 107 · План-факт (срез) по продавцу вместо менеджера лида
+
+- `src/http/metrics.ts` `GET /kviz/api/metrics/plan-fact`: убран вызов `buildClientLeadMap()`; строка среза = `o.cashier` (кассир Fitbase); возврат атрибутируется продавцу исходной продажи через `itemToOriginal` (сначала из cleanSale текущего месяца, при отсутствии — dogрузка исторических ops за 2 года без текущего месяца); продавец без cashier — только в ОТДЕЛ; скрытые — только в ОТДЕЛ; продавцы с планом без продаж — строка с факт 0; `display_name` из `getStaffMap()` в каждой строке; ответ переименован `managers` → `sellers`; `has_hidden_sellers` = скрытые среди активных OR продажи без кассира.
+- `kviz/client/src/pages/reports/ReportsPage.tsx`: `PlanFactMgr` → `PlanFactSeller` (добавлено поле `display_name`); `PlanFactData.managers` → `sellers`; заголовки таблиц «Менеджер» → «Продавец»; подпись «на менеджера» → «на продавца»; сноска обновлена; ячейки имён показывают `display_name`.
+
 ### 25.11.2026 · task 98 · Пик пробных (отчёт Маркетинг)
 
 - `src/http/metrics.ts`: `GET /kviz/api/metrics/trial-peak` — загружает `fitbase_visits` (is_trial=true), расширяет диапазон +30 дней для когортной метрики, фильтрует по source/manager через `buildClientLeadMap`. Группировка `day/week/month` (неделя = чт–ср как в ТБУ). Метрики: `booked` (записали по дню записи), `scheduled` (стоят в расписании), `pr_by_visit` / `pr_by_booked` (пришли). Ответ: `periods[]`, `by_hour[]` (18 ключей UTC+5), `heatmap[]` (день × час), `peaks`, `availableSources`, `availableManagers`.

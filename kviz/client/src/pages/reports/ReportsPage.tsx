@@ -1534,9 +1534,9 @@ function useSyncButton() {
 interface FdSrcRow { source: string; leads: number; in_work: number; alive_count: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number }
 interface FdMgrRow { manager: string; leads: number; in_work: number; alive_count: number; trial_booked: number; visited: number; trial_sold_count: number; sales_count: number; new_count: number; renewal_count: number; sales_amount: number; new_amount: number; renewal_amount: number; refund_amount: number; net_amount: number; lead_to_buy_pct: number; items?: DrillItem[] }
 interface FdCshRow { cashier: string; sales_count: number; sales_amount: number; refund_amount: number; net_amount: number; new_count: number; renewal_count: number; new_amount: number; renewal_amount: number }
-interface PlanFactMgr { name: string; personal_plan: number; step_plan: number; plan_on_date: number; fact: number; new_amount: number; renewal_amount: number; new_count: number; renewal_count: number; pct_of_step: number; deviation: number; pct_of_month: number; forecast: number; forecast_pct: number; needed_per_day: number; status: string; steps: (number|null)[]; steps_running: (number|null)[] }
+interface PlanFactSeller { name: string; display_name: string; personal_plan: number; step_plan: number; plan_on_date: number; fact: number; new_amount: number; renewal_amount: number; new_count: number; renewal_count: number; pct_of_step: number; deviation: number; pct_of_month: number; forecast: number; forecast_pct: number; needed_per_day: number; status: string; steps: (number|null)[]; steps_running: (number|null)[] }
 interface PlanFactDept { plan: number; step_plan: number; plan_on_date: number; fact: number; new_amount: number; renewal_amount: number; new_count: number; renewal_count: number; pct_of_step: number; deviation: number; pct_of_month: number; forecast: number; forecast_pct: number; needed_per_day: number; status: string; steps: (number|null)[]; steps_running: (number|null)[] }
-interface PlanFactData { date: string; month: string; steps_done: number; total_steps: number; step_days: number; month_plan: number; dept_step_plan: number; personal_step_plan: number; working_days_month: number; working_days_elapsed: number; working_days_remaining: number; managers: PlanFactMgr[]; dept: PlanFactDept; has_hidden_sellers: boolean; seller_plans: Record<string,number> }
+interface PlanFactData { date: string; month: string; steps_done: number; total_steps: number; step_days: number; month_plan: number; dept_step_plan: number; personal_step_plan: number; working_days_month: number; working_days_elapsed: number; working_days_remaining: number; sellers: PlanFactSeller[]; dept: PlanFactDept; has_hidden_sellers: boolean; seller_plans: Record<string,number> }
 
 const FD_STEP_ORDER = ['leads','in_work','trial_booked','visited','sales','renewals'] as const;
 const FD_LABELS: Record<string, string> = {
@@ -4390,7 +4390,7 @@ function pfRunStyle(v: number|null): React.CSSProperties {
   return { color: v >= 0 ? '#1E7B34' : '#C00000', fontSize: 10 };
 }
 
-function pfRecomputeMgr(m: PlanFactMgr, steps: (number|null)[], d: PlanFactData): PlanFactMgr {
+function pfRecomputeMgr(m: PlanFactSeller, steps: (number|null)[], d: PlanFactData): PlanFactSeller {
   const fact = steps.reduce<number>((s,v)=>s+(v??0),0);
   const pod  = m.plan_on_date;
   const pct  = pod>0?Math.round(100*fact/pod):(fact>0?100:0);
@@ -4404,7 +4404,7 @@ function pfRecomputeMgr(m: PlanFactMgr, steps: (number|null)[], d: PlanFactData)
   return {...m,fact,pct_of_step:pct,deviation:fact-pod,pct_of_month:pom,forecast:fct,forecast_pct:fcp,needed_per_day:npd,status:st,steps,steps_running:sr};
 }
 
-function pfRecomputeDept(pvMgrs: PlanFactMgr[], sysMgrs: PlanFactMgr[], d: PlanFactData): PlanFactDept {
+function pfRecomputeDept(pvMgrs: PlanFactSeller[], sysMgrs: PlanFactSeller[], d: PlanFactData): PlanFactDept {
   const dept = d.dept;
   const steps:(number|null)[] = dept.steps.map((dSys,i)=>{
     let delta=0;
@@ -4451,21 +4451,21 @@ function PlanFactSection() {
   function enterPreview() {
     if (!data) return;
     const steps: Record<string,(number|null)[]> = {};
-    for (const m of data.managers) steps[m.name] = [...m.steps];
+    for (const m of data.sellers) steps[m.name] = [...m.steps];
     setPvSteps(steps);
     setPreview(true);
   }
 
-  const activeMgrs = useMemo<PlanFactMgr[]>(()=>{
+  const activeMgrs = useMemo<PlanFactSeller[]>(()=>{
     if(!data) return [];
-    if(!preview) return data.managers;
-    return data.managers.map(m => pfRecomputeMgr(m, pvSteps[m.name]??m.steps, data));
+    if(!preview) return data.sellers;
+    return data.sellers.map(m => pfRecomputeMgr(m, pvSteps[m.name]??m.steps, data));
   },[data,preview,pvSteps]);
 
   const activeDept = useMemo<PlanFactDept|null>(()=>{
     if(!data) return null;
     if(!preview) return data.dept;
-    return pfRecomputeDept(activeMgrs, data.managers, data);
+    return pfRecomputeDept(activeMgrs, data.sellers, data);
   },[data,preview,activeMgrs]);
 
   const fmt  = (n:number) => Math.round(n).toLocaleString('ru');
@@ -4503,7 +4503,7 @@ function PlanFactSection() {
           style={{padding:'5px 12px',background:preview?'var(--warning)':'var(--surface-2)',color:preview?'#6B4F1D':'var(--text)',border:'1px solid var(--border)',borderRadius:8,fontWeight:600,fontSize:12,cursor:'pointer'}}>
           {preview ? '✕ Выйти из превью' : '🔍 Превью'}
         </button>
-        {preview && <button onClick={()=>{const s:Record<string,(number|null)[]>={};data?.managers.forEach(m=>{s[m.name]=[...m.steps];});setPvSteps(s);}}
+        {preview && <button onClick={()=>{const s:Record<string,(number|null)[]>={};data?.sellers.forEach(m=>{s[m.name]=[...m.steps];});setPvSteps(s);}}
           style={{padding:'5px 12px',background:'var(--surface-2)',color:'var(--text-2)',border:'1px solid var(--border)',borderRadius:8,fontSize:12,cursor:'pointer'}}>
           ↺ Сбросить к системе
         </button>}
@@ -4523,9 +4523,9 @@ function PlanFactSection() {
           <div style={{marginBottom:4}}>
             <div style={{fontWeight:800,fontSize:16,letterSpacing:1,color:'var(--text)'}}>ПЛАН-ФАКТ ПРОДАЖ — {monthLabel}</div>
             <div style={{fontSize:11,color:'var(--text-2)',marginTop:3}}>
-              Срез на {dateLabel} ({data.steps_done} шагов из {data.total_steps} пройдено) · общий план {fmtT(data.month_plan)} · шаг {data.step_days} дня = {fmtT(data.personal_step_plan)} на менеджера
+              Срез на {dateLabel} ({data.steps_done} шагов из {data.total_steps} пройдено) · общий план {fmtT(data.month_plan)} · шаг {data.step_days} дня = {fmtT(data.personal_step_plan)} на продавца
             </div>
-            {data.has_hidden_sellers && <div style={{fontSize:11,color:'#6B4F1D',marginTop:2}}>* сумма строк менеджеров может не совпадать с ОТДЕЛОМ (есть скрытые продавцы)</div>}
+            {data.has_hidden_sellers && <div style={{fontSize:11,color:'#6B4F1D',marginTop:2}}>* сумма строк продавцов может не совпадать с ОТДЕЛОМ (есть скрытые продавцы или продажи без продавца)</div>}
           </div>
 
           {/* Table 1: who is on plan */}
@@ -4534,15 +4534,15 @@ function PlanFactSection() {
             <table style={{borderCollapse:'collapse',fontSize:12,minWidth:700}}>
               <thead>
                 <tr>
-                  {['Менеджер','План на дату','Факт на дату','К шагу %','Отставание','От месяца %','Прогноз','Нужно/день','Статус'].map(h=>(
-                    <th key={h} style={h==='Менеджер'?TH0:TH}>{h}</th>
+                  {['Продавец','План на дату','Факт на дату','К шагу %','Отставание','От месяца %','Прогноз','Нужно/день','Статус'].map(h=>(
+                    <th key={h} style={h==='Продавец'?TH0:TH}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {activeMgrs.map((m,ri)=>(
                   <tr key={m.name} style={{background:ri%2===1?'var(--surface-2)':''}}>
-                    <td style={TD0}>{m.name}</td>
+                    <td style={TD0}>{m.display_name || m.name}</td>
                     <td style={TD}>{fmtT(m.plan_on_date)}</td>
                     <td style={TD}>
                       {preview
@@ -4579,7 +4579,7 @@ function PlanFactSection() {
             <table style={{borderCollapse:'collapse',fontSize:11,minWidth:860}}>
               <thead>
                 <tr>
-                  <th style={{...TH0,fontSize:10}}>Менеджер</th>
+                  <th style={{...TH0,fontSize:10}}>Продавец</th>
                   {PF_STEP_HDRS.map(h=><th key={h} style={{...TH,fontSize:10}}>{h}</th>)}
                   <th style={{...TH,fontSize:10}}>Итого</th>
                 </tr>
@@ -4598,7 +4598,7 @@ function PlanFactSection() {
                 {activeMgrs.map(m=>(
                   <Fragment key={m.name}>
                     <tr>
-                      <td style={TD0}>{m.name}</td>
+                      <td style={TD0}>{m.display_name || m.name}</td>
                       {m.steps.map((sf,i)=>(
                         <td key={i} style={{...TD,...pfStepStyle(sf, m.step_plan)}}>
                           {preview && sf !== null
