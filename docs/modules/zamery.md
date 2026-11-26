@@ -43,6 +43,10 @@
 - **Не сделано в задаче 34**: InBodyDialog full-screen на мобиле; bottom-sheet панель зоны в ClientPage — отложено.
 
 ## Сделано
+### 26.11.2026 · task 108Б · Интервал замеров из настроек метки
+- **`kviz/client/src/pages/crm/SettingsPage.tsx`** (`LabelsSection`): блок «Интервал замеров» — два числовых input (InBody и тело), сохраняются через `PATCH /crm/client-auto-labels/measure_inbody` и `.../measure_body` с `{ params: { days: N } }`.
+- **`kviz/client/src/pages/crm/ClientsPage.tsx`**: `timerLabel(lastIso, intervalDays=7)` — принимает интервал; при загрузке `ClientPopup` фетч `client-auto-labels` → `setInbodyInterval` / `setBodyInterval`; таймеры InBody и замеров используют свои интервалы.
+
 ### 25.11.2026 · task 95 · QR — висцеральный жир из позиции 150, префикс IBData
 
 - **kviz/client/src/utils/inbody.ts**: `vfl` теперь из `data.slice(150, 154)` (4 цифры сразу после норм ВИР, bc-смещение 127); формула `Math.floor(parseInt / 100)` — деление на 100, округление вниз; в `selfCheck` добавлена проверка `vfl=4` для SAMPLE ("фон 8 на листе" = верхняя граница нормы, не само значение).

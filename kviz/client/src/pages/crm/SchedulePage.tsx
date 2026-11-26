@@ -494,11 +494,11 @@ function BookingFormPanel({
 // ── BookingDetailModal ────────────────────────────────────────────────────────
 
 function BookingDetailModal({
-  booking, allBookings, canBook, canAttend, isAdmin,
+  booking, allBookings, canBook, canAttend, canRescheduleFuture, isAdmin,
   onClose, onDone, onRefresh, onClientPopup,
 }: {
   booking: BookingData; allBookings: BookingData[];
-  canBook: boolean; canAttend: boolean; isAdmin: boolean;
+  canBook: boolean; canAttend: boolean; canRescheduleFuture: boolean; isAdmin: boolean;
   onClose: () => void; onDone: (changed: boolean) => void; onRefresh: () => void;
   onClientPopup: () => void;
 }) {
@@ -626,7 +626,8 @@ function BookingDetailModal({
               <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <div>
                   <label style={SS.lbl}>Дата</label>
-                  <input type="date" style={SS.inp} value={moveDate} onChange={e => setMoveDate(e.target.value)} />
+                  <input type="date" style={SS.inp} value={moveDate} onChange={e => setMoveDate(e.target.value)}
+                    {...(!canRescheduleFuture ? { min: todayISO(), max: todayISO() } : {})} />
                 </div>
                 <div>
                   <label style={SS.lbl}>Время</label>
@@ -635,6 +636,7 @@ function BookingDetailModal({
                 <button style={{ ...SS.smallBtn, background: 'var(--primary)', color: '#fff' }} disabled={busy === 'move'} onClick={doMove}>
                   {busy === 'move' ? '…' : 'Перенести'}
                 </button>
+                {!canRescheduleFuture && <span style={{ fontSize: 11, color: 'var(--text-3)', alignSelf: 'center' }}>Перенос только на сегодня</span>}
               </div>
             )}
           </div>
@@ -858,9 +860,10 @@ function NotesPanel({ date, panelRef, onCountChange }: {
 export default function SchedulePage() {
   const { display_name, role } = useContext(PermContext);
   const navigate    = useNavigate();
-  const canBook     = usePerm('schedule.book', 'edit');
-  const canAttend   = usePerm('schedule.attend', 'edit');
-  const isAdmin     = role === 'admin';
+  const canBook              = usePerm('schedule.book', 'edit');
+  const canAttend            = usePerm('schedule.attend', 'edit');
+  const canRescheduleFuture  = usePerm('schedule.reschedule_future', 'edit');
+  const isAdmin              = role === 'admin';
 
   const [date, setDate]           = useState(todayISO);
   const [dayData, setDayData]     = useState<DayData | null>(null);
@@ -1319,7 +1322,7 @@ export default function SchedulePage() {
       )}
       {detail && dayData && (
         <BookingDetailModal booking={detail} allBookings={dayData.bookings}
-          canBook={canBook} canAttend={canAttend} isAdmin={isAdmin}
+          canBook={canBook} canAttend={canAttend} canRescheduleFuture={canRescheduleFuture} isAdmin={isAdmin}
           onClose={() => setDetail(null)}
           onDone={(ch) => { if (ch) loadDay(date); setDetail(null); }}
           onRefresh={() => loadDay(date)}

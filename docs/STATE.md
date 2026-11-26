@@ -7,18 +7,18 @@
 | Модуль | Файл | Чат в claude.ai | Статус | Обновлено | Последнее изменение |
 |---|---|---|---|---|---|
 | Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 71: меню кружка (#top-bar z-index:10), stopPropagation в ua-menu, window.blur close, logout All-paths cookie |
-| Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 25.11.2026 | task 96: права kassa.closings + settings.kassa_passwords, раздел «Пароли кассы» в Настройках |
+| Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 26.11.2026 | task 108Б: права settings.client_tags + schedule.reschedule_future, пресеты обновлены |
 | Агент воронки Fitbase | `modules/agent.md` | Агент и овчарка | 🟢 | 12.11.2026 | task 48: syncVisits date_to fix (Fitbase требует date_to для /schedule-registration) |
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 72: sw.js не перехватывает navigate-запросы — FetchEvent network error исправлен |
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟢 | 25.11.2026 | task 96: убрана кнопка «Закрытие смены» — перенесена в Кассу |
 | Квалификация (звонки) | `modules/kviz.md` | Менеджер и квалификация | ⚪ | 21.11.2026 | task 80: вкладка скрыта (KVIZ_TAB_VISIBLE=false), логика qualify перенесена в этапы CRM |
-| Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 25.11.2026 | task 95: VFL из позиции 150 (÷100, floor), prefix IBData= strip |
+| Замеры и InBody | `modules/zamery.md` | Замеры | 🟢 | 26.11.2026 | task 108Б: интервал замеров из params.days метки, timerLabel(intervalDays) в карточке клиента |
 | Отчёты | `modules/reports.md` | Отчёты | 🟢 | 26.11.2026 | task 107: план-факт (срез) по продавцу = кассир Fitbase, возврат у продавца исходной продажи |
 | ТВ (результаты студии) | `modules/tv.md` | ТВ | 🟢 | 17.11.2026 | task 64: живой фон (blob-анимация), тени/стекло/покачивание, переходы слайдов, точки, прогресс, блик, вспышка, эффекты в редакторе |
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
-| CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 25.11.2026 | task 97: новый макет карточки, PlanDetailModal, лента «Действия», цены абонементов, право clients.log |
+| CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 26.11.2026 | task 108Б: раздел «Метки» (LabelsSection), метка payment_needed, интервалы замеров, вкладка «Записи» в карточке клиента |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟢 | 26.11.2026 | task 108A: печать закрытия смены — Excel-шаблон один в один (closingDocHtml → TEMPLATE + placeholders, branch info в closing_doc) |
-| CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 25.11.2026 | task 95: поиск клиента и фильтр по меткам в расписании, особые дни филиала |
+| CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 26.11.2026 | task 108Б: schedule.reschedule_future — серверная проверка + date input min/max=today |
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟡 | 21.11.2026 | task 81: единый формат вариантов id/label, none_option, not_none, checklist без потерь, sw.js |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | Агрегатор мессенджеров | `modules/aggregator.md` | Агрегатор мессенджеров | ⚪ | 24.11.2026 | модуль заведён: сравнение Wazzup24, Green-API, ChatPlace, SendPulse, Umnico; вопросы Сергею |

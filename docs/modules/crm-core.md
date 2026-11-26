@@ -56,6 +56,13 @@
 - **Дубли аппаратов в составе (task 90, 24.11):** один аппарат не может повторяться ни внутри пула, ни между пулом и обычной строкой. Проверяется и на клиенте (`savePlan`, `SplitDialog`), и на сервере (`validateItems`, `/split`).
 
 ## Сделано
+### 26.11.2026 · task 108Б · Раздел «Метки», метка «Нужна оплата», интервалы замеров, вкладка «Записи»
+- **`src/core/permissions.ts`**: добавлен `settings.client_tags` (Метки) + `schedule.reschedule_future` (Переносить на другой день) в `PERM_CATALOG`; добавлены в пресеты `branch_manager` и `company_manager`.
+- **`src/core/clientAutoLabels.ts`**: метка `payment_needed` — клиент с бронью сегодня/будущее без `client_plan_id` и не `kind='free'`; в `batchAutoLabelsForDay` — проверка самой брони; в `batchAutoLabelsToday` — 5-й запрос `crm_bookings` с `gte(starts_at, today)`.
+- **`src/http/crm.ts`**: `GET /client-auto-labels` и `PATCH /client-auto-labels/:code` — право `settings.client_tags`; PATCH поддерживает `name`/`short_name`; `payment_overdue` заблокирован вместе с `debt`; `POST /schedule/bookings/:id/move` — проверка `schedule.reschedule_future` при переносе на другой день; `GET /crm/clients/:id/bookings?filter=&page=` — список броней клиента (PAGE_SIZE=50), группировка по group_id, план через join.
+- **`kviz/client/src/pages/crm/SettingsPage.tsx`**: раздел «Метки клиентов» → «Метки» (`LabelsSection`): блок «Интервал замеров» (InBody + тело), «Системные метки» (inline редактирование name/short_name, цвет, параметры), «Ручные метки» CRUD; `ClassesSection` — удалён блок «Автометки», добавлена ссылка на «Метки».
+- **`kviz/client/src/pages/crm/ClientsPage.tsx`**: `timerLabel` принимает `intervalDays` (default=7); при загрузке карточки фетч `client-auto-labels` → `inbodyInterval`/`bodyInterval`; вкладка «Записи» в centerTab с фильтрами (Все/Предстоящие/Пришла/Не пришла/Отменена), пагинация 50.
+
 ### 25.11.2026 · task 97 · Карточка клиента: цены абонементов, новый макет, PlanDetailModal, лента «Действия», фикс посещений
 - **`src/core/permissions.ts`**: добавлен ключ `clients.log` (Системный журнал) в блок `clients`.
 - **`src/index.ts`**: функция `runCrmFillPlanPrices` + handler GET/POST `/run/crm-fill-plan-prices?mode=dry|apply` — бэкфилл `price/sale_id/sold_by` для fitbase-планов через `crm_sale_items`.

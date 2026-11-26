@@ -32,9 +32,10 @@ export const PERM_CATALOG: PermBlock[] = [
   {
     key: 'schedule', label: 'Расписание', icon: '📅',
     rows: [
-      { key: 'schedule.main',   label: 'Расписание',              kind: 'row' },
-      { key: 'schedule.book',   label: 'Записывать и переносить', kind: 'action', parent: 'schedule.main' },
-      { key: 'schedule.attend', label: 'Отмечать «Пришёл»',      kind: 'action', parent: 'schedule.main' },
+      { key: 'schedule.main',              label: 'Расписание',                      kind: 'row' },
+      { key: 'schedule.book',              label: 'Записывать и переносить',          kind: 'action', parent: 'schedule.main' },
+      { key: 'schedule.reschedule_future', label: 'Переносить запись на другой день', kind: 'action', parent: 'schedule.main' },
+      { key: 'schedule.attend',            label: 'Отмечать «Пришёл»',               kind: 'action', parent: 'schedule.main' },
     ],
   },
   {
@@ -127,6 +128,7 @@ export const PERM_CATALOG: PermBlock[] = [
       { key: 'settings.lost_reasons', label: 'Причины отказа',      kind: 'row' },
       { key: 'settings.fb_users',     label: 'Сопоставление FB',    kind: 'row' },
       { key: 'settings.scriptolog',   label: 'Скриптолог',          kind: 'row' },
+      { key: 'settings.client_tags',        label: 'Метки',                     kind: 'row' },
       { key: 'settings.kassa_passwords',   label: 'Пароли кассы',              kind: 'row' },
       { key: 'settings.control',          label: 'Контроль менеджеров',       kind: 'row' },
       { key: 'settings.control_schedule', label: 'График смен',               kind: 'row' },
@@ -195,7 +197,7 @@ export const POSITION_PRESETS: Record<string, PresetPerm[]> = {
   ],
   branch_manager: [
     e('manager.tasks', true), e('manager.shift'), e('manager.cash_closing'), e('manager.templates'),
-    e('schedule.main'), e('schedule.book'), e('schedule.attend'),
+    e('schedule.main'), e('schedule.book'), e('schedule.reschedule_future'), e('schedule.attend'),
     e('clients.list'), e('clients.phone'), e('clients.documents'), e('clients.export'),
     e('clients.plans'), e('clients.sales'), e('clients.import'),
     e('funnel.leads', true),
@@ -209,12 +211,12 @@ export const POSITION_PRESETS: Record<string, PresetPerm[]> = {
     v('reports.fact_day'), v('reports.day_rhythm'), v('reports.daily_metrics'),
     e('settings.devices'), e('settings.abonements'), e('settings.services'),
     e('settings.products'), e('settings.promos'), e('settings.classes'), e('settings.branch'),
-    e('settings.kassa_passwords'), e('settings.tv'),
+    e('settings.client_tags'), e('settings.kassa_passwords'), e('settings.tv'),
   ],
   company_manager: [
     v('manager.tasks', true), v('manager.shift'), v('manager.cash_closing'), v('manager.templates'),
     v('agent.window'),
-    v('schedule.main'), v('schedule.book'), v('schedule.attend'),
+    v('schedule.main'), v('schedule.book'), v('schedule.reschedule_future'), v('schedule.attend'),
     v('clients.list'), v('clients.phone'), v('clients.documents'), v('clients.export'),
     v('clients.plans'), v('clients.sales'), v('clients.import'),
     v('funnel.leads', true),
@@ -228,7 +230,7 @@ export const POSITION_PRESETS: Record<string, PresetPerm[]> = {
     e('settings.devices'), e('settings.abonements'), e('settings.services'),
     e('settings.products'), e('settings.suppliers'), e('settings.promos'), e('settings.payments'),
     e('settings.sources'), e('settings.classes'), e('settings.branch'), e('settings.service'), e('settings.finance'),
-    e('settings.funnels'), e('settings.lead_tags'), e('settings.task_types'), e('settings.lost_reasons'),
+    e('settings.client_tags'), e('settings.funnels'), e('settings.lead_tags'), e('settings.task_types'), e('settings.lost_reasons'),
     e('settings.fb_users'), e('settings.scriptolog'), e('settings.control'), e('settings.tv'),
   ],
 };

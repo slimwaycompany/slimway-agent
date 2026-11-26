@@ -15,6 +15,7 @@ export interface BookingInputForLabels {
   id: string; client_id: string; booking_date: string; kind: string;
   client_plan_id: string | null; client_plan_item_id: string | null;
   sessions_left: number | null; starts_at: string; status: string;
+  is_free_booking?: boolean;
 }
 
 type LabelDef = {
@@ -274,6 +275,11 @@ export async function batchAutoLabelsForDay(
       }
     }
 
+    // payment_needed: booking (this or future) has no plan, is not free
+    const dPayNeeded = defs.get('payment_needed');
+    if (dPayNeeded && ['booked', 'confirmed'].includes(b.status) && b.client_plan_id === null && b.kind !== 'free' && !b.is_free_booking)
+      pushLabel(labels, dPayNeeded);
+
     labels.sort((a, z) => a.sort - z.sort);
     result.set(b.id, labels);
   }
@@ -295,7 +301,8 @@ export async function batchAutoLabelsToday(
 
   const now = nowUTC5();
 
-  const [attendedRes, histRes, plansRes, bodyClientsRes] = await Promise.all([
+  const todayIso = now.toISOString().slice(0, 10);
+  const [attendedRes, histRes, plansRes, bodyClientsRes, payNeededRes] = await Promise.all([
     supabase.from('crm_bookings')
       .select('client_id,client_plan_id,starts_at')
       .eq('branch_id', BRANCH_ID).eq('status', 'attended').in('client_id', clientIds),
@@ -306,6 +313,14 @@ export async function batchAutoLabelsToday(
       .in('client_id', clientIds).in('status', ['active', 'not_activated']),
     supabase.from('body_clients').select('id,crm_client_id,phone_digits')
       .in('crm_client_id', clientIds).not('crm_client_id', 'is', null),
+    supabase.from('crm_bookings')
+      .select('client_id')
+      .eq('branch_id', BRANCH_ID)
+      .in('status', ['booked', 'confirmed'])
+      .is('client_plan_id', null)
+      .neq('kind', 'free')
+      .gte('starts_at', todayIso)
+      .in('client_id', clientIds),
   ]);
 
   const visitsByClient = new Map<string, string[]>();
@@ -336,6 +351,10 @@ export async function batchAutoLabelsToday(
     bodyClientIds.push(bc.id as string);
     if (bc.phone_digits) phoneDigitsList.push(bc.phone_digits as string);
   }
+
+  const payNeededSet = new Set<string>(
+    ((payNeededRes.data || []) as Record<string,unknown>[]).map(r => r.client_id as string)
+  );
 
   const clientPlanIds = [...new Set((plansRes.data || []).map((p: Record<string,unknown>) => p.plan_id as string).filter(Boolean))];
 
@@ -467,6 +486,10 @@ export async function batchAutoLabelsToday(
         if (bd.slice(5) === todayMD) pushLabel(labels, dBirthday);
       }
     }
+
+    // payment_needed: has future booking without plan
+    const dPayNeeded = defs.get('payment_needed');
+    if (dPayNeeded && payNeededSet.has(clientId)) pushLabel(labels, dPayNeeded);
 
     labels.sort((a, z) => a.sort - z.sort);
     result.set(clientId, labels);

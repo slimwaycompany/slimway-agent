@@ -193,17 +193,17 @@ function fmtPhone(p: string | null): string {
   return '+' + d;
 }
 
-function timerLabel(lastIso: string | null): { label: string; cls: string; pct: number } | null {
+function timerLabel(lastIso: string | null, intervalDays = 7): { label: string; cls: string; pct: number } | null {
   if (!lastIso) return null;
   // Use date-only comparison in UTC+5 (Asia/Yekaterinburg) to avoid off-by-one from timestamp math
   const lastDateMs = new Date(lastIso.slice(0, 10)).getTime(); // midnight UTC of last date
   const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Yekaterinburg' }); // "YYYY-MM-DD"
   const todayMs = new Date(todayStr).getTime();
   const d = Math.round((todayMs - lastDateMs) / 86400000);
-  const nextDate = new Date(lastDateMs + 7 * 86400000);
+  const nextDate = new Date(lastDateMs + intervalDays * 86400000);
   const nf = `${String(nextDate.getUTCDate()).padStart(2,'0')}.${String(nextDate.getUTCMonth()+1).padStart(2,'0')}`;
-  const pct = Math.min(Math.round((d / 7) * 100), 100);
-  const nextIn = 7 - d;
+  const pct = Math.min(Math.round((d / intervalDays) * 100), 100);
+  const nextIn = intervalDays - d;
   if (nextIn > 2) return { label: `Следующий через ${nextIn} дн. (${nf})`, cls: 'cp-timer--ok', pct };
   if (nextIn > 0) return { label: `Скоро · через ${nextIn} дн. (${nf})`, cls: 'cp-timer--warn', pct };
   if (nextIn === 0) return { label: 'Сегодня', cls: 'cp-timer--warn', pct: 100 };
@@ -834,12 +834,19 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   const [freezeId, setFreezeId] = useState<string | null>(null);
   const [unfreezeId, setUnfreezeId] = useState<string | null>(null);
   const [splitPlan, setSplitPlan] = useState<ClientPlan | null>(null);
-  const [centerTab, setCenterTab] = useState<'important' | 'visits'>('important');
+  const [centerTab, setCenterTab] = useState<'important' | 'visits' | 'bookings'>('important');
   const [visits, setVisits] = useState<{ id: string; source: 'crm'|'fitbase'; date: string; time: string|null; status: string; label: string|null }[] | null>(null);
   const [visitsTotal, setVisitsTotal] = useState(0);
   const [visitsFilter, setVisitsFilter] = useState<'all'|'attended'|'no_show'|'cancelled'>('all');
   const [visitsOffset, setVisitsOffset] = useState(0);
   const [visitsLoading, setVisitsLoading] = useState(false);
+  const [inbodyInterval, setInbodyInterval] = useState(7);
+  const [bodyInterval, setBodyInterval] = useState(7);
+  const [bookings, setBookings] = useState<{ id: string; booking_date: string; time: string|null; status: string; kind: string; device_type_code: string|null; phase: string|null; plan_name: string|null; is_burned: boolean }[] | null>(null);
+  const [bookingsTotal, setBookingsTotal] = useState(0);
+  const [bookingsFilter, setBookingsFilter] = useState<'all'|'future'|'attended'|'no_show'|'cancelled'>('all');
+  const [bookingsPage, setBookingsPage] = useState(1);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
   const [allTags, setAllTags] = useState<ClientTag[]>([]);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [importantEdit, setImportantEdit] = useState(false);
@@ -881,6 +888,17 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     setVisitsLoading(false);
   }, [clientId, visitsOffset]);
 
+  const loadBookings = useCallback(async (filter: typeof bookingsFilter, page: number) => {
+    setBookingsLoading(true);
+    const params = new URLSearchParams({ filter, page: String(page) });
+    const r = await fetch(`/kviz/api/crm/clients/${clientId}/bookings?${params}`, { credentials: 'include' });
+    const d = await r.json().catch(() => ({ items: [], total: 0 }));
+    const items = d?.items ?? [];
+    setBookings(page === 1 ? items : (prev => [...(prev ?? []), ...items]));
+    setBookingsTotal(d?.total ?? 0);
+    setBookingsLoading(false);
+  }, [clientId]);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -921,6 +939,14 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setAllTags(d); }).catch(() => {});
     fetch('/kviz/api/crm/device-types', { credentials: 'include' })
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setDeviceTypes(d); }).catch(() => {});
+    fetch('/kviz/api/crm/client-auto-labels', { credentials: 'include' })
+      .then(r => r.json()).then((d: unknown[]) => {
+        if (!Array.isArray(d)) return;
+        const ib = d.find((r: unknown) => (r as { code: string }).code === 'measure_inbody');
+        const mb = d.find((r: unknown) => (r as { code: string }).code === 'measure_body');
+        if (ib && typeof (ib as { params?: { days?: number } }).params?.days === 'number') setInbodyInterval((ib as { params: { days: number } }).params.days);
+        if (mb && typeof (mb as { params?: { days?: number } }).params?.days === 'number') setBodyInterval((mb as { params: { days: number } }).params.days);
+      }).catch(() => {});
   }, [clientId, loadSummary, reloadPlans]);
 
   useEffect(() => { loadFeed(); }, [loadFeed]);
@@ -970,6 +996,11 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     if (centerTab === 'visits') { loadVisits(visitsFilter, true); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [centerTab, visitsFilter, clientId]);
+
+  useEffect(() => {
+    if (centerTab === 'bookings') { setBookingsPage(1); loadBookings(bookingsFilter, 1); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centerTab, bookingsFilter, clientId]);
 
   if (loading) return (
     <div className="cp-overlay" onClick={onClose}>
@@ -1185,10 +1216,10 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
 
               {/* Center column tab switcher */}
               <div className="cp-feed-tabs" style={{ marginBottom: 8 }}>
-                {(['important', 'visits'] as const).map(t => (
+                {(['important', 'visits', 'bookings'] as const).map(t => (
                   <button key={t} className={`cp-feed-tab${centerTab === t ? ' cp-feed-tab--active' : ''}`}
                     onClick={() => setCenterTab(t)}>
-                    {t === 'important' ? 'Покупки' : 'Посещения'}
+                    {t === 'important' ? 'Покупки' : t === 'visits' ? 'Посещения' : 'Записи'}
                   </button>
                 ))}
               </div>
@@ -1231,6 +1262,54 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                         <button className="cp-btn" style={{ width: '100%', fontSize: 12 }}
                           onClick={() => loadVisits(visitsFilter, false)} disabled={visitsLoading}>
                           {visitsLoading ? '…' : `Показать ещё (${visitsTotal - visits.length})`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {centerTab === 'bookings' && (
+                <div className="cp-window" style={{ flex: 1 }}>
+                  <div className="cp-window-hdr">
+                    Записи
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {(['all', 'future', 'attended', 'no_show', 'cancelled'] as const).map(f => (
+                        <button key={f} className={`cp-btn${bookingsFilter === f ? ' cp-btn--primary' : ''}`}
+                          style={{ fontSize: 10, padding: '2px 6px' }}
+                          onClick={() => setBookingsFilter(f)}>
+                          {f === 'all' ? 'Все' : f === 'future' ? 'Предстоящие' : f === 'attended' ? 'Пришла' : f === 'no_show' ? 'Не пришла' : 'Отменена'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                    {bookingsLoading && !bookings?.length && <div style={{ padding: 12, fontSize: 13, color: 'var(--text-3)' }}>Загрузка…</div>}
+                    {!bookingsLoading && bookings?.length === 0 && <div style={{ padding: 12, fontSize: 13, color: 'var(--text-3)' }}>Нет записей</div>}
+                    {(bookings ?? []).map(bk => {
+                      const statusLabel: Record<string, string> = { booked: 'Запись', confirmed: 'Подтверждена', attended: 'Пришла', no_show: 'Не пришла', cancelled: 'Отменена', late_cancel: 'Поздняя отмена' };
+                      const statusColor: Record<string, string> = { booked: 'var(--text-2)', confirmed: 'var(--accent)', attended: 'var(--success)', no_show: 'var(--danger)', cancelled: 'var(--text-3)', late_cancel: 'var(--warning,#f59e0b)' };
+                      const dateStr = bk.booking_date.split('-').reverse().join('.');
+                      return (
+                        <div key={bk.id} style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <div>
+                            <div style={{ fontWeight: 500 }}>{dateStr}{bk.time ? ` · ${bk.time}` : ''}</div>
+                            {bk.plan_name && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 1 }}>{bk.plan_name}</div>}
+                            {bk.device_type_code && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>{bk.device_type_code}{bk.phase ? ` · ${bk.phase}` : ''}</div>}
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: statusColor[bk.status] ?? 'var(--text-2)' }}>{statusLabel[bk.status] ?? bk.status}</span>
+                            {bk.is_burned && <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 1 }}>Списано</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {bookings !== null && bookings.length < bookingsTotal && (
+                      <div style={{ padding: '8px 14px' }}>
+                        <button className="cp-btn" style={{ width: '100%', fontSize: 12 }}
+                          onClick={() => { const next = bookingsPage + 1; setBookingsPage(next); loadBookings(bookingsFilter, next); }}
+                          disabled={bookingsLoading}>
+                          {bookingsLoading ? '…' : `Показать ещё (${bookingsTotal - bookings.length})`}
                         </button>
                       </div>
                     )}
@@ -1380,12 +1459,12 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                           <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmtDate(summary.inbody_last)}</span>
                           {(() => {
-                            const lbl = timerLabel(summary.inbody_last);
+                            const lbl = timerLabel(summary.inbody_last, inbodyInterval);
                             return lbl ? <span className={`cp-timer ${lbl.cls}`}>{lbl.label}</span> : null;
                           })()}
                         </div>
                         {(() => {
-                          const lbl = timerLabel(summary.inbody_last);
+                          const lbl = timerLabel(summary.inbody_last, inbodyInterval);
                           if (!lbl) return null;
                           const color = lbl.cls === 'cp-timer--ok' ? 'var(--primary)' : lbl.cls === 'cp-timer--warn' ? 'var(--warning,#f59e0b)' : 'var(--danger)';
                           return <div style={{ background: 'var(--border)', borderRadius: 2, height: 3 }}><div style={{ background: color, height: '100%', width: `${lbl.pct}%`, borderRadius: 2 }} /></div>;
@@ -1496,12 +1575,12 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                           <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{fmtDate(summary.measure_last)}</span>
                           {(() => {
-                            const lbl = timerLabel(summary.measure_last);
+                            const lbl = timerLabel(summary.measure_last, bodyInterval);
                             return lbl ? <span className={`cp-timer ${lbl.cls}`}>{lbl.label}</span> : null;
                           })()}
                         </div>
                         {(() => {
-                          const lbl = timerLabel(summary.measure_last);
+                          const lbl = timerLabel(summary.measure_last, bodyInterval);
                           if (!lbl) return null;
                           const color = lbl.cls === 'cp-timer--ok' ? 'var(--primary)' : lbl.cls === 'cp-timer--warn' ? 'var(--warning,#f59e0b)' : 'var(--danger)';
                           return <div style={{ background: 'var(--border)', borderRadius: 2, height: 3 }}><div style={{ background: color, height: '100%', width: `${lbl.pct}%`, borderRadius: 2 }} /></div>;

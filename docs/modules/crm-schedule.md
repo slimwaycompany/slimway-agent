@@ -24,6 +24,10 @@
 - RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`, `crm_day_hours(p_date)` → (is_open, open_time, close_time)
 
 ## Сделано
+### 26.11.2026 · task 108Б · Перенос записи по праву schedule.reschedule_future
+- **`src/http/crm.ts`**: `POST /schedule/bookings/:id/move` — если дата назначения или дата исходной брони не совпадают с сегодня (UTC+5), проверяет право `schedule.reschedule_future` через `can()`; возвращает 403 «Перенести на другой день может управляющий. Можно перенести только на сегодня».
+- **`kviz/client/src/pages/crm/SchedulePage.tsx`**: `canRescheduleFuture = usePerm('schedule.reschedule_future', 'edit')`; `BookingDetailModal` получает новый prop; date input в форме переноса: если `!canRescheduleFuture` — `min=max=today`, подпись «Перенос только на сегодня».
+
 ### 25.11.2026 · хотфикс 94-1 · ПКМ по брони → белый экран (тот же TDZ в ClientPopup)
 - Причина и фикс — те же, что в crm-core.md 94-1: ПКМ в Расписании открывает `ClientPopup` из `ClientsPage.tsx`, после хотфикса работает корректно.
 

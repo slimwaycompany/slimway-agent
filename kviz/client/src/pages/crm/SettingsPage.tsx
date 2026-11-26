@@ -2339,26 +2339,96 @@ function LeadTagsSection() {
 
 interface ClientTagRow { id: string; name: string; color: string | null; is_system: boolean; is_active: boolean }
 
-function ClientTagsSection() {
-  const [tags, setTags] = useState<ClientTagRow[]>([]);
-  const [err, setErr] = useState('');
+const AL_PARAM_LABELS: Record<string, Record<string, string>> = {
+  new_client:    { visits: 'Визитов до «нового»' },
+  plan_ending:   { sessions: 'Осталось сеансов', days: 'Осталось дней' },
+  no_visits:     { days: 'Дней без визитов' },
+  weight_plateau: { kg: 'Порог разницы кг' },
+  irregular:     { per_week: 'Визитов/нед', weeks: 'Недель' },
+  measure_body:  { min_plan_days: 'Мин. дней абонемента' },
+};
+
+const BLOCKED_AL = new Set(['debt', 'payment_overdue']);
+
+interface AutoLabelNameEdit { name: string; short_name: string }
+
+function LabelsSection() {
+  const [tags, setTags]       = useState<ClientTagRow[]>([]);
+  const [autoLabels, setAutoLabels] = useState<{ code: string; name: string; short_name: string; color: string; sort: number; is_active: boolean; params: Record<string,number> }[]>([]);
+  const [autoEdits, setAutoEdits]   = useState<Record<string, Record<string, string>>>({});
+  const [nameEdits, setNameEdits]   = useState<Record<string, AutoLabelNameEdit>>({});
+  const [inbodyDays, setInbodyDays] = useState('7');
+  const [bodyDays, setBodyDays]     = useState('7');
+  const [err, setErr]       = useState('');
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState('#02BDB6');
 
   async function load() {
-    const { ok, data } = await api('GET', '/kviz/api/crm/client-tags');
-    if (ok && Array.isArray(data)) setTags(data);
+    const [tagsR, alR] = await Promise.all([
+      fetch('/kviz/api/crm/client-tags', { credentials: 'include' }).then(r => r.json()),
+      fetch('/kviz/api/crm/client-auto-labels', { credentials: 'include' }).then(r => r.json()),
+    ]);
+    if (Array.isArray(tagsR)) setTags(tagsR as ClientTagRow[]);
+    if (Array.isArray(alR)) {
+      const rows = alR as typeof autoLabels;
+      setAutoLabels(rows);
+      const edits: Record<string, Record<string, string>> = {};
+      const names: Record<string, AutoLabelNameEdit> = {};
+      for (const r of rows) {
+        edits[r.code] = Object.fromEntries(Object.entries(r.params || {}).map(([k, v]) => [k, String(v)]));
+        names[r.code] = { name: r.name, short_name: r.short_name };
+      }
+      setAutoEdits(edits);
+      setNameEdits(names);
+      const ib = rows.find(r => r.code === 'measure_inbody');
+      const bd = rows.find(r => r.code === 'measure_body');
+      if (ib) setInbodyDays(String(ib.params?.days ?? 7));
+      if (bd) setBodyDays(String(bd.params?.days ?? 7));
+    }
   }
   useEffect(() => { load(); }, []);
 
-  async function create() {
+  async function saveAL(code: string, patch: Record<string, unknown>) {
+    const { ok, data } = await api('PATCH', `/kviz/api/crm/client-auto-labels/${code}`, patch);
+    if (ok) load();
+    else toast.error((data as { error?: string }).error || 'Ошибка');
+  }
+
+  async function saveInterval(code: string, days: string) {
+    const n = Number(days);
+    if (!Number.isFinite(n) || n < 1 || n > 365) { toast.error('Интервал: 1–365 дней'); return; }
+    await saveAL(code, { params: { days: n } });
+  }
+
+  async function saveALParams(code: string) {
+    const rawEdits = autoEdits[code] || {};
+    const params: Record<string, number> = {};
+    for (const [k, v2] of Object.entries(rawEdits)) {
+      const n = Number(v2);
+      if (!Number.isFinite(n)) { toast.error(`Неверное значение для «${k}»`); return; }
+      params[k] = n;
+    }
+    await saveAL(code, { params });
+  }
+
+  async function saveALName(code: string) {
+    const ne = nameEdits[code];
+    if (!ne) return;
+    const name = ne.name.trim();
+    const sn   = ne.short_name.trim();
+    if (!name) { toast.error('Укажите название'); return; }
+    if (!sn)   { toast.error('Укажите короткое название'); return; }
+    await saveAL(code, { name, short_name: sn });
+  }
+
+  async function createTag() {
     if (!newName.trim()) return;
     const { ok, data } = await api('POST', '/kviz/api/crm/client-tags', { name: newName.trim(), color: newColor });
     if (!ok) { setErr(data?.error ?? 'Ошибка'); return; }
     setNewName(''); load();
   }
 
-  async function del(tag: ClientTagRow) {
+  async function delTag(tag: ClientTagRow) {
     if (tag.is_system) { setErr('Системные метки нельзя удалить'); return; }
     if (!await showConfirm(`Удалить метку «${tag.name}»?`)) return;
     const { ok, data } = await api('DELETE', `/kviz/api/crm/client-tags/${tag.id}`);
@@ -2366,25 +2436,135 @@ function ClientTagsSection() {
     load();
   }
 
+  function txHex(hex: string): string {
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return '#1a202c';
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return 0.2126 * (r / 255) + 0.7152 * (g / 255) + 0.0722 * (b / 255) > 0.4 ? '#1a202c' : '#ffffff';
+  }
+
   return (
     <div style={S.section}>
-      {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <input style={{ ...S.inp, flex: 1, minWidth: 160 }} placeholder="Название метки" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && create()} />
-        <input type="color" value={newColor} onChange={e => setNewColor(e.target.value)} style={{ width: 36, height: 36, padding: 2, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} title="Цвет метки" />
-        <button style={S.addBtn} onClick={create}>+ Метка</button>
-      </div>
-      <div style={S.list}>
-        {tags.map(t => (
-          <div key={t.id} style={S.row}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {t.color && <span style={{ width: 12, height: 12, borderRadius: '50%', background: t.color, flexShrink: 0 }} />}
-              <span style={{ fontSize: 13, color: 'var(--text)' }}>{t.name}{t.is_system && <span style={S.badge}>системная</span>}</span>
+      {/* Интервал замеров */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={S.subTitle}>Интервал замеров</div>
+        <div style={{ display: 'flex', gap: 24, marginTop: 10, flexWrap: 'wrap' }}>
+          <div>
+            <label style={S.label}>InBody — каждые N дней</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="number" min={1} max={365} style={{ ...S.inp, width: 80 }}
+                value={inbodyDays} onChange={e => setInbodyDays(e.target.value)} />
+              <button style={S.editBtn} onClick={() => saveInterval('measure_inbody', inbodyDays)}>Сохранить</button>
             </div>
-            {!t.is_system && <button style={S.delBtn} onClick={() => del(t)}>Удалить</button>}
           </div>
-        ))}
-        {tags.length === 0 && <div style={S.empty}>Метки не созданы</div>}
+          <div>
+            <label style={S.label}>Замер тела — каждые N дней</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="number" min={1} max={365} style={{ ...S.inp, width: 80 }}
+                value={bodyDays} onChange={e => setBodyDays(e.target.value)} />
+              <button style={S.editBtn} onClick={() => saveInterval('measure_body', bodyDays)}>Сохранить</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Системные метки */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={S.subTitle}>Системные метки</div>
+        <div style={{ marginTop: 6, marginBottom: 10, fontSize: 12, color: 'var(--text-2)' }}>
+          Считаются автоматически при открытии расписания и списка клиентов.
+        </div>
+        <div style={S.list}>
+          {autoLabels.map(row => {
+            const paramDefs = AL_PARAM_LABELS[row.code] || {};
+            const edits = autoEdits[row.code] || {};
+            const ne = nameEdits[row.code] || { name: row.name, short_name: row.short_name };
+            const isBlocked = BLOCKED_AL.has(row.code);
+            const isInterval = row.code === 'measure_inbody' || row.code === 'measure_body';
+            return (
+              <div key={row.code} style={{ ...S.row, flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', flexWrap: 'wrap' }}>
+                  {/* Preview chip */}
+                  <span style={{ display: 'inline-block', background: row.color, color: txHex(row.color), padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                    {ne.short_name || row.short_name}
+                  </span>
+                  {/* Editable name */}
+                  <input
+                    style={{ ...S.inp, flex: 1, minWidth: 120, fontSize: 13, fontWeight: 500 }}
+                    value={ne.name}
+                    onChange={e => setNameEdits(prev => ({ ...prev, [row.code]: { ...ne, name: e.target.value } }))}
+                    onBlur={() => saveALName(row.code)}
+                    onKeyDown={e => e.key === 'Enter' && saveALName(row.code)}
+                  />
+                  {/* Editable short name */}
+                  <input
+                    style={{ ...S.inp, width: 70, fontSize: 11 }}
+                    value={ne.short_name}
+                    placeholder="Аббр."
+                    maxLength={12}
+                    onChange={e => setNameEdits(prev => ({ ...prev, [row.code]: { ...ne, short_name: e.target.value } }))}
+                    onBlur={() => saveALName(row.code)}
+                    onKeyDown={e => e.key === 'Enter' && saveALName(row.code)}
+                  />
+                  {/* Toggle */}
+                  {isBlocked
+                    ? <span style={{ fontSize: 11, color: 'var(--text-3)', flexShrink: 0 }}>Включится, когда в Кассе появятся предоплата и рассрочка</span>
+                    : (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>
+                        <input type="checkbox" checked={row.is_active}
+                          onChange={e => saveAL(row.code, { is_active: e.target.checked })} />
+                        {row.is_active ? 'Вкл' : 'Выкл'}
+                      </label>
+                    )}
+                  {/* Color */}
+                  <input type="color" value={row.color}
+                    style={{ width: 32, height: 24, padding: 1, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}
+                    onChange={e => setAutoLabels(prev => prev.map(r => r.code === row.code ? { ...r, color: e.target.value } : r))}
+                    onBlur={e => saveAL(row.code, { color: e.target.value })} />
+                </div>
+                {/* Params (not for interval codes — those are managed above) */}
+                {!isInterval && Object.keys(paramDefs).length > 0 && !isBlocked && (
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', paddingLeft: 4 }}>
+                    {Object.entries(paramDefs).map(([key, label]) => (
+                      <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <label style={{ fontSize: 11, color: 'var(--text-3)' }}>{label}</label>
+                        <input type="number" step={key === 'kg' ? 0.1 : 1}
+                          style={{ ...S.inp, width: 70, padding: '4px 6px' }}
+                          value={edits[key] ?? ''}
+                          onChange={e => setAutoEdits(prev => ({ ...prev, [row.code]: { ...(prev[row.code] || {}), [key]: e.target.value } }))} />
+                      </div>
+                    ))}
+                    <button style={S.editBtn} onClick={() => saveALParams(row.code)}>Сохранить</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Ручные метки */}
+      <div>
+        <div style={S.subTitle}>Ручные метки</div>
+        {err && <div style={{ ...S.errBox, marginTop: 8 }}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <input style={{ ...S.inp, flex: 1, minWidth: 160 }} placeholder="Название метки" value={newName}
+            onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createTag()} />
+          <input type="color" value={newColor} onChange={e => setNewColor(e.target.value)}
+            style={{ width: 36, height: 36, padding: 2, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} title="Цвет метки" />
+          <button style={S.addBtn} onClick={createTag}>+ Метка</button>
+        </div>
+        <div style={S.list}>
+          {tags.map(t => (
+            <div key={t.id} style={S.row}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {t.color && <span style={{ width: 12, height: 12, borderRadius: '50%', background: t.color, flexShrink: 0 }} />}
+                <span style={{ fontSize: 13, color: 'var(--text)' }}>{t.name}{t.is_system && <span style={S.badge}>системная</span>}</span>
+              </div>
+              {!t.is_system && <button style={S.delBtn} onClick={() => delTag(t)}>Удалить</button>}
+            </div>
+          ))}
+          {tags.length === 0 && <div style={S.empty}>Ручные метки не созданы</div>}
+        </div>
       </div>
     </div>
   );
@@ -4477,7 +4657,7 @@ const NAV_GROUPS_DEF: NavGroupDef[] = [
     { id: 'sources',       label: 'Рекламные источники',  Icon: Megaphone,     permKey: 'settings.sources' },
     { id: 'lost-reasons',  label: 'Причины отказа',       Icon: XCircle,       permKey: 'settings.lost_reasons' },
     { id: 'lead-tags',     label: 'Теги заявок',          Icon: Hash,          permKey: 'settings.lead_tags' },
-    { id: 'client-tags',   label: 'Метки клиентов',       Icon: Tag,           permKey: 'settings.client_tags' },
+    { id: 'client-tags',   label: 'Метки',                Icon: Tag,           permKey: 'settings.client_tags' },
     { id: 'task-types',    label: 'Типы задач',           Icon: CheckSquare,   permKey: 'settings.task_types' },
     { id: 'lead-rules',    label: 'Автоматизация',        Icon: Cpu,           permKey: 'settings.funnels' },
     { id: 'scriptolog',    label: 'Скриптолог',           Icon: MessageSquare, permKey: 'settings.scriptolog' },
@@ -4539,19 +4719,16 @@ function ClassesSection() {
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [types, setTypes]       = useState<DeviceType[]>([]);
   const [labels, setLabels]     = useState<BookingLabelRow[]>([]);
-  const [autoLabels, setAutoLabels] = useState<AutoLabelRow[]>([]);
-  const [autoEdits, setAutoEdits]   = useState<Record<string, Record<string, string>>>({});
   const [saving, setSaving]     = useState(false);
   const [stepEdits, setStepEdits] = useState<Record<string, string>>({});
   const [editLabel, setEditLabel] = useState<BookingLabelRow | null | 'new'>(null);
   const [err, setErr] = useState('');
 
   const load = useCallback(async () => {
-    const [s, t, l, al] = await Promise.all([
+    const [s, t, l] = await Promise.all([
       fetch('/kviz/api/crm/settings/classes', { credentials: 'include' }).then(r => r.json()),
       fetch('/kviz/api/crm/device-types', { credentials: 'include' }).then(r => r.json()),
       fetch('/kviz/api/crm/booking-labels', { credentials: 'include' }).then(r => r.json()),
-      fetch('/kviz/api/crm/client-auto-labels', { credentials: 'include' }).then(r => r.json()),
     ]);
     setSettings(s && typeof s === 'object' && !s.error ? s : {});
     if (Array.isArray(t)) {
@@ -4561,14 +4738,6 @@ function ClassesSection() {
       setStepEdits(init);
     }
     setLabels(Array.isArray(l) ? l : []);
-    if (Array.isArray(al)) {
-      setAutoLabels(al as AutoLabelRow[]);
-      const edits: Record<string, Record<string, string>> = {};
-      for (const row of al as AutoLabelRow[]) {
-        edits[row.code] = Object.fromEntries(Object.entries(row.params || {}).map(([k, v]) => [k, String(v)]));
-      }
-      setAutoEdits(edits);
-    }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -4617,28 +4786,7 @@ function ClassesSection() {
     else toast.error((data as { error?: string }).error || 'Ошибка');
   }
 
-  function setAutoEditParam(code: string, key: string, val: string) {
-    setAutoEdits(prev => ({ ...prev, [code]: { ...(prev[code] || {}), [key]: val } }));
-  }
-
-  async function saveAutoLabel(row: AutoLabelRow, patch: Partial<{ is_active: boolean; color: string; params: Record<string,number> }>) {
-    const { ok, data } = await api('PATCH', `/kviz/api/crm/client-auto-labels/${row.code}`, patch);
-    if (ok) load();
-    else toast.error((data as { error?: string }).error || 'Ошибка');
-  }
-
-  async function saveAutoParams(row: AutoLabelRow) {
-    const rawEdits = autoEdits[row.code] || {};
-    const params: Record<string, number> = {};
-    for (const [k, v2] of Object.entries(rawEdits)) {
-      const n = Number(v2);
-      if (!Number.isFinite(n)) { toast.error(`Неверное значение для «${k}»`); return; }
-      params[k] = n;
-    }
-    await saveAutoLabel(row, { params });
-  }
-
-  const v = (key: string, def: unknown = '') => settings[key] !== undefined ? String(settings[key]) : String(def);
+  const v =(key: string, def: unknown = '') => settings[key] !== undefined ? String(settings[key]) : String(def);
   const bool = (key: string, def = false) => settings[key] !== undefined ? Boolean(settings[key]) : def;
 
   return (
@@ -4731,60 +4879,8 @@ function ClassesSection() {
         </div>
       </div>
 
-      {/* Auto-labels */}
-      <div style={{ marginTop: 28 }}>
-        <div style={S.subTitle}>Автометки клиента</div>
-        <div style={{ marginTop: 6, marginBottom: 10, fontSize: 12, color: 'var(--text-2)' }}>
-          Метки считаются автоматически при открытии расписания и списка клиентов. «Проблемный клиент» ставится вручную в карточке клиента.
-        </div>
-        <div style={S.list}>
-          {autoLabels.map(row => {
-            const paramDefs = AUTO_LABEL_PARAM_LABELS[row.code] || {};
-            const edits = autoEdits[row.code] || {};
-            const isDebt = row.code === 'debt';
-            return (
-              <div key={row.code} style={{ ...S.row, flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-                  {/* Preview chip */}
-                  <span style={{
-                    display: 'inline-block', background: row.color, color: textOnHexSimple(row.color),
-                    padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, flexShrink: 0,
-                  }}>{row.short_name}</span>
-                  <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{row.name}</span>
-                  {isDebt
-                    ? <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Включится автоматически</span>
-                    : (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>
-                        <input type="checkbox" checked={row.is_active} onChange={e => saveAutoLabel(row, { is_active: e.target.checked })} />
-                        {row.is_active ? 'Вкл' : 'Выкл'}
-                      </label>
-                    )}
-                  {/* Color */}
-                  <input type="color" value={row.color} style={{ width: 32, height: 24, padding: 1, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}
-                    onChange={e => setAutoLabels(prev => prev.map(r => r.code === row.code ? { ...r, color: e.target.value } : r))}
-                    onBlur={e => saveAutoLabel(row, { color: e.target.value })} />
-                </div>
-                {Object.keys(paramDefs).length > 0 && !isDebt && (
-                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', paddingLeft: 4 }}>
-                    {Object.entries(paramDefs).map(([key, label]) => (
-                      <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <label style={{ fontSize: 11, color: 'var(--text-3)' }}>{label}</label>
-                        <input
-                          type="number"
-                          step={key === 'kg' ? 0.1 : 1}
-                          style={{ ...S.inp, width: 70, padding: '4px 6px' }}
-                          value={edits[key] ?? ''}
-                          onChange={e => setAutoEditParam(row.code, key, e.target.value)}
-                        />
-                      </div>
-                    ))}
-                    <button style={S.editBtn} onClick={() => saveAutoParams(row)}>Сохранить</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      <div style={{ marginTop: 20, fontSize: 12, color: 'var(--text-2)' }}>
+        Автометки клиента — в разделе <strong>«Метки»</strong>.
       </div>
 
       {/* Label form modal */}
@@ -5140,7 +5236,7 @@ export default function SettingsPage() {
         {section === 'funnels'    && <FunnelsSection />}
         {section === 'lead-rules' && <LeadRulesSection />}
         {section === 'lead-tags'    && <LeadTagsSection />}
-        {section === 'client-tags'  && <ClientTagsSection />}
+        {section === 'client-tags'  && <LabelsSection />}
         {section === 'task-types' && <TaskTypesSection />}
         {section === 'lost-reasons' && <LostReasonsSection />}
         {section === 'fb-users'   && <FbUsersSection />}

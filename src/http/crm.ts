@@ -2224,6 +2224,79 @@ export function buildCrmRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // ── Bookings tab (full history incl. future, with group linkage) ─────────────
+
+  r.get('/kviz/api/crm/clients/:id/bookings', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const clientId = req.params.id;
+      const filter = req.query.filter as string | undefined; // all|future|attended|no_show|cancelled
+      const page = Math.max(0, Number(req.query.page ?? 0));
+      const PAGE_SIZE = 50;
+
+      let q = supabase.from('crm_bookings')
+        .select('id,booking_date,starts_at,ends_at,status,kind,device_type_code,phase,group_id,client_plan_id,client_plan_item_id,session_burned,note', { count: 'exact' })
+        .eq('client_id', clientId)
+        .eq('branch_id', BRANCH_ID);
+
+      const todayUTC5 = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Yekaterinburg' }).format(new Date());
+
+      if (filter === 'future') {
+        q = q.in('status', ['booked', 'confirmed']).gte('booking_date', todayUTC5);
+      } else if (filter === 'attended') {
+        q = q.eq('status', 'attended');
+      } else if (filter === 'no_show') {
+        q = q.in('status', ['no_show', 'late_cancel']);
+      } else if (filter === 'cancelled') {
+        q = q.eq('status', 'cancelled');
+      }
+
+      const { data, error, count } = await q
+        .order('booking_date', { ascending: false })
+        .order('starts_at', { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+      if (error) { console.error('[client-bookings]', clientId, error.message); res.status(500).json({ error: 'Ошибка загрузки записей' }); return; }
+
+      // Group bookings by group_id to link multi-device sessions
+      const grouped = new Map<string, Record<string,unknown>[]>();
+      const noGroup: Record<string,unknown>[] = [];
+      for (const b of (data ?? []) as Record<string,unknown>[]) {
+        if (b.group_id) {
+          if (!grouped.has(b.group_id as string)) grouped.set(b.group_id as string, []);
+          grouped.get(b.group_id as string)!.push(b);
+        } else noGroup.push(b);
+      }
+
+      // Collect plan names for bookings that have a plan
+      const planIds = [...new Set((data ?? []).map((b: Record<string,unknown>) => b.client_plan_id as string).filter(Boolean))];
+      const planNames = new Map<string, string>();
+      if (planIds.length) {
+        const { data: plans } = await supabase.from('crm_client_plans')
+          .select('id,plan_id,crm_plans(name)').in('id', planIds);
+        for (const p of (plans ?? []) as Record<string,unknown>[]) {
+          const name = (p.crm_plans as Record<string,unknown> | null)?.name as string ?? '';
+          planNames.set(p.id as string, name);
+        }
+      }
+
+      const rows = (data ?? []).map((b: Record<string,unknown>) => {
+        const starts = b.starts_at as string;
+        const timeStr = starts ? starts.slice(11, 16) : null;
+        const isBurned = !['booked','confirmed','attended'].includes(b.status as string) && b.session_burned !== true;
+        return {
+          id: b.id, booking_date: b.booking_date, time: timeStr,
+          status: b.status, kind: b.kind, device_type_code: b.device_type_code,
+          phase: b.phase, group_id: b.group_id, client_plan_id: b.client_plan_id,
+          plan_name: b.client_plan_id ? (planNames.get(b.client_plan_id as string) ?? '') : null,
+          is_burned: isBurned,
+        };
+      });
+
+      res.json({ items: rows, total: count ?? 0, page, page_size: PAGE_SIZE });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   // ── Visits by plan ────────────────────────────────────────────────────────────
 
   r.get('/kviz/api/crm/client-plans/:id/visits', async (req, res) => {
@@ -3370,7 +3443,7 @@ export function buildCrmRouter(): Router {
 
   r.get('/kviz/api/crm/client-auto-labels', async (req, res) => {
     const session = await getSessionWithPerms(req);
-    if (!requirePerm(req, res, 'settings.classes', 'view', session)) return;
+    if (!requirePerm(req, res, 'settings.client_tags', 'view', session)) return;
     try {
       const { data, error } = await supabase.from('crm_client_auto_labels')
         .select('code,name,short_name,color,sort,is_active,params').order('sort');
@@ -3381,18 +3454,28 @@ export function buildCrmRouter(): Router {
 
   r.patch('/kviz/api/crm/client-auto-labels/:code', async (req, res) => {
     const session = await getSessionWithPerms(req);
-    if (!requirePerm(req, res, 'settings.classes', 'edit', session)) return;
+    if (!requirePerm(req, res, 'settings.client_tags', 'edit', session)) return;
     try {
       const code = req.params.code;
       const b = req.body as Record<string, unknown>;
 
-      // debt label cannot be enabled
-      if (code === 'debt' && b.is_active === true) {
-        res.status(400).json({ error: 'Метка «Долг» включится автоматически, когда в кассе появится оплата частями' });
+      // debt and payment_overdue cannot be manually enabled
+      if (['debt', 'payment_overdue'].includes(code) && b.is_active === true) {
+        res.status(400).json({ error: 'Метка включится, когда в Кассе появятся предоплата и рассрочка' });
         return;
       }
 
       const upd: Record<string, unknown> = {};
+      if (b.name !== undefined) {
+        const name = String(b.name).trim();
+        if (!name || name.length > 40) { res.status(400).json({ error: 'Укажите название (1–40 символов)' }); return; }
+        upd.name = name;
+      }
+      if (b.short_name !== undefined) {
+        const sn = String(b.short_name).trim();
+        if (!sn || sn.length > 12) { res.status(400).json({ error: 'Короткое название: 1–12 символов' }); return; }
+        upd.short_name = sn;
+      }
       if (b.is_active !== undefined) upd.is_active = Boolean(b.is_active);
       if (b.color !== undefined) {
         if (!/^#[0-9a-fA-F]{6}$/.test(String(b.color))) { res.status(400).json({ error: 'Неверный формат цвета' }); return; }
@@ -3521,6 +3604,17 @@ export function buildCrmRouter(): Router {
     if (!requirePerm(req, res, 'schedule.book', 'edit', session)) return;
     try {
       const b = req.body as Record<string, unknown>;
+      const todayUTC5 = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Yekaterinburg' }).format(new Date());
+      if (b.date || b.time) {
+        const destDate = String(b.date ?? '');
+        const { data: origBk } = await supabase.from('crm_bookings').select('starts_at').eq('id', req.params.id).single();
+        const origDate = origBk ? String((origBk as Record<string,unknown>).starts_at).slice(0, 10) : todayUTC5;
+        const needsFuture = (destDate && destDate !== todayUTC5) || origDate !== todayUTC5;
+        if (needsFuture && !can(session, 'schedule.reschedule_future', 'edit')) {
+          res.status(403).json({ error: 'Перенести на другой день может управляющий. Можно перенести только на сегодня' });
+          return;
+        }
+      }
       const { data, error } = await supabase.rpc('crm_booking_move', { p: { booking_id: req.params.id, date: b.date, time: b.time, device_id: b.device_id ?? null } });
       if (error) {
         if (error.message.includes('PLAN_WRONG_DAY') || error.message.includes('PLAN_WRONG_TIME')) {

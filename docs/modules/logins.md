@@ -48,6 +48,10 @@
 - **Пerm-ключи формата `block.row` (task 56):** `manager.tasks`, `clients.phone`, `kassa.sale` и т.д. Для новой вкладки/отчёта/действия — ОБЯЗАТЕЛЬНО добавить в `PERM_CATALOG` (src/core/permissions.ts) и в пресеты нужных должностей. Серверные проверки: `const session = await getSessionWithPerms(req); if (!requirePerm(req, res, 'block.row', 'edit', session)) return;` (тип `session` автоматически сужается до `ExtendedSession` после проверки).
 
 ## Сделано
+### 26.11.2026 · task 108Б · Новые права settings.client_tags и schedule.reschedule_future
+- **`src/core/permissions.ts`**: `settings.client_tags` (Метки, row) в блоке `settings`; `schedule.reschedule_future` (Переносить на другой день, action, parent schedule.main) в блоке `schedule`. Добавлены в пресеты: `branch_manager` — edit; `company_manager` — view/edit соответственно.
+- **`src/http/crm.ts`**: `GET/PATCH /client-auto-labels` используют `settings.client_tags`; `POST /schedule/bookings/:id/move` требует `schedule.reschedule_future` при переносе на другой день.
+
 ### 25.11.2026 · task 96 · Новые права kassa.closings и settings.kassa_passwords
 - `src/core/permissions.ts`: добавлены `kassa.closings` (просмотр раздела «Закрытия кассы» в Отчётах) и `settings.kassa_passwords` (управление паролями кассы в Настройках). Добавлены в пресеты нужных должностей.
 - `SettingsPage.tsx`: раздел «Пароли кассы» (Section `'kassa-passwords'`, Icon Lock) в группе «money»; `KassaPasswordsSection` с настройкой паролей sales/full/master, статусом блокировки и кнопкой разблокировки.
