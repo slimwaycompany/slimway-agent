@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabase } from '../db/supabase';
 import { getSession, requireAuth, requireAdmin } from './auth';
 import { runCrmLeadsSync, isFitbaseSyncEnabled } from '../jobs/crmLeadsSync';
+import { previewFitbaseLeadsImport, runFitbaseLeadsImportBg, importRunStatus } from '../jobs/fitbaseLeadsImport';
 import { acquireLock, releaseLock } from '../core/lock';
 import { rawGet, paginateGet } from './fitbase';
 import { runLeadRules } from '../core/leadRules';
@@ -93,6 +94,30 @@ export function buildCrmLeadsRouter(): Router {
         .upsert({ key: 'leads.fitbase_sync_enabled', value: false }, { onConflict: 'key' });
       res.json({ ok: true, enabled: false });
     } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  // ── Fitbase leads one-time import ─────────────────────────────────────────────
+
+  r.post('/kviz/api/crm/fitbase-leads-import/preview', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const groups = await previewFitbaseLeadsImport();
+      res.json(groups);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.post('/kviz/api/crm/fitbase-leads-import/run', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (importRunStatus.status === 'running') { res.status(409).json({ error: 'Импорт уже запущен' }); return; }
+    const mapping = (req.body as Record<string, unknown>).mapping as Record<string, string> | undefined;
+    if (!mapping || typeof mapping !== 'object') { res.status(400).json({ error: 'mapping required' }); return; }
+    runFitbaseLeadsImportBg(mapping).catch(console.error);
+    res.json({ ok: true });
+  });
+
+  r.get('/kviz/api/crm/fitbase-leads-import/status', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    res.json(importRunStatus);
   });
 
   // ── Funnels ───────────────────────────────────────────────────────────────────

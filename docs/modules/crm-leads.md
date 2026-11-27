@@ -7,6 +7,22 @@
 
 ## Сделано
 
+### 27.11.2026 · task 111.1 · разовый перенос заявок Fitbase по этапам
+
+**`src/jobs/fitbaseLeadsImport.ts`** (новый):
+- `previewFitbaseLeadsImport()` — загружает `/purchase-funnel`, `/purchase-funnel-step`, `/lead` параллельно; группирует лиды по Fitbase-этапу; автоматически сопоставляет с нашими этапами по имени (нормальные) или `kind` (системные); кэш 15 мин.
+- `runFitbaseLeadsImportBg(mapping)` — запускает импорт в фоне; `upsert` с `ignoreDuplicates:true` (повторный запуск безопасен); activity-запись `kind='system'` только для реально вставленных; запись в `crm_audit_log`; пауза 300–500 мс между батчами 100.
+- `importRunStatus` — глобальный статус (idle/running/done/error) для поллинга.
+
+**`src/jobs/crmLeadsSync.ts`**: экспортированы `BRANCH_ID`, `SKIP_FUNNEL_FB_IDS`, `toISO`, `FbLeadMaps` (интерфейс), `buildFbLeadRow()` (общий конструктор строки лида из Fitbase-данных). Вызывается и из `syncLeads()`, и из импорта.
+
+**`src/http/crmLeads.ts`**: добавлены 3 admin-only роута:
+- `POST /kviz/api/crm/fitbase-leads-import/preview` — превью-таблица с автосопоставлением.
+- `POST /kviz/api/crm/fitbase-leads-import/run` — запуск импорта (409 если уже идёт).
+- `GET /kviz/api/crm/fitbase-leads-import/status` — опрос статуса.
+
+**`kviz/client/src/pages/crm/FunnelsSettings.tsx`**: компонент `FbImportModal` (фазы loading/mapping/running/done/error); таблица сопоставления на десктопе, карточки на мобиле ≤640; жёлтая подсветка несопоставленных строк; поллинг статуса каждые 2 с; пункт «Перенести заявки из Fitbase» в меню ⋯ каждой воронки.
+
 ### 27.11.2026 · task 111 · настройки воронок, realtime SSE, карточка клиента
 
 **`src/http/crmLeads.ts`**:

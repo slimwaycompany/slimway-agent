@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
   PointerSensor, TouchSensor, useSensor, useSensors,
@@ -78,10 +78,10 @@ function DragHandle({ dragRef, attrs, listeners }: { dragRef: (n: HTMLElement | 
 
 // ── SortableItem (draggable + droppable on same id) ────────────────────────────
 
-function SortableFunnelItem({ funnel, isSelected, activeId, onSelect, onRename, onToggleActive, onResetContent, onDelete, onReloadContent }: {
+function SortableFunnelItem({ funnel, isSelected, activeId, onSelect, onRename, onToggleActive, onResetContent, onDelete, onReloadContent, onFbImport }: {
   funnel: CrmFunnel; isSelected: boolean; activeId: string | null;
   onSelect: () => void; onRename: (name: string) => void; onToggleActive: () => void;
-  onResetContent: () => void; onDelete: () => void; onReloadContent: () => void;
+  onResetContent: () => void; onDelete: () => void; onReloadContent: () => void; onFbImport: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(funnel.name);
@@ -146,12 +146,13 @@ function SortableFunnelItem({ funnel, isSelected, activeId, onSelect, onRename, 
           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text-3)', padding: '0 2px', lineHeight: 1 }}>⋯</button>
         {menuOpen && (
           <div style={{ position: 'absolute', right: 0, top: '100%', zIndex: 100, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 170, padding: 4 }}>
-            {(['Переименовать', funnel.is_active ? 'Деактивировать' : 'Активировать', 'Загрузить из таблицы', 'Удалить'] as const).map(label => (
+            {(['Переименовать', funnel.is_active ? 'Деактивировать' : 'Активировать', 'Загрузить из таблицы', 'Перенести заявки из Fitbase', 'Удалить'] as const).map(label => (
               <div key={label}
                 onClick={e => { e.stopPropagation(); setMenuOpen(false);
                   if (label === 'Переименовать') { setEditing(true); setEditName(funnel.name); }
                   else if (label === 'Активировать' || label === 'Деактивировать') onToggleActive();
                   else if (label === 'Загрузить из таблицы') onResetContent();
+                  else if (label === 'Перенести заявки из Fitbase') onFbImport();
                   else onDelete();
                 }}
                 style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', borderRadius: 5, color: label === 'Удалить' ? 'var(--danger)' : 'var(--text)', userSelect: 'none' }}>
@@ -276,6 +277,180 @@ function SortableStageItem({ stage, funnel, otherStages, activeId, onRename, onT
   );
 }
 
+// ── Fitbase import modal ───────────────────────────────────────────────────────
+
+interface PreviewGroup {
+  fb_funnel: string; fb_stage: string; fb_stage_id: number; count: number; target_stage_id: string | null;
+}
+
+function FbImportModal({ funnels, onClose }: { funnels: CrmFunnel[]; onClose: () => void }) {
+  const [phase, setPhase] = useState<'loading' | 'mapping' | 'running' | 'done' | 'error'>('loading');
+  const [preview, setPreview] = useState<PreviewGroup[]>([]);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [runInfo, setRunInfo] = useState<{ total?: number; inserted?: number; skipped?: number; failed?: number; errors?: string[] }>({});
+  const [loadErr, setLoadErr] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 640;
+
+  // Build flat stage options from funnels state
+  const stageOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [];
+    const seen = new Set<string>();
+    // System stages first (once)
+    for (const f of funnels) {
+      for (const s of f.stages.filter(s => s.kind !== 'normal')) {
+        if (!seen.has(s.id)) { seen.add(s.id); opts.push({ value: s.id, label: `Системный / ${s.name}` }); }
+      }
+    }
+    // Normal stages per funnel
+    for (const f of funnels) {
+      for (const s of f.stages.filter(s => s.kind === 'normal' && !s.is_archived)) {
+        if (!seen.has(s.id)) { seen.add(s.id); opts.push({ value: s.id, label: `${f.name} / ${s.name}` }); }
+      }
+    }
+    return opts;
+  }, [funnels]);
+
+  useEffect(() => {
+    api('POST', '/kviz/api/crm/fitbase-leads-import/preview')
+      .then(r => {
+        if (!r.ok) { setLoadErr((r.data as Record<string,unknown>)?.error as string ?? 'Ошибка загрузки'); setPhase('error'); return; }
+        const groups = r.data as PreviewGroup[];
+        setPreview(groups);
+        const m: Record<string, string> = {};
+        for (const g of groups) if (g.target_stage_id) m[String(g.fb_stage_id)] = g.target_stage_id;
+        setMapping(m);
+        setPhase('mapping');
+      })
+      .catch(e => { setLoadErr(String(e)); setPhase('error'); });
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 'running') { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } return; }
+    pollRef.current = setInterval(() => {
+      api('GET', '/kviz/api/crm/fitbase-leads-import/status').then(r => {
+        if (!r.ok) return;
+        const s = r.data as { status: string; total?: number; inserted?: number; skipped?: number; failed?: number; errors?: string[] };
+        setRunInfo(s);
+        if (s.status === 'done' || s.status === 'error') { setPhase(s.status as 'done' | 'error'); clearInterval(pollRef.current!); pollRef.current = null; }
+      });
+    }, 2000);
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [phase]);
+
+  async function startImport() {
+    const r = await api('POST', '/kviz/api/crm/fitbase-leads-import/run', { mapping });
+    if (r.ok) { setPhase('running'); } else { setLoadErr((r.data as Record<string,unknown>)?.error as string ?? 'Ошибка'); }
+  }
+
+  const willImport = preview.filter(g => mapping[String(g.fb_stage_id)]).reduce((s, g) => s + g.count, 0);
+  const willSkip   = preview.reduce((s, g) => s + g.count, 0) - willImport;
+
+  const inpStyle: React.CSSProperties = { padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--text)', width: '100%', boxSizing: 'border-box' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: isMobile ? '12px 12px 0 0' : 12, padding: 20, width: isMobile ? '100%' : 680, maxWidth: '100vw', maxHeight: isMobile ? '90vh' : '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14, gap: 8 }}>
+          <span style={{ flex: 1, fontWeight: 700, fontSize: 15 }}>Перенести заявки из Fitbase</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-3)', lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', marginBottom: 14 }}>
+          {phase === 'loading' && <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-2)', fontSize: 13 }}>Загружаем из Fitbase…</div>}
+          {phase === 'error' && <div style={{ color: 'var(--danger)', fontSize: 13, padding: '12px 0' }}>{loadErr || 'Ошибка'}</div>}
+
+          {phase === 'mapping' && preview.length === 0 && <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-2)', fontSize: 13 }}>Нет заявок в Fitbase.</div>}
+
+          {phase === 'mapping' && preview.length > 0 && (isMobile ? (
+            /* Mobile: cards */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {preview.map(g => (
+                <div key={g.fb_stage_id} style={{ padding: 10, background: !mapping[String(g.fb_stage_id)] ? 'rgba(245,158,11,0.08)' : 'var(--surface-2)', borderRadius: 8, border: `1px solid ${!mapping[String(g.fb_stage_id)] ? 'rgba(245,158,11,0.3)' : 'var(--border)'}` }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{g.fb_funnel} · {g.fb_stage} <span style={{ fontWeight: 400, color: 'var(--text-2)' }}>({g.count})</span></div>
+                  <select value={mapping[String(g.fb_stage_id)] ?? ''} onChange={e => setMapping(prev => ({ ...prev, [String(g.fb_stage_id)]: e.target.value }))} style={{ ...inpStyle, fontSize: 16 }}>
+                    <option value="">— не переносить</option>
+                    {stageOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Desktop: table */
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: 'var(--surface-2)' }}>
+                  <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-2)', borderBottom: '1px solid var(--border)' }}>Воронка Fitbase</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-2)', borderBottom: '1px solid var(--border)' }}>Этап Fitbase</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text-2)', borderBottom: '1px solid var(--border)' }}>Заявок</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-2)', borderBottom: '1px solid var(--border)' }}>Наш этап</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.map(g => (
+                  <tr key={g.fb_stage_id} style={{ background: !mapping[String(g.fb_stage_id)] ? 'rgba(245,158,11,0.06)' : undefined, borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '6px 10px', color: 'var(--text-2)' }}>{g.fb_funnel}</td>
+                    <td style={{ padding: '6px 10px' }}>{g.fb_stage}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: 'var(--text-2)' }}>{g.count}</td>
+                    <td style={{ padding: '6px 10px' }}>
+                      <select value={mapping[String(g.fb_stage_id)] ?? ''} onChange={e => setMapping(prev => ({ ...prev, [String(g.fb_stage_id)]: e.target.value }))} style={inpStyle}>
+                        <option value="">— не переносить</option>
+                        {stageOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ))}
+
+          {phase === 'running' && (
+            <div style={{ padding: '24px 0', textAlign: 'center' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Идёт импорт…</div>
+              <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                Перенесено: {runInfo.inserted ?? 0} · Пропущено: {runInfo.skipped ?? 0}
+                {runInfo.total ? ` / ${runInfo.total}` : ''}
+              </div>
+            </div>
+          )}
+
+          {phase === 'done' && (
+            <div style={{ padding: '24px 0', textAlign: 'center' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--success,#10b981)', marginBottom: 8 }}>Готово!</div>
+              <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                Перенесено: {runInfo.inserted ?? 0} · Пропущено: {runInfo.skipped ?? 0}
+                {runInfo.failed ? ` · Ошибок: ${runInfo.failed}` : ''}
+              </div>
+              {(runInfo.errors?.length ?? 0) > 0 && (
+                <details style={{ marginTop: 10, textAlign: 'left', fontSize: 11, color: 'var(--danger)' }}>
+                  <summary>Ошибки ({runInfo.errors!.length})</summary>
+                  <pre style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{runInfo.errors!.join('\n')}</pre>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {phase === 'mapping' && preview.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <span style={{ flex: 1, fontSize: 12, color: 'var(--text-2)' }}>Будет перенесено <b>{willImport}</b>, пропущено {willSkip}</span>
+            <button onClick={() => onClose()} style={{ padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--surface)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Отмена</button>
+            <button onClick={startImport} disabled={willImport === 0} style={{ padding: '7px 16px', border: 'none', borderRadius: 7, background: 'var(--primary)', color: '#fff', cursor: willImport === 0 ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', opacity: willImport === 0 ? 0.5 : 1 }}>Перенести</button>
+          </div>
+        )}
+        {(phase === 'done' || phase === 'error') && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={onClose} style={{ padding: '7px 16px', border: 'none', borderRadius: 7, background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Закрыть</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function FunnelsSettings() {
@@ -293,6 +468,7 @@ export function FunnelsSettings() {
   const [deleteFunnelId, setDeleteFunnelId] = useState<string | null>(null);
   const [deleteFunnelMigrateTo, setDeleteFunnelMigrateTo] = useState('');
   const [deleteFunnelLeadCount, setDeleteFunnelLeadCount] = useState(0);
+  const [fbImportOpen, setFbImportOpen] = useState(false);
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 640;
 
@@ -562,6 +738,7 @@ export function FunnelsSettings() {
                     onResetContent={() => resetFunnelContent(f.id)}
                     onDelete={() => deleteFunnel(f.id)}
                     onReloadContent={() => load()}
+                    onFbImport={() => setFbImportOpen(true)}
                   />
                 ))}
                 <DragOverlay>
@@ -672,6 +849,8 @@ export function FunnelsSettings() {
           </div>
         )}
       </div>
+
+      {fbImportOpen && <FbImportModal funnels={funnels} onClose={() => setFbImportOpen(false)} />}
     </div>
   );
 }

@@ -19,7 +19,7 @@
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 27.11.2026 | task 111: баланс всегда, заявка в воронке (GET /clients/:id/lead), Fitbase строки в Записях, баг пагинации Записей исправлен |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟢 | 26.11.2026 | task 108A: печать закрытия смены — Excel-шаблон один в один (closingDocHtml → TEMPLATE + placeholders, branch info в closing_doc) |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 26.11.2026 | task 108Б: schedule.reschedule_future — серверная проверка + date input min/max=today |
-| CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟢 | 27.11.2026 | task 111: FunnelsSettings (DnD порядок, переименование, удаление, скрытие системных), синхр. Fitbase убрана, useLive в FunnelPage |
+| CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟢 | 27.11.2026 | task 111.1: разовый перенос заявок Fitbase — preview/run/status API, FbImportModal в настройках воронок |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | Агрегатор мессенджеров | `modules/aggregator.md` | Агрегатор мессенджеров | ⚪ | 24.11.2026 | модуль заведён: сравнение Wazzup24, Green-API, ChatPlace, SendPulse, Umnico; вопросы Сергею |
 | UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | 🟡 | 19.11.2026 | task 71: меню кружка поверх iframe (#top-bar stacking context fix) |

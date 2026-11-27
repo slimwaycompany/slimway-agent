@@ -1,8 +1,8 @@
 import { supabase } from '../db/supabase';
 import { paginateGet } from '../http/fitbase';
 
-const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
-const SKIP_FUNNEL_FB_IDS = new Set([5, 6, 7]);
+export const BRANCH_ID = '00000000-0000-0000-0000-000000000001';
+export const SKIP_FUNNEL_FB_IDS = new Set([5, 6, 7]);
 
 export async function isFitbaseSyncEnabled(): Promise<boolean> {
   const { data } = await supabase.from('crm_settings')
@@ -10,24 +10,84 @@ export async function isFitbaseSyncEnabled(): Promise<boolean> {
   return (data as Record<string, unknown> | null)?.value === true;
 }
 
-function toISO(ts: unknown): string | null {
+export function toISO(ts: unknown): string | null {
   const n = Number(ts);
   return n > 0 ? new Date(n * 1000).toISOString() : null;
 }
 
-function toNum(v: unknown): number {
+export function toNum(v: unknown): number {
   if (v == null || v === '') return 0;
   const n = Number(v);
   return isFinite(n) ? n : 0;
 }
 
-function normPhone(raw: unknown): string | null {
+export function normPhone(raw: unknown): string | null {
   if (!raw) return null;
   let d = String(raw).replace(/\D/g, '');
   if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1);
   if (d.length === 11 && d[0] === '7') return d;
   if (d.length === 10) return '7' + d;
   return null;
+}
+
+export interface FbLeadMaps {
+  adMap: Map<number, string>;
+  userByFbId: Map<number, string>;
+  userByName: Map<string, string>;
+  clientMap: Map<number, string>;
+}
+
+export function buildFbLeadRow(
+  l: Record<string, unknown>,
+  stageId: string,
+  funnelId: string | null,
+  fbStageId: number | null,
+  maps: FbLeadMaps,
+  stageChangedAt: string | null,
+  now: string,
+): Record<string, unknown> {
+  const mgr = l.manager as Record<string, unknown> | null;
+  const mgrFbId = mgr?.id != null ? Number(mgr.id) : null;
+  const mgrName = (mgr?.full_name as string | null) ?? null;
+  const mgrUserId = (mgrFbId != null ? maps.userByFbId.get(mgrFbId) : null)
+    ?? (mgrName ? maps.userByName.get(mgrName.trim()) : null) ?? null;
+  const fbClientId = l.client_id != null ? Number(l.client_id) : null;
+  const adSrc = l.advertising_source as Record<string, unknown> | null;
+  return {
+    branch_id: BRANCH_ID, fitbase_id: Number(l.id), origin: 'fitbase',
+    title:        String(l.title ?? '').trim(),
+    name:         (l.name        as string | null) ?? null,
+    surname:      (l.surname     as string | null) ?? null,
+    patronymic:   (l.patronymic  as string | null) ?? null,
+    phone:        normPhone(l.phone),
+    email:        (l.email       as string | null) ?? null,
+    instagram:    (l.instagram   as string | null) ?? null,
+    telegram:     (l.telegram    as string | null) ?? null,
+    description:  (l.description as string | null) ?? null,
+    budget:       toNum(l.budget),
+    funnel_id:    funnelId,
+    stage_id:     stageId,
+    stage_changed_at: stageChangedAt,
+    fitbase_stage_id: fbStageId,
+    ad_source_id: adSrc?.id != null ? maps.adMap.get(Number(adSrc.id)) ?? null : null,
+    manager_user_id:      mgrUserId ?? null,
+    fitbase_manager_id:   mgrFbId,
+    fitbase_manager_name: mgrName,
+    client_id:            fbClientId != null ? maps.clientMap.get(fbClientId) ?? null : null,
+    fitbase_client_id:    fbClientId,
+    utm_campaign: (l.utm_campaign as string | null) ?? null,
+    utm_source:   (l.utm_source   as string | null) ?? null,
+    utm_medium:   (l.utm_medium   as string | null) ?? null,
+    utm_term:     (l.utm_term     as string | null) ?? null,
+    utm_content:  (l.utm_content  as string | null) ?? null,
+    tags:          Array.isArray(l.tags)         ? l.tags         : [],
+    custom_fields: Array.isArray(l.custom_fields) ? l.custom_fields : [],
+    is_duplicate:  Boolean(l.is_duplicate),
+    fb_created_at: toISO(l.created_at),
+    fb_updated_at: toISO(l.updated_at),
+    synced_at: now,
+    raw: l,
+  };
 }
 
 async function syncDicts(): Promise<void> {
@@ -165,6 +225,8 @@ async function syncLeads(): Promise<{ total: number; upserted: number; skipped: 
   const clientMap = new Map<number, string>();
   for (const c of clients || []) if (c.fitbase_client_id != null) clientMap.set(Number(c.fitbase_client_id), c.id as string);
 
+  const maps: FbLeadMaps = { adMap, userByFbId, userByName, clientMap };
+
   type PrevEntry = { funnel_id: string | null; stage_id: string | null; stage_changed_at: string | null };
   const prevMap = new Map<number, PrevEntry>();
   for (const l of existing || []) {
@@ -215,14 +277,6 @@ async function syncLeads(): Promise<{ total: number; upserted: number; skipped: 
       const prev = prevMap.get(fbId);
       if (!funnelId) funnelId = prev?.funnel_id ?? defaultFunnelId;
 
-      const mgr = l.manager as Record<string, unknown> | null;
-      const mgrFbId = mgr?.id != null ? Number(mgr.id) : null;
-      const mgrName = (mgr?.full_name as string | null) ?? null;
-      const mgrUserId = (mgrFbId != null ? userByFbId.get(mgrFbId) : null)
-        ?? (mgrName ? userByName.get(mgrName.trim()) : null) ?? null;
-
-      const fbClientId = l.client_id != null ? Number(l.client_id) : null;
-      const adSrc = l.advertising_source as Record<string, unknown> | null;
       const fbUpdatedAt = toISO(l.updated_at);
 
       // Track stage changes
@@ -241,41 +295,7 @@ async function syncLeads(): Promise<{ total: number; upserted: number; skipped: 
         }
       }
 
-      rows.push({
-        branch_id: BRANCH_ID, fitbase_id: fbId, origin: 'fitbase',
-        title:        String(l.title ?? '').trim(),
-        name:         (l.name        as string | null) ?? null,
-        surname:      (l.surname     as string | null) ?? null,
-        patronymic:   (l.patronymic  as string | null) ?? null,
-        phone:        ph,
-        email:        (l.email       as string | null) ?? null,
-        instagram:    (l.instagram   as string | null) ?? null,
-        telegram:     (l.telegram    as string | null) ?? null,
-        description:  (l.description as string | null) ?? null,
-        budget:       toNum(l.budget),
-        funnel_id:    funnelId,
-        stage_id:     stageInfo.id,
-        stage_changed_at: stageChangedAt,
-        fitbase_stage_id: fbStageId,
-        ad_source_id: adSrc?.id != null ? adMap.get(Number(adSrc.id)) ?? null : null,
-        manager_user_id:      mgrUserId ?? null,
-        fitbase_manager_id:   mgrFbId,
-        fitbase_manager_name: mgrName,
-        client_id:            fbClientId != null ? clientMap.get(fbClientId) ?? null : null,
-        fitbase_client_id:    fbClientId,
-        utm_campaign: (l.utm_campaign as string | null) ?? null,
-        utm_source:   (l.utm_source   as string | null) ?? null,
-        utm_medium:   (l.utm_medium   as string | null) ?? null,
-        utm_term:     (l.utm_term     as string | null) ?? null,
-        utm_content:  (l.utm_content  as string | null) ?? null,
-        tags:          Array.isArray(l.tags)         ? l.tags         : [],
-        custom_fields: Array.isArray(l.custom_fields) ? l.custom_fields : [],
-        is_duplicate:  Boolean(l.is_duplicate),
-        fb_created_at: toISO(l.created_at),
-        fb_updated_at: fbUpdatedAt,
-        synced_at: now,
-        raw: l,
-      });
+      rows.push(buildFbLeadRow(l, stageInfo.id, funnelId, fbStageId, maps, stageChangedAt, now));
     }
 
     if (rows.length) {
