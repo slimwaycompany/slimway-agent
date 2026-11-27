@@ -9,10 +9,11 @@ interface BookingsJob {
   done_clients?: number;
   stats?: {
     created: number; updated: number; to_virtual: number;
-    to_history: number;
-    skipped_no_device: number; skipped_unknown_status: number; errors: number;
+    to_history: number; items_created: number;
+    skipped_no_device: number; skipped_no_virtual: number; skipped_unknown_status: number; errors: number;
   };
-  to_history_reasons?: { no_plan: number; no_item: number; bad_time: number; overlap: number };
+  to_history_reasons?: { no_plan: number; no_item: number; bad_time: number; overlap: number; needs_split: number };
+  skipped_detail?: { top_places: string[]; unknown_codes: string[] };
   errors?: string[];
   started_at?: string;
   finished_at?: string;
@@ -127,7 +128,14 @@ function BookingsCard() {
 
   function historyTooltip(r?: BookingsJob['to_history_reasons']) {
     if (!r) return undefined;
-    return [`нет плана: ${r.no_plan}`, `нет пункта: ${r.no_item}`, `плохое время: ${r.bad_time}`, `перекрытие: ${r.overlap}`].join(' · ');
+    return [`нет плана: ${r.no_plan}`, `нет пункта: ${r.no_item}`, `нужна разбивка: ${r.needs_split}`, `плохое время: ${r.bad_time}`, `перекрытие: ${r.overlap}`].join(' · ');
+  }
+
+  function skippedTooltip(stats: NonNullable<BookingsJob['stats']>, detail?: BookingsJob['skipped_detail']) {
+    const parts = [`нет аппарата: ${stats.skipped_no_device}`, `нет виртуального: ${stats.skipped_no_virtual}`, `неизв. статус: ${stats.skipped_unknown_status}`];
+    if (detail?.top_places.length) parts.push('места: ' + detail.top_places.slice(0, 3).join(', '));
+    if (detail?.unknown_codes.length) parts.push('коды: ' + detail.unknown_codes.join(', '));
+    return parts.join(' · ');
   }
 
   return (
@@ -148,14 +156,18 @@ function BookingsCard() {
             <div style={{ color: 'var(--text-2)' }}>
               Создано: {job.stats.created}
               {job.stats.updated > 0 ? ` · обновлено: ${job.stats.updated}` : ''}
+              {job.stats.items_created > 0 ? ` · позиций абонементов: ${job.stats.items_created}` : ''}
               {job.stats.to_virtual > 0 ? ` · на виртуальных: ${job.stats.to_virtual}` : ''}
               {job.stats.to_history > 0 ? (
                 <span title={historyTooltip(job.to_history_reasons)} style={{ cursor: 'help' }}>
                   {` · в историю: ${job.stats.to_history}`}
                 </span>
               ) : null}
-              {(job.stats.skipped_no_device + job.stats.skipped_unknown_status) > 0
-                ? ` · пропущено: ${job.stats.skipped_no_device + job.stats.skipped_unknown_status}` : ''}
+              {(job.stats.skipped_no_device + job.stats.skipped_no_virtual + job.stats.skipped_unknown_status) > 0 ? (
+                <span title={skippedTooltip(job.stats, job.skipped_detail)} style={{ cursor: 'help' }}>
+                  {` · пропущено: ${job.stats.skipped_no_device + job.stats.skipped_no_virtual + job.stats.skipped_unknown_status}`}
+                </span>
+              ) : null}
               {` · ошибок: ${job.stats.errors}`}
             </div>
           )}

@@ -18,7 +18,7 @@
 | Скриптолог (расширение) | `modules/scriptolog.md` | Скриптолог | 🟢 | 16.11.2026 | task 48-4: trial_24h без подарка; safeDeleteDelayed — cancelled только после OK/404 |
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 27.11.2026 | task 111: баланс всегда, заявка в воронке (GET /clients/:id/lead), Fitbase строки в Записях, баг пагинации Записей исправлен |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟢 | 26.11.2026 | task 108A: печать закрытия смены — Excel-шаблон один в один (closingDocHtml → TEMPLATE + placeholders, branch info в closing_doc) |
-| CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 27.11.2026 | task 114.1: plan_id+client_plan_item_id из абонемента, saveToHistory(reason), порядок клиентов, сброс чекпоинта (⚠️ нужен SQL 114) |
+| CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 27.11.2026 | task 114.2: ensureImportedPlanItems — позиции для fitbase-планов без позиций, чистка crm_visit_history после брони, skipped_no_virtual+skipped_detail (⚠️ нужен SQL 114) |
 | CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟢 | 27.11.2026 | task 114: грейд автоматизации (fb_created_at, fallback_created, already_on_target), Успех/Отказ скрыты на доске, раздел Синк с FB |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | Агрегатор мессенджеров | `modules/aggregator.md` | Агрегатор мессенджеров | ⚪ | 24.11.2026 | модуль заведён: сравнение Wazzup24, Green-API, ChatPlace, SendPulse, Umnico; вопросы Сергею |

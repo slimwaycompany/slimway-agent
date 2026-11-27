@@ -24,6 +24,17 @@
 - RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`, `crm_day_hours(p_date)` → (is_open, open_time, close_time)
 
 ## Сделано
+### 27.11.2026 · task 114.2 · Перенос записей: позиции для импортированных абонементов, чистка истории, расшифровка пропусков
+
+**`src/jobs/fitbaseBookingsImport.ts`** — три дополнения к 114.1:
+- `ensureImportedPlanItems(clientId)`: до построения `contractToEntry` находит `source='fitbase'`-планы без позиций и без `needs_split`, загружает шаблоны из `crm_plan_items`, вставляет `crm_client_plan_items` (сессии: для мульти-пункт — из шаблона, для одиночного — из `sessions_total` плана). Счётчик `items_created`.
+- После успешного insert/update брони — `void supabase.from('crm_visit_history').delete().eq('fitbase_reg_id', ...)` (fire-and-forget очистка дублей в истории).
+- `needs_split` добавлен в `to_history_reasons`; при `entry.needs_split=true` → `saveToHistory('needs_split', ...)`.
+- `skipped_no_virtual` выделен отдельно от `skipped_no_device`.
+- `placeMissCount`/`unknownCodeCount` Maps → `buildSkippedDetail()` → `job.skipped_detail { top_places, unknown_codes }`.
+
+**`kviz/client/src/pages/crm/settings/FbSyncSettings.tsx`**: `BookingsJob` дополнен `items_created`, `skipped_no_virtual`, `needs_split`, `skipped_detail`; строка статистики — «позиций абонементов: N»; tooltip «пропущено» с разбивкой `нет аппарата / нет виртуального / неизв. статус + топ мест + топ кодов`.
+
 ### 27.11.2026 · task 114.1 · Исправление переноса записей: plan_id/пункт абонемента, история
 
 **`src/jobs/fitbaseBookingsImport.ts`** — полный рефактор:
