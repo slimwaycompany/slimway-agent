@@ -24,15 +24,30 @@
 - RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`, `crm_day_hours(p_date)` → (is_open, open_time, close_time)
 
 ## Сделано
-### 27.11.2026 · task 114 · Перенос записей Fitbase в Расписание + доп. аппараты 0–5
+### 27.11.2026 · task 114.1 · Исправление переноса записей: plan_id/пункт абонемента, история
 
-**`src/jobs/fitbaseBookingsImport.ts`** (новый): `runBookingsImport` — постраничный перебор клиентов по `fitbase_client_id`, для каждого GET `/schedule-registration` (page_size=100); сортировка по дате+времени (детерминированное назначение виртуальных); `parsePlaceName("Vacuactiv 1")` → `{typeCode,num}`, матч по `crm_devices`; статусы 0→booked/1→confirmed/2→cancelled/3→attended/4→no_show; пробные → kind='free'+TRIAL_PLAN_ID, остальные → kind='plan'; `contractToPlanId` — 1 запрос на клиента; insert: `23505` → `UPDATE status` only (device/time не меняются при повторном запуске), `23P01` с client_id → upsert `crm_visit_history` + skipped_client_overlap++, `23P01` device → перебор виртуальных в порядке возрастания номера; checkpoint каждые 10 клиентов в `crm_settings`; после завершения — `runAutomation()` в фоне.
+**`src/jobs/fitbaseBookingsImport.ts`** — полный рефактор:
+- Пробный план ищется по имени (`ilike '%пробн%'`) а не хардкодом; если не найден — прогон не начинается.
+- `.order('fitbase_client_id')` на загрузку клиентов (критично для корректности чекпоинта).
+- Кэш планов на клиента расширен: `contractToEntry → { client_plan_id, plan_id, items[{id,device_type_code,device_type_codes,phase}] }` — 1 запрос на клиента.
+- Бронь `kind='plan'`: все три поля — `plan_id` (из `crm_client_plans.plan_id`), `client_plan_id`, `client_plan_item_id` (пункт с совпадением по `device_type_code` или `device_type_codes`-пул, приоритет `phase='active'`) — обязательны (удовлетворяет `crm_bookings_check1`).
+- Если нет контракта в кэше (`no_plan`), нет подходящего пункта (`no_item`) или `ends_at <= starts_at` (`bad_time`) — общий `saveToHistory(reason, ...)` вместо создания брони.
+- `saveToHistory` — `await`, проверяет ошибку, заполняет `stats.to_history` + `to_history_reasons[reason]`.
+- Существующий `23P01+client_id` → `saveToHistory('overlap', ...)`.
+- Checkpoint: `await` вместо `void`.
+- `export resetBookingsCheckpoint()` для endpoint сброса.
+
+**`src/http/crm.ts`**: добавлен `POST /kviz/api/crm/fb-sync/bookings/reset-checkpoint` (edit, нельзя во время импорта).
+
+**`kviz/client/src/pages/crm/settings/FbSyncSettings.tsx`**: интерфейс обновлён (`to_history`, `to_history_reasons`); строка статистики — «в историю: N» с tooltip «нет плана: X · нет пункта: Y · плохое время: Z · перекрытие: W»; кнопка «Сбросить прогресс» с `confirm`.
+
+### 27.11.2026 · task 114 · Перенос записей Fitbase в Расписание + доп. аппараты 0–5
 
 **`src/http/crm.ts`**: добавлены роуты `POST /kviz/api/crm/fb-sync/bookings/start` и `GET /kviz/api/crm/fb-sync/bookings/status` (право `settings.fb_sync` edit/view).
 
 **`kviz/client/src/pages/crm/SchedulePage.tsx`**: `extraVirtual` расширен с `0|1|2|3` до `0|1|2|3|4|5`; кнопки `[+1][+2][+3][+4][+5]`.
 
-⚠️ **Нужен SQL 114**: `ALTER TABLE crm_bookings ADD COLUMN IF NOT EXISTS fitbase_reg_id bigint; CREATE UNIQUE INDEX IF NOT EXISTS crm_bookings_fitbase_reg_id_key ON crm_bookings(fitbase_reg_id) WHERE fitbase_reg_id IS NOT NULL;` — без этого импорт не запустится (конфликт onConflict).
+⚠️ **Нужен SQL 114**: `ALTER TABLE crm_bookings ADD COLUMN IF NOT EXISTS fitbase_reg_id bigint; CREATE UNIQUE INDEX IF NOT EXISTS crm_bookings_fitbase_reg_id_key ON crm_bookings(fitbase_reg_id) WHERE fitbase_reg_id IS NOT NULL;` — без этого импорт не запустится.
 
 ### 26.11.2026 · task 108Б · Перенос записи по праву schedule.reschedule_future
 - **`src/http/crm.ts`**: `POST /schedule/bookings/:id/move` — если дата назначения или дата исходной брони не совпадают с сегодня (UTC+5), проверяет право `schedule.reschedule_future` через `can()`; возвращает 403 «Перенести на другой день может управляющий. Можно перенести только на сегодня».
@@ -226,6 +241,7 @@
 - (нет известных)
 
 ## Следующее
+- **27.11.2026 — баг импорта записей (ТЗ 114, записано):** `fitbaseBookingsImport.ts` берёт клиентов без сортировки, а чекпоинт хранит `last_fid` и пропускает всех `fid <= last_fid` — при продолжении после рестарта пропустит необработанных клиентов. Исправить: `.order('fitbase_client_id')`. Пока обход: перед повторным запуском удалить `crm_settings.key='bookings_import_checkpoint'`.
 - **27.11.2026 — перенос записей и посещений из Fitbase в наше Расписание (обсуждаем, ТЗ не собирать до «собирай»; отдельно от «финального перехода»).** Сергей: переносим из расписания Fitbase все записи со статусами (записан, подтверждён, отказался, пришёл, не пришёл, поздняя отмена) и сразу расставляем в нашем Расписании по аппаратам. Если на одно время на один аппарат в Fitbase записано больше людей, чем аппаратов (пример: 13:30 на Vacu 4 человека), лишних ставим на **виртуальные аппараты** (`crm_devices.is_virtual`). Время из Fitbase примерное — берём как есть. Черновик решений Claude: источник `/schedule-registration` (как в `fitbaseHistoryImport.ts`), брони в `crm_bookings` с пометкой источника и `fitbase_reg_id` (повторный запуск без дублей), сеансы абонементов при импорте НЕ списывать повторно (остатки уже пришли из Fitbase), пробные — бесплатная бронь системной услуги, в карточке клиента визиты из брони не дублировать с `crm_visit_history`. Ответы Сергея 27.11: период — **вся история**; пока **разовый перенос**, запуск кнопкой в новом разделе Настроек **«Синк с FB»** (там же потом все кнопки переезда: контакты, записи, продажи и прочее); виртуальных аппаратов сейчас 3, **добавить ещё 2** (до 5 на вид). ТЗ 113.
 - **27.11.2026 — ФИНАЛЬНЫЙ ПЕРЕХОД С FITBASE (записано, ТЗ не собирать до «собирай»).** Одним пакетом перенести из Fitbase всё, что ещё живёт только там, и выключить синки с Fitbase: клиенты, визиты клиентов (в карточку), примерное расписание (в наше Расписание), покупки/абонементы, InBody и замеры, прочие синки. Общий список — `docs/QUEUE.md`, строка «Финальный переход». Здесь: **примерное расписание из Fitbase** (будущие записи клиентов) → `crm_bookings` нашего Расписания.
 - **(записано 25.11.2026, сводка незакрытых задач, решения Сергея)**

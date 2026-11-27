@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { supabase } from '../db/supabase';
 import { getSession, requireAuth, requireAdmin, getSessionWithPerms, can, requirePerm, windowSecret } from './auth';
 import { startHistoryImport, runFitbaseHistoryImport, getHistoryImportJob, linkBodyClients, getLinkStats } from '../jobs/fitbaseHistoryImport';
-import { startBookingsImport, runBookingsImport, getBookingsImportJob } from '../jobs/fitbaseBookingsImport';
+import { startBookingsImport, runBookingsImport, getBookingsImportJob, resetBookingsCheckpoint } from '../jobs/fitbaseBookingsImport';
 import { batchAutoLabelsForDay, batchAutoLabelsToday } from '../core/clientAutoLabels';
 import type { ClientExtraData } from '../core/clientAutoLabels';
 import { runAutomation } from '../core/automation/engine';
@@ -3928,6 +3928,16 @@ export function buildCrmRouter(): Router {
     if (!requirePerm(req, res, 'settings.fb_sync', 'view', session)) return;
     const job = getBookingsImportJob();
     res.json(job ?? { status: 'idle' });
+  });
+
+  r.post('/kviz/api/crm/fb-sync/bookings/reset-checkpoint', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.fb_sync', 'edit', session)) return;
+    if (getBookingsImportJob()?.status === 'running') {
+      res.status(409).json({ error: 'Нельзя сбросить во время импорта' }); return;
+    }
+    await resetBookingsCheckpoint();
+    res.json({ ok: true });
   });
 
   // ── InBody ↔ CRM client link ──────────────────────────────────────────────────

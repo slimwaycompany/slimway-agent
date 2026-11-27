@@ -9,9 +9,10 @@ interface BookingsJob {
   done_clients?: number;
   stats?: {
     created: number; updated: number; to_virtual: number;
-    skipped_no_device: number; skipped_client_overlap: number;
-    skipped_unknown_status: number; errors: number;
+    to_history: number;
+    skipped_no_device: number; skipped_unknown_status: number; errors: number;
   };
+  to_history_reasons?: { no_plan: number; no_item: number; bad_time: number; overlap: number };
   errors?: string[];
   started_at?: string;
   finished_at?: string;
@@ -76,9 +77,10 @@ function Btn({ onClick, loading, children, danger }: { onClick: () => void; load
 // ── Bookings import card ───────────────────────────────────────────────────────
 
 function BookingsCard() {
-  const [job, setJob]     = useState<BookingsJob | null>(null);
-  const [err, setErr]     = useState('');
+  const [job, setJob]         = useState<BookingsJob | null>(null);
+  const [err, setErr]         = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -111,7 +113,22 @@ function BookingsCard() {
     setLoading(false);
   }
 
+  async function resetCheckpoint() {
+    if (!confirm('Сбросить прогресс? Следующий запуск начнётся с начала.')) return;
+    setResetting(true);
+    try {
+      const { ok, data } = await apiFetch('/kviz/api/crm/fb-sync/bookings/reset-checkpoint', 'POST');
+      if (!ok) setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка сброса');
+    } catch { setErr('Не удалось сбросить'); }
+    setResetting(false);
+  }
+
   const running = job?.status === 'running';
+
+  function historyTooltip(r?: BookingsJob['to_history_reasons']) {
+    if (!r) return undefined;
+    return [`нет плана: ${r.no_plan}`, `нет пункта: ${r.no_item}`, `плохое время: ${r.bad_time}`, `перекрытие: ${r.overlap}`].join(' · ');
+  }
 
   return (
     <Card title="Записи и посещения">
@@ -132,8 +149,13 @@ function BookingsCard() {
               Создано: {job.stats.created}
               {job.stats.updated > 0 ? ` · обновлено: ${job.stats.updated}` : ''}
               {job.stats.to_virtual > 0 ? ` · на виртуальных: ${job.stats.to_virtual}` : ''}
-              {(job.stats.skipped_no_device + job.stats.skipped_client_overlap + job.stats.skipped_unknown_status) > 0
-                ? ` · пропущено: ${job.stats.skipped_no_device + job.stats.skipped_client_overlap + job.stats.skipped_unknown_status}` : ''}
+              {job.stats.to_history > 0 ? (
+                <span title={historyTooltip(job.to_history_reasons)} style={{ cursor: 'help' }}>
+                  {` · в историю: ${job.stats.to_history}`}
+                </span>
+              ) : null}
+              {(job.stats.skipped_no_device + job.stats.skipped_unknown_status) > 0
+                ? ` · пропущено: ${job.stats.skipped_no_device + job.stats.skipped_unknown_status}` : ''}
               {` · ошибок: ${job.stats.errors}`}
             </div>
           )}
@@ -145,14 +167,22 @@ function BookingsCard() {
         </div>
       )}
       {err && <div style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
-      <Btn onClick={start} loading={loading || running}>
-        {running ? 'Идёт импорт…' : 'Запустить импорт'}
-      </Btn>
-      {running && (
-        <button onClick={poll} style={{ marginLeft: 8, padding: '7px 12px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-2)' }}>
-          Обновить статус
-        </button>
-      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Btn onClick={start} loading={loading || running}>
+          {running ? 'Идёт импорт…' : 'Запустить импорт'}
+        </Btn>
+        {running && (
+          <button onClick={poll} style={{ padding: '7px 12px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-2)' }}>
+            Обновить статус
+          </button>
+        )}
+        {!running && (
+          <button onClick={resetCheckpoint} disabled={resetting}
+            style={{ padding: '7px 12px', background: 'none', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, cursor: resetting ? 'wait' : 'pointer', fontFamily: 'inherit', color: 'var(--text-3)' }}>
+            {resetting ? '…' : 'Сбросить прогресс'}
+          </button>
+        )}
+      </div>
     </Card>
   );
 }
