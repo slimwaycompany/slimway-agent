@@ -2195,12 +2195,12 @@ export function buildCrmRouter(): Router {
 
       const [bkRes, vhRes] = await Promise.all([
         supabase.from('crm_bookings')
-          .select('id,booking_date,starts_at,status,device_type_code')
+          .select('id,booking_date,starts_at,status,device_type_code,fitbase_reg_id')
           .eq('client_id', clientId).in('status', bkStatuses)
           .order('booking_date', { ascending: false }).order('starts_at', { ascending: false }),
         vhStatuses.length
           ? supabase.from('crm_visit_history')
-              .select('id,visit_at,status,training_name')
+              .select('id,visit_at,status,training_name,fitbase_reg_id')
               .eq('client_id', clientId).in('status', vhStatuses)
               .order('visit_at', { ascending: false })
           : Promise.resolve({ data: [], error: null }),
@@ -2209,18 +2209,25 @@ export function buildCrmRouter(): Router {
       if (bkRes.error) console.error('[visits] bookings error', clientId, bkRes.error.message);
       if ((vhRes as { error: { message: string } | null }).error) console.error('[visits] visit_history error', clientId, (vhRes as { error: { message: string } }).error.message);
 
-      const bkRows = ((bkRes.data ?? []) as Record<string,unknown>[]).map(r => ({
+      const bkData = (bkRes.data ?? []) as Record<string,unknown>[];
+      const vhData = (((vhRes as { data: Record<string,unknown>[] | null }).data) ?? []);
+      // Suppress history rows already represented by a booking (avoid duplicate display)
+      const bkRegIds = new Set(bkData.map(r => r.fitbase_reg_id as number | null).filter((id): id is number => id != null));
+
+      const bkRows = bkData.map(r => ({
         id: r.id as string, source: 'crm' as const,
         date: r.booking_date as string, time: r.starts_at ? (r.starts_at as string).slice(11, 16) : null,
         status: r.status as string,
         label: r.device_type_code as string | null,
       }));
-      const vhRows = (((vhRes as { data: Record<string,unknown>[] | null }).data) ?? []).map(r => ({
-        id: r.id as string, source: 'fitbase' as const,
-        date: (r.visit_at as string).slice(0, 10), time: (r.visit_at as string).slice(11, 16) || null,
-        status: r.status as string,
-        label: r.training_name as string | null,
-      }));
+      const vhRows = vhData
+        .filter(r => { const rid = r.fitbase_reg_id as number | null; return rid == null || !bkRegIds.has(rid); })
+        .map(r => ({
+          id: r.id as string, source: 'fitbase' as const,
+          date: (r.visit_at as string).slice(0, 10), time: (r.visit_at as string).slice(11, 16) || null,
+          status: r.status as string,
+          label: r.training_name as string | null,
+        }));
 
       // Merge & sort by date+time desc
       const all = [...bkRows, ...vhRows].sort((a, b) => {
@@ -2269,7 +2276,7 @@ export function buildCrmRouter(): Router {
         ['attended', 'no_show'];
 
       let bkQ = supabase.from('crm_bookings')
-        .select('id,booking_date,starts_at,status,kind,device_type_code,phase,group_id,client_plan_id,session_burned')
+        .select('id,booking_date,starts_at,status,kind,device_type_code,phase,group_id,client_plan_id,session_burned,fitbase_reg_id')
         .eq('client_id', clientId).eq('branch_id', BRANCH_ID);
 
       if (filter === 'future') {
@@ -2286,7 +2293,7 @@ export function buildCrmRouter(): Router {
         bkQ.order('booking_date', { ascending: false }).order('starts_at', { ascending: false }).limit(500),
         vhStatuses.length
           ? supabase.from('crm_visit_history')
-              .select('id,visit_at,status,training_name')
+              .select('id,visit_at,status,training_name,fitbase_reg_id')
               .eq('client_id', clientId).in('status', vhStatuses)
               .order('visit_at', { ascending: false }).limit(300)
           : Promise.resolve({ data: [] as Record<string, unknown>[] }),
@@ -2306,6 +2313,11 @@ export function buildCrmRouter(): Router {
         }
       }
 
+      // Build set of fitbase_reg_ids present in bookings to suppress duplicate history rows
+      const bkRegIds = new Set(
+        (bkRes.data ?? []).map((b: Record<string,unknown>) => b.fitbase_reg_id as number | null).filter((id): id is number => id != null)
+      );
+
       const bkRows = (bkRes.data ?? []).map((b: Record<string,unknown>) => {
         const starts = b.starts_at as string;
         const timeStr = starts ? starts.slice(11, 16) : null;
@@ -2321,14 +2333,16 @@ export function buildCrmRouter(): Router {
       });
 
       const vhData = ((vhRes as { data: Record<string, unknown>[] | null }).data) ?? [];
-      const vhRows = vhData.map((h: Record<string,unknown>) => ({
-        id: `vh:${h.id as string}`, booking_date: (h.visit_at as string).slice(0, 10),
-        time: (h.visit_at as string).slice(11, 16) || null,
-        status: h.status as string, kind: 'fitbase', device_type_code: null,
-        phase: null, group_id: null, client_plan_id: null,
-        plan_name: (h.training_name as string | null) ?? null,
-        is_burned: false,
-      }));
+      const vhRows = vhData
+        .filter((h: Record<string,unknown>) => { const rid = h.fitbase_reg_id as number | null; return rid == null || !bkRegIds.has(rid); })
+        .map((h: Record<string,unknown>) => ({
+          id: `vh:${h.id as string}`, booking_date: (h.visit_at as string).slice(0, 10),
+          time: (h.visit_at as string).slice(11, 16) || null,
+          status: h.status as string, kind: 'fitbase', device_type_code: null,
+          phase: null, group_id: null, client_plan_id: null,
+          plan_name: (h.training_name as string | null) ?? null,
+          is_burned: false,
+        }));
 
       const all = [...bkRows, ...vhRows].sort((a, b) => {
         const da = `${a.booking_date}${a.time ?? '00:00'}`;

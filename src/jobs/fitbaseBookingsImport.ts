@@ -45,6 +45,10 @@ function todayUTC5(): string {
   return new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
 }
 
+function futureDateUTC5(): string {
+  return new Date(Date.now() + 5 * 3600_000 + 180 * 86400_000).toISOString().slice(0, 10);
+}
+
 type PlanItem = { id: string; device_type_code: string | null; device_type_codes: string[] | null; phase: string };
 type PlanEntry = { client_plan_id: string; plan_id: string; items: PlanItem[]; needs_split: boolean };
 
@@ -57,6 +61,19 @@ function findMatchingItem(items: PlanItem[], typeCode: string): PlanItem | null 
   return matches.find(it => it.phase === 'active') ?? matches[0] ?? null;
 }
 
+// Enforces crm_client_plan_items_sessions_chk. Returns null if sessions are invalid (skip item).
+function makeItemSessions(
+  isUnlimited: boolean,
+  rawTotal: number | null | undefined,
+  rawLeft: number | null | undefined,
+): { is_unlimited: boolean; sessions_total: number | null; sessions_left: number | null } | null {
+  if (isUnlimited) return { is_unlimited: true, sessions_total: null, sessions_left: null };
+  const total = rawTotal != null ? Number(rawTotal) : null;
+  if (!total || total <= 0) return null; // invalid — skip
+  const left = rawLeft != null ? Math.min(Math.max(0, Number(rawLeft)), total) : 0;
+  return { is_unlimited: false, sessions_total: total, sessions_left: left };
+}
+
 export interface BookingsImportJob {
   status: 'running' | 'done' | 'error';
   total_clients: number;
@@ -66,7 +83,9 @@ export interface BookingsImportJob {
     updated: number;
     to_virtual: number;
     to_history: number;
+    future_to_history: number;
     items_created: number;
+    items_pool: number;
     skipped_no_device: number;
     skipped_no_virtual: number;
     skipped_unknown_status: number;
@@ -87,7 +106,11 @@ export function startBookingsImport(): BookingsImportJob | null {
   _job = {
     status: 'running',
     total_clients: 0, done_clients: 0,
-    stats: { created: 0, updated: 0, to_virtual: 0, to_history: 0, items_created: 0, skipped_no_device: 0, skipped_no_virtual: 0, skipped_unknown_status: 0, errors: 0 },
+    stats: {
+      created: 0, updated: 0, to_virtual: 0, to_history: 0, future_to_history: 0,
+      items_created: 0, items_pool: 0,
+      skipped_no_device: 0, skipped_no_virtual: 0, skipped_unknown_status: 0, errors: 0,
+    },
     to_history_reasons: { no_plan: 0, no_item: 0, bad_time: 0, overlap: 0, needs_split: 0 },
     skipped_detail: { top_places: [], unknown_codes: [] },
     errors: [],
@@ -119,6 +142,8 @@ export async function runBookingsImport(): Promise<void> {
     };
   }
 
+  const todayStr = todayUTC5();
+
   // Shared helper: write a registration to visit history instead of bookings
   async function saveToHistory(
     reason: 'no_plan' | 'no_item' | 'bad_time' | 'overlap' | 'needs_split',
@@ -138,13 +163,14 @@ export async function runBookingsImport(): Promise<void> {
     } else {
       job.stats.to_history++;
       job.to_history_reasons[reason]++;
+      if (p.date > todayStr) job.stats.future_to_history++;
     }
   }
 
-  // Create missing crm_client_plan_items for imported (source='fitbase') plans that have no items
-  // and are not awaiting manual split. Must be called before building contractToEntry so the
-  // subsequent plans query picks up the freshly inserted items.
-  async function ensureImportedPlanItems(clientId: string): Promise<number> {
+  // Create missing crm_client_plan_items for imported (source='fitbase') plans that have no items.
+  // Handles needs_split=true by creating a pool item with all device type codes combined.
+  // Must be called before building contractToEntry so the subsequent query picks up new items.
+  async function ensureImportedPlanItems(clientId: string): Promise<{ items: number; pool: number }> {
     const { data: plans } = await supabase
       .from('crm_client_plans')
       .select('id, plan_id, sessions_total, sessions_left, needs_split, crm_client_plan_items(id)')
@@ -152,15 +178,14 @@ export async function runBookingsImport(): Promise<void> {
       .eq('source', 'fitbase')
       .not('plan_id', 'is', null);
 
-    if (!plans?.length) return 0;
+    if (!plans?.length) return { items: 0, pool: 0 };
 
-    // Keep only plans without any items and not awaiting manual split
+    // Keep only plans without any items
     const noItemPlans = (plans as Record<string, unknown>[]).filter(cp => {
-      if (cp.needs_split) return false;
       const items = cp.crm_client_plan_items as unknown[];
       return !items || items.length === 0;
     });
-    if (!noItemPlans.length) return 0;
+    if (!noItemPlans.length) return { items: 0, pool: 0 };
 
     // Load plan templates for all relevant plan_ids in one query
     const planIds = [...new Set(noItemPlans.map(cp => cp.plan_id as string))];
@@ -178,35 +203,108 @@ export async function runBookingsImport(): Promise<void> {
     }
 
     let created = 0;
+    let pool = 0;
     for (const cp of noItemPlans) {
       const planId = cp.plan_id as string;
       const tmplItems = tmplByPlanId.get(planId) ?? [];
-      if (!tmplItems.length) continue; // no template items — will go to no_item in history
+      if (!tmplItems.length) continue; // no template — will go to no_item in history
 
+      const isNeedsSplit = Boolean(cp.needs_split);
       const isMulti = tmplItems.length > 1;
-      const inserts = tmplItems.map(t => ({
-        client_plan_id:    cp.id as string,
-        device_type_code:  t.device_type_code ?? null,
-        device_type_codes: t.device_type_codes ?? null,
-        phase:             String(t.phase || 'active'),
-        is_unlimited:      Boolean(t.is_unlimited),
-        daily_limit:       t.daily_limit ?? null,
-        // multi-item: use template sessions; single-item: use plan's actual sessions
-        sessions_total: isMulti
-          ? Number(t.sessions ?? 0)
-          : Number(cp.sessions_total ?? t.sessions ?? 0),
-        sessions_left: isMulti ? 0 : Number(cp.sessions_left ?? 0),
-      }));
 
-      const { error } = await supabase.from('crm_client_plan_items').insert(inserts);
-      if (error) {
-        if (job.errors.length < 20) job.errors.push(`items for plan ${cp.id as string}: ${error.message}`);
-        job.stats.errors++;
+      if (isNeedsSplit) {
+        // Collect all unique device type codes from template items
+        const typeCodes = [...new Set(tmplItems.flatMap(t => {
+          const codes: string[] = [];
+          if (t.device_type_code) codes.push(t.device_type_code as string);
+          if (Array.isArray(t.device_type_codes)) codes.push(...(t.device_type_codes as string[]));
+          return codes;
+        }))];
+
+        const allUnlimited = tmplItems.every(t => Boolean(t.is_unlimited));
+        const rawTotal = cp.sessions_total != null ? Number(cp.sessions_total) :
+          (allUnlimited ? null : tmplItems.reduce((s, t) => s + Number(t.sessions ?? 0), 0));
+        const rawLeft = allUnlimited ? null : (cp.sessions_left != null ? Number(cp.sessions_left) : 0);
+        const sess = makeItemSessions(allUnlimited, rawTotal, rawLeft);
+        if (!sess) continue; // bad sessions — skip, needs_split stays
+
+        const insertData: Record<string, unknown> = {
+          client_plan_id: cp.id as string,
+          phase: 'active',
+          daily_limit: null,
+          ...sess,
+          ...(typeCodes.length === 1
+            ? { device_type_code: typeCodes[0], device_type_codes: null }
+            : { device_type_code: null, device_type_codes: typeCodes }),
+        };
+
+        const { error } = await supabase.from('crm_client_plan_items').insert(insertData);
+        if (error) {
+          if (job.errors.length < 20) job.errors.push(`pool items for plan ${cp.id as string}: ${error.message}`);
+          job.stats.errors++;
+        } else {
+          created++;
+          if (typeCodes.length >= 2) pool++;
+          // Clear needs_split now that pool item is created
+          await supabase.from('crm_client_plans').update({ needs_split: false }).eq('id', cp.id as string);
+        }
+        continue;
+      }
+
+      if (!isMulti) {
+        // Single-item plan: use plan's actual sessions (more accurate than template)
+        const t = tmplItems[0];
+        const sess = makeItemSessions(
+          Boolean(t.is_unlimited),
+          cp.sessions_total != null ? Number(cp.sessions_total) : (t.sessions != null ? Number(t.sessions) : null),
+          cp.sessions_left != null ? Number(cp.sessions_left) : null,
+        );
+        if (!sess) continue;
+
+        const { error } = await supabase.from('crm_client_plan_items').insert({
+          client_plan_id:    cp.id as string,
+          device_type_code:  t.device_type_code ?? null,
+          device_type_codes: t.device_type_codes ?? null,
+          phase:             String(t.phase || 'active'),
+          daily_limit:       t.daily_limit ?? null,
+          ...sess,
+        });
+        if (error) {
+          if (job.errors.length < 20) job.errors.push(`items for plan ${cp.id as string}: ${error.message}`);
+          job.stats.errors++;
+        } else {
+          created++;
+        }
       } else {
-        created += inserts.length;
+        // Multi-item plan (not needs_split, already not active): use template sessions, left=0
+        const inserts = tmplItems.map(t => {
+          const sess = makeItemSessions(
+            Boolean(t.is_unlimited),
+            t.sessions != null ? Number(t.sessions) : null,
+            0,
+          );
+          if (!sess) return null;
+          return {
+            client_plan_id:    cp.id as string,
+            device_type_code:  t.device_type_code ?? null,
+            device_type_codes: t.device_type_codes ?? null,
+            phase:             String(t.phase || 'active'),
+            daily_limit:       t.daily_limit ?? null,
+            ...sess,
+          };
+        }).filter((x): x is NonNullable<typeof x> => x != null);
+
+        if (!inserts.length) continue;
+        const { error } = await supabase.from('crm_client_plan_items').insert(inserts);
+        if (error) {
+          if (job.errors.length < 20) job.errors.push(`items for plan ${cp.id as string}: ${error.message}`);
+          job.stats.errors++;
+        } else {
+          created += inserts.length;
+        }
       }
     }
-    return created;
+    return { items: created, pool };
   }
 
   try {
@@ -274,7 +372,7 @@ export async function runBookingsImport(): Promise<void> {
         await sleep(100);
         const regsRaw = await paginateGet(
           '/schedule-registration',
-          { page_size: 100, client_id: fid, date_from: '2020-01-01', date_to: todayUTC5() },
+          { page_size: 100, client_id: fid, date_from: '2020-01-01', date_to: futureDateUTC5() },
           'bookings-import',
         );
         await sleep(300 + Math.random() * 200);
@@ -288,10 +386,11 @@ export async function runBookingsImport(): Promise<void> {
           return ka.localeCompare(kb);
         });
 
-        // Create missing plan items for single-item imported plans (before building contractToEntry
-        // so the subsequent query picks up newly created items)
-        const newItems = await ensureImportedPlanItems(clientId);
+        // Create missing plan items (including needs_split pool items) before building
+        // contractToEntry so the subsequent query picks up newly created items.
+        const { items: newItems, pool: newPool } = await ensureImportedPlanItems(clientId);
         job.stats.items_created += newItems;
+        job.stats.items_pool += newPool;
 
         // Load this client's plans with items (1 query per client)
         const { data: cpRows } = await supabase
@@ -416,8 +515,6 @@ export async function runBookingsImport(): Promise<void> {
               job.stats.errors++;
             } else {
               job.stats.updated++;
-              // Clean up visit history entry if previously saved there
-              void supabase.from('crm_visit_history').delete().eq('fitbase_reg_id', fitbaseRegId);
             }
             continue;
           }
@@ -439,8 +536,6 @@ export async function runBookingsImport(): Promise<void> {
               if (!vErr) {
                 placed = true;
                 job.stats.to_virtual++;
-                // Clean up visit history entry if previously saved there
-                void supabase.from('crm_visit_history').delete().eq('fitbase_reg_id', fitbaseRegId);
                 break;
               }
               if (vErr.code !== '23P01') {
@@ -463,8 +558,6 @@ export async function runBookingsImport(): Promise<void> {
             job.stats.errors++;
           } else {
             job.stats.created++;
-            // Clean up visit history entry if previously saved there
-            void supabase.from('crm_visit_history').delete().eq('fitbase_reg_id', fitbaseRegId);
           }
         }
       } catch (e) {

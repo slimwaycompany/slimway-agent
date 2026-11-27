@@ -24,6 +24,18 @@
 - RPC: `crm_booking_create`, `crm_booking_set_status`, `crm_booking_cancel`, `crm_booking_move`, `crm_day_hours(p_date)` → (is_open, open_time, close_time)
 
 ## Сделано
+### 27.11.2026 · task 114.3 · Перенос записей: будущие записи (+180 дн.), общий пул для needs_split, безлимит, без дублей
+
+**`src/jobs/fitbaseBookingsImport.ts`**:
+- `futureDateUTC5()` — `date_to` теперь today+180 дней (UTC+5), будущие записи переносятся.
+- `future_to_history` счётчик: в `saveToHistory` если `p.date > todayStr` → инкремент.
+- `makeItemSessions(isUnlimited, rawTotal, rawLeft)` — модульная проверка `crm_client_plan_items_sessions_chk`; при `is_unlimited=true` → `sessions_total=null, sessions_left=null`; при `is_unlimited=false` и `total <= 0` → вернуть null (позицию не создавать).
+- `ensureImportedPlanItems` теперь обрабатывает `needs_split=true`: собирает уникальные type codes из шаблона; 1 тип → обычная позиция, ≥2 → пул (`device_type_code=null, device_type_codes=[...]`); сеансы из плана (`crm_client_plans.sessions_total/left`) или суммы шаблона; после успешной вставки `UPDATE crm_client_plans SET needs_split=false`; плохие сеансы → позицию не создавать, `needs_split` не трогать. Возвращает `{items, pool}`.
+- `items_pool` счётчик добавлен в stats.
+- Удалены все `void supabase.from('crm_visit_history').delete()` (не выполнялись без await; история нужна для счётчиков визитов).
+
+**`kviz/client/src/pages/crm/settings/FbSyncSettings.tsx`**: добавлены `future_to_history`, `items_pool`; отображение «(из них пулом: N)», «(будущих: N)».
+
 ### 27.11.2026 · task 114.2 · Перенос записей: позиции для импортированных абонементов, чистка истории, расшифровка пропусков
 
 **`src/jobs/fitbaseBookingsImport.ts`** — три дополнения к 114.1:

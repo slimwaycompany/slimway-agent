@@ -9,7 +9,7 @@ interface BookingsJob {
   done_clients?: number;
   stats?: {
     created: number; updated: number; to_virtual: number;
-    to_history: number; items_created: number;
+    to_history: number; future_to_history: number; items_created: number; items_pool: number;
     skipped_no_device: number; skipped_no_virtual: number; skipped_unknown_status: number; errors: number;
   };
   to_history_reasons?: { no_plan: number; no_item: number; bad_time: number; overlap: number; needs_split: number };
@@ -156,11 +156,17 @@ function BookingsCard() {
             <div style={{ color: 'var(--text-2)' }}>
               Создано: {job.stats.created}
               {job.stats.updated > 0 ? ` · обновлено: ${job.stats.updated}` : ''}
-              {job.stats.items_created > 0 ? ` · позиций абонементов: ${job.stats.items_created}` : ''}
+              {job.stats.items_created > 0 ? (
+                <span>
+                  {` · позиций абонементов: ${job.stats.items_created}`}
+                  {(job.stats.items_pool ?? 0) > 0 ? ` (из них пулом: ${job.stats.items_pool})` : ''}
+                </span>
+              ) : null}
               {job.stats.to_virtual > 0 ? ` · на виртуальных: ${job.stats.to_virtual}` : ''}
               {job.stats.to_history > 0 ? (
                 <span title={historyTooltip(job.to_history_reasons)} style={{ cursor: 'help' }}>
                   {` · в историю: ${job.stats.to_history}`}
+                  {(job.stats.future_to_history ?? 0) > 0 ? ` (будущих: ${job.stats.future_to_history})` : ''}
                 </span>
               ) : null}
               {(job.stats.skipped_no_device + job.stats.skipped_no_virtual + job.stats.skipped_unknown_status) > 0 ? (
