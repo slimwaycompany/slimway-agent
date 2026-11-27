@@ -202,7 +202,7 @@ function isPaidAbonement(cp: ClientPlanRow, minPrice: number): boolean {
 
 export function evalCondition(
   cond: CondInput,
-  lead: { stage_changed_at: string | null; created_at: string; client_id: string | null },
+  lead: { stage_changed_at: string | null; created_at: string; fb_created_at?: string | null; client_id: string | null },
   clientId: string | null,
   bundle: ClientDataBundle,
   settings: AutomationSettingsData,
@@ -295,8 +295,13 @@ export function evalCondition(
       if (!clientId) return false;
       const from = Number(p.from ?? 0);
       const to = p.to != null && p.to !== '' ? Number(p.to) : null;
-      const lastMs = bundle.lastVisitMs.get(clientId);
-      if (!lastMs) return false;
+      let lastMs = bundle.lastVisitMs.get(clientId);
+      if (!lastMs) {
+        if (!p.fallback_created) return false;
+        const fbMs = new Date((lead.fb_created_at ?? lead.created_at) as string).getTime();
+        if (isNaN(fbMs)) return false;
+        lastMs = fbMs;
+      }
       const daysAgo = msAgo(lastMs) / daysToMs(1);
       return daysAgo >= from && (to === null || daysAgo <= to);
     }
@@ -304,7 +309,7 @@ export function evalCondition(
     case 'days_since_created': {
       const from = Number(p.from ?? 0);
       const to = p.to != null && p.to !== '' ? Number(p.to) : null;
-      const ms = new Date(lead.created_at).getTime();
+      const ms = new Date((lead.fb_created_at ?? lead.created_at) as string).getTime();
       if (isNaN(ms)) return false;
       const daysAgo = msAgo(ms) / daysToMs(1);
       return daysAgo >= from && (to === null || daysAgo <= to);

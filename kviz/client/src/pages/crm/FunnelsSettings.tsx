@@ -283,7 +283,7 @@ interface PreviewGroup {
   fb_funnel: string; fb_stage: string; fb_stage_id: number; count: number; target_stage_id: string | null;
 }
 
-function FbImportModal({ funnels, onClose }: { funnels: CrmFunnel[]; onClose: () => void }) {
+export function FbImportModal({ funnels, onClose }: { funnels: CrmFunnel[]; onClose: () => void }) {
   const [phase, setPhase] = useState<'loading' | 'mapping' | 'running' | 'done' | 'error'>('loading');
   const [preview, setPreview] = useState<PreviewGroup[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});

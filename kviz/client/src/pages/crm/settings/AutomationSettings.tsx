@@ -45,11 +45,13 @@ const COND_CATALOG = [
 function condLabel(c: Condition): string {
   const def = COND_CATALOG.find(d => d.type === c.type);
   if (!def) return c.type;
-  if (!def.paramDefs.length) return def.label;
-  let lbl = def.label;
+  let lbl = (c.type === 'days_since_last_visit' && c.params.fallback_created)
+    ? 'Последний визит (или дата заявки) от … до … дней назад'
+    : def.label;
   for (const pd of def.paramDefs) {
     const v = c.params[pd.key];
-    lbl = lbl.replace('…', v !== undefined && v !== '' ? String(v) : '?');
+    const fallback = pd.key === 'to' ? '∞' : '?';
+    lbl = lbl.replace('…', v !== undefined && v !== '' ? String(v) : fallback);
   }
   return lbl;
 }
@@ -200,7 +202,7 @@ function RuleEditor({ rule, funnels, stages, taskTypes, onSave, onCancel }:
     conditions: [], actions: {},
     ...rule,
   });
-  const [preview, setPreview] = useState<{ total: number; items: { lead_id: string; title: string | null; from: string; to: string }[] } | null>(null);
+  const [preview, setPreview] = useState<{ total: number; already_on_target: number; no_client_or_visit: number; items: { lead_id: string; title: string | null; from: string; to: string }[] } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -343,6 +345,13 @@ function RuleEditor({ rule, funnels, stages, taskTypes, onSave, onCancel }:
                   <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{pd.unit}</span>
                 </div>
               ))}
+              {c.type === 'days_since_last_visit' && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', color: 'var(--text-2)', marginTop: 2 }}>
+                  <input type="checkbox" checked={!!c.params.fallback_created}
+                    onChange={e => updateCondParam(i, 'fallback_created', e.target.checked ? '1' : '')} />
+                  Если нет визита — использовать дату создания заявки
+                </label>
+              )}
             </div>
           );
         })}
@@ -391,7 +400,13 @@ function RuleEditor({ rule, funnels, stages, taskTypes, onSave, onCancel }:
         )}
         {preview && (
           <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 10, marginBottom: 10, fontSize: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Подойдут: {preview.total} заявок{preview.total > 100 ? ` (показано 100)` : ''}</div>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Подойдут: {preview.total} заявок{preview.total > 100 ? ` (показано 100)` : ''}</div>
+            {preview.already_on_target > 0 && (
+              <div style={{ color: 'var(--text-3)', marginBottom: 4 }}>Уже на целевом этапе: {preview.already_on_target}</div>
+            )}
+            {preview.no_client_or_visit > 0 && (
+              <div style={{ color: 'var(--text-3)', marginBottom: 6 }}>Без клиента/визита: {preview.no_client_or_visit}</div>
+            )}
             {preview.items.map(it => (
               <div key={it.lead_id} style={{ color: 'var(--text-2)', marginBottom: 2 }}>
                 {it.title ?? 'Без названия'} &nbsp;{it.from} → {it.to}
@@ -468,7 +483,7 @@ export default function AutomationSettings() {
   const [editRule, setEditRule]   = useState<Partial<AutoRule> | null>(null);
   const [logRuleId, setLogRuleId] = useState<string | false>(false);
   const [previewRuleId, setPreviewRuleId] = useState<string | null>(null);
-  const [previewResult, setPreviewResult] = useState<{ total: number } | null>(null);
+  const [previewResult, setPreviewResult] = useState<{ total: number; already_on_target: number; no_client_or_visit?: number } | null>(null);
   const [running, setRunning]   = useState(false);
   const [dragActive, setDragActive] = useState<string | null>(null);
 
@@ -628,9 +643,12 @@ export default function AutomationSettings() {
                   onPreview={async () => {
                     const { ok, data } = await api('POST', `/kviz/api/crm/automation/rules/${rule.id}/preview`);
                     if (ok) {
-                      const d = data as { total: number; items: { lead_id: string; title: string | null; from: string; to: string }[] };
-                      setPreviewResult({ total: d.total });
-                      toast.info(`Подойдут ${d.total} заявок`);
+                      const d = data as { total: number; already_on_target: number; no_client_or_visit: number; items: { lead_id: string; title: string | null; from: string; to: string }[] };
+                      setPreviewResult({ total: d.total, already_on_target: d.already_on_target, no_client_or_visit: d.no_client_or_visit });
+                      const parts = [`Подойдут ${d.total} заявок`];
+                      if (d.already_on_target) parts.push(`уже на этапе ${d.already_on_target}`);
+                      if (d.no_client_or_visit) parts.push(`без визита ${d.no_client_or_visit}`);
+                      toast.info(parts.join(' · '));
                     } else toast.error('Ошибка');
                   }}
                   onLog={() => setLogRuleId(rule.id)}

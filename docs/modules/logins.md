@@ -48,6 +48,9 @@
 - **Пerm-ключи формата `block.row` (task 56):** `manager.tasks`, `clients.phone`, `kassa.sale` и т.д. Для новой вкладки/отчёта/действия — ОБЯЗАТЕЛЬНО добавить в `PERM_CATALOG` (src/core/permissions.ts) и в пресеты нужных должностей. Серверные проверки: `const session = await getSessionWithPerms(req); if (!requirePerm(req, res, 'block.row', 'edit', session)) return;` (тип `session` автоматически сужается до `ExtendedSession` после проверки).
 
 ## Сделано
+### 27.11.2026 · task 114 · Новое право settings.fb_sync
+- **`src/core/permissions.ts`**: `settings.fb_sync` (Синк с Fitbase, row) в блоке `settings`. Добавлено в пресет `company_manager` (edit).
+
 ### 27.11.2026 · task 112 · Новое право settings.automation
 - **`src/core/permissions.ts`**: `settings.automation` (Автоматизация воронок, row) в блоке `settings`. Добавлено в пресет `company_manager` (edit).
 

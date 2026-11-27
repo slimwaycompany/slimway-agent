@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { supabase } from '../db/supabase';
 import { getSession, requireAuth, requireAdmin, getSessionWithPerms, can, requirePerm, windowSecret } from './auth';
 import { startHistoryImport, runFitbaseHistoryImport, getHistoryImportJob, linkBodyClients, getLinkStats } from '../jobs/fitbaseHistoryImport';
+import { startBookingsImport, runBookingsImport, getBookingsImportJob } from '../jobs/fitbaseBookingsImport';
 import { batchAutoLabelsForDay, batchAutoLabelsToday } from '../core/clientAutoLabels';
 import type { ClientExtraData } from '../core/clientAutoLabels';
 import { runAutomation } from '../core/automation/engine';
@@ -3901,6 +3902,32 @@ export function buildCrmRouter(): Router {
       .limit(1)
       .maybeSingle();
     res.json(data ?? { status: 'idle' });
+  });
+
+  // ── FB Sync: bookings import ─────────────────────────────────────────────────
+
+  r.post('/kviz/api/crm/fb-sync/bookings/start', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.fb_sync', 'edit', session)) return;
+    if (getBookingsImportJob()?.status === 'running') {
+      res.status(409).json({ error: 'Импорт уже идёт', ...getBookingsImportJob() }); return;
+    }
+    const job = startBookingsImport();
+    if (!job) { res.status(409).json({ error: 'Импорт уже идёт' }); return; }
+    console.log('[bookings-import] started from UI');
+    res.json({ status: 'started' });
+    runBookingsImport().catch(e => {
+      const j = getBookingsImportJob();
+      if (j) { j.status = 'error'; j.errors.push(String(e)); }
+      console.error('[bookings-import] unhandled rejection:', String(e));
+    });
+  });
+
+  r.get('/kviz/api/crm/fb-sync/bookings/status', async (req, res) => {
+    const session = await getSessionWithPerms(req);
+    if (!requirePerm(req, res, 'settings.fb_sync', 'view', session)) return;
+    const job = getBookingsImportJob();
+    res.json(job ?? { status: 'idle' });
   });
 
   // ── InBody ↔ CRM client link ──────────────────────────────────────────────────

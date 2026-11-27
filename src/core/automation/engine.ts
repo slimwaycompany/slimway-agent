@@ -38,13 +38,13 @@ interface AutoRule {
 
 interface LeadRow {
   id: string; client_id: string | null; funnel_id: string; stage_id: string;
-  stage_changed_at: string | null; created_at: string;
+  stage_changed_at: string | null; created_at: string; fb_created_at: string | null;
   title: string | null; name: string | null; phone: string | null;
   manager_user_id: string | null;
 }
 
 function evalSet(
-  rule: AutoRule, lead: { stage_changed_at: string | null; created_at: string; client_id: string | null },
+  rule: AutoRule, lead: { stage_changed_at: string | null; created_at: string; fb_created_at?: string | null; client_id: string | null },
   clientId: string | null, bundle: ClientDataBundle, settings: AutomationSettingsData, tasks: LeadTaskRow[],
 ): boolean {
   const fn = (c: { type: string; params: Record<string, unknown> }) =>
@@ -69,7 +69,7 @@ export async function runAutomation(opts: RunAutomationOpts = {}): Promise<RunAu
 
   // Load non-archived leads
   let leadsQ = supabase.from('crm_leads')
-    .select('id,client_id,funnel_id,stage_id,stage_changed_at,created_at,title,name,phone,manager_user_id')
+    .select('id,client_id,funnel_id,stage_id,stage_changed_at,created_at,fb_created_at,title,name,phone,manager_user_id')
     .eq('branch_id', BRANCH_ID).eq('is_archived', false);
   if (clientIds?.length) leadsQ = leadsQ.in('client_id', clientIds);
   const { data: rawLeads } = await leadsQ;
@@ -216,7 +216,7 @@ export async function runAutomation(opts: RunAutomationOpts = {}): Promise<RunAu
       const clientsWithLead = new Set(allLeads.map(l => l.client_id).filter(Boolean) as string[]);
       for (const cid of allClientIds) {
         if (clientsWithLead.has(cid)) continue;
-        const mockLead = { stage_changed_at: null, created_at: new Date().toISOString(), client_id: cid };
+        const mockLead = { stage_changed_at: null, created_at: new Date().toISOString(), fb_created_at: null, client_id: cid };
         const matches = rule.conditions.length === 0 || evalSet(rule, mockLead, cid, bundle, settings, []);
         if (!matches) continue;
         const info = clientsMap.get(cid);

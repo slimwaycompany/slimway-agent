@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useRef, useCallback, useContext, useMemo } from 'react';
 import { FunnelsSettings } from './FunnelsSettings';
 import AutomationSettings from './settings/AutomationSettings';
+import FbSyncSettings from './settings/FbSyncSettings';
 import PlanWindow, { type TPlan } from './PlanWindow';
 import { itemLabel } from '../../utils/planItemLabel';
 import { formatPlanRestriction } from '../../lib/planRestriction';
@@ -24,7 +25,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Palette, Cpu, CalendarDays, Monitor, Ticket, Sparkles, Tag, Package, Truck,
   CreditCard, Banknote, Filter, Megaphone, XCircle, Hash, CheckSquare,
-  MessageSquare, Users, CalendarCheck, BarChart2, Layers, Laptop, Link, Phone, Activity, User, Building2, Lock,
+  MessageSquare, Users, CalendarCheck, BarChart2, Layers, Laptop, Link, Phone, Activity, User, Building2, Lock, RefreshCw,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'branch' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'client-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules' | 'kassa-passwords' | 'automation';
+type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'branch' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'client-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'fb-sync' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules' | 'kassa-passwords' | 'automation';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -4578,9 +4579,10 @@ const NAV_GROUPS_DEF: NavGroupDef[] = [
     { id: 'control-devices',  label: 'Дов. компьютеры',      Icon: Laptop,        permKey: 'settings.control_devices' },
   ]},
   { id: 'data',   label: 'Связи и данные', sections: [
-    { id: 'fb-users', label: 'Сопоставление FB', Icon: Link,     permKey: 'settings.fb_users' },
-    { id: 'pbx',      label: 'АТС',               Icon: Phone,    permKey: 'settings.pbx' },
-    { id: 'service',  label: 'Данные InBody',      Icon: Activity, permKey: 'settings.service' },
+    { id: 'fb-users', label: 'Сопоставление FB', Icon: Link,       permKey: 'settings.fb_users' },
+    { id: 'fb-sync',  label: 'Синк с Fitbase',   Icon: RefreshCw,  permKey: 'settings.fb_sync' },
+    { id: 'pbx',      label: 'АТС',               Icon: Phone,      permKey: 'settings.pbx' },
+    { id: 'service',  label: 'Данные InBody',      Icon: Activity,   permKey: 'settings.service' },
   ]},
 ];
 
@@ -5158,6 +5160,7 @@ export default function SettingsPage() {
         {section === 'tv'               && <TvSection />}
         {section === 'kassa-passwords'  && <KassaPasswordsSection />}
         {section === 'automation'       && <AutomationSettings />}
+        {section === 'fb-sync'          && <FbSyncSettings />}
       </div>
     </div>
   );

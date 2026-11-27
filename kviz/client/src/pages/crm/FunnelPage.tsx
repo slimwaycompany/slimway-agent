@@ -178,6 +178,26 @@ function StageColumn({ stage, leads, onCardClick, onMoveClick }: { stage: Stage;
   );
 }
 
+// ── Mini drop zone (hidden terminal stages during drag) ────────────────────────
+
+function MiniDropZone({ stage, leadCount }: { stage: Stage; leadCount: number }) {
+  const { isOver, setNodeRef } = useDroppable({ id: stage.id });
+  const isSuccess = stage.kind === 'success';
+  const color = isSuccess ? '#16a34a' : '#dc2626';
+  return (
+    <div ref={setNodeRef} style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      minWidth: 90, padding: '8px 14px', borderRadius: 10,
+      border: `2px dashed ${isOver ? color : 'var(--border)'}`,
+      background: isOver ? (isSuccess ? 'rgba(22,163,74,0.08)' : 'rgba(220,38,38,0.08)') : 'transparent',
+      transition: 'all 0.15s', cursor: 'copy', flexShrink: 0,
+    }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color, whiteSpace: 'nowrap' }}>{stage.name}</span>
+      {leadCount > 0 && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{leadCount}</span>}
+    </div>
+  );
+}
+
 // ── List mode table ────────────────────────────────────────────────────────────
 
 function LeadTable({ leads, stages, adSources, onRowClick, onMoveClick }: {
@@ -395,6 +415,21 @@ export default function FunnelPage() {
   });
   // Mobile move: pick stage first, then open StagePopup
   const [mobileMoveLead, setMobileMoveLead] = useState<Lead | null>(null);
+  // Terminal stages (success/fail) hidden by default; persisted in localStorage
+  const [showKinds, setShowKinds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('crm-funnel-show-kinds');
+      return new Set(saved ? (JSON.parse(saved) as string[]) : []);
+    } catch { return new Set(); }
+  });
+  function toggleKind(kind: string) {
+    setShowKinds(prev => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind); else next.add(kind);
+      try { localStorage.setItem('crm-funnel-show-kinds', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }
 
   // Filters (persisted in localStorage)
   const [fManager,  setFManager]  = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('crm-filter-manager')  ?? '' : ''));
@@ -563,6 +598,9 @@ export default function FunnelPage() {
       const dr = rank(a) - rank(b);
       return dr !== 0 ? dr : a.sort - b.sort;
     });
+  const terminalStages  = stages.filter(s => s.kind === 'success' || s.kind === 'fail');
+  const boardStages     = stages.filter(s => s.kind !== 'success' && s.kind !== 'fail' || showKinds.has(s.kind));
+  const hiddenTerminal  = terminalStages.filter(s => !showKinds.has(s.kind));
 
   function getStageLeads(stageId: string) {
     return leads.filter(l => l.stage_id === stageId);
@@ -594,6 +632,18 @@ export default function FunnelPage() {
             </button>
           ))}
         </div>
+        {/* Terminal stage visibility chips */}
+        {!isMobile && terminalStages.map(s => {
+          const active = showKinds.has(s.kind);
+          const col = s.kind === 'success' ? '#16a34a' : '#dc2626';
+          const count = getStageLeads(s.id).length;
+          return (
+            <button key={s.id} onClick={() => toggleKind(s.kind)}
+              style={{ padding: '5px 10px', border: `1.5px solid ${col}`, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, background: active ? col : 'var(--surface)', color: active ? '#fff' : col }}>
+              {s.name}{count > 0 ? ` ${count}` : ''}
+            </button>
+          );
+        })}
         {/* Filters button */}
         <button
           onClick={() => setShowFilterPanel(v => !v)}
@@ -660,9 +710,9 @@ export default function FunnelPage() {
       )}
 
       {/* Stage names strip for mobile board scroll */}
-      {viewMode === 'board' && isMobile && stages.length > 1 && (
+      {viewMode === 'board' && isMobile && boardStages.length > 1 && (
         <div style={{ display: 'flex', overflowX: 'auto', gap: 6, padding: '6px 12px', flexShrink: 0, background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-          {stages.map(s => (
+          {boardStages.map(s => (
             <button key={s.id} onClick={() => {
               document.getElementById('stage-' + s.id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
             }} style={{ flexShrink: 0, padding: '3px 10px', border: 'none', borderRadius: 10, background: s.color ?? 'var(--surface-2)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -676,7 +726,7 @@ export default function FunnelPage() {
       {viewMode === 'board' ? (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', display: 'flex', gap: 10, padding: '12px 16px', alignItems: 'stretch', scrollSnapType: isMobile ? 'x mandatory' : undefined }}>
-            {stages.map(stage => (
+            {boardStages.map(stage => (
               <div key={stage.id} id={'stage-' + stage.id} style={{ display: 'flex', flex: '0 0 auto' }}>
                 <StageColumn
                   stage={stage}
@@ -686,9 +736,15 @@ export default function FunnelPage() {
                 />
               </div>
             ))}
-            {stages.length === 0 && !loading && (
+            {boardStages.length === 0 && !loading && (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 14 }}>
                 {funnel ? 'Нет этапов в этой воронке' : 'Выберите воронку'}
+              </div>
+            )}
+            {/* Mini drop zones for hidden terminal stages during drag */}
+            {dragging && hiddenTerminal.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center', padding: '0 4px', flexShrink: 0 }}>
+                {hiddenTerminal.map(s => <MiniDropZone key={s.id} stage={s} leadCount={getStageLeads(s.id).length} />)}
               </div>
             )}
           </div>

@@ -873,7 +873,7 @@ export default function SchedulePage() {
   const [clientPopupId, setClientPopupId] = useState<string | null>(null);
   const [notesCount, setNotesCount] = useState(0);
   const notesRef = useRef<HTMLDivElement>(null);
-  const [blockCfg, setBlockCfg]   = useState<Record<string, { showCancelled: boolean; showRepair: boolean; extraVirtual: 0 | 1 | 2 | 3 }>>(() => {
+  const [blockCfg, setBlockCfg]   = useState<Record<string, { showCancelled: boolean; showRepair: boolean; extraVirtual: 0 | 1 | 2 | 3 | 4 | 5 }>>(() => {
     try { return JSON.parse(localStorage.getItem('sched-block-cfg') || '{}'); } catch { return {}; }
   });
   const [cfgOpen, setCfgOpen]     = useState<string | null>(null);
@@ -976,7 +976,7 @@ export default function SchedulePage() {
     document.querySelector<HTMLElement>(`[data-bid="${matchedList[idx]!.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function saveBlockCfg(tc: string, cfg: Partial<{ showCancelled: boolean; showRepair: boolean; extraVirtual: 0 | 1 | 2 | 3 }>) {
+  function saveBlockCfg(tc: string, cfg: Partial<{ showCancelled: boolean; showRepair: boolean; extraVirtual: 0 | 1 | 2 | 3 | 4 | 5 }>) {
     setBlockCfg(prev => {
       const defaults = { showCancelled: false, showRepair: false, extraVirtual: 0 as const };
       const next = { ...prev, [tc]: { ...defaults, ...prev[tc], ...cfg } };
@@ -1175,7 +1175,7 @@ export default function SchedulePage() {
                             <div style={{ marginBottom: 8 }}>
                               <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 4, fontWeight: 600 }}>Доп. аппараты:</div>
                               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                {([1, 2, 3] as const).filter(n => n <= virtDevices.length).map(n => (
+                                {([1, 2, 3, 4, 5] as const).filter(n => n <= virtDevices.length).map(n => (
                                   <button key={n} style={{ ...SS.smallBtn, ...(extraCount === n ? { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' } : {}) }}
                                     onClick={() => saveBlockCfg(block.type_code, { extraVirtual: n })}>+{n}</button>
                                 ))}

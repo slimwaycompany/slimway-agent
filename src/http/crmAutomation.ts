@@ -208,9 +208,35 @@ export function buildCrmAutomationRouter(): Router {
     const session = await getSessionWithPerms(req);
     if (!requirePerm(req, res, 'settings.automation', 'view', session)) return;
     try {
+      const { data: ruleRow } = await supabase.from('crm_automation_rules')
+        .select('target_stage_id,source_scope').eq('id', req.params.id).eq('branch_id', BRANCH_ID).maybeSingle();
       const result = await runAutomation({ ruleId: req.params.id, dry: true });
       const leads = result.previewLeads ?? [];
-      res.json({ total: leads.length, items: leads.slice(0, 100) });
+
+      let already_on_target = 0;
+      let no_client_or_visit = 0;
+      if (ruleRow) {
+        const rule = ruleRow as { target_stage_id: string; source_scope: { funnel_ids?: string[]; stage_ids?: string[] } };
+        const srcFunnels = rule.source_scope?.funnel_ids ?? [];
+        const srcStages  = rule.source_scope?.stage_ids ?? [];
+
+        let atQ = supabase.from('crm_leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('branch_id', BRANCH_ID).eq('is_archived', false).eq('stage_id', rule.target_stage_id);
+        if (srcFunnels.length) atQ = atQ.in('funnel_id', srcFunnels);
+
+        let ncQ = supabase.from('crm_leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('branch_id', BRANCH_ID).eq('is_archived', false).is('client_id', null);
+        if (srcFunnels.length) ncQ = ncQ.in('funnel_id', srcFunnels);
+        if (srcStages.length)  ncQ = ncQ.in('stage_id',  srcStages);
+
+        const [atRes, ncRes] = await Promise.all([atQ, ncQ]);
+        already_on_target  = atRes.count ?? 0;
+        no_client_or_visit = ncRes.count ?? 0;
+      }
+
+      res.json({ total: leads.length, items: leads.slice(0, 100), already_on_target, no_client_or_visit });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
