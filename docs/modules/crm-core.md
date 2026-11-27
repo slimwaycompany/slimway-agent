@@ -57,6 +57,18 @@
 - **Дубли аппаратов в составе (task 90, 24.11):** один аппарат не может повторяться ни внутри пула, ни между пулом и обычной строкой. Проверяется и на клиенте (`savePlan`, `SplitDialog`), и на сервере (`validateItems`, `/split`).
 
 ## Сделано
+### 27.11.2026 · task 111 · карточка клиента: баланс всегда, заявка в воронке, Fitbase в Записях; баг пагинации Записей
+
+**`src/http/crm.ts`**:
+- `GET /kviz/api/crm/clients/:id/lead` — ищет телефон клиента → последняя не-архивная заявка (возвращает `{id, title, stage_id, funnel_id}` или `null`).
+- `GET /kviz/api/crm/clients/:id/bookings`: исправлен баг (сервер был 0-based, клиент слал page=1 → первая страница = строки 50–99). Теперь 1-based (`range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)`). Параллельно добавлены строки `crm_visit_history` (по `client_id`, limit 300); merge+sort в памяти → paginate. Строки Fitbase: `kind:'fitbase'`, `booking_date: visit_at.slice(0,10)`.
+
+**`kviz/client/src/pages/crm/ClientsPage.tsx`**:
+- Баланс: всегда показывается (убрано условие `> 0`).
+- «Заявка в воронке»: кнопка ↪ если есть активная заявка, иначе «Нет активной заявки»; клик — открывает вкладку Воронка с нужной заявкой.
+- Строки Fitbase в «Записях»: подпись «Fitbase» в accent-цвете; `is_burned` и `device_type_code` скрыты для Fitbase-строк.
+- `useLive(['clients', 'kassa'], load)` для авто-обновления списка.
+
 ### 26.11.2026 · task 109 · Новое окно абонемента: PlanWindow, посещения справа, вид оплаты, окно-шаблон в Настройках
 - **`src/http/crm.ts`**: новый `GET /kviz/api/crm/client-plans/:id/detail` — sale (number, total, cashier, items_count, payments с именами и kind), visits (склейка `crm_bookings` + `crm_visit_history` по `fitbase_contract_id`), freezes (из `crm_audit_log` по entity_type=client_plan + entity_id, причина из `crm_client_comments` ±2 мин), counts. Старый `/visits` не удалён.
 - **`kviz/client/src/pages/crm/PlanWindow.tsx`** (новый): `mode="client"` — Modal size=xl, две колонки (55%/45%), левая прокручивается (шапка, цена, оплата, состав крупно, посещения-mobile, даты, заморозка, кнопки), правая — посещения; `mode="template"` — левая (цена, состав, restriction), правая (Условия). На ≤900px: одна колонка, посещения между составом и датами через `.pw-visits-mobile`.

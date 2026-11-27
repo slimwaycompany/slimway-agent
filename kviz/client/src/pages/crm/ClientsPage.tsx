@@ -8,6 +8,7 @@ import { useBreakpoint } from '../../lib/useBreakpoint';
 import { usePerm } from '../../lib/permContext';
 import { formatPlanRestriction } from '../../lib/planRestriction';
 import PlanWindow from './PlanWindow';
+import { useLive } from '../../lib/live';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -710,6 +711,7 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
   const [unfreezeId, setUnfreezeId] = useState<string | null>(null);
   const [splitPlan, setSplitPlan] = useState<ClientPlan | null>(null);
   const [centerTab, setCenterTab] = useState<'important' | 'visits' | 'bookings'>('important');
+  const [clientLead, setClientLead] = useState<{ id: string; title: string | null; stage_id: string | null; funnel_id: string | null } | null | undefined>(undefined);
   const [visits, setVisits] = useState<{ id: string; source: 'crm'|'fitbase'; date: string; time: string|null; status: string; label: string|null }[] | null>(null);
   const [visitsTotal, setVisitsTotal] = useState(0);
   const [visitsFilter, setVisitsFilter] = useState<'all'|'attended'|'no_show'|'cancelled'>('all');
@@ -810,6 +812,8 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
     }).catch(() => setLoading(false));
     loadSummary();
     reloadPlans();
+    fetch(`/kviz/api/crm/clients/${clientId}/lead`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setClientLead(d ?? null)).catch(() => setClientLead(null));
     fetch('/kviz/api/crm/client-tags', { credentials: 'include' })
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setAllTags(d); }).catch(() => {});
     fetch('/kviz/api/crm/device-types', { credentials: 'include' })
@@ -951,11 +955,23 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                 </div>
               )}
 
-              {/* Депозит + Бонусы */}
-              {balance && (balance.deposit > 0 || balance.bonus > 0) && (
-                <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 14 }}>
-                  {balance.deposit > 0 && <div><span style={{ color: 'var(--text-2)' }}>Депозит: </span><b style={{ color: 'var(--success)' }}>{balance.deposit.toLocaleString('ru-RU')} ₸</b></div>}
-                  {balance.bonus > 0 && <div><span style={{ color: 'var(--text-2)' }}>Бонусы: </span><b>{balance.bonus} б.</b></div>}
+              {/* Баланс — всегда виден */}
+              <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 14 }}>
+                <div><span style={{ color: 'var(--text-2)' }}>Депозит: </span><b style={{ color: balance && balance.deposit > 0 ? 'var(--success)' : 'var(--text-3)' }}>{balance ? balance.deposit.toLocaleString('ru-RU') : '—'} ₸</b></div>
+                {balance && balance.bonus > 0 && <div><span style={{ color: 'var(--text-2)' }}>Бонусы: </span><b>{balance.bonus} б.</b></div>}
+              </div>
+
+              {/* Заявка в воронке */}
+              {clientLead !== undefined && (
+                <div style={{ marginBottom: 8 }}>
+                  {clientLead ? (
+                    <button className="cp-btn" style={{ fontSize: 12 }}
+                      onClick={() => { window.dispatchEvent(new CustomEvent('crm-open-lead', { detail: clientLead.id })); window.parent?.postMessage({ type: 'open-kviz', path: '/crm/funnel' }, '*'); }}>
+                      ↪ Заявка: {clientLead.title ?? 'открыть'}
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Нет активной заявки</span>
+                  )}
                 </div>
               )}
 
@@ -1165,16 +1181,18 @@ export function ClientPopup({ clientId, adSources, role, onClose, onEdit }: {
                       const statusLabel: Record<string, string> = { booked: 'Запись', confirmed: 'Подтверждена', attended: 'Пришла', no_show: 'Не пришла', cancelled: 'Отменена', late_cancel: 'Поздняя отмена' };
                       const statusColor: Record<string, string> = { booked: 'var(--text-2)', confirmed: 'var(--accent)', attended: 'var(--success)', no_show: 'var(--danger)', cancelled: 'var(--text-3)', late_cancel: 'var(--warning,#f59e0b)' };
                       const dateStr = bk.booking_date.split('-').reverse().join('.');
+                      const isFitbase = bk.kind === 'fitbase';
                       return (
-                        <div key={bk.id} style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div key={bk.id} style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, opacity: isFitbase ? 0.85 : 1 }}>
                           <div>
                             <div style={{ fontWeight: 500 }}>{dateStr}{bk.time ? ` · ${bk.time}` : ''}</div>
                             {bk.plan_name && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 1 }}>{bk.plan_name}</div>}
-                            {bk.device_type_code && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>{bk.device_type_code}{bk.phase ? ` · ${bk.phase}` : ''}</div>}
+                            {!isFitbase && bk.device_type_code && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>{bk.device_type_code}{bk.phase ? ` · ${bk.phase}` : ''}</div>}
+                            {isFitbase && <div style={{ fontSize: 10, color: 'var(--accent)', marginTop: 1 }}>Fitbase</div>}
                           </div>
                           <div style={{ textAlign: 'right', flexShrink: 0 }}>
                             <span style={{ fontSize: 11, fontWeight: 600, color: statusColor[bk.status] ?? 'var(--text-2)' }}>{statusLabel[bk.status] ?? bk.status}</span>
-                            {bk.is_burned && <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 1 }}>Списано</div>}
+                            {!isFitbase && bk.is_burned && <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 1 }}>Списано</div>}
                           </div>
                         </div>
                       );
@@ -2011,6 +2029,8 @@ export default function ClientsPage() {
     searchTimer.current = setTimeout(load, 300);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [load]);
+
+  useLive(['clients', 'kassa'], load);
 
   function handleSort(col: string, dir: 'asc'|'desc') {
     setSortCol(col); setSortDir(dir);

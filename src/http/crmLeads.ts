@@ -88,9 +88,10 @@ export function buildCrmLeadsRouter(): Router {
     if (!requireAdmin(req, res)) return;
     try {
       const enabled = Boolean((req.body as Record<string, unknown>).enabled);
+      if (enabled) { res.status(409).json({ error: 'Включение синхронизации отключено — воронки ведутся в своей CRM' }); return; }
       await supabase.from('crm_settings')
-        .upsert({ key: 'leads.fitbase_sync_enabled', value: enabled }, { onConflict: 'key' });
-      res.json({ ok: true, enabled });
+        .upsert({ key: 'leads.fitbase_sync_enabled', value: false }, { onConflict: 'key' });
+      res.json({ ok: true, enabled: false });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -99,22 +100,30 @@ export function buildCrmLeadsRouter(): Router {
   r.get('/kviz/api/crm/funnels', async (req, res) => {
     if (!requireAuth(req, res)) return;
     try {
-      const { data: funnels, error } = await supabase.from('crm_funnels')
-        .select('*').eq('branch_id', BRANCH_ID).order('sort').order('name');
+      const [{ data: funnels, error }, { data: stages }, { data: leadRows }] = await Promise.all([
+        supabase.from('crm_funnels').select('*').eq('branch_id', BRANCH_ID).order('sort').order('name'),
+        supabase.from('crm_funnel_stages').select('*').eq('branch_id', BRANCH_ID).order('sort').order('name'),
+        supabase.from('crm_leads').select('stage_id').eq('branch_id', BRANCH_ID).eq('is_archived', false),
+      ]);
       if (error) { res.status(500).json({ error: error.message }); return; }
 
-      const { data: stages } = await supabase.from('crm_funnel_stages')
-        .select('*').eq('branch_id', BRANCH_ID).order('sort').order('name');
+      const countByStage = new Map<string, number>();
+      for (const l of leadRows || []) {
+        const sid = (l as Record<string, unknown>).stage_id as string;
+        if (sid) countByStage.set(sid, (countByStage.get(sid) ?? 0) + 1);
+      }
 
       const stagesByFunnel = new Map<string, unknown[]>();
       const systemStages: unknown[] = [];
       for (const s of stages || []) {
-        const fid = (s as Record<string, unknown>).funnel_id as string | null;
+        const st = s as Record<string, unknown>;
+        const fid = st.funnel_id as string | null;
+        const withCount = { ...st, leads_count: countByStage.get(st.id as string) ?? 0 };
         if (fid) {
           if (!stagesByFunnel.has(fid)) stagesByFunnel.set(fid, []);
-          stagesByFunnel.get(fid)!.push(s);
+          stagesByFunnel.get(fid)!.push(withCount);
         } else {
-          systemStages.push(s);
+          systemStages.push(withCount);
         }
       }
 
@@ -139,6 +148,31 @@ export function buildCrmLeadsRouter(): Router {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // Reorder endpoints — must be before /:id to avoid route conflict
+  r.patch('/kviz/api/crm/funnels/reorder', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const order = (req.body as Record<string, unknown>).order as string[];
+      if (!Array.isArray(order)) { res.status(400).json({ error: 'order: array of ids' }); return; }
+      for (let i = 0; i < order.length; i++) {
+        await supabase.from('crm_funnels').update({ sort: i }).eq('id', order[i]).eq('branch_id', BRANCH_ID);
+      }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.patch('/kviz/api/crm/funnel-stages/reorder', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const order = (req.body as Record<string, unknown>).order as string[];
+      if (!Array.isArray(order)) { res.status(400).json({ error: 'order: array of ids' }); return; }
+      for (let i = 0; i < order.length; i++) {
+        await supabase.from('crm_funnel_stages').update({ sort: i }).eq('id', order[i]).eq('branch_id', BRANCH_ID);
+      }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   r.patch('/kviz/api/crm/funnels/:id', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
@@ -147,6 +181,14 @@ export function buildCrmLeadsRouter(): Router {
       if (b.name      !== undefined) upd.name      = String(b.name).trim();
       if (b.sort      !== undefined) upd.sort      = Number(b.sort);
       if (b.is_active !== undefined) upd.is_active = Boolean(b.is_active);
+      if (b.hidden_system_kinds !== undefined) {
+        const v = b.hidden_system_kinds as string[];
+        const VALID = ['inbox', 'success', 'fail'];
+        if (!Array.isArray(v) || !v.every(k => VALID.includes(k))) {
+          res.status(400).json({ error: 'hidden_system_kinds: допустимые значения inbox, success, fail' }); return;
+        }
+        upd.hidden_system_kinds = v;
+      }
       const { data, error } = await supabase.from('crm_funnels')
         .update(upd).eq('id', req.params.id).eq('branch_id', BRANCH_ID).select().single();
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -179,6 +221,33 @@ export function buildCrmLeadsRouter(): Router {
         updated.push(st.name as string);
       }
       res.json({ ok: true, updated });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  r.delete('/kviz/api/crm/funnels/:id', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const { count } = await supabase.from('crm_leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('funnel_id', req.params.id).eq('is_archived', false).eq('branch_id', BRANCH_ID);
+
+      const move_funnel_id = (req.body as Record<string, unknown>)?.move_funnel_id as string | undefined;
+      if (count && count > 0) {
+        if (!move_funnel_id) {
+          res.status(409).json({ error: `В воронке ${count} активных заявок — укажите move_funnel_id для переноса` }); return;
+        }
+        const { data: inboxStage } = await supabase.from('crm_funnel_stages')
+          .select('id').eq('branch_id', BRANCH_ID).eq('kind', 'inbox').is('funnel_id', null).maybeSingle();
+        if (!inboxStage) { res.status(422).json({ error: 'inbox_stage_not_found' }); return; }
+        await supabase.from('crm_leads')
+          .update({ funnel_id: move_funnel_id, stage_id: (inboxStage as Record<string, unknown>).id })
+          .eq('funnel_id', req.params.id).eq('is_archived', false).eq('branch_id', BRANCH_ID);
+      }
+
+      await supabase.from('crm_funnel_stages').delete().eq('funnel_id', req.params.id).eq('branch_id', BRANCH_ID);
+      const { error } = await supabase.from('crm_funnels').delete().eq('id', req.params.id).eq('branch_id', BRANCH_ID);
+      if (error) { res.status(500).json({ error: error.message }); return; }
+      res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
@@ -288,11 +357,24 @@ export function buildCrmLeadsRouter(): Router {
   r.delete('/kviz/api/crm/funnel-stages/:id', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
-      const { count } = await supabase.from('crm_leads')
-        .select('id', { count: 'exact', head: true }).eq('stage_id', req.params.id);
-      if (count && count > 0) {
-        res.status(409).json({ error: `Этап используется в ${count} заявках — сначала переместите их` }); return;
+      const { data: stage } = await supabase.from('crm_funnel_stages')
+        .select('kind').eq('id', req.params.id).eq('branch_id', BRANCH_ID).maybeSingle();
+      if (!stage) { res.status(404).json({ error: 'Этап не найден' }); return; }
+      if ((stage as Record<string, unknown>).kind !== 'normal') {
+        res.status(409).json({ error: 'Системный этап нельзя удалить — его можно скрыть в настройках воронки' }); return;
       }
+
+      const { count } = await supabase.from('crm_leads')
+        .select('id', { count: 'exact', head: true }).eq('stage_id', req.params.id).eq('branch_id', BRANCH_ID);
+      const move_to = (req.body as Record<string, unknown>)?.move_to as string | undefined;
+      if (count && count > 0) {
+        if (!move_to) {
+          res.status(409).json({ error: `Этап используется в ${count} заявках — укажите move_to для переноса`, leads_count: count }); return;
+        }
+        await supabase.from('crm_leads').update({ stage_id: move_to })
+          .eq('stage_id', req.params.id).eq('branch_id', BRANCH_ID);
+      }
+
       const { error } = await supabase.from('crm_funnel_stages')
         .delete().eq('id', req.params.id).eq('branch_id', BRANCH_ID);
       if (error) { res.status(500).json({ error: error.message }); return; }
@@ -310,6 +392,25 @@ export function buildCrmLeadsRouter(): Router {
   });
 
   // ── Leads ─────────────────────────────────────────────────────────────────────
+
+  r.post('/kviz/api/crm/leads/bulk-move', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const b = req.body as Record<string, unknown>;
+      const lead_ids = b.lead_ids as string[];
+      const stage_id = b.stage_id as string;
+      const funnel_id = b.funnel_id as string;
+      if (!Array.isArray(lead_ids) || !lead_ids.length || !stage_id || !funnel_id) {
+        res.status(400).json({ error: 'Нужны lead_ids, stage_id, funnel_id' }); return;
+      }
+      for (let i = 0; i < lead_ids.length; i += 100) {
+        await supabase.from('crm_leads')
+          .update({ stage_id, funnel_id })
+          .in('id', lead_ids.slice(i, i + 100)).eq('branch_id', BRANCH_ID);
+      }
+      res.json({ ok: true, moved: lead_ids.length });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
 
   r.get('/kviz/api/crm/leads', async (req, res) => {
     if (!requireAuth(req, res)) return;

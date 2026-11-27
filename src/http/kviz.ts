@@ -4,6 +4,7 @@ import express, { Router, Application, Request, Response, NextFunction } from 'e
 import { supabase } from '../db/supabase';
 import { getSession, getSessionWithPerms, requireAdmin } from './auth';
 import { PERM_CATALOG as permCatalog } from '../core/permissions';
+import { liveBus, emitLive } from '../core/liveBus';
 import { buildMeasureRouter } from './measure';
 import { buildManagerRouter } from './manager';
 import { buildShiftsRouter } from './shifts';
@@ -41,6 +42,21 @@ function shareRateOk(ip: string): boolean {
   if (!entry || entry.resetAt < now) { entry = { count: 0, resetAt: now + 60_000 }; shareRateMap.set(ip, entry); }
   entry.count++;
   return entry.count <= 30;
+}
+
+const sseCounts = new Map<string, number>();
+
+function topicFromPath(p: string): string | null {
+  if (/\/crm\/leads/.test(p) || /\/crm\/lead-tags/.test(p) || /\/crm\/lost-reasons/.test(p)) return 'leads';
+  if (/\/crm\/funnels/.test(p) || /\/crm\/funnel-stages/.test(p)) return 'funnels';
+  if (/\/crm\/lead-tasks/.test(p) || /\/manager\/tasks/.test(p)) return 'lead_tasks';
+  if (/\/crm\/schedule/.test(p) || /\/crm\/booking-labels/.test(p)) return 'schedule';
+  if (/\/crm\/clients/.test(p) || /\/crm\/client-tags/.test(p) || /\/crm\/client-comments/.test(p) || /\/crm\/client-plans/.test(p) || /\/crm\/body-clients/.test(p)) return 'clients';
+  if (/\/crm\/kassa/.test(p) || /\/crm\/shifts/.test(p) || /\/crm\/checkout/.test(p) || /\/crm\/refund/.test(p)) return 'kassa';
+  if (/\/crm\/plans/.test(p) || /\/crm\/plan-items/.test(p) || /\/crm\/promo-codes/.test(p) || /\/crm\/products/.test(p) || /\/crm\/payment-methods/.test(p)) return 'plans';
+  if (/\/measure\//.test(p) || /\/inbody\//.test(p)) return 'measure';
+  if (/\/crm\//.test(p)) return 'settings';
+  return null;
 }
 
 function buildRouter(): Router {
@@ -117,6 +133,51 @@ function buildRouter(): Router {
   // Protect all other /kviz/api/* routes
   router.use('/kviz/api', (req: Request, res: Response, next: NextFunction) => {
     if (!requireKvizAuth(req, res)) return;
+    next();
+  });
+
+  // SSE realtime stream
+  router.get('/kviz/api/live', (req: Request, res: Response) => {
+    const session = getSession(req);
+    if (!session) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const sid = session.id;
+    if ((sseCounts.get(sid) ?? 0) >= 5) { res.status(429).json({ error: 'Слишком много SSE-соединений' }); return; }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write('retry: 3000\n\n');
+    res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+
+    sseCounts.set(sid, (sseCounts.get(sid) ?? 0) + 1);
+
+    const ping = setInterval(() => { try { res.write(':ping\n\n'); } catch {} }, 25_000);
+
+    const onEvent = (e: unknown) => {
+      try { res.write(`data: ${JSON.stringify(e)}\n\n`); } catch {}
+    };
+    liveBus.on('live', onEvent);
+
+    req.on('close', () => {
+      clearInterval(ping);
+      liveBus.off('live', onEvent);
+      sseCounts.set(sid, Math.max(0, (sseCounts.get(sid) ?? 1) - 1));
+    });
+  });
+
+  // Post-mutation middleware: emit live events on successful mutations
+  router.use('/kviz/api', (req: Request, res: Response, next: NextFunction) => {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+      res.on('finish', () => {
+        if (res.statusCode < 400) {
+          const topic = topicFromPath(req.path);
+          if (topic) emitLive({ topic, action: req.method });
+        }
+      });
+    }
     next();
   });
 

@@ -480,6 +480,46 @@
 
   updateBadges();
 
+  // ── SSE live relay ─────────────────────────────────────────────────────────
+  (function () {
+    var hiddenAt = 0;
+    var es = null;
+
+    function broadcastLive(msg) {
+      var iframes = document.querySelectorAll('iframe.frame');
+      for (var i = 0; i < iframes.length; i++) {
+        try { iframes[i].contentWindow.postMessage(msg, origin); } catch (e) {}
+      }
+    }
+
+    function connect() {
+      if (es) { try { es.close(); } catch (e) {} }
+      es = new EventSource('/kviz/api/live', { withCredentials: true });
+      es.addEventListener('live', function (ev) {
+        try {
+          var d = JSON.parse(ev.data);
+          broadcastLive({ type: 'live', topic: d.topic, id: d.id, action: d.action, by: d.by });
+        } catch (e) {}
+      });
+      es.onerror = function () {
+        // browser will auto-retry per retry: 3000 sent by server
+      };
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+      } else {
+        if (hiddenAt && Date.now() - hiddenAt > 60000) {
+          broadcastLive({ type: 'live', topic: '*' });
+        }
+        hiddenAt = 0;
+      }
+    });
+
+    connect();
+  }());
+
   // ── Tab names map (for tab label) ──────────────────────────────────────────
   var TAB_LABEL = {
     manager: 'Менеджер', agent: 'Агент', schedule: 'Расписание',

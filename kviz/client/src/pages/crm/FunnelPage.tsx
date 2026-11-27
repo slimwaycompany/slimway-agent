@@ -7,6 +7,7 @@ import {
 import LeadDrawer from './LeadDrawer';
 import StagePopup, { type PopupStage } from './StagePopup';
 import { useRole } from '../../lib/permContext';
+import { useLive } from '../../lib/live';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -379,13 +380,10 @@ export default function FunnelPage() {
   const [appUsers, setAppUsers]         = useState<AppUser[]>([]);
   const [adSources, setAdSources]       = useState<AdSource[]>([]);
   const [allTags, setAllTags]           = useState<LeadTag[]>([]);
-  const [syncEnabled, setSyncEnabled]   = useState(true);
   const [search, setSearch]             = useState('');
   const [dSearch, setDSearch]           = useState(''); // debounced search
   const [showArchived, setShowArchived] = useState(false);
   const [loading, setLoading]           = useState(false);
-  const [syncing, setSyncing]           = useState(false);
-  const [syncMsg, setSyncMsg]           = useState('');
   const [dragging, setDragging]         = useState<Lead | null>(null);
   const [openLead, setOpenLead]         = useState<Lead | null>(null);
   const [pendingMove, setPendingMove]   = useState<{ lead: Lead; stage: Stage } | null>(null);
@@ -437,9 +435,6 @@ export default function FunnelPage() {
         setSelFunnelId(saved && active.find(f => f.id === saved) ? saved : first);
       }
     });
-    api('GET', '/kviz/api/crm/leads-sync').then(({ ok, data }) => {
-      if (ok) setSyncEnabled((data as Record<string, unknown>).enabled !== false);
-    });
     api('GET', '/kviz/api/crm/lost-reasons').then(({ ok, data }) => {
       if (ok && Array.isArray(data)) setLostReasons(data as LostReason[]);
     });
@@ -482,7 +477,12 @@ export default function FunnelPage() {
 
   useEffect(() => { loadLeads(); }, [loadLeads]);
 
-  // Auto-refresh every 60s when no popup/drag
+  // SSE realtime refresh; 5-min fallback poll when no popup/drag
+  const liveLoadLeads = useCallback(() => {
+    if (!pendingMove && !dragging && !openLead && !showCreate && !mobileMoveLead && !document.hidden) loadLeads();
+  }, [pendingMove, dragging, openLead, showCreate, mobileMoveLead, loadLeads]);
+  useLive(['leads', 'funnels', 'lead_tasks'], liveLoadLeads);
+
   useEffect(() => {
     if (pendingMove || dragging || openLead || showCreate || mobileMoveLead) {
       if (autoRefreshRef.current) { clearInterval(autoRefreshRef.current); autoRefreshRef.current = null; }
@@ -490,7 +490,7 @@ export default function FunnelPage() {
     }
     autoRefreshRef.current = setInterval(() => {
       if (!document.hidden) loadLeads();
-    }, 60_000);
+    }, 5 * 60_000);
     return () => { if (autoRefreshRef.current) { clearInterval(autoRefreshRef.current); autoRefreshRef.current = null; } };
   }, [pendingMove, dragging, openLead, showCreate, mobileMoveLead, loadLeads]);
 
@@ -520,21 +520,6 @@ export default function FunnelPage() {
   function selectFunnel(id: string) {
     setSelFunnelId(id);
     try { sessionStorage.setItem('crm-funnel-id', id); } catch {}
-  }
-
-  async function handleSync() {
-    setSyncing(true); setSyncMsg('Запущена...');
-    try {
-      await api('POST', '/kviz/api/crm/leads-sync');
-      let attempts = 0;
-      const poll = async () => {
-        const { ok, data } = await api('GET', '/kviz/api/crm/leads-sync');
-        if (ok) setSyncMsg((data as Record<string, unknown>).status === 'running' ? 'Синхронизация...' : 'Готово');
-        if ((data as Record<string, unknown>).status === 'running' && attempts++ < 30) setTimeout(poll, 1000);
-        else { setSyncing(false); loadLeads(); }
-      };
-      setTimeout(poll, 1500);
-    } catch { setSyncing(false); setSyncMsg('Ошибка'); }
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -626,15 +611,6 @@ export default function FunnelPage() {
         >
           + Заявка
         </button>
-        {syncEnabled && (
-          <button
-            onClick={handleSync} disabled={syncing}
-            style={{ padding: '7px 14px', background: syncing ? 'var(--text-3)' : 'var(--accent)', color: 'var(--surface)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: syncing ? 'default' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
-          >
-            {syncing ? '⟳ Синхр...' : '↓ Синхр. FB'}
-          </button>
-        )}
-        {syncMsg && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{syncMsg}</span>}
         {loading && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Загрузка...</span>}
         <span style={{ fontSize: 12, color: 'var(--text-3)', flexShrink: 0 }}>{leads.length} заявок</span>
       </div>

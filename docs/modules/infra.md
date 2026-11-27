@@ -38,6 +38,18 @@
 - CSS для safe-area insets, `100dvh`, `font-size:16px` на input.
 
 ## Сделано
+### 27.11.2026 · task 111 · SSE realtime: liveBus, /kviz/api/live, relay в shell-app.js
+
+**`src/core/liveBus.ts`** (новый): `EventEmitter` с `setMaxListeners(300)`, функция `emitLive({topic, id?, action?, by?})`.
+
+**`src/http/kviz.ts`**:
+- `GET /kviz/api/live` (SSE, auth required): `text/event-stream`, ping каждые 25 сек, `retry: 3000`, лимит 5 потоков на сессию (429). Подписывается на `liveBus` → пишет `event: live\ndata: {...}\n\n`. Cleanup по `req.on('close')`.
+- Post-mutation middleware: после каждого успешного POST/PUT/PATCH/DELETE по URL-паттерну вычисляет топик (`topicFromPath`) и вызывает `emitLive`. Топики: `leads`, `funnels`, `lead_tasks`, `schedule`, `clients`, `kassa`, `plans`, `measure`, `settings`.
+
+**`public/shell-app.js`**: `EventSource('/kviz/api/live')` → relay каждого события (`event: live`) в `postMessage({type:'live', topic, ...})` всем iframe.frame. Visibility change: если вкладка была скрыта >60 сек — при возврате рассылает `{type:'live', topic:'*'}` всем iframe для форс-обновления.
+
+**`kviz/client/src/lib/live.ts`** (новый): `useLive(topics, onChange)` — слушает `window.addEventListener('message')`, фильтрует по topic-set, дебаунс 400 мс.
+
 ### 19.11.2026 · 957ffa7 · task 71 — меню кружка поверх iframe, закрытие по blur
 
 - `src/http/shell.ts`: `#top-bar` → `position:relative;z-index:10` (корень проблемы: `backdrop-filter` создавал stacking context с `z-index:auto=0`; `#panes` шёл позже в DOM на том же уровне и его iframe-ы перекрывали `.ua-menu`; теперь `#top-bar` z=10 > `#panes` z=auto). `/api/logout`: четыре заголовка `Set-Cookie` — `Path=/` (Secure + plain), `Path=/window`, `Path=/kviz` — гарантированная очистка при любом браузере.

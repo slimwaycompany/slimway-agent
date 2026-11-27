@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef, useCallback, useContext, useMemo } from 'react';
+import { FunnelsSettings } from './FunnelsSettings';
 import PlanWindow, { type TPlan } from './PlanWindow';
 import { itemLabel } from '../../utils/planItemLabel';
 import { formatPlanRestriction } from '../../lib/planRestriction';
@@ -2181,121 +2182,9 @@ function StageEditor({ stage, onSaved, funnelId }: { stage: CrmStage; onSaved: (
 }
 
 function FunnelsSection() {
-  const [funnels, setFunnels]           = useState<CrmFunnel[]>([]);
-  const [err, setErr]                   = useState('');
-  const [newFunnelName, setNewFunnelName] = useState('');
-  const [newStageName, setNewStageName] = useState<Record<string, string>>({});
-  const [editStageId, setEditStageId]   = useState<string | null>(null);
-  const [syncEnabled, setSyncEnabled]   = useState<boolean | null>(null);
-  const [syncLoading, setSyncLoading]   = useState(false);
-
-  async function load() {
-    const { ok, data } = await api('GET', '/kviz/api/crm/funnels');
-    if (ok && Array.isArray(data)) setFunnels(data);
-  }
-
-  useEffect(() => {
-    load();
-    api('GET', '/kviz/api/crm/leads-sync').then(({ ok, data }) => {
-      if (ok) setSyncEnabled((data as Record<string,unknown>).enabled !== false);
-    });
-  }, []);
-
-  async function toggleSync() {
-    if (syncEnabled === null) return;
-    setSyncLoading(true);
-    const { ok } = await api('PATCH', '/kviz/api/crm/settings/sync', { enabled: !syncEnabled });
-    setSyncLoading(false);
-    if (ok) setSyncEnabled(v => !v);
-  }
-
-  async function createFunnel() {
-    if (!newFunnelName.trim()) return;
-    const { ok, data } = await api('POST', '/kviz/api/crm/funnels', { name: newFunnelName.trim() });
-    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
-    setNewFunnelName(''); load();
-  }
-
-  async function toggleFunnelActive(f: CrmFunnel) {
-    const { ok, data } = await api('PATCH', `/kviz/api/crm/funnels/${f.id}`, { is_active: !f.is_active });
-    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
-    load();
-  }
-
-  async function createStage(funnelId: string) {
-    const name = (newStageName[funnelId] ?? '').trim();
-    if (!name) return;
-    const { ok, data } = await api('POST', '/kviz/api/crm/funnel-stages', { name, funnel_id: funnelId });
-    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
-    setNewStageName(prev => ({ ...prev, [funnelId]: '' })); load();
-  }
-
-  async function toggleStageArchived(stage: CrmStage) {
-    const { ok, data } = await api('PATCH', `/kviz/api/crm/funnel-stages/${stage.id}`, { is_archived: !stage.is_archived });
-    if (!ok) { setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка'); return; }
-    load();
-  }
-
   return (
     <div style={S.section}>
-      {err && <div style={S.errBox}>{err}<button style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setErr('')}>✕</button></div>}
-
-      {/* Sync toggle */}
-      {syncEnabled !== null && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
-          <span style={{ flex: 1, fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>Синхронизация с Fitbase</span>
-          <button
-            onClick={toggleSync} disabled={syncLoading}
-            style={{ padding: '5px 14px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: syncLoading ? 'default' : 'pointer', fontFamily: 'inherit', background: syncEnabled ? 'var(--primary)' : 'var(--surface-2)', color: syncEnabled ? '#fff' : 'var(--text-2)' }}
-          >
-            {syncEnabled ? 'Включена' : 'Выключена'}
-          </button>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <input style={{ ...S.inp, flex: 1 }} placeholder="Название новой воронки" value={newFunnelName} onChange={e => setNewFunnelName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFunnel()} />
-        <button style={S.addBtn} onClick={createFunnel}>+ Воронка</button>
-      </div>
-      {funnels.map(f => (
-        <div key={f.id} style={{ background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 12, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 8, background: 'var(--surface-2)' }}>
-            <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{f.name}</span>
-            <button style={{ ...S.editBtn, fontSize: 11 }} onClick={async () => {
-              if (!await showConfirm('Загрузить содержимое из таблицы? Настройки всех этапов этой воронки (пункты, подсказки) будут заменены данными из таблицы.')) return;
-              const { ok, data } = await api('POST', `/kviz/api/crm/funnels/${f.id}/reset-content`);
-              if (ok) { toast.success('Содержимое загружено'); load(); }
-              else setErr((data as Record<string,unknown>)?.error as string ?? 'Ошибка');
-            }}>Загрузить из таблицы</button>
-            <button style={{ ...S.editBtn, fontSize: 11 }} onClick={() => toggleFunnelActive(f)}>{f.is_active ? 'Активна' : 'Неактивна'}</button>
-          </div>
-          <div style={{ padding: '8px 14px' }}>
-            {f.stages.sort((a, b) => a.sort - b.sort).map(s => (
-              <div key={s.id} style={{ opacity: s.is_archived ? 0.5 : 1, marginBottom: 2 }}>
-                <div style={S.row}>
-                  <span style={{ fontSize: 13, color: 'var(--text)' }}>{s.name}</span>
-                  <div style={S.rowActions}>
-                    <span style={{ fontSize: 11, color: 'var(--text-3)', padding: '2px 6px' }}>{s.kind}</span>
-                    <button style={S.editBtn} onClick={() => setEditStageId(editStageId === s.id ? null : s.id)}>
-                      {editStageId === s.id ? 'Скрыть' : 'Редактировать'}
-                    </button>
-                    {s.kind === 'normal' && (
-                      <button style={S.editBtn} onClick={() => toggleStageArchived(s)}>{s.is_archived ? 'Восстановить' : 'В архив'}</button>
-                    )}
-                  </div>
-                </div>
-                {editStageId === s.id && <StageEditor stage={s} onSaved={() => { load(); setEditStageId(null); }} funnelId={f.id} />}
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-              <input style={{ ...S.inp, flex: 1, fontSize: 12 }} placeholder="Новый этап"
-                value={newStageName[f.id] ?? ''} onChange={e => setNewStageName(prev => ({ ...prev, [f.id]: e.target.value }))}
-                onKeyDown={e => e.key === 'Enter' && createStage(f.id)} />
-              <button style={{ ...S.addBtn, fontSize: 12 }} onClick={() => createStage(f.id)}>+</button>
-            </div>
-          </div>
-        </div>
-      ))}
+      <FunnelsSettings />
     </div>
   );
 }

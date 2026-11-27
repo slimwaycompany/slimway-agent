@@ -2226,50 +2226,67 @@ export function buildCrmRouter(): Router {
 
   // ── Bookings tab (full history incl. future, with group linkage) ─────────────
 
+  // GET /clients/:id/lead — most recent active lead for this client by phone
+  r.get('/kviz/api/crm/clients/:id/lead', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    try {
+      const { data: client } = await supabase.from('crm_clients')
+        .select('phone').eq('id', req.params.id).eq('branch_id', BRANCH_ID).maybeSingle();
+      if (!client || !(client as Record<string, unknown>).phone) { res.json(null); return; }
+      const phone = (client as Record<string, unknown>).phone as string;
+      const { data: lead } = await supabase.from('crm_leads')
+        .select('id,title,name,stage_id,funnel_id,fb_created_at')
+        .eq('branch_id', BRANCH_ID).eq('phone', phone).eq('is_archived', false)
+        .order('fb_created_at', { ascending: false }).limit(1).maybeSingle();
+      res.json(lead ?? null);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   r.get('/kviz/api/crm/clients/:id/bookings', async (req, res) => {
     if (!requireAuth(req, res)) return;
     try {
       const clientId = req.params.id;
       const filter = req.query.filter as string | undefined; // all|future|attended|no_show|cancelled
-      const page = Math.max(0, Number(req.query.page ?? 0));
+      const page = Math.max(1, Number(req.query.page ?? 1));
       const PAGE_SIZE = 50;
-
-      let q = supabase.from('crm_bookings')
-        .select('id,booking_date,starts_at,ends_at,status,kind,device_type_code,phase,group_id,client_plan_id,client_plan_item_id,session_burned,note', { count: 'exact' })
-        .eq('client_id', clientId)
-        .eq('branch_id', BRANCH_ID);
 
       const todayUTC5 = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Yekaterinburg' }).format(new Date());
 
+      // visit_history statuses to include
+      const vhStatuses: string[] =
+        filter === 'attended' ? ['attended'] :
+        filter === 'no_show'  ? ['no_show'] :
+        filter === 'future' || filter === 'cancelled' ? [] :
+        ['attended', 'no_show'];
+
+      let bkQ = supabase.from('crm_bookings')
+        .select('id,booking_date,starts_at,status,kind,device_type_code,phase,group_id,client_plan_id,session_burned')
+        .eq('client_id', clientId).eq('branch_id', BRANCH_ID);
+
       if (filter === 'future') {
-        q = q.in('status', ['booked', 'confirmed']).gte('booking_date', todayUTC5);
+        bkQ = bkQ.in('status', ['booked', 'confirmed']).gte('booking_date', todayUTC5);
       } else if (filter === 'attended') {
-        q = q.eq('status', 'attended');
+        bkQ = bkQ.eq('status', 'attended');
       } else if (filter === 'no_show') {
-        q = q.in('status', ['no_show', 'late_cancel']);
+        bkQ = bkQ.in('status', ['no_show', 'late_cancel']);
       } else if (filter === 'cancelled') {
-        q = q.eq('status', 'cancelled');
+        bkQ = bkQ.eq('status', 'cancelled');
       }
 
-      const { data, error, count } = await q
-        .order('booking_date', { ascending: false })
-        .order('starts_at', { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      const [bkRes, vhRes] = await Promise.all([
+        bkQ.order('booking_date', { ascending: false }).order('starts_at', { ascending: false }).limit(500),
+        vhStatuses.length
+          ? supabase.from('crm_visit_history')
+              .select('id,visit_at,status,training_name')
+              .eq('client_id', clientId).in('status', vhStatuses)
+              .order('visit_at', { ascending: false }).limit(300)
+          : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      ]);
 
-      if (error) { console.error('[client-bookings]', clientId, error.message); res.status(500).json({ error: 'Ошибка загрузки записей' }); return; }
+      if (bkRes.error) { console.error('[client-bookings]', clientId, bkRes.error.message); res.status(500).json({ error: 'Ошибка загрузки записей' }); return; }
 
-      // Group bookings by group_id to link multi-device sessions
-      const grouped = new Map<string, Record<string,unknown>[]>();
-      const noGroup: Record<string,unknown>[] = [];
-      for (const b of (data ?? []) as Record<string,unknown>[]) {
-        if (b.group_id) {
-          if (!grouped.has(b.group_id as string)) grouped.set(b.group_id as string, []);
-          grouped.get(b.group_id as string)!.push(b);
-        } else noGroup.push(b);
-      }
-
-      // Collect plan names for bookings that have a plan
-      const planIds = [...new Set((data ?? []).map((b: Record<string,unknown>) => b.client_plan_id as string).filter(Boolean))];
+      // Collect plan names
+      const planIds = [...new Set((bkRes.data ?? []).map((b: Record<string,unknown>) => b.client_plan_id as string).filter(Boolean))];
       const planNames = new Map<string, string>();
       if (planIds.length) {
         const { data: plans } = await supabase.from('crm_client_plans')
@@ -2280,20 +2297,39 @@ export function buildCrmRouter(): Router {
         }
       }
 
-      const rows = (data ?? []).map((b: Record<string,unknown>) => {
+      const bkRows = (bkRes.data ?? []).map((b: Record<string,unknown>) => {
         const starts = b.starts_at as string;
         const timeStr = starts ? starts.slice(11, 16) : null;
         const isBurned = !['booked','confirmed','attended'].includes(b.status as string) && b.session_burned !== true;
         return {
-          id: b.id, booking_date: b.booking_date, time: timeStr,
-          status: b.status, kind: b.kind, device_type_code: b.device_type_code,
-          phase: b.phase, group_id: b.group_id, client_plan_id: b.client_plan_id,
+          id: b.id as string, booking_date: b.booking_date as string, time: timeStr,
+          status: b.status as string, kind: b.kind as string, device_type_code: b.device_type_code as string | null,
+          phase: b.phase as string | null, group_id: b.group_id as string | null,
+          client_plan_id: b.client_plan_id as string | null,
           plan_name: b.client_plan_id ? (planNames.get(b.client_plan_id as string) ?? '') : null,
           is_burned: isBurned,
         };
       });
 
-      res.json({ items: rows, total: count ?? 0, page, page_size: PAGE_SIZE });
+      const vhData = ((vhRes as { data: Record<string, unknown>[] | null }).data) ?? [];
+      const vhRows = vhData.map((h: Record<string,unknown>) => ({
+        id: `vh:${h.id as string}`, booking_date: (h.visit_at as string).slice(0, 10),
+        time: (h.visit_at as string).slice(11, 16) || null,
+        status: h.status as string, kind: 'fitbase', device_type_code: null,
+        phase: null, group_id: null, client_plan_id: null,
+        plan_name: (h.training_name as string | null) ?? null,
+        is_burned: false,
+      }));
+
+      const all = [...bkRows, ...vhRows].sort((a, b) => {
+        const da = `${a.booking_date}${a.time ?? '00:00'}`;
+        const db = `${b.booking_date}${b.time ?? '00:00'}`;
+        return da < db ? 1 : da > db ? -1 : 0;
+      });
+
+      const total = all.length;
+      const items = all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+      res.json({ items, total, page, page_size: PAGE_SIZE });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
