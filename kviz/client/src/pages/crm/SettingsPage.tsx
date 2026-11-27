@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef, useCallback, useContext, useMemo } from 'react';
 import { FunnelsSettings } from './FunnelsSettings';
+import AutomationSettings from './settings/AutomationSettings';
 import PlanWindow, { type TPlan } from './PlanWindow';
 import { itemLabel } from '../../utils/planItemLabel';
 import { formatPlanRestriction } from '../../lib/planRestriction';
@@ -39,7 +40,7 @@ interface PromoCode { id: string; code: string; discount_type: string; discount_
 interface PaymentMethod { id: string; name: string; kind: string; is_system: boolean; is_active: boolean; sort: number }
 interface AdSource { id: string; name: string; requires_referrer: boolean; is_active: boolean; sort: number }
 
-type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'branch' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'client-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules' | 'kassa-passwords';
+type Section = 'profile' | 'appearance' | 'staff' | 'devices' | 'abonements' | 'services' | 'products' | 'suppliers' | 'promos' | 'payments' | 'sources' | 'classes' | 'branch' | 'service' | 'finance' | 'funnels' | 'lead-tags' | 'client-tags' | 'task-types' | 'lost-reasons' | 'fb-users' | 'scriptolog' | 'control' | 'control-lines' | 'control-schedule' | 'control-devices' | 'pbx' | 'tv' | 'lead-rules' | 'kassa-passwords' | 'automation';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -4563,8 +4564,11 @@ const NAV_GROUPS_DEF: NavGroupDef[] = [
     { id: 'lead-tags',     label: 'Теги заявок',          Icon: Hash,          permKey: 'settings.lead_tags' },
     { id: 'client-tags',   label: 'Метки',                Icon: Tag,           permKey: 'settings.client_tags' },
     { id: 'task-types',    label: 'Типы задач',           Icon: CheckSquare,   permKey: 'settings.task_types' },
-    { id: 'lead-rules',    label: 'Автоматизация',        Icon: Cpu,           permKey: 'settings.funnels' },
+    { id: 'lead-rules',    label: 'Задачи по заявкам',    Icon: CheckSquare,   permKey: 'settings.funnels' },
     { id: 'scriptolog',    label: 'Скриптолог',           Icon: MessageSquare, permKey: 'settings.scriptolog' },
+  ]},
+  { id: 'automate', label: 'Автоматизация', sections: [
+    { id: 'automation', label: 'Правила воронок', Icon: Cpu, permKey: 'settings.automation' },
   ]},
   { id: 'team',   label: 'Команда',       sections: [
     { id: 'staff',            label: 'Сотрудники',           Icon: Users,         permKey: 'settings.staff' },
@@ -4593,6 +4597,7 @@ const SYNONYMS: [string, string][] = [
   ['филиал',      'branch'],       ['реквизиты', 'branch'],
   ['метки',       'client-tags'],  ['ярлыки',    'client-tags'],
   ['теги клиентов', 'client-tags'],
+  ['автоматизация', 'automation'], ['правила', 'automation'],
 ];
 
 // All sections flat (for label lookup)
@@ -5152,6 +5157,7 @@ export default function SettingsPage() {
         {section === 'pbx'              && <PbxSection />}
         {section === 'tv'               && <TvSection />}
         {section === 'kassa-passwords'  && <KassaPasswordsSection />}
+        {section === 'automation'       && <AutomationSettings />}
       </div>
     </div>
   );

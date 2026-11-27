@@ -14,7 +14,8 @@
 - `src/jobs/watchBrief.ts` — утренняя сводка задач (`/run/watch-brief`)
 - `src/jobs/newLeads.ts` — быстрый intake новых лидов (`/run/new-leads`, каждую минуту)
 - `src/jobs/inactive.ts` — эскалация неактивных клиентов (`/run/inactive`)
-- `src/jobs/lifecyclePlan.ts` — план жизненного цикла лидов Fitbase (`/run/lifecycle-plan`)
+- `src/jobs/lifecyclePlan.ts` — план жизненного цикла лидов Fitbase (`/run/lifecycle-plan`) ⚠️ **замещён** движком `src/core/automation/engine.ts` (task 112); файл не удалён
+- `src/core/automation/engine.ts` — движок автоматизации воронок CRM (`/run/crm-automation`, каждые 15 мин); fire-and-forget триггеры из crm.ts после продажи/возврата/записи/заморозки
 - `src/jobs/fitbaseOps.ts` — синхронизация операций Fitbase (`/run/fitbase-ops`)
 - `src/jobs/fitbaseCrmSync.ts` — синхронизация лидов и визитов (`/run/fitbase-crm-sync`)
 - `src/jobs/probeLtv.ts`, `probeContracts.ts`, `probeUnsorted.ts`, `probeTasks.ts` — диагностические зонды

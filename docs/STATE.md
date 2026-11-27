@@ -7,7 +7,7 @@
 | Модуль | Файл | Чат в claude.ai | Статус | Обновлено | Последнее изменение |
 |---|---|---|---|---|---|
 | Инфраструктура, вход, оболочка | `modules/infra.md` | Агент и овчарка | 🟢 | 27.11.2026 | task 111: SSE realtime — liveBus.ts, GET /kviz/api/live (5 потоков/сессию), relay EventSource в shell-app.js → postMessage всем iframe |
-| Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 26.11.2026 | task 108Б: права settings.client_tags + schedule.reschedule_future, пресеты обновлены |
+| Логины, сотрудники, роли | `modules/logins.md` | Логины | 🟢 | 27.11.2026 | task 112: добавлено право settings.automation (Автоматизация воронок), пресет company_manager |
 | Агент воронки Fitbase | `modules/agent.md` | Агент и овчарка | 🟢 | 12.11.2026 | task 48: syncVisits date_to fix (Fitbase требует date_to для /schedule-registration) |
 | Овчарка (окно уведомлений) | `modules/ovcharka.md` | Агент и овчарка | 🟢 | 19.11.2026 | task 72: sw.js не перехватывает navigate-запросы — FetchEvent network error исправлен |
 | Менеджер (чек-лист, смены) | `modules/manager.md` | Менеджер и квалификация | 🟢 | 25.11.2026 | task 96: убрана кнопка «Закрытие смены» — перенесена в Кассу |
@@ -19,7 +19,7 @@
 | CRM: настройки и клиенты | `modules/crm-core.md` | CRM: настройки и клиенты | 🟢 | 27.11.2026 | task 111: баланс всегда, заявка в воронке (GET /clients/:id/lead), Fitbase строки в Записях, баг пагинации Записей исправлен |
 | CRM: касса | `modules/crm-kassa.md` | CRM: касса | 🟢 | 26.11.2026 | task 108A: печать закрытия смены — Excel-шаблон один в один (closingDocHtml → TEMPLATE + placeholders, branch info в closing_doc) |
 | CRM: расписание | `modules/crm-schedule.md` | CRM: расписание | 🟡 | 26.11.2026 | task 108Б: schedule.reschedule_future — серверная проверка + date input min/max=today |
-| CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟢 | 27.11.2026 | task 111.1: разовый перенос заявок Fitbase — preview/run/status API, FbImportModal в настройках воронок |
+| CRM: лиды и воронка | `modules/crm-leads.md` | CRM: лиды и воронка | 🟢 | 27.11.2026 | task 112: движок автоматизации воронок CRM (conditions+engine), раздел «Автоматизация» в Настройках, 5 fire-and-forget триггеров |
 | Чаты (EasyChat / ФитБейс Чат) | `modules/chats.md` | Чаты (EasyChat) | ⚪ | 05.11.2026 | Модуль создан, исследование: ФБЧ = своя разработка Fitbase, WhatsApp по QR, API не найден |
 | Агрегатор мессенджеров | `modules/aggregator.md` | Агрегатор мессенджеров | ⚪ | 24.11.2026 | модуль заведён: сравнение Wazzup24, Green-API, ChatPlace, SendPulse, Umnico; вопросы Сергею |
 | UX/UI (дизайн-система, оболочка, мобильная) | `modules/ui.md` | UX/UI | 🟡 | 19.11.2026 | task 71: меню кружка поверх iframe (#top-bar stacking context fix) |

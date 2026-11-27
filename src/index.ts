@@ -29,6 +29,7 @@ import { mountScriptologRoutes } from './http/scriptolog';
 import { mountStaffRoutes } from './http/staff';
 import { buildTvRouter } from './http/tv';
 import { runCrmLifecycle } from './http/crm';
+import { runAutomation } from './core/automation/engine';
 import { runCrmLeadsSync } from './jobs/crmLeadsSync';
 import { runScriptologReminders, JOB_NAME as REMINDERS_JOB } from './jobs/scriptologReminders';
 import { runControl, runControlRange } from './jobs/control';
@@ -278,6 +279,18 @@ async function handleCrmLeadsSync(req: express.Request, res: express.Response): 
 }
 app.get('/run/crm-leads-sync',  handleCrmLeadsSync);
 app.post('/run/crm-leads-sync', handleCrmLeadsSync);
+
+// crm-automation: automation rules engine, every 15 min
+const CRM_AUTOMATION_JOB = 'crm-automation';
+async function handleCrmAutomation(req: express.Request, res: express.Response): Promise<void> {
+  if (!checkSecret(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const locked = await acquireLock(CRM_AUTOMATION_JOB, 10 * 60);
+  if (!locked) { res.json({ status: 'already_running' }); return; }
+  res.status(202).json({ status: 'accepted', job: CRM_AUTOMATION_JOB });
+  runAutomation().catch(console.error).finally(() => releaseLock(CRM_AUTOMATION_JOB));
+}
+app.get('/run/crm-automation',  handleCrmAutomation);
+app.post('/run/crm-automation', handleCrmAutomation);
 
 // crm-lifecycle: plan activation/expiry, daily at 00:05 UTC+5
 async function handleCrmLifecycle(req: express.Request, res: express.Response): Promise<void> {

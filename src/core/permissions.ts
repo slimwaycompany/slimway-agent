@@ -136,6 +136,7 @@ export const PERM_CATALOG: PermBlock[] = [
       { key: 'settings.pbx',              label: 'АТС',                       kind: 'row' },
       { key: 'control.review',            label: 'Проверки ОКК',              kind: 'action', parent: 'settings.control' },
       { key: 'settings.tv',           label: 'ТВ-экран',            kind: 'row' },
+      { key: 'settings.automation',  label: 'Автоматизация воронок', kind: 'row' },
     ],
   },
 ];
@@ -232,5 +233,6 @@ export const POSITION_PRESETS: Record<string, PresetPerm[]> = {
     e('settings.sources'), e('settings.classes'), e('settings.branch'), e('settings.service'), e('settings.finance'),
     e('settings.client_tags'), e('settings.funnels'), e('settings.lead_tags'), e('settings.task_types'), e('settings.lost_reasons'),
     e('settings.fb_users'), e('settings.scriptolog'), e('settings.control'), e('settings.tv'),
+    e('settings.automation'),
   ],
 };

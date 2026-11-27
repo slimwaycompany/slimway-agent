@@ -6,6 +6,7 @@ import { getSession, requireAuth, requireAdmin, getSessionWithPerms, can, requir
 import { startHistoryImport, runFitbaseHistoryImport, getHistoryImportJob, linkBodyClients, getLinkStats } from '../jobs/fitbaseHistoryImport';
 import { batchAutoLabelsForDay, batchAutoLabelsToday } from '../core/clientAutoLabels';
 import type { ClientExtraData } from '../core/clientAutoLabels';
+import { runAutomation } from '../core/automation/engine';
 
 const BRANCH_ID         = '00000000-0000-0000-0000-000000000001';
 const GENERIC_CRM_ERROR = 'Ошибка кассы, сообщите администратору';
@@ -2047,6 +2048,7 @@ export function buildCrmRouter(): Router {
         }
       }
 
+      if (payload.client_id) runAutomation({ clientIds: [payload.client_id as string] }).catch(console.error);
       res.json(result);
     } catch (e) {
       console.error('[checkout] unexpected:', e);
@@ -2094,6 +2096,12 @@ export function buildCrmRouter(): Router {
       }
       const result = data as { refund_id: string; amount: number };
       await writeAudit('refund', result.refund_id, 'refund', session.display_name);
+      if (b.sale_id) {
+        supabase.from('crm_sales').select('client_id').eq('id', b.sale_id).maybeSingle().then(r => {
+          const cid = (r.data as Record<string,unknown> | null)?.client_id as string | null;
+          if (cid) runAutomation({ clientIds: [cid] }).catch(console.error);
+        }, () => {});
+      }
       res.json(result);
     } catch (e) {
       console.error('[refund] unexpected:', e);
@@ -2491,6 +2499,7 @@ export function buildCrmRouter(): Router {
       if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
       if (cpFull?.client_id) {
         await supabase.from('crm_client_comments').insert({ client_id: cpFull.client_id, kind: 'freeze', text: reason, author: session.display_name });
+        runAutomation({ clientIds: [cpFull.client_id] }).catch(console.error);
       }
       await writeAudit('client_plan', req.params.id, `freeze:${days}d`, session.display_name);
       res.json({ ok: true });
@@ -2512,6 +2521,7 @@ export function buildCrmRouter(): Router {
       if (error) { res.status(400).json({ error: translateRpcError(error.message) }); return; }
       if (cp.client_id) {
         await supabase.from('crm_client_comments').insert({ client_id: cp.client_id, kind: 'unfreeze', text: reason, author: session.display_name });
+        runAutomation({ clientIds: [cp.client_id] }).catch(console.error);
       }
       await writeAudit('client_plan', req.params.id, 'unfreeze', session.display_name);
       res.json({ ok: true });
@@ -3726,6 +3736,12 @@ export function buildCrmRouter(): Router {
       const ids = (data as Record<string,unknown> | null)?.booking_ids as string[] | undefined;
       for (const id of (ids ?? [req.params.id])) {
         await writeAudit('booking', id, `status:${b.status}`, session.display_name);
+      }
+      if (['attended','no_show'].includes(b.status as string)) {
+        supabase.from('crm_bookings').select('client_id').eq('id', req.params.id).maybeSingle().then(r => {
+          const cid = (r.data as Record<string,unknown> | null)?.client_id as string | null;
+          if (cid) runAutomation({ clientIds: [cid] }).catch(console.error);
+        }, () => {});
       }
       res.json(data);
     } catch (e) { res.status(500).json({ error: String(e) }); }

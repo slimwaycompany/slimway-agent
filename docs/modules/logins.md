@@ -48,6 +48,9 @@
 - **Пerm-ключи формата `block.row` (task 56):** `manager.tasks`, `clients.phone`, `kassa.sale` и т.д. Для новой вкладки/отчёта/действия — ОБЯЗАТЕЛЬНО добавить в `PERM_CATALOG` (src/core/permissions.ts) и в пресеты нужных должностей. Серверные проверки: `const session = await getSessionWithPerms(req); if (!requirePerm(req, res, 'block.row', 'edit', session)) return;` (тип `session` автоматически сужается до `ExtendedSession` после проверки).
 
 ## Сделано
+### 27.11.2026 · task 112 · Новое право settings.automation
+- **`src/core/permissions.ts`**: `settings.automation` (Автоматизация воронок, row) в блоке `settings`. Добавлено в пресет `company_manager` (edit).
+
 ### 26.11.2026 · task 108Б · Новые права settings.client_tags и schedule.reschedule_future
 - **`src/core/permissions.ts`**: `settings.client_tags` (Метки, row) в блоке `settings`; `schedule.reschedule_future` (Переносить на другой день, action, parent schedule.main) в блоке `schedule`. Добавлены в пресеты: `branch_manager` — edit; `company_manager` — view/edit соответственно.
 - **`src/http/crm.ts`**: `GET/PATCH /client-auto-labels` используют `settings.client_tags`; `POST /schedule/bookings/:id/move` требует `schedule.reschedule_future` при переносе на другой день.

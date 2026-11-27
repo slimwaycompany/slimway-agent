@@ -15,6 +15,7 @@ import { buildPayrollRouter } from './payroll';
 import { buildFinRouter } from './fin';
 import { buildCrmRouter } from './crm';
 import { buildCrmLeadsRouter } from './crmLeads';
+import { buildCrmAutomationRouter } from './crmAutomation';
 import { buildControlRouter } from './control';
 import { buildTvRouter } from './tv';
 import { addLeadNote } from './fitbase';
@@ -403,6 +404,7 @@ export function mountKvizRoutes(app: Application): void {
     app.use(buildFinRouter());
     app.use(buildCrmRouter());
     app.use(buildCrmLeadsRouter());
+    app.use(buildCrmAutomationRouter());
     app.use(buildControlRouter());
     app.use(buildTvRouter());
   } catch (e) {
